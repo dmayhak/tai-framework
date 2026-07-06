@@ -6,5 +6,5 @@ questions. Do not write code that contradicts it; if something needs to change, 
 the brief deliberately rather than working around it.
 
 ## Claude-specific
-- Atlassian MCP server (Jira + Confluence) will be configured in `.claude/settings.json`
+- Atlassian MCP server (Jira + Confluence) will be configured in `~/.claude.json`
   when we reach the Jira phase (see brief §9). Not active in Phase 0/1.

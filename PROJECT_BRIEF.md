@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-01 (rev 4 — added persona display-name convention, §3.1)
+> **Last updated:** 2026-07-01 (rev 9 — flagged Analyst review-gate gap, dual-reviewer shape)
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
 
 ---
@@ -117,9 +117,44 @@ integration (which is what our MCP-based access is). Therefore:
 > optional defense-in-depth — they are not something Team AI deploys itself.
 
 Checkpoints are modeled as **dependent subtasks in a "blocks / depends-on" chain**
-(see §5.3). Human-gated checkpoints **take priority over all autocompletion settings** —
+(see §5.4). Human-gated checkpoints **take priority over all autocompletion settings** —
 if a checkpoint requires a human, work pauses there even when autocompletion is otherwise
 enabled.
+
+**A Jira-side transition rejection is itself treated as an unplanned checkpoint.** Even
+after Team AI's own checks pass, the actual Jira transition call can still be rejected —
+an admin-configured validator, a missing required field, a permission gap, or a concurrent
+change by another human or agent. This resolves an earlier open question: **Team AI always
+attempts the real Jira transition** (it doesn't skip straight past Jira based on our own
+checks alone), and if Jira rejects it, that rejection is never treated as an ordinary
+failure. Work stops immediately, the Jira-returned reason is captured verbatim in the
+unit's work journal (§3.6/§7), and the item is flagged for human intervention.
+
+Because the AI usually cannot self-diagnose an admin's validator or a permissions problem,
+**this case is explicitly excluded from the single-retry pattern** used for review
+failures (§4) — it escalates straight to a human every time, no retry attempt first.
+
+This is enforced **once, centrally, in the storage plugin's `transition` operation**
+(§3.2), not repeated in each persona's own instructions. The operation returns either
+success or a structured "blocked-by-source" result; every persona and the Orchestrator
+react to that result identically, so no persona needs its own logic for this case.
+
+Where possible, the block is also surfaced **inside Jira itself** — a comment stating the
+reason, and (if configured) a label such as `blocked-external` — so it's visible to anyone
+looking directly at the Jira board, not only to someone checking Team AI's local status
+file.
+
+> **Deferred (not v1): learning from Jira-side rejections.** The core behavior above —
+> attempt the real transition, treat rejection as an unplanned checkpoint, escalate, no
+> retry — is the v1 requirement. A **follow-on refinement**, explicitly out of scope for
+> the first build, is closing the loop so a discovered constraint isn't rediscovered every
+> time: proactively checking Jira's transition metadata before attempting a call (catches
+> the common "forgot a required field" case for free), and reactively caching anything
+> still discovered the hard way as a **proposed constraint** that a human can **promote**
+> to confirmed. What promotion actually *changes* is deliberately left open — it might be a
+> persona extension (§3.1), a workflow adjustment (§3.5), or something else this project
+> hasn't hit yet. Don't presuppose the mechanism; figure that out when this refinement is
+> actually scheduled. See open question §8.15.
 
 ### 3.4 Autocompletion
 The ability for a persona to complete work without human sign-off, when configurable
@@ -170,14 +205,15 @@ BMAD's scale-adaptive planning depth.)
 
 Separately, an **already-created Story** may need more detail before implementation
 subtasks can be meaningfully created under it. For this, a Story can carry a
-**refinement subtask** — a subtask whose type routes it to Analyst, Architect, DBA, etc.
-rather than Dev/Review/Merge. A refinement subtask's output is not code; it's added detail
-(clarified acceptance criteria, a design decision, a data model) that lands on the Story's
-linked Confluence page, per §4's "who needs to know" comment rule. Refinement subtasks may
-spawn further refinement subtasks (e.g. an Architect's refinement raises a question that
-needs a DBA's refinement) but do not spawn implementation chains directly — turning
-refined output into actual dev subtasks is a separate decision (human or Orchestrator, per
-§3.8), made once the Story is judged ready.
+**refinement subtask** — e.g. an `Investigate` or `Design` type (§5.2) that routes to
+Analyst, Architect, DBA, etc., rather than an implementation-chain type like `Develop` or
+`Code Review`. A refinement subtask's output is not code; it's added detail (clarified
+acceptance criteria, a design decision, a data model) that lands on the Story's linked
+Confluence page, per §4's "who needs to know" comment rule. Refinement subtasks may spawn
+further refinement subtasks (e.g. an Architect's `Design` raises a question that needs a
+DBA's `Data Design`) but do not spawn implementation chains directly — turning refined
+output into actual implementation subtasks is a separate decision (human or Orchestrator,
+per §3.8), made once the Story is judged ready.
 
 ### 3.8 Interaction Modes
 - A human can **initiate a persona** and interact with it (e.g. "what's ready for you to
@@ -212,6 +248,19 @@ These are settled. Change them deliberately and update this file if you do.
   org-level enforcement.)
 - **Checkpoints are enforced in Team AI's plugin layer,** not via native Jira validators
   (see §3.3). Checkpoints override autocompletion.
+- **A Jira-rejected transition is an unplanned checkpoint, not a normal failure.** Team AI
+  always attempts the real Jira transition after its own checks pass; if Jira itself
+  rejects it, work stops, the reason is journaled, and it escalates directly to a
+  human — this case skips the single-retry pattern used for review failures, and is
+  enforced once in the storage plugin's `transition` operation rather than per-persona
+  (§3.3).
+- **Learning from Jira rejections is deferred, not v1.** The core escalation behavior
+  (attempt → reject → unplanned checkpoint → human, no retry) is required now. Closing the
+  loop so a discovered constraint isn't rediscovered every time — proactive metadata
+  checks, a proposed/confirmed constraint cache, human promotion — is an explicit
+  follow-on refinement. What promotion changes (persona extension, workflow adjustment, or
+  something else) is intentionally undecided until that refinement is scheduled (§3.3,
+  §8.15).
 - **Branching:** adopt GSD's configurable strategies (`none` / `phase` / `milestone`
   equivalents) plus git worktrees for parallel isolation. The standard **work unit is a
   Jira Story or Bug**; branch names are based on the **parent issue** (e.g.
@@ -242,6 +291,10 @@ These are settled. Change them deliberately and update this file if you do.
   **Epic → Story/Bug → Subtask.** We will use **distinct Story-level types** (e.g. Spike,
   Research, Bug, Implementation — names not final) so a human scanning the backlog can tell
   the kind of work at a glance. New types can be introduced as needed.
+- **Subtasks are typed too, not generic.** Type is what routes a subtask to a persona
+  (e.g. `Develop` → Developer, `Code Review` → Code Reviewer). Like Story types, this is an
+  open, extensible taxonomy — see §5.2 for the starting candidate list and the currently
+  unresolved DBA/DevOps routing gap.
 - **Decomposition is recursive, not one-shot.** The Analyst (or another persona) can be
   invoked at Project scope to propose Epics, then invoked again scoped to each Epic to
   propose Stories — the same operation applied at progressively narrower scope (§3.7).
@@ -259,33 +312,72 @@ These are settled. Change them deliberately and update this file if you do.
 Project            → one per "system" we build (a system may span multiple repos)
   Epic             → a feature set (no subtasks directly attached)
     Story / Bug    → the standard unit of work; typed (Spike, Research, Bug, Implementation, …)
-      Subtask      → leaf work, typed by the persona/checkpoint role; single-repo
+      Subtask      → leaf work; typed (§5.2), not generic; single-repo
 ```
 
-### 5.2 Statuses & Dependencies
+### 5.2 Subtask Types & Persona Routing
+Subtasks are **typed**, not one generic "Subtask" — the type is what routes work to the
+right persona. Like Story types (§4), this is an **open, extensible taxonomy expected to
+grow** as real work surfaces cases it doesn't yet cover — including the two gaps flagged
+below.
+
+**Starting candidate types** (names not final):
+
+| Type | Typical persona | Category |
+|---|---|---|
+| Investigate | Analyst (sometimes Architect) | Refinement (§3.7) |
+| Design | Architect | Refinement (§3.7) |
+| Develop | Developer | Implementation |
+| Code Review | Code Reviewer | Implementation (gate) |
+| Design Review | Architect (second pass, or a peer) | Refinement (gate) |
+| Test | Tester | Verification |
+| UAT | Tester + a human stakeholder | Verification — inherently human-gated (§3.3) |
+| Merge / Deploy | Developer or DevOps | Implementation |
+
+**Open gap #1, flagged explicitly rather than guessed at:** the persona roster includes a
+DBA and a DevOps persona (§3.1), but neither has an obvious type in the list above yet.
+Candidates worth testing in practice rather than deciding now: a `Data Design` or
+`DB Review` type routed to DBA, and an `Infra Setup` (or similar) type routed to DevOps.
+These are proposals, not decisions — see open question §8.16.
+
+**Open gap #2:** `Design` has a matching `Design Review` gate, but `Investigate` (the
+Analyst's typical refinement type) has no equivalent review type yet — Analyst output
+currently relies only on the default human sign-off (§3.4), with no structured AI-review
+gate in between. Unlike the existing gates, this one may genuinely need **two reviewers
+checking two different things** rather than one: a PM pass for business/acceptance fit,
+and an Architect pass for whether the requirement is defined clearly enough to design and
+implement. That's a checkpoint shape Team AI hasn't needed before — every existing gate
+(`Code Review`, `Design Review`) assumes a single reviewer signing off on one thing. Left
+undecided for now — see open question §8.17.
+
+Subtask-type-to-persona routing is configurable the same way persona permissions are
+(§3.1): a business can add types, change routing, or restrict which types a given persona
+handles.
+
+### 5.3 Statuses & Dependencies
 Issues carry statuses (pending / in-progress / done, plus blocked/ready as derived from
 dependencies) and **"blocks / depends-on"** links that determine what is ready to be picked
 up vs. blocked. **Open item:** the exact status set and workflow transitions still need to
 be defined (see §8).
 
-### 5.3 Checkpoint Chain (canonical example)
+### 5.4 Checkpoint Chain (canonical example)
 For an implementation Story touching one repo:
 ```
-[Dev subtask]  --blocks-->  [Code Review subtask]  --blocks-->  [Commit/Merge subtask]
+[Develop subtask]  --blocks-->  [Code Review subtask]  --blocks-->  [Merge/Deploy subtask]
 ```
-- Dev subtask completes → Code Review subtask becomes actionable.
-- Review **fails** → reopen the Dev subtask, put the Review subtask back to backlog,
-  record reviewer notes as a comment (on the dev subtask, or parent if multiple parties
-  care). AI may retry once; second failure escalates to a human.
+- Develop subtask completes → Code Review subtask becomes actionable.
+- Review **fails** → reopen the Develop subtask, put the Code Review subtask back to
+  backlog, record reviewer notes as a comment (on the Develop subtask, or parent if
+  multiple parties care). AI may retry once; second failure escalates to a human.
 - Review **passes** → mark it done, unblocking the next subtask in the chain.
 
-For a **multi-repo** Story: repeat the dev→review→merge/deploy chain **once per repo**,
-each subtask tagged with its repo (Component / `repo` field).
+For a **multi-repo** Story: repeat the Develop→Code Review→Merge/Deploy chain **once per
+repo**, each subtask tagged with its repo (Component / `repo` field).
 
 Story-level work is not always dev-related — Stories may be brainstorm, design, research,
 etc., differentiated by their type and their subtasks.
 
-### 5.4 Assignment & Claiming
+### 5.5 Assignment & Claiming
 - Jira **Assignee is a real human.** Our plugin layer (not Jira) enforces "act on tickets
   assigned to you, or claim an unassigned 'ready' ticket first."
 - Ready, unassigned tickets are **claimable.** People *should* work their own tickets, but
@@ -331,6 +423,7 @@ from source; the workspace holds state that may not exist anywhere else yet.
       confluence/
         <PAGE-ID>.md             # raw cached page content, + cachedAt
       links/                     # cached Jira↔Confluence link index
+      discovered-constraints.json  # DEFERRED (§3.3) — not built in v1
   work/
     <project-key>/
       <SUBTASK-KEY>/
@@ -411,6 +504,31 @@ Carry these forward; resolve them in upcoming design sessions.
     subtask — a human manually, or can the Orchestrator/Analyst detect insufficient detail
     and propose one? And what formally marks a Story "ready for implementation" once
     refinement is done (a status transition, a checkpoint, or just Orchestrator judgment)?
+14. **Escalation notification channel:** a Jira-rejected transition (§3.3) gets a comment/
+    label in Jira and an entry in the local status rollup (§7) — is that sufficient, or
+    does human escalation need an active push notification (email, Slack, Teams) so it
+    isn't only discovered by someone checking Jira or running Team AI?
+15. **Learning-loop design (deferred, §3.3):** this entire mechanism — proactive metadata
+    checks, the proposed/confirmed constraint cache, promotion authority (human only, or
+    can the Orchestrator do it under a configured permission?), sharing scope (local vs.
+    project-wide so other team members' sessions don't independently rediscover the same
+    block), and — critically — **what a promotion actually changes** (persona extension?
+    workflow adjustment? something else?) is all undesigned. Revisit as a follow-on
+    refinement once the core escalation behavior (v1) is built and in use.
+16. **Subtask type taxonomy completeness (§5.2):** finalize the DBA and DevOps routing
+    types (candidates: `Data Design`/`DB Review`, `Infra Setup`); decide whether a type can
+    route to more than one eligible persona and, if so, who/what picks among them; and
+    define the process for adding a new type when a real case doesn't fit the existing
+    list — does that itself require a human decision, or can the Analyst/Architect propose
+    a new type during a refinement subtask?
+17. **Analyst output review gate (§5.2):** does `Investigate` output need a formal review
+    type (mirroring `Design Review`), or does the default human sign-off (§3.4) already
+    cover it well enough? If a formal gate is added, it may need **two independent
+    reviewers checking different things** — PM for business/acceptance fit, Architect for
+    whether the requirement is clearly enough defined to design and implement — rather than
+    the single-reviewer shape every existing gate assumes. If both are needed: do both have
+    to pass before the Story is considered refined, can they run in parallel, and does a
+    disagreement between PM and Architect itself become a new kind of checkpoint?
 
 ---
 

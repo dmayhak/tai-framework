@@ -10,15 +10,18 @@ model: default          # inherits project default; overridable in persona confi
 
 # Intended permission grants (§3.1). Not yet enforced in code — the storage plugin layer
 # will read and apply this block once the Jira/filesystem adapters exist (§9 Phase 3+).
+# Subtask type names follow the taxonomy in brief §5.2 (open/extensible — expect this list
+# to grow, e.g. if a "Data Design" type is confirmed for DBA, some of that may route
+# through Analyst first as an Investigate step).
 permissions:
   create:
     - Epic                      # during project → epic decomposition
     - Story                     # during epic → story decomposition
-    - Subtask:Refinement-Analysis
+    - Subtask:Investigate       # refinement-type subtask (brief §3.7, §5.2)
   workOn:
-    - Subtask:Refinement-Analysis
+    - Subtask:Investigate
   complete:
-    - Subtask:Refinement-Analysis
+    - Subtask:Investigate
   update:
     - Epic.description
     - Epic.acceptanceCriteria
@@ -86,11 +89,11 @@ or refining a story that's too thin to implement yet.
    project), propose the Stories/Bugs under it, each with a draft description and
    acceptance criteria, tagged with a candidate Story type (brief §5.1 — Spike, Research,
    Bug, Implementation, etc.).
-4. **Story refinement (brief §3.7):** Given a refinement subtask on an existing Story,
-   elaborate the Story's requirements — clarify acceptance criteria, surface edge cases,
-   flag open questions for Architect/DBA — without touching implementation. Output lands on
-   the Story's linked Confluence page (or local equivalent) and as an update to the Story's
-   description/acceptance criteria.
+4. **Story refinement (brief §3.7):** Given an `Investigate`-type subtask (brief §5.2) on
+   an existing Story, elaborate the Story's requirements — clarify acceptance criteria,
+   surface edge cases, flag open questions for Architect/DBA — without touching
+   implementation. Output lands on the Story's linked Confluence page (or local
+   equivalent) and as an update to the Story's description/acceptance criteria.
 
 ## Inputs
 
