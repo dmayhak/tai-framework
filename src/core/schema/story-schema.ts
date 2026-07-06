@@ -148,20 +148,20 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
 // Each relation is stored ONE-directional; Jira's inverse naming
 // ("blocks" / "is blocked by") is an API/display concern, not a reason
 // to store both directions here.
+//
+// NOTE: a "CausedBy" relation (e.g. Bug caused-by Story) was considered
+// and deferred — "Causes"/"is caused by" isn't a universal Jira default
+// link type, and we're sticking to Jira's defaults for now. Revisit if
+// a real need for it comes up and the link type is confirmed to exist.
 export enum DependencyRelation {
     DependsOn = "depends-on", // from cannot start until to is done (to "blocks" from, in Jira's terms)
-    CausedBy = "caused-by",   // from (a Bug) was caused by to (a Story/Bug)
     RelatesTo = "relates-to", // non-blocking association, informational only
 }
 
 // Maps our semantic relation to the actual Jira Issue Link Type name.
-// DEFAULTS ONLY — verify these against the actual Jira instance/project
-// template before relying on them. "Causes" in particular is NOT a
-// universal Jira default and may need to be added, or CausedBy may need
-// to map to "Relates" instead if no such type exists.
+// These are Jira's own default link types — no custom types required.
 export const DEFAULT_JIRA_LINK_TYPE_NAME: Record<DependencyRelation, string> = {
     [DependencyRelation.DependsOn]: "Blocks",
-    [DependencyRelation.CausedBy]: "Causes", // TODO: confirm this link type exists in target Jira instance
     [DependencyRelation.RelatesTo]: "Relates",
 };
 
@@ -293,6 +293,58 @@ export function isSubtaskReady(
         (rule) => rule.after === target
     );
     return applicable.every((rule) => doneSubtaskTypes.has(rule.before));
+}
+
+// ---------- Dynamic Subtask Insertion ----------
+
+// Stories don't always ship with their full subtask set upfront. e.g.
+// Architecture work on a Story may surface the need for a Database
+// subtask partway through — one that should run IN PARALLEL with the
+// still-in-progress Architecture work, while also gating Dev.
+//
+// The static SUBTASK_PRECEDENCE graph already models this correctly:
+// there's no edge between ArchitectureDesign and Database, only
+// independent edges from each into Dev — so a Database subtask added
+// mid-flight naturally becomes a parallel input, not a blocker on
+// Architecture. What's needed is a way to compute ONLY the new edges
+// created by the insertion, without recomputing or duplicating links
+// for subtasks that already exist and are already wired up.
+//
+// Use this any time a subtask type is added to a story after creation
+// (Database discovered during Architecture, PostDeploy discovered
+// during Deploy planning, etc.) — pass the story's currently-present
+// subtask types BEFORE adding the new one.
+export function getNewPrecedenceEdgesForInsertedSubtask(
+    storyType: StoryType,
+    insertedSubtaskType: SubtaskType,
+    existingPresentSubtaskTypes: SubtaskType[]
+): SubtaskPrecedenceRule[] {
+    const existing = new Set(existingPresentSubtaskTypes);
+    return SUBTASK_PRECEDENCE[storyType].filter(
+        (rule) =>
+            (rule.before === insertedSubtaskType && existing.has(rule.after)) ||
+            (rule.after === insertedSubtaskType && existing.has(rule.before))
+    );
+}
+
+// ---------- Ad-Hoc Subtask-Level Dependencies (escape hatch) ----------
+
+// Most dynamically-inserted subtasks are already covered by the static
+// template via getNewPrecedenceEdgesForInsertedSubtask above (e.g. the
+// Database/Architecture/Dev case). This is the escape hatch for the
+// rarer case where a subtask discovered mid-flight needs a relationship
+// the template genuinely doesn't define — same pattern as StoryRef /
+// StoryDependency, but at subtask granularity.
+export interface SubtaskRef {
+    jiraKey?: string;
+    localId?: string; // for a subtask being created in the same batch as its dependency
+}
+
+export interface SubtaskDependencyOverride {
+    from: SubtaskRef;
+    relation: DependencyRelation;
+    to: SubtaskRef;
+    note: string; // required — explain why this falls outside the standard template
 }
 
 export interface ReviewGate {
