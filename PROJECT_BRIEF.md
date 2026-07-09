@@ -4,7 +4,8 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-01 (rev 9 — flagged Analyst review-gate gap, dual-reviewer shape)
+> **Last updated:** 2026-07-08 (rev 10 — reconciled with persona/workflow files: evolved
+> subtask taxonomy, UX Designer built-in, Kickoff workflow + gate)
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
 
 ---
@@ -83,6 +84,7 @@ AI roles that Claude/Gemini assume to do work. Each persona:
 |---|---|
 | Analyst (`analyst`) | **Ada** |
 | PM / Orchestrator (`pm`) | **Perry** |
+| UX Designer (`ux-designer`) | **Uma** |
 | Architect (`architect`) | **Aria** |
 | Developer (`developer`) | **Dario** |
 | DBA (`dba`) | **Dana** |
@@ -175,6 +177,14 @@ The default is a **"complete"** workflow (full chain). We will also support shor
 variants like **"quick"** (skips some steps/roles) and **"bugfix"**, etc. Businesses can
 configure their own workflow scenarios: which roles are enabled, which roles own which
 issue types, and what each role does.
+
+Distinct from these scenario workflows, each **Story type** has its own defined subtask
+process — **Kickoff**, **Story**, **Bug**, and **Spike** — documented in `workflows/*.md`.
+Notably, the **Kickoff** workflow (discovery / requirements / UX before implementation is
+scheduled) carries a **review gate requiring joint PM + UX Designer sign-off** before it
+may spawn Story/Spike tickets. *(Terminology note: "workflow" is used in two senses — the
+scenario sense here (complete / quick / bugfix), and the per-Story-type process sense in
+`workflows/*.md`.)*
 
 ### 3.6 Cache Refresh Points & Resumability
 Jira/Confluence are shared, externally-editable sources of truth — a human or another AI
@@ -292,9 +302,9 @@ These are settled. Change them deliberately and update this file if you do.
   Research, Bug, Implementation — names not final) so a human scanning the backlog can tell
   the kind of work at a glance. New types can be introduced as needed.
 - **Subtasks are typed too, not generic.** Type is what routes a subtask to a persona
-  (e.g. `Develop` → Developer, `Code Review` → Code Reviewer). Like Story types, this is an
-  open, extensible taxonomy — see §5.2 for the starting candidate list and the currently
-  unresolved DBA/DevOps routing gap.
+  (e.g. `Dev` → Developer, `CodeReview` → Code Reviewer). Like Story types, this is an
+  open, extensible taxonomy — see §5.2 for the current set, which has evolved past the
+  original candidate names and now includes the DBA/DevOps routing types.
 - **Decomposition is recursive, not one-shot.** The Analyst (or another persona) can be
   invoked at Project scope to propose Epics, then invoked again scoped to each Epic to
   propose Stories — the same operation applied at progressively narrower scope (§3.7).
@@ -311,44 +321,56 @@ These are settled. Change them deliberately and update this file if you do.
 ```
 Project            → one per "system" we build (a system may span multiple repos)
   Epic             → a feature set (no subtasks directly attached)
-    Story / Bug    → the standard unit of work; typed (Spike, Research, Bug, Implementation, …)
+    Story / Bug    → the standard unit of work; typed (Kickoff, Story, Bug, Spike; earlier draft names Research/Implementation folded in)
       Subtask      → leaf work; typed (§5.2), not generic; single-repo
 ```
 
 ### 5.2 Subtask Types & Persona Routing
 Subtasks are **typed**, not one generic "Subtask" — the type is what routes work to the
-right persona. Like Story types (§4), this is an **open, extensible taxonomy expected to
-grow** as real work surfaces cases it doesn't yet cover — including the two gaps flagged
-below.
-
-**Starting candidate types** (names not final):
+right persona. This taxonomy is **open and extensible**, and it has **evolved beyond the
+original candidate list** as the persona/workflow files were built. The table below is the
+**current set** and supersedes the earlier candidate names (`Develop`→`Dev`,
+`Code Review`→`CodeReview`, `Design`→`ArchitectureDesign`/`Feasibility`, `Test`→the three
+test tiers).
 
 | Type | Typical persona | Category |
 |---|---|---|
-| Investigate | Analyst (sometimes Architect) | Refinement (§3.7) |
-| Design | Architect | Refinement (§3.7) |
-| Develop | Developer | Implementation |
-| Code Review | Code Reviewer | Implementation (gate) |
-| Design Review | Architect (second pass, or a peer) | Refinement (gate) |
-| Test | Tester | Verification |
-| UAT | Tester + a human stakeholder | Verification — inherently human-gated (§3.3) |
-| Merge / Deploy | Developer or DevOps | Implementation |
+| Research | Analyst | Refinement — Kickoff discovery |
+| Requirements | PM | Refinement — PRD drafting |
+| UxDesign | UX Designer | Refinement — flows/wireframes |
+| Investigate | Analyst | Refinement — Story-level (§3.7) |
+| Feasibility | Architect | Refinement — quick technical go/no-go |
+| ArchitectureDesign | Architect | Refinement — deeper design |
+| Design Review | Architect (second pass, or a peer) | Refinement gate — gates `ArchitectureDesign` → `Dev` (workflows/story.md) |
+| Database | DBA | Implementation input (schema / migration / performance) |
+| Infra | DevOps | Implementation input |
+| Dev | Developer | Implementation (unit tests folded in) |
+| CodeReview | Code Reviewer | Implementation gate |
+| IntegrationTest / SystemTest / E2ETest | Tester | Verification |
+| UAT | Tester + a human stakeholder | Verification — inherently human-gated (§3.3); gates `Deploy` (workflows/story.md, workflows/bug.md) |
+| Triage | Tester | Bug entry point |
+| Deploy | DevOps (default, overridable) | Implementation |
+| PostDeploy | DevOps (default, overridable) | Implementation follow-up |
+| Spike (subtask) | No fixed owner — assigned at creation | Ad-hoc investigation inside a Story/Bug |
 
-**Open gap #1, flagged explicitly rather than guessed at:** the persona roster includes a
-DBA and a DevOps persona (§3.1), but neither has an obvious type in the list above yet.
-Candidates worth testing in practice rather than deciding now: a `Data Design` or
-`DB Review` type routed to DBA, and an `Infra Setup` (or similar) type routed to DevOps.
-These are proposals, not decisions — see open question §8.16.
+**Resolved (was Open gap #1 / §8.16):** the DBA and DevOps personas now have concrete
+routing types — `Database` for DBA; `Infra` / `Deploy` / `PostDeploy` for DevOps. A type
+may name a **default owner that is overridable per instance** (`Deploy` / `PostDeploy`),
+which resolves the "can a type route to more than one eligible persona" sub-question.
+Still open: the process for adding a brand-new type when a real case doesn't fit (§8.16).
 
-**Open gap #2:** `Design` has a matching `Design Review` gate, but `Investigate` (the
-Analyst's typical refinement type) has no equivalent review type yet — Analyst output
-currently relies only on the default human sign-off (§3.4), with no structured AI-review
-gate in between. Unlike the existing gates, this one may genuinely need **two reviewers
-checking two different things** rather than one: a PM pass for business/acceptance fit,
-and an Architect pass for whether the requirement is defined clearly enough to design and
-implement. That's a checkpoint shape Team AI hasn't needed before — every existing gate
-(`Code Review`, `Design Review`) assumes a single reviewer signing off on one thing. Left
-undecided for now — see open question §8.17.
+**Still open (was Open gap #2 / §8.17):** `Investigate` (the Analyst's Story-level
+refinement type) still has no dedicated AI-review gate. A Kickoff-stage **PM + UX Designer**
+review gate now exists as-built (§3.5, `workflows/kickoff.md`), but it gates Kickoff
+discovery output, not `Investigate` refinement output — the dual-reviewer question, and
+whether the two gates should unify, remain open (§8.17).
+
+**Now wired in (rev 10):** `Design Review` and `UAT` — retained from the original
+taxonomy — are now defined as optional gates in the workflow docs and the schema.
+`DesignReview` gates `ArchitectureDesign` → `Dev` (mirroring `CodeReview`); `UAT` is
+inherently human-gated (§3.3) and gates `Deploy`. Both are **present-when-added** and
+purely additive to the precedence graph — see `workflows/story.md` and
+`workflows/dependencies.md`.
 
 Subtask-type-to-persona routing is configurable the same way persona permissions are
 (§3.1): a business can add types, change routing, or restrict which types a given persona
@@ -373,6 +395,11 @@ For an implementation Story touching one repo:
 
 For a **multi-repo** Story: repeat the Develop→Code Review→Merge/Deploy chain **once per
 repo**, each subtask tagged with its repo (Component / `repo` field).
+
+**Note:** the as-built Story/Bug graph elaborates this canonical shape with parallel
+prerequisites (`ArchitectureDesign` / `Database` / `Infra` → `Dev`), parallel test tiers
+between `CodeReview` and `Deploy`, and a `PostDeploy` follow-up — see
+`workflows/dependencies.md` for the full precedence graph.
 
 Story-level work is not always dev-related — Stories may be brainstorm, design, research,
 etc., differentiated by their type and their subtasks.
@@ -468,14 +495,16 @@ is designed.)*
 
 Carry these forward; resolve them in upcoming design sessions.
 
-1. **Story-type taxonomy:** finalize the Story-level type names/set
-   (Spike / Research / Bug / Implementation / …) and whether Story further splits into
-   phase-specific types.
+1. **Story-type taxonomy:** the working set is now **Kickoff / Story / Bug / Spike**
+   (`workflows/*.md`); confirm this is final and whether any further phase-specific types
+   are needed. (Earlier candidate names Research/Implementation were folded into these.)
 2. **Jira statuses & workflows:** define the concrete status set and allowed transitions
    for each issue type, including how "ready" vs. "blocked" is derived from dependencies.
 3. **Scope of the "same persona can't approve" rule:** is it scoped to the same human, the
    same persona role, or both? (Currently: business-enforced, not code-locked, to allow
-   solo self-review.)
+   solo self-review.) *Note (rev 10):* the Code Reviewer persona expresses a "should not
+   review own authored work by default, overridable for solo dev" stance — the scope
+   question here is still what's unresolved.
 4. **Multi-repo checkpoint chain shape:** confirm the per-repo dev→review→deploy chain
    modeling and how Component vs. custom `repo` field is populated (manual vs. derived from
    commit).
@@ -515,12 +544,13 @@ Carry these forward; resolve them in upcoming design sessions.
     block), and — critically — **what a promotion actually changes** (persona extension?
     workflow adjustment? something else?) is all undesigned. Revisit as a follow-on
     refinement once the core escalation behavior (v1) is built and in use.
-16. **Subtask type taxonomy completeness (§5.2):** finalize the DBA and DevOps routing
-    types (candidates: `Data Design`/`DB Review`, `Infra Setup`); decide whether a type can
-    route to more than one eligible persona and, if so, who/what picks among them; and
-    define the process for adding a new type when a real case doesn't fit the existing
-    list — does that itself require a human decision, or can the Analyst/Architect propose
-    a new type during a refinement subtask?
+16. **Subtask type taxonomy completeness (§5.2):** *Partly resolved (rev 10).* DBA/DevOps
+    routing types are now concrete — `Database`; `Infra` / `Deploy` / `PostDeploy` — and a
+    type may carry a **default owner that is overridable per instance** (`Deploy` /
+    `PostDeploy`), settling the "route to more than one eligible persona" sub-question.
+    **Still open:** the process for adding a brand-new type when a real case doesn't fit
+    the existing list — does that require a human decision, or can the Analyst/Architect
+    propose a new type during a refinement subtask?
 17. **Analyst output review gate (§5.2):** does `Investigate` output need a formal review
     type (mirroring `Design Review`), or does the default human sign-off (§3.4) already
     cover it well enough? If a formal gate is added, it may need **two independent
@@ -529,6 +559,10 @@ Carry these forward; resolve them in upcoming design sessions.
     the single-reviewer shape every existing gate assumes. If both are needed: do both have
     to pass before the Story is considered refined, can they run in parallel, and does a
     disagreement between PM and Architect itself become a new kind of checkpoint?
+    *Update (rev 10):* a Kickoff-stage **PM + UX Designer** review gate now exists as-built
+    (§3.5, `workflows/kickoff.md`), but it gates *Kickoff discovery output*, not
+    *`Investigate` story-refinement output* — so the dual-reviewer question for
+    `Investigate`, and whether these two gates should be unified, both remain open.
 
 ---
 

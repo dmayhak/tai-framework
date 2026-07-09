@@ -56,6 +56,7 @@ export enum SubtaskType {
     UxDesign = "ux-design",                  // UX Designer
     Feasibility = "feasibility",             // Architect — quick, spike-like technical go/no-go
     ArchitectureDesign = "architecture-design", // Architect — deeper, non-time-boxed design work (ADRs, component boundaries)
+    DesignReview = "design-review",          // Architect (2nd pass or peer) — optional gate on ArchitectureDesign, mirrors CodeReview
     Database = "database",                   // DBA — schema, migrations, query tuning, performance (not just schema)
     Infra = "infra",                         // DevOps
     Dev = "dev",                             // Developer — unit tests are folded in here, not a separate subtask
@@ -63,6 +64,7 @@ export enum SubtaskType {
     IntegrationTest = "integration-test",    // Tester
     SystemTest = "system-test",              // Tester
     E2ETest = "e2e-test",                    // Tester
+    Uat = "uat",                             // Tester + human stakeholder — optional, inherently human-gated (§3.3), gates Deploy
     Deploy = "deploy",                       // DevOps (default) — manual or gated deployment
     PostDeploy = "post-deploy",              // DevOps (default) — manual follow-up work after a deployment
     Spike = "spike",                         // No fixed owner — assignee set explicitly at creation time
@@ -81,6 +83,7 @@ export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
     [SubtaskType.UxDesign]: Persona.UxDesigner,
     [SubtaskType.Feasibility]: Persona.Architect,
     [SubtaskType.ArchitectureDesign]: Persona.Architect,
+    [SubtaskType.DesignReview]: Persona.Architect, // 2nd pass/peer — should not be the author (soft self-review separation)
     [SubtaskType.Database]: Persona.Dba,
     [SubtaskType.Infra]: Persona.DevOps,
     [SubtaskType.Dev]: Persona.Developer,
@@ -88,6 +91,7 @@ export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
     [SubtaskType.IntegrationTest]: Persona.Tester,
     [SubtaskType.SystemTest]: Persona.Tester,
     [SubtaskType.E2ETest]: Persona.Tester,
+    [SubtaskType.Uat]: Persona.Tester, // Tester drives; a human stakeholder co-signs (see ALWAYS_HUMAN_GATED_SUBTASKS)
     [SubtaskType.Deploy]: Persona.DevOps,
     [SubtaskType.PostDeploy]: Persona.DevOps,
     [SubtaskType.Spike]: null,
@@ -114,11 +118,13 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
     ],
     [StoryType.Story]: [
         SubtaskType.ArchitectureDesign, // feature-level design before Dev starts, when needed
+        SubtaskType.DesignReview, // optional gate on ArchitectureDesign (mirrors CodeReview); present-when-added
         SubtaskType.Dev,
         SubtaskType.CodeReview,
         SubtaskType.IntegrationTest,
         SubtaskType.SystemTest,
         SubtaskType.E2ETest,
+        SubtaskType.Uat, // optional, inherently human-gated acceptance before Deploy; present-when-added
         SubtaskType.Database,
         SubtaskType.Infra,
         SubtaskType.Deploy,
@@ -132,6 +138,7 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.IntegrationTest,
         SubtaskType.SystemTest,
         SubtaskType.E2ETest,
+        SubtaskType.Uat, // optional human-gated acceptance for user-facing fixes; present-when-added
         SubtaskType.Database,
         SubtaskType.Infra,
         SubtaskType.Deploy,
@@ -139,6 +146,14 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.Spike, // for root-cause investigation when the fix isn't obvious
     ],
 };
+
+// Subtask types that are INHERENTLY human-gated (brief §3.3): they always
+// require a human sign-off and can never autocomplete, even when
+// autocompletion is otherwise enabled for the persona/project — a
+// human-gated checkpoint takes priority over all autocompletion settings.
+export const ALWAYS_HUMAN_GATED_SUBTASKS: SubtaskType[] = [
+    SubtaskType.Uat, // Tester drives the run; a human stakeholder must sign off
+];
 
 // ---------- Story-Level Dependencies (discovered, not derivable) ----------
 
@@ -229,6 +244,12 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.Requirements, after: SubtaskType.ArchitectureDesign },
     ],
     [StoryType.Story]: [
+        // ArchitectureDesign is gated by an optional DesignReview before it
+        // reaches Dev (mirrors Dev -> CodeReview). The direct
+        // ArchitectureDesign -> Dev edge is kept for the no-DesignReview case;
+        // the resolver drops whichever end is absent, so both coexist safely.
+        { before: SubtaskType.ArchitectureDesign, after: SubtaskType.DesignReview },
+        { before: SubtaskType.DesignReview, after: SubtaskType.Dev },
         { before: SubtaskType.ArchitectureDesign, after: SubtaskType.Dev },
         { before: SubtaskType.Database, after: SubtaskType.Dev },
         { before: SubtaskType.Infra, after: SubtaskType.Dev },
@@ -238,6 +259,15 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.CodeReview, after: SubtaskType.IntegrationTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.SystemTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.E2ETest },
+        // UAT (optional, inherently human-gated) sits after CodeReview and
+        // whichever automated tiers are present, and gates Deploy. Deploy also
+        // keeps its direct tier edges for the no-UAT case (same coexistence
+        // pattern as DesignReview above).
+        { before: SubtaskType.CodeReview, after: SubtaskType.Uat },
+        { before: SubtaskType.IntegrationTest, after: SubtaskType.Uat },
+        { before: SubtaskType.SystemTest, after: SubtaskType.Uat },
+        { before: SubtaskType.E2ETest, after: SubtaskType.Uat },
+        { before: SubtaskType.Uat, after: SubtaskType.Deploy },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.Deploy },
         { before: SubtaskType.SystemTest, after: SubtaskType.Deploy },
         { before: SubtaskType.E2ETest, after: SubtaskType.Deploy },
@@ -251,6 +281,13 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.CodeReview, after: SubtaskType.IntegrationTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.SystemTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.E2ETest },
+        // Optional human-gated UAT for user-facing fixes (see workflows/bug.md
+        // open question on product/UX-impact bugs). Present-when-added.
+        { before: SubtaskType.CodeReview, after: SubtaskType.Uat },
+        { before: SubtaskType.IntegrationTest, after: SubtaskType.Uat },
+        { before: SubtaskType.SystemTest, after: SubtaskType.Uat },
+        { before: SubtaskType.E2ETest, after: SubtaskType.Uat },
+        { before: SubtaskType.Uat, after: SubtaskType.Deploy },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.Deploy },
         { before: SubtaskType.SystemTest, after: SubtaskType.Deploy },
         { before: SubtaskType.E2ETest, after: SubtaskType.Deploy },
@@ -390,4 +427,14 @@ export const REVIEW_GATES: ReviewGate[] = [
  *    always sufficient to proceed to Dev?
  * 7. Should a failed PostDeploy check be able to auto-spawn a Bug story,
  *    linking the two, rather than relying on manual creation?
+ * 8. UAT failure is human-adjudicated — a rejected UAT may be an implementation
+ *    bug (route back to Dev, In Progress) OR an acceptance-criteria gap, so it
+ *    deliberately does NOT use the automatic single-retry loop used for
+ *    automated test failures. A rejected UAT CAN reopen a Requirements task, not
+ *    only Dev; the trigger/authority mechanism falls out of the persona-capability
+ *    design (what each persona may do or cause) and is settled there.
+ * 9. DesignReview gates ArchitectureDesign -> Dev only under Story. Confirm it
+ *    isn't wanted under Kickoff (where early ArchitectureDesign is instead
+ *    covered by the PM + UX review gate, plus the open Architect-in-gate
+ *    question) — see REVIEW_GATES and workflows/kickoff.md.
  */

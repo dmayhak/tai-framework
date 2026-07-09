@@ -23,6 +23,7 @@ routine dev/test rework loops that happened before anything ever shipped.
 | `Dev` | Developer | The fix itself. Unit tests folded in, same as Story. |
 | `CodeReview` | Code Reviewer | |
 | `IntegrationTest` / `SystemTest` / `E2ETest` | Tester | Regression coverage — same test tiers as Story, no separate "regression test" type needed |
+| `UAT` | Tester + human stakeholder | Optional, **inherently human-gated** — for user-facing fixes where a stakeholder should confirm the fix before it ships (see Open Questions) |
 | `Database` | DBA | If the bug is data-related |
 | `Infra` | DevOps | If the bug is infra-related |
 | `Deploy` | DevOps (default, overridable) | Fix deployment — may need to be expedited depending on severity |
@@ -51,7 +52,9 @@ the Story workflow doc for the full rationale.
   always running the full subtask chain?
 - Should a Bug ever require a Kickoff-style review gate (e.g. when the
   fix has real product or UX impact), or is Tester sign-off on Triage
-  always sufficient to proceed straight to Dev?
+  always sufficient to proceed straight to Dev? (Note: an optional `UAT`
+  gate now covers the *tail* of this — stakeholder acceptance before the
+  fix ships — but not a *front-end* gate before Dev starts.)
 - Should a failed `PostDeploy` check on a Story be able to auto-spawn a
   linked Bug story, rather than relying on someone noticing and creating
   it manually?

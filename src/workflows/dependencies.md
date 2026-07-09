@@ -70,13 +70,26 @@ a root and is always ready.
 
 ### Current default shape (Story/Bug)
 ```
-ArchitectureDesign ─┐
-Database ───────────┼──> Dev ──> CodeReview ──┬──> IntegrationTest ──┐
-Infra ───────────────┘                        ├──> SystemTest ───────┼──> Deploy ──> PostDeploy
-                                               └──> E2ETest ──────────┘
+ArchitectureDesign ─> DesignReview ─┐
+Database ───────────────────────────┼─> Dev ─> CodeReview ─┬─> IntegrationTest ─┐
+Infra ──────────────────────────────┘                     ├─> SystemTest ──────┼─> UAT ─> Deploy ─> PostDeploy
+                                                           └─> E2ETest ─────────┘
 ```
 Test tiers run in **parallel** off CodeReview, not chained to each other,
-and all three (when present) must complete before Deploy.
+and all present tiers must complete before the chain proceeds.
+
+**`DesignReview` and `UAT` are optional gates** (present-when-added), and both
+are **purely additive** to the static graph — when either is absent the graph
+collapses to the prior shape, because the resolver only keeps edges where
+**both** ends are present:
+- **`DesignReview`** gates `ArchitectureDesign → Dev`, the same way `CodeReview`
+  gates `Dev → tests`. When it's absent, the direct `ArchitectureDesign → Dev`
+  edge applies instead (both edges are kept in the graph; the filter drops
+  whichever end is missing).
+- **`UAT`** sits after `CodeReview` and whichever automated tiers are present,
+  and gates `Deploy`. When it's absent, the tiers gate `Deploy` directly, as
+  before. `UAT` is **inherently human-gated** (brief §3.3) — it never
+  autocompletes, even where autocompletion is otherwise enabled.
 
 ### What the `Spike` subtask deliberately has no rule for
 The ad-hoc `Spike` subtask (used inside a Story/Bug) has no entry in
