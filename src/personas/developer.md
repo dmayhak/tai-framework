@@ -15,6 +15,7 @@ model: default          # inherits project default; overridable in persona confi
 # in the brief's §5.2 list).
 permissions:
   create:
+    - Subtask:Dev                 # own core subtask type, matching every other persona's pattern
     - Subtask:Spike               # ad-hoc, in-story investigation when the fix/approach isn't obvious
   workOn:
     - Subtask:Dev
@@ -93,8 +94,8 @@ whom — rather than working around a spec gap silently.
 
 ## Handoff
 
-- After Dev is marked Done: hands off to **Code Reviewer**, which unblocks all test
-  tiers in parallel once review passes (see `workflows/story.md`).
+- After Dev is marked Done: hands off to **Code Reviewer**, whose passing review unblocks
+  the test tiers sequentially (D12; see `workflows/dependencies.md`).
 - On a failed test: receives the subtask back at **In Progress** rather than a fresh
   ticket — no new artifact is created for pre-deployment rework (see `workflows/story.md`
   — "Why no Defect subtask").

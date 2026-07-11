@@ -52,6 +52,7 @@ export enum StoryType {
 
 export enum SubtaskType {
     Research = "research",                   // Analyst
+    Investigate = "investigate",             // Analyst — Story/Bug refinement (brief §3.7); no fixed unblock effect (brief §8.13)
     Requirements = "requirements",           // PM
     UxDesign = "ux-design",                  // UX Designer
     Feasibility = "feasibility",             // Architect — quick, spike-like technical go/no-go
@@ -72,13 +73,25 @@ export enum SubtaskType {
 }
 
 // Single source of truth: which persona owns which subtask type BY DEFAULT.
-// A value of `null` means there is no fixed owner — the assignee must be
-// set explicitly at creation time (currently only true for Spike, since a
-// spike question could belong to any persona depending on what's being
-// investigated). Deploy/PostDeploy default to DevOps but may be
-// reassigned per-instance (e.g. a DBA-led data backfill post-deploy).
+// This is the DEFAULT VALUE for a real per-instance Jira custom field —
+// `persona` — that every subtask carries (brief §5.6, the two-axis owner
+// model, D15). `persona` is deliberately a STORED field, not derived from
+// the native Jira Assignee, because a human can hold more than one
+// persona's Project Role — deriving "which persona is this" purely from
+// who's assigned would be ambiguous whenever they hold more than one.
+// `persona` and Assignee are two separate axes: `persona` = which role is
+// being acted in; Assignee = which real human is acting it out.
+//
+// A value of `null` here means there is no default `persona` value — it
+// must be set explicitly at creation time (currently only true for Spike,
+// since a spike question could belong to any persona depending on what's
+// being investigated). Deploy/PostDeploy default to DevOps but the
+// `persona` field may be set to a different persona per-instance (e.g. a
+// DBA-led data backfill post-deploy) — same override, always overridable
+// even for the fixed-owner types above.
 export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
     [SubtaskType.Research]: Persona.Analyst,
+    [SubtaskType.Investigate]: Persona.Analyst,
     [SubtaskType.Requirements]: Persona.Pm,
     [SubtaskType.UxDesign]: Persona.UxDesigner,
     [SubtaskType.Feasibility]: Persona.Architect,
@@ -108,8 +121,10 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.Requirements,
         SubtaskType.UxDesign,
         SubtaskType.ArchitectureDesign,
-        // Open question: should Feasibility / Database / Infra also be allowed
-        // here for early technical-risk flagging during kickoff?
+        // Decided: Feasibility / Database / Infra are NOT allowed under Kickoff,
+        // even for early technical-risk flagging. If discovery surfaces a
+        // specific technical question, spawn a Spike story after discovery,
+        // scoped to that question, rather than adding a subtask here.
     ],
     [StoryType.Spike]: [
         SubtaskType.Feasibility,
@@ -117,6 +132,8 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.Infra,
     ],
     [StoryType.Story]: [
+        SubtaskType.Investigate, // refinement — adds detail before implementation subtasks are (separately) created, brief §3.7
+        SubtaskType.UxDesign, // Story-level detailing/tweaking beyond Kickoff's higher-level flows; smaller design docs scoped to this Story when Epic-level isn't the right granularity
         SubtaskType.ArchitectureDesign, // feature-level design before Dev starts, when needed
         SubtaskType.DesignReview, // optional gate on ArchitectureDesign (mirrors CodeReview); present-when-added
         SubtaskType.Dev,
@@ -133,6 +150,7 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
     ],
     [StoryType.Bug]: [
         SubtaskType.Triage, // entry point — replaces Research/Requirements/UxDesign for reported issues
+        SubtaskType.Investigate, // refinement — rarer on a Bug (Triage usually covers it), but available
         SubtaskType.Dev,
         SubtaskType.CodeReview,
         SubtaskType.IntegrationTest,
@@ -242,6 +260,12 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.Research, after: SubtaskType.Requirements },
         { before: SubtaskType.Research, after: SubtaskType.UxDesign },
         { before: SubtaskType.Requirements, after: SubtaskType.ArchitectureDesign },
+        // Flows and requirements are expected to converge before the Architect
+        // finalizes any design (personas/ux-designer.md) — ArchitectureDesign
+        // waits on BOTH, not just Requirements. Only bites when ArchitectureDesign
+        // is actually present (Kickoff's optional 4th subtask); the resolver
+        // drops this edge otherwise.
+        { before: SubtaskType.UxDesign, after: SubtaskType.ArchitectureDesign },
     ],
     [StoryType.Story]: [
         // ArchitectureDesign is gated by an optional DesignReview before it
@@ -251,14 +275,25 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.ArchitectureDesign, after: SubtaskType.DesignReview },
         { before: SubtaskType.DesignReview, after: SubtaskType.Dev },
         { before: SubtaskType.ArchitectureDesign, after: SubtaskType.Dev },
+        { before: SubtaskType.UxDesign, after: SubtaskType.Dev }, // Story-level detailing gates Dev, same as its sibling prerequisites
         { before: SubtaskType.Database, after: SubtaskType.Dev },
         { before: SubtaskType.Infra, after: SubtaskType.Dev },
         { before: SubtaskType.Dev, after: SubtaskType.CodeReview },
-        // Test tiers run in parallel off CodeReview, not chained to each
-        // other — open question below on whether this matches intent.
+        // Test tiers run SEQUENTIALLY by default (D12): Integration -> System -> E2E,
+        // cheapest/fastest tier first. Each tier also keeps a direct CodeReview edge
+        // for the case where an earlier tier in the sequence isn't present on this
+        // story instance (same coexistence pattern as DesignReview/UAT below) — e.g.
+        // if IntegrationTest is skipped, SystemTest falls back to being gated by
+        // CodeReview directly rather than being permanently blocked.
         { before: SubtaskType.CodeReview, after: SubtaskType.IntegrationTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.SystemTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.E2ETest },
+        { before: SubtaskType.IntegrationTest, after: SubtaskType.SystemTest },
+        { before: SubtaskType.IntegrationTest, after: SubtaskType.E2ETest },
+        { before: SubtaskType.SystemTest, after: SubtaskType.E2ETest },
+        // Whether a given tier applies to a story at all is a per-instance judgment
+        // call (same as DesignReview/UAT/Database/Infra) — present-when-added, no
+        // formal rule engine deciding which tiers a Story/Bug needs (D12).
         // UAT (optional, inherently human-gated) sits after CodeReview and
         // whichever automated tiers are present, and gates Deploy. Deploy also
         // keeps its direct tier edges for the no-UAT case (same coexistence
@@ -278,9 +313,13 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.Database, after: SubtaskType.Dev },
         { before: SubtaskType.Infra, after: SubtaskType.Dev },
         { before: SubtaskType.Dev, after: SubtaskType.CodeReview },
+        // Sequential by default (D12), same shape as Story — see the comment there.
         { before: SubtaskType.CodeReview, after: SubtaskType.IntegrationTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.SystemTest },
         { before: SubtaskType.CodeReview, after: SubtaskType.E2ETest },
+        { before: SubtaskType.IntegrationTest, after: SubtaskType.SystemTest },
+        { before: SubtaskType.IntegrationTest, after: SubtaskType.E2ETest },
+        { before: SubtaskType.SystemTest, after: SubtaskType.E2ETest },
         // Optional human-gated UAT for user-facing fixes (see workflows/bug.md
         // open question on product/UX-impact bugs). Present-when-added.
         { before: SubtaskType.CodeReview, after: SubtaskType.Uat },
@@ -303,6 +342,13 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
 // has no entry here, same reason it has no fixed owner — whether it
 // blocks Dev or is purely informational depends on what's being
 // investigated, and must be set explicitly per instance.
+//
+// Note: `Investigate` also deliberately has no entry here, for a different
+// reason — it has a fixed owner (Analyst), but per brief §3.7, turning its
+// refined output into actual implementation subtasks is a separate human/
+// Orchestrator decision, not an automatic unblock. What formally marks a
+// Story "ready for implementation" once Investigate is done is still open
+// (brief §8.13) — this is why there's no Investigate -> Dev edge (yet).
 
 // Filters the full precedence graph down to only the edges relevant to
 // a specific story instance's actual subtask set.
@@ -390,6 +436,14 @@ export interface ReviewGate {
     description: string;
 }
 
+// Sign-off for any gate here is tracked via an `Approved:`-prefixed Jira comment from
+// each of requiredReviewers — no custom field. The commenting human must additionally
+// hold that persona's Jira Project Role (brief §5.6) — this is what lets TAI verify a
+// raw Jira comment author actually corresponds to "the PM" or "the UX Designer", not
+// just trusting the comment's content. An edit to the Confluence doc(s) backing an
+// already-passed gate REOPENS it (brief §6) — detected via the same cachedAt/lastUpdated
+// staleness check used everywhere else (brief §3.6/§7), not a separate mechanism. See
+// design-notes doc "Review-gate approval tracking" and workflows/kickoff.md.
 export const REVIEW_GATES: ReviewGate[] = [
     {
         storyType: StoryType.Kickoff,
@@ -405,36 +459,78 @@ export const REVIEW_GATES: ReviewGate[] = [
 // ---------- Open Design Questions (tracked in code for visibility) ----------
 
 /**
- * TODO / OPEN:
- * 1. Now that ArchitectureDesign can appear under Kickoff, should the
- *    Kickoff review gate widen to PM + UX + Architect, or only conditionally
- *    add Architect when ArchitectureDesign was actually used?
- * 2. Should Feasibility / Database / Infra be allowed under Kickoff for
- *    early technical-risk flags, rather than being locked out until
- *    Spike/Story?
- * 3. Spike subtask has no fixed owner (SUBTASK_OWNER = null) — confirm the
- *    UI/workflow requires an explicit assignee at creation and doesn't
- *    silently default to anyone.
- * 4. PostDeploy defaults to DevOps but is often actually owned by whoever
- *    matches the follow-up work (DBA for backfills, Dev for flag flips) —
- *    decide whether default-owner-with-override is sufficient or whether
- *    PostDeploy needs the same "no fixed owner" treatment as Spike.
- * 5. Should a severe/hotfix Bug get an expedited path (e.g. skip full
- *    CodeReview, or compress test tiers to just one) rather than always
- *    running the full Story-equivalent subtask chain?
- * 6. Should a Bug story ever require a Kickoff-style review gate (e.g. for
- *    bugs with product/UX impact), or is Triage sign-off by Tester alone
- *    always sufficient to proceed to Dev?
- * 7. Should a failed PostDeploy check be able to auto-spawn a Bug story,
- *    linking the two, rather than relying on manual creation?
- * 8. UAT failure is human-adjudicated — a rejected UAT may be an implementation
+ * RESOLVED (kept for history — see workflows/kickoff.md and workflows/bug.md
+ * for the fuller writeups):
+ * - Kickoff review gate stays fixed at PM + UX Designer always; Architect is
+ *   never added, even when ArchitectureDesign was used.
+ * - Feasibility / Database / Infra are locked out of Kickoff entirely — a
+ *   technical question during discovery spawns a Spike story after discovery
+ *   instead (see STORY_SUBTASK_MAP[Kickoff]).
+ * - A Bug story never requires a Kickoff-style review gate, regardless of
+ *   product/UX impact — Triage sign-off by Tester alone is always sufficient
+ *   to proceed to Dev.
+ * - Kickoff-stage ArchitectureDesign stays ungated (no DesignReview under
+ *   Kickoff) — it's early/exploratory technical input, not a committed
+ *   design. Real design rigor (with DesignReview) applies later, once the
+ *   Story exists (see STORY_SUBTASK_MAP[Kickoff] / [Story]).
+ * - Severe/hotfix Bug expedited path (D5): a Bug with native Jira Priority=1
+ *   (Urgent/Emergency) compresses its test tiers down to just IntegrationTest
+ *   (SystemTest/E2ETest skipped, overridable by whoever triages) — CodeReview
+ *   and Deploy/PostDeploy stay mandatory regardless of priority. Uses the
+ *   existing Priority field, not a new custom severity field. NOT YET
+ *   IMPLEMENTED in the resolver functions below, which are still
+ *   priority-unaware — the D12 sequential ordering below means "skip
+ *   SystemTest/E2ETest" now just means not creating those subtasks at all,
+ *   rather than needing a separate conditionality mechanism.
+ * - Test tiers (D12): IntegrationTest -> SystemTest -> E2ETest run
+ *   SEQUENTIALLY by default, cheapest/fastest tier first, not in parallel off
+ *   CodeReview as originally modeled. Whether a given tier applies to a
+ *   Story/Bug at all remains a per-instance judgment call by whoever adds it
+ *   (same present-when-added pattern as DesignReview/UAT/Database/Infra) — no
+ *   formal rule engine decides tier applicability. See SUBTASK_PRECEDENCE
+ *   [Story]/[Bug] and workflows/dependencies.md.
+ * - PostDeploy failure handling (D7): NOT a new Rollback subtask/action type.
+ *   A major/showstopper failure reopens the existing Deploy subtask to In
+ *   Progress — DevOps executes the rollback plan that's already part of
+ *   Deploy's own `deploy-runbook` output, same "reopen, don't invent a new
+ *   artifact" pattern as the Dev<->Test and ArchitectureDesign<->DesignReview
+ *   loops. A minor failure doesn't touch Deploy/PostDeploy status at all — it
+ *   spawns a linked Bug, DevOps proposes/drafts it and PM confirms/creates it
+ *   (mirrors the propose/create split already used for Spike outcomes and
+ *   Ada's decomposition). See workflows/story.md, personas/devops.md.
+ * - The two-axis owner model (D15, brief §5.6): every Story-level ticket and
+ *   every Subtask carries a stored `persona` field, separate from the native
+ *   Jira Assignee — defaulting to SUBTASK_OWNER[type] (subtasks) or PM
+ *   (story-level), always overridable, and set explicitly at creation with NO
+ *   default for the ad-hoc Spike subtask (same as it has no default human
+ *   Assignee either). A STORED field, not derived from Jira Project Role
+ *   membership, because a human can hold more than one relevant role. This
+ *   resolves both the ad-hoc Spike subtask's "what persona drives it" question
+ *   and PostDeploy's "how does default-owner-with-override relate to human
+ *   Assignee" question — both were previously open TODOs here, now settled.
+ *
+ * TODO / OPEN — see the design-notes doc for active discussion on these:
+ * 1. UAT failure is human-adjudicated — a rejected UAT may be an implementation
  *    bug (route back to Dev, In Progress) OR an acceptance-criteria gap, so it
  *    deliberately does NOT use the automatic single-retry loop used for
  *    automated test failures. A rejected UAT CAN reopen a Requirements task, not
  *    only Dev; the trigger/authority mechanism falls out of the persona-capability
  *    design (what each persona may do or cause) and is settled there.
- * 9. DesignReview gates ArchitectureDesign -> Dev only under Story. Confirm it
- *    isn't wanted under Kickoff (where early ArchitectureDesign is instead
- *    covered by the PM + UX review gate, plus the open Architect-in-gate
- *    question) — see REVIEW_GATES and workflows/kickoff.md.
+ * 2. D5's priority-based compression (skip SystemTest/E2ETest on Priority=1
+ *    Bugs) still needs actual implementation in the resolver functions, which
+ *    are priority-unaware today — the D12 sequencing decision above doesn't
+ *    implement this by itself, just makes it simpler (no separate
+ *    conditionality mechanism needed once tiers are already ordered).
+ *
+ * RESOLVED (D9, added to history above): output taxonomy — what each
+ * story/subtask type produces — is intentionally NOT formalized as a schema
+ * construct (no OutputType enum). Every type's output is already documented
+ * in prose (each persona's confluenceOutputs front-matter, each workflow
+ * doc's Output section, Spike's variable-outcome handling). Nothing consumes
+ * "what kind of output is this" programmatically yet (no storage plugin, no
+ * reporting layer — still Phase 0/1); adding a construct now would be a
+ * second source of truth alongside the front-matter, with the same drift
+ * risk just fixed for the PostDeploy/D15 note above. Revisit once the
+ * storage plugin or a reporting need actually requires querying this in
+ * code (brief §9 Phase 3+).
  */

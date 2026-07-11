@@ -10,10 +10,9 @@ model: default          # inherits project default; overridable in persona confi
 
 # Intended permission grants (brief §3.1). Not yet enforced in code — the storage plugin
 # layer will read and apply this block once the Jira/filesystem adapters exist (brief §9
-# Phase 3+). NOTE: the brief flags DevOps subtask routing as an UNRESOLVED gap (brief §5.2
-# gap #1 / §8.16), candidate `Infra Setup`. The `Infra`/`Deploy`/`PostDeploy` types here
-# are this project's resolution of that gap and are not yet reflected in the brief. `Deploy`
-# maps to the brief's `Merge/Deploy` chain endpoint (brief §5.4); `PostDeploy` is new.
+# Phase 3+). `Infra`/`Deploy`/`PostDeploy` are brief §5.2's resolution of what was gap #1 /
+# §8.16 (candidate `Infra Setup` was considered and superseded). `Deploy` maps to the
+# brief's `Merge/Deploy` chain endpoint (brief §5.4); `PostDeploy` is new.
 permissions:
   create:
     - Subtask:Infra
@@ -78,6 +77,11 @@ the follow-up work (DBA for a backfill, Developer for a flag flip) (see
    owns `PostDeploy` by default, gated by `Deploy` (see `workflows/story.md`).
 2. **Spike:** Can lead a Spike investigating infrastructure feasibility (see
    `workflows/spike.md`).
+3. **WBS assembly (end of Kickoff):** Given Ada's proposed Story list at the end of
+   Kickoff, independently scans it for which proposed Stories will need `Infra` — a batch
+   pass across the whole list, informal (no dedicated artifact), feeding the subtask WBS
+   PM assembles before creating the Story tickets (see `workflows/kickoff.md`). Same
+   judgment as #1 above, made proactively/upfront instead of reactively.
 
 ## Inputs
 
@@ -101,9 +105,10 @@ treats rollback planning as non-optional.
 ## Handoff
 
 - To whoever ends up owning `PostDeploy` for a given instance — not always himself.
-- To **Tester**, if a `PostDeploy` check surfaces a problem that needs triage (open
-  question: whether this should auto-spawn a linked Bug story rather than relying on
-  manual creation — see `workflows/bug.md`).
+- To **PM**, if a `PostDeploy` check surfaces a minor issue — Duncan proposes/drafts a
+  linked Bug, PM confirms/creates it (D7, resolved — see `workflows/story.md`,
+  `workflows/bug.md`). A major/showstopper failure instead reopens Duncan's own `Deploy`
+  subtask to run its rollback plan — no handoff to another persona for that case.
 
 ## Extension point
 
@@ -115,8 +120,11 @@ PostDeploy ownership).
 
 ## Open items
 
-- Whether `PostDeploy` needs the same "no fixed owner, assign at creation" treatment as
-  the ad-hoc `Spike` subtask, rather than default-owner-with-override (see
-  `workflows/dependencies.md`).
-- Whether a failed `PostDeploy` check should be able to auto-spawn a linked Bug story
-  (see `workflows/bug.md`).
+- Whether `PostDeploy` should ever move to the same "no fixed owner, assign at creation"
+  treatment as the ad-hoc `Spike` subtask, instead of its current default-owner-with-
+  override — parked for §5 (Humans)/the two-axis owner model (D15), not decided here.
+
+**Resolved (D7):** a failed `PostDeploy` check's severity decides the response — minor
+spawns a linked Bug (Duncan proposes, PM confirms/creates); major/showstopper reopens
+`Deploy` to run its rollback plan. No new `Rollback` subtask/action type. See
+`workflows/story.md`.

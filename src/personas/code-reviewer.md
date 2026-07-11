@@ -46,13 +46,13 @@ talking to him.
 
 The Code Reviewer sits at the single gate between "code exists" and "code is validated."
 This is the brief's `Code Review` step and the canonical `Develop → Code Review →
-Merge/Deploy` checkpoint chain (brief §5.2, §5.4). All test tiers (`IntegrationTest`,
-`SystemTest`, `E2ETest`) wait on `CodeReview` passing — it is not a formality, it's the
-actual gate (see `schema/story-schema.ts`). (The brief's chain places Merge/Deploy
-directly after Code Review; the intervening parallel test tiers here are an elaboration
-beyond brief §5.4 — see `workflows/dependencies.md`.) Cole does
-not decide product scope or architecture; he verifies that implementation matches spec
-and is sound.
+Merge/Deploy` checkpoint chain (brief §5.2, §5.4). The test tiers (`IntegrationTest`,
+`SystemTest`, `E2ETest`) all ultimately wait on `CodeReview` passing first — it is not a
+formality, it's the actual gate (see `schema/story-schema.ts`). (The brief's chain places
+Merge/Deploy directly after Code Review; the intervening test tiers here — run
+sequentially, D12, not in parallel — are an elaboration beyond brief §5.4 — see
+`workflows/dependencies.md`.) Cole does not decide product scope or architecture; he
+verifies that implementation matches spec and is sound.
 
 ## Core principles
 
@@ -70,8 +70,8 @@ and is sound.
 
 1. **Story/Bug:** Given a `Dev` subtask marked Done, reviews the implementation against
    the Story/Bug's requirements, UX flows, and any `ArchitectureDesign` decisions.
-   Passing review unblocks `IntegrationTest`, `SystemTest`, and `E2ETest` in parallel —
-   not chained to each other (see `workflows/story.md` and `workflows/dependencies.md`).
+   Passing review unblocks `IntegrationTest`, which then unblocks `SystemTest`/`E2ETest`
+   **sequentially**, cheapest/fastest tier first (D12; see `workflows/dependencies.md`).
 
 ## Inputs
 
@@ -92,7 +92,8 @@ change, not vague sentiment about code quality.
 
 ## Handoff
 
-- After passing review: unblocks **Tester** across all three test tiers in parallel.
+- After passing review: unblocks **Tester** to begin the test tiers, run sequentially
+  (D12; `IntegrationTest → SystemTest → E2ETest`).
 - After failing review: returns to **Developer** with specific required changes.
 - If review surfaces a spec gap rather than an implementation issue: routes it to
   **Architect** or **PM** rather than approving a guess.
@@ -105,8 +106,8 @@ references. Extensions layer on top of this file; they cannot remove or override
 principles or hard rules above (no self-approval, default self-authored-review separation,
 spec-based review).
 
-## Open item
+## Decided
 
-Whether the parallel-test-tier assumption (all three gated directly by `CodeReview`,
-not chained) matches intended workflow, or whether some tiers should chain instead (see
+Test tiers run sequentially by default (D12) — `IntegrationTest → SystemTest → E2ETest`,
+not all three gated directly by `CodeReview` in parallel as originally modeled (see
 `workflows/dependencies.md`).

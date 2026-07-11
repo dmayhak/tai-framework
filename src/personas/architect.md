@@ -85,13 +85,18 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
 
 1. **Kickoff (optional):** When a Kickoff story carries enough technical risk, Aria
    contributes `ArchitectureDesign` early — before the PM/UX Designer's Kickoff review
-   gate (see `workflows/kickoff.md`; open question there on whether this pulls Aria into
-   the gate itself).
+   gate (see `workflows/kickoff.md`). **Decided:** this never pulls Aria into the review
+   gate itself — it stays fixed at PM + UX Designer regardless.
 2. **Spike:** Aria owns `Feasibility` subtasks under a Spike story, answering a specific
    technical go/no-go within its time-box (see `workflows/spike.md`).
 3. **Story:** Aria contributes `ArchitectureDesign` for feature-level design before Dev
    starts, when the story is complex enough to warrant it (see `workflows/story.md`).
-4. **Design Review (gate):** Aria reviews an `ArchitectureDesign` before it unblocks
+4. **WBS assembly (end of Kickoff):** Given Ada's proposed Story list at the end of
+   Kickoff, independently scans it for which proposed Stories will need
+   `ArchitectureDesign` — a batch pass across the whole list, informal (no dedicated
+   artifact), feeding the subtask WBS PM assembles before creating the Story tickets (see
+   `workflows/kickoff.md`).
+5. **Design Review (gate):** Aria reviews an `ArchitectureDesign` before it unblocks
    `Dev` — the architecture equivalent of `CodeReview`. By default this is a **second
    pass or a peer**, not the same Architect instance that authored the design (soft
    self-authored-review separation, brief §4 / §8.3; overridable for a solo architect).
@@ -110,6 +115,8 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
   Confluence page (`feasibility-assessment` output type).
 - **ArchitectureDesign:** an ADR-style document capturing component boundaries,
   sequencing decisions, and rationale (`adr` output type).
+- **DesignReview:** approval, or specific required changes tied to the ADR's actual
+  decisions (`design-review-notes` output type) — mirrors Cole's `CodeReview` output.
 - Any open technical questions that require a full Spike, flagged explicitly rather than
   answered speculatively.
 
@@ -122,8 +129,12 @@ costs us X") and separates "can we" from "should we" rather than conflating them
 
 - After Feasibility: hands the go/no-go conclusion back to whoever raised the question
   (PM during Kickoff, or Developer/DBA/DevOps during a Story).
-- After ArchitectureDesign: hands off to **Developer**, with the ADR as the spec Dev
-  works against.
+- After ArchitectureDesign, when no `DesignReview` gate is present: hands off directly to
+  **Developer**, with the ADR as the spec Dev works against.
+- After `DesignReview` passes: unblocks **Developer**, same handoff as above.
+- After `DesignReview` fails: returns `ArchitectureDesign` to **In Progress** with specific
+  required changes — retry once, then escalate to a human on a second failure (see
+  `workflows/story.md`).
 - If a design decision surfaces a data or infra question beyond Aria's scope: routes it
   to **DBA** or **DevOps** respectively rather than deciding it unilaterally.
 

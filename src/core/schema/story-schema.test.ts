@@ -189,6 +189,99 @@ describe("UAT gate (optional, human-gated)", () => {
     });
 });
 
+describe("test tiers run sequentially by default (D12)", () => {
+    const allTiers = [
+        SubtaskType.CodeReview,
+        SubtaskType.IntegrationTest,
+        SubtaskType.SystemTest,
+        SubtaskType.E2ETest,
+    ];
+
+    it("blocks SystemTest until IntegrationTest is done, not just CodeReview", () => {
+        assert.equal(
+            isSubtaskReady(
+                SubtaskType.SystemTest,
+                StoryType.Story,
+                allTiers,
+                done(SubtaskType.CodeReview)
+            ),
+            false
+        );
+        assert.equal(
+            isSubtaskReady(
+                SubtaskType.SystemTest,
+                StoryType.Story,
+                allTiers,
+                done(SubtaskType.CodeReview, SubtaskType.IntegrationTest)
+            ),
+            true
+        );
+    });
+
+    it("blocks E2ETest until SystemTest is done, not just IntegrationTest", () => {
+        assert.equal(
+            isSubtaskReady(
+                SubtaskType.E2ETest,
+                StoryType.Story,
+                allTiers,
+                done(SubtaskType.CodeReview, SubtaskType.IntegrationTest)
+            ),
+            false
+        );
+        assert.equal(
+            isSubtaskReady(
+                SubtaskType.E2ETest,
+                StoryType.Story,
+                allTiers,
+                done(SubtaskType.CodeReview, SubtaskType.IntegrationTest, SubtaskType.SystemTest)
+            ),
+            true
+        );
+    });
+
+    it("COLLAPSES: with IntegrationTest skipped, SystemTest is gated directly by CodeReview", () => {
+        const present = [SubtaskType.CodeReview, SubtaskType.SystemTest, SubtaskType.E2ETest];
+        const rules = resolveApplicablePrecedence(StoryType.Story, present);
+        assert.ok(hasEdge(rules, SubtaskType.CodeReview, SubtaskType.SystemTest));
+        assert.ok(!rules.some((r) => r.before === SubtaskType.IntegrationTest));
+        assert.equal(
+            isSubtaskReady(SubtaskType.SystemTest, StoryType.Story, present, done(SubtaskType.CodeReview)),
+            true
+        );
+    });
+
+    it("COLLAPSES: with only E2ETest present, it is gated directly by CodeReview", () => {
+        const present = [SubtaskType.CodeReview, SubtaskType.E2ETest];
+        const rules = resolveApplicablePrecedence(StoryType.Story, present);
+        assert.ok(hasEdge(rules, SubtaskType.CodeReview, SubtaskType.E2ETest));
+        assert.equal(
+            isSubtaskReady(SubtaskType.E2ETest, StoryType.Story, present, done(SubtaskType.CodeReview)),
+            true
+        );
+    });
+
+    it("applies to Bug as well as Story", () => {
+        assert.equal(
+            isSubtaskReady(
+                SubtaskType.SystemTest,
+                StoryType.Bug,
+                allTiers,
+                done(SubtaskType.CodeReview)
+            ),
+            false
+        );
+        assert.equal(
+            isSubtaskReady(
+                SubtaskType.SystemTest,
+                StoryType.Bug,
+                allTiers,
+                done(SubtaskType.CodeReview, SubtaskType.IntegrationTest)
+            ),
+            true
+        );
+    });
+});
+
 describe("dynamic insertion of an optional gate mid-flight", () => {
     it("returns only the new edges touching UAT whose other end is already present", () => {
         // Dev/review already underway with one tier; UAT recognized as needed later.

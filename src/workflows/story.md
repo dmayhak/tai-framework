@@ -5,10 +5,21 @@ Standard implementation work. Uses Jira's native Story type directly
 (`StoryType.Story` in the TAI schema — listed explicitly for clarity, not
 because TAI overlays anything extra onto Jira's definition).
 
+## Who owns it (story-level)
+
+**PM is the default owner/driver of the Story ticket itself**, same as Kickoff (§2e) —
+consistent Orchestrator role throughout the Story's lifecycle, even as individual
+subtasks route to their own owners (Developer for `Dev`, Code Reviewer for `CodeReview`,
+etc.). The Story's `persona` field stays PM regardless of which subtask is currently
+active (brief §5.6, the two-axis owner model) — the native Jira **Assignee** is a
+separate field, a real human holding the PM Project Role.
+
 ## Subtasks
 
 | Subtask | Owner (default) | Notes |
 |---|---|---|
+| `Investigate` | Analyst | Optional refinement — adds detail before implementation subtasks are (separately) created; no automatic unblock effect (brief §3.7, §8.13) |
+| `UxDesign` | UX Designer | Optional — Story-level detailing/tweaking beyond Kickoff's higher-level flows; lets a smaller design doc attach at Story level when Epic-level isn't the right granularity. Gates `Dev`, same as `ArchitectureDesign`/`Database`/`Infra` |
 | `ArchitectureDesign` | Architect | Optional — feature-level design before Dev starts, when needed |
 | `DesignReview` | Architect (2nd pass or peer) | Optional gate on `ArchitectureDesign` — mirrors `CodeReview`; blocks `Dev` when present |
 | `Dev` | Developer | Unit tests are folded into this subtask, not tracked separately |
@@ -22,6 +33,23 @@ because TAI overlays anything extra onto Jira's definition).
 | `Deploy` | DevOps (default, overridable) | Manual or gated deployment |
 | `PostDeploy` | DevOps (default, overridable) | Manual follow-up work after deployment (e.g. data backfill, flag flip) — owner often varies by what the follow-up actually is |
 | `Spike` | No fixed owner — assigned explicitly at creation | Ad-hoc investigation without spinning up a full Spike story |
+
+## Output
+
+Unlike Kickoff, a Story has no single artifact of its own — its output is the aggregate
+of whichever subtasks are actually present:
+
+- **The shipped code change** (from `Dev`, including unit tests).
+- Any **ADR** (`ArchitectureDesign`), **schema notes/migration plan** (`Database`),
+  **infra notes** (`Infra`), or **Story-level UX doc** (`UxDesign`) that were needed.
+- **Review notes** (`CodeReview`, and `DesignReview` if present).
+- **Test plans and results** for whichever tiers were present, plus a **UAT plan** and
+  human sign-off if present.
+- A **deploy runbook** (`Deploy`) and any **PostDeploy** follow-up notes.
+
+A Story's "done" state is the union of its present subtasks reaching Done (plus the
+human-gated ones — `UAT` if present — being signed off), not a distinct story-level
+artifact the way Kickoff's PRD/UX-flows/WBS batch is.
 
 ## Dev → Test Dependency & Failure Loop
 
@@ -73,14 +101,56 @@ present-when-added**; when absent, the automated tiers gate `Deploy` directly.
   sign off** — `UAT` is **inherently human-gated** (brief §3.3) and **never
   autocompletes**, even where autocompletion is otherwise enabled. A human-gated
   checkpoint takes priority over all autocompletion settings.
+- **How sign-off/rejection is recorded:** **approval** is the human transitioning the
+  `UAT` subtask to Done themselves — the transition itself is the signal, no comment
+  required (a human, not Tessa or any AI persona, must be the one performing it).
+  **Rejection** is the human transitioning it back to Open. The routing decision
+  (Dev vs. Requirements — see below) is best-effort, not strict: the human is
+  *encouraged* to post a comment prefixed `Rejected: Dev` or `Rejected: Requirements`,
+  but **can't be relied on to type it reliably every time** — if that marker isn't
+  present, TAI falls back to reading whatever comment text exists and infers the
+  intended routing from it, escalating to a human for clarification only if the
+  comment doesn't give enough signal either way.
 - **Failure handling is different from the automated tiers.** A rejected `UAT`
   is **human-adjudicated**, not the automatic single-retry loop: a rejection can
   mean an *implementation* miss (route the `Dev` subtask back to **In Progress**)
   **or** an *acceptance-criteria* gap (route back to **PM/Requirements**). A
-  human decides which. A rejected `UAT` **can** reopen a `Requirements` task, not
-  only `Dev` — the exact mechanism (who can trigger it, what transition it drives)
+  human decides which, recorded per the marker/inference rule above. A rejected
+  `UAT` **can** reopen a `Requirements` task, not only `Dev` — the exact trigger/
+  authority mechanism (who can cause it, what transition it drives under the hood)
   falls out of the persona-capability design (what each persona may do or cause),
-  and is settled there rather than here.
+  and is settled there rather than here; this section only fixes how the *human's
+  intent* gets captured.
+
+## PostDeploy Failure Handling (D7)
+
+When a `PostDeploy` check surfaces a problem, severity decides the response — **not** a
+new `Rollback` subtask/action type:
+
+- **Minor:** `PostDeploy` itself is unaffected (can still complete Done) — DevOps
+  **proposes/drafts a linked Bug** capturing the issue, and **PM confirms/creates it**,
+  mirroring the propose/create split already used for Spike outcomes and Ada's
+  decomposition (see `workflows/spike.md`, `personas/pm.md`).
+- **Major/showstopper:** the existing `Deploy` subtask is **reopened to In Progress** —
+  same "reopen, don't invent a new artifact" pattern as the Dev ⇄ Test and
+  ArchitectureDesign ⇄ DesignReview loops — and DevOps executes the **rollback plan
+  that's already part of `Deploy`'s own `deploy-runbook` output** (see
+  `personas/devops.md` — the runbook always includes a rollback plan, not just the forward
+  deploy steps). `PostDeploy` itself also reopens, since its follow-up work needs
+  re-evaluating once the rolled-back `Deploy` completes.
+
+## Status Transitions (story-level)
+
+`Open → In Progress → Done` — no separate "In Review" the way Kickoff has, since Story
+has no single whole-story gate (`CodeReview`/`DesignReview`/`UAT` are all subtask-level
+sign-offs, not a story-level one).
+
+- **Open:** created, no present subtask has started.
+- **In Progress:** at least one present subtask has started — covers the entire
+  `Dev → CodeReview → Test tiers → UAT → Deploy → PostDeploy` chain, including any
+  Dev ⇄ Test or ArchitectureDesign ⇄ DesignReview failure loops. The Story stays
+  In Progress through all of that; loops don't regress the story-level status.
+- **Done:** every present subtask is Done, including `UAT` being signed off if present.
 
 ## Why no "Defect" subtask
 A failed Dev/Test loop before deployment is normal iteration, not a
@@ -90,12 +160,13 @@ preserves Jira's built-in transition history and worklogs automatically,
 so no separate defect-tracking artifact is needed for pre-deployment
 rework.
 
+## Decided
+- **Reopen/retest count** is derived from Jira's transition history as
+  needed (at report time), not tracked via an explicit counter field.
+- The Test subtask's "sent back" status is plain **`Open`** — no distinct
+  `Ready for Retest` status.
+
 ## Open Questions
-- Should reopen/retest count be derived from Jira's transition history at
-  report time, or does it need an explicit counter field on the subtask?
-- Should the Test subtask's "sent back" status be a plain `Open`, or a
-  distinct `Ready for Retest` status so the board reflects that this
-  isn't untouched work?
 - A rejected `UAT` **can** reopen a `Requirements` task (acceptance-criteria
   gap) as well as send `Dev` back — the trigger/authority details are deferred
   to the persona-capability design (what each persona may do or cause), not

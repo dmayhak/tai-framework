@@ -4,8 +4,12 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-08 (rev 10 — reconciled with persona/workflow files: evolved
-> subtask taxonomy, UX Designer built-in, Kickoff workflow + gate)
+> **Last updated:** 2026-07-10 (rev 11 — full design-notes review pass, §3-§8: subtask
+> taxonomy↔Jira mapping, D7/D9/D12 resolved, scenario-workflow layer dropped, the
+> two-axis owner model (D15) and Jira Project Role registry, Confluence structure/naming/
+> gate-reopening rules, local cache bulk-sync/attachments, new §3.9 Comment Conventions,
+> and briefing/kickoff/connectivity-loss mechanics for a unit of work — see DESIGN_NOTES.md
+> for the full session-by-session history)
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
 
 ---
@@ -172,19 +176,27 @@ Conditions are richer than a simple checklist and are likely themselves prompt-b
 same-persona approval.)
 
 ### 3.5 Workflows
-Named, configurable scenarios that define which personas participate and which steps run.
-The default is a **"complete"** workflow (full chain). We will also support shortcut
-variants like **"quick"** (skips some steps/roles) and **"bugfix"**, etc. Businesses can
-configure their own workflow scenarios: which roles are enabled, which roles own which
-issue types, and what each role does.
+**Resolved (rev 11): there is only one sense of "workflow" — the per-Story-type process,**
+documented in `workflows/*.md` for **Kickoff**, **Story**, **Bug**, and **Spike**. The
+earlier idea of a separate, named "scenario" layer (`complete`/`quick`/`bugfix`,
+configuring which personas participate and what each does) was considered during the §4
+workflow-design pass and **dropped as unnecessary** — it turned out to already be absorbed
+by the story-type + optional-subtask design:
+- **"bugfix"** is just `StoryType.Bug`, which already skips Kickoff-style discovery
+  entirely (see `workflows/bug.md`).
+- **"quick"** is just a Story/Bug instance with fewer optional subtasks present —
+  `DesignReview`/`UAT`/`UxDesign`/etc. are already **present-when-added**, per-instance
+  judgment calls (see `workflows/dependencies.md`), not a separate configuration mode.
+- **"complete"** is simply the full optional-subtask set being present.
 
-Distinct from these scenario workflows, each **Story type** has its own defined subtask
-process — **Kickoff**, **Story**, **Bug**, and **Spike** — documented in `workflows/*.md`.
+Businesses configuring "which roles are enabled, which roles own which issue types, and
+what each role does" is still supported — but as **persona configuration** (§3.1: personas
+are configurable, extensible, disableable), not a distinct scenario-workflow concept
+layered on top.
+
 Notably, the **Kickoff** workflow (discovery / requirements / UX before implementation is
 scheduled) carries a **review gate requiring joint PM + UX Designer sign-off** before it
-may spawn Story/Spike tickets. *(Terminology note: "workflow" is used in two senses — the
-scenario sense here (complete / quick / bugfix), and the per-Story-type process sense in
-`workflows/*.md`.)*
+may spawn Story/Spike tickets.
 
 ### 3.6 Cache Refresh Points & Resumability
 Jira/Confluence are shared, externally-editable sources of truth — a human or another AI
@@ -195,7 +207,19 @@ refresh point, cached items are compared against source `lastUpdated` and re-pul
 stale.
 
 Each refresh regenerates a **briefing** — a single aggregated markdown file combining the
-subtask, its parent Story/Epic, and all linked Confluence pages into one readable snapshot.
+subtask, its **immediate parent** (Story/Bug/Kickoff/Spike), and linked Confluence pages
+into one readable snapshot. **Bounded, by design (rev 11):**
+- **Ancestor depth stops at the immediate parent — the Epic is not auto-included.** The
+  parent's own linked docs necessarily come along (the Confluence rule above, §4, already
+  ties every persona-output doc to the parent, never the subtask, so this is how a
+  subtask's briefing gets its ADR/PRD/schema-notes/etc. at all) — but the briefing does
+  not also walk up to the Epic. Consistent with `workflows/dependencies.md`'s one-hop
+  bounding rule for `RelatesTo` traversal (see below); if Epic-level context is genuinely
+  needed for a specific unit of work, that's a targeted follow-up read, not a default.
+- **Confluence page-to-page links get the same one-hop treatment as `RelatesTo`'s
+  ticket-to-ticket traversal rule** (`workflows/dependencies.md`): the briefing includes
+  pages linked directly to the subtask/parent, but does **not** transitively follow those
+  pages' own outgoing links to further pages.
 This is what a persona actually reads to resume work; it avoids re-assembling context from
 scattered cache files every time, and gives a human something reviewable too.
 
@@ -203,6 +227,15 @@ Alongside the briefing, Team AI maintains an **append-only work journal** per un
 recording every step taken and intermediate result as it happens — not just a final state.
 If a session is interrupted, the journal shows exactly what was done and where to pick back
 up. See §7 for the concrete file layout.
+
+**Connectivity loss mid-unit-of-work (rev 11):** distinct from the filesystem backend's
+offline mode (§3.2, a deliberate backend choice) — this is a *Jira-backed* project
+losing connectivity transiently. TAI **degrades to the local cache** for reads (clearly
+flagged to the human as possibly stale) and **queues writes** (comments, transitions,
+assignments) in the work journal rather than failing outright, replaying them
+automatically once connectivity returns — the journal is already the append-only "what
+happened, what's next" record (above), so queuing pending writes there is the same
+mechanism, not a new one.
 
 ### 3.7 Recursive Decomposition & Refinement
 For large projects, a single decomposition pass is too coarse. Personas can be invoked
@@ -233,6 +266,45 @@ per §3.8), made once the Story is judged ready.
 - An **AI Orchestrator** persona may (if granted permission) query what's next *and* kick
   off that work via the appropriate persona — but human-gated checkpoints still stop/pause
   the chain regardless.
+
+**Concrete kickoff commands (rev 11):** `/tai_work <KEY>` loads/refreshes that unit of
+work's briefing (§3.6) and invokes its owning persona directly. `/tai_ready [persona]`
+answers "what's ready for you to do" when the human doesn't have a specific key in mind
+yet. Both are thin wrappers over the same briefing-then-invoke flow — there's no
+separate code path for "starting fresh" vs. "resuming."
+
+### 3.9 Comment Conventions (rev 11 — formalized here, previously design-notes-only)
+
+TAI's own comment-scanning logic (§3.6) is what interprets these — none of them are
+native Jira/Confluence features (plain Jira comments have no built-in resolved flag;
+Confluence's native inline-comment resolve checkmark exists but isn't used for this, see
+below). All three apply to **both** Jira issue comments and Confluence comments
+(page-level and inline) — not just Jira.
+
+- **`Q:`** — an open question. Native reply-threading (Jira) or the comment/reply
+  relationship (Confluence) keeps the discussion together; a thread is **closed** once a
+  terminal resolution comment appears within it, not merely by any reply existing.
+- **`Approved:`** — review-gate sign-off (`REVIEW_GATES`). One such comment required from
+  each persona in the gate's `requiredReviewers`, and the commenting human must hold that
+  persona's Jira Project Role (§5.6) for it to count.
+- **`Rejected: <Dev|Requirements|...>`** — rejection routing (e.g. UAT failure). Marker
+  preferred; when absent, TAI infers intent from the comment text, escalating to a human
+  only if genuinely ambiguous (humans can't be relied on to type structured markers every
+  time) — the **marker-with-inference-fallback** pattern.
+
+**Why not Confluence's native inline-comment resolve checkmark:** considered and
+rejected as the signal for any of the above, for two concrete reasons — (1) the
+Atlassian MCP server exposes no tool to set/toggle a thread's resolved state, only to
+add/read comments, so TAI couldn't drive it even if it wanted to; (2) even reading it
+wouldn't be reliable — a human may click resolve purely to declutter their view, not as
+a substantive signal. The marker-text convention doesn't depend on either concern.
+
+**Freshness, not cached memory:** since comments are human-**deletable** in both
+systems, marker-scanning is always a **fresh re-scan**, never a cached "I already saw an
+`Approved:` comment" memory. If a previously-satisfying marker comment is later deleted,
+the gate/question reverts to unsatisfied — the same principle as §4's "editing an
+already-approved doc reopens the gate" (Confluence bullet), just triggered by deletion
+instead of an edit.
 
 ---
 
@@ -282,13 +354,41 @@ These are settled. Change them deliberately and update this file if you do.
   it, comment on the parent.
 - **Multi-repo:** a Story/Bug can touch **multiple repos**; a **subtask targets exactly one
   repo.** Each repo touched gets its own dev → review → merge/deploy subtask chain under the
-  Story. The affected repo is tracked via a Jira **Component** or a custom `repo` field.
-  (Candidate automation: a commit's message begins with the Jira key; we look up the repo
-  from the commit and populate the field.)
-- **Confluence:** one Confluence space/area per Jira project; organized by role-deliverable
-  type. Pages link to the Jira item that **needs that page as input.** Pages tie to the
-  **parent** issue (Story/Epic), **never to subtasks.** Jira↔Confluence linking is the
-  source of truth; we keep a local filesystem cache of those links, refreshed as needed.
+  Story. **Decided (rev 11):** the affected repo is tracked via Jira's **native Component**
+  field, not a custom field — reuses existing Jira mechanics rather than provisioning a new
+  one. **Population is derived-with-manual-fallback:** a commit message beginning with the
+  Jira issue key (§6) is used to look up the touched repo and auto-populate Component; a
+  human or persona can still set/correct it manually before any commit exists yet (e.g. at
+  subtask creation, or if the automation can't resolve it).
+- **Confluence:** one Confluence space per Jira project — **the space key matches the
+  Jira project key** (rev 11; e.g. Jira project `PROJ` gets Confluence space `PROJ`).
+  Pages link to the Jira item that **needs that page as input.** Pages tie to the
+  **parent** issue (Story or Epic — whichever the content is actually scoped to; e.g. an
+  Epic-level decomposition proposal ties to the Epic itself, while a Kickoff's PRD/UX
+  flows/WBS tie to the Kickoff **Story** beneath that Epic), **never to subtasks.**
+  Jira↔Confluence linking is the source of truth; we keep a local filesystem cache of
+  those links, refreshed as needed. A doc needed by more than one ticket is **linked via
+  `RelatesTo`** to the additional ticket (same bar as any other `RelatesTo` link,
+  `workflows/dependencies.md`) rather than duplicated or moved to a shared ancestor.
+  - **Granularity (rev 11):** one page per persona-output instance (one ADR, one PRD, one
+    test-plan, …) — matches the granularity already implicit in every persona's
+    `confluenceOutputs` list. The UX Designer's wireframe/wireframe-index split (one page
+    per screen + an index) is the one documented exception, since a single UX flow can
+    span many distinct screens — not a new general default.
+  - **Folder structure (rev 11):** organized **by doc-type** within the project's space
+    (an ADRs folder, a PRDs folder, a Test Plans folder, …), not by ticket hierarchy.
+  - **Naming convention (rev 11):** page titles are structured —
+    `<JIRA-KEY> — <Doc Type>: <short description>` (e.g. `PROJ-123 — ADR: Async job
+    queue`). Unlike a Jira issue (whose native issue-type icon already distinguishes it
+    in every view), a Confluence page has no equivalent type-icon affordance in its page
+    tree or search results — the key and doc type need to be visible in the title itself
+    for a human scanning a page list to know what's what.
+  - **Human edits to an already-gated doc (rev 11):** editing a Confluence page backing
+    an already-passed `ReviewGate` (e.g. the PRD, after the Kickoff PM+UX gate already
+    signed off) **reopens that gate** — TAI flags it and requires re-approval before
+    further downstream steps depending on that gate proceed. An `Approved:` sign-off
+    means something about the content actually reviewed, not just that a comment once
+    existed.
 - **Caching:** all relevant info (config, personas, Jira issues, Confluence pages) is cached
   locally in the same Jira-like folder structure to support offline work. **Full Confluence
   page content is cached** (it's input to many tasks). Each cached item stores a
@@ -341,7 +441,7 @@ test tiers).
 | Investigate | Analyst | Refinement — Story-level (§3.7) |
 | Feasibility | Architect | Refinement — quick technical go/no-go |
 | ArchitectureDesign | Architect | Refinement — deeper design |
-| Design Review | Architect (second pass, or a peer) | Refinement gate — gates `ArchitectureDesign` → `Dev` (workflows/story.md) |
+| DesignReview | Architect (second pass, or a peer) | Refinement gate — gates `ArchitectureDesign` → `Dev` (workflows/story.md) |
 | Database | DBA | Implementation input (schema / migration / performance) |
 | Infra | DevOps | Implementation input |
 | Dev | Developer | Implementation (unit tests folded in) |
@@ -365,7 +465,7 @@ review gate now exists as-built (§3.5, `workflows/kickoff.md`), but it gates Ki
 discovery output, not `Investigate` refinement output — the dual-reviewer question, and
 whether the two gates should unify, remain open (§8.17).
 
-**Now wired in (rev 10):** `Design Review` and `UAT` — retained from the original
+**Now wired in (rev 10):** `DesignReview` and `UAT` — retained from the original
 taxonomy — are now defined as optional gates in the workflow docs and the schema.
 `DesignReview` gates `ArchitectureDesign` → `Dev` (mirroring `CodeReview`); `UAT` is
 inherently human-gated (§3.3) and gates `Deploy`. Both are **present-when-added** and
@@ -376,11 +476,30 @@ Subtask-type-to-persona routing is configurable the same way persona permissions
 (§3.1): a business can add types, change routing, or restrict which types a given persona
 handles.
 
+**Subtask↔Jira mapping (rev 11):** each `SubtaskType` maps to its own **native Jira
+sub-task issue type** (a Jira admin provisions one custom sub-task issue type per
+`SubtaskType`, the same mechanism already assumed for `StoryType` — Kickoff/Spike aren't
+native Jira types either). This is what lets the "no title prefix, the issue-type field
+carries the signal" naming convention — already established per Story type in
+`workflows/kickoff.md`/`story.md`/`bug.md`/`spike.md` — apply at the subtask level too,
+not just the story level.
+
+**No time-box/estimate custom field.** Time-boxed work (`Feasibility`, the ad-hoc `Spike`
+subtask) uses Jira's own native Original Estimate/Time Tracking field if a team wants to
+track it — no TAI-specific field, consistent with reusing `Priority` rather than inventing
+a field for the Bug D5 expedited path.
+
 ### 5.3 Statuses & Dependencies
 Issues carry statuses (pending / in-progress / done, plus blocked/ready as derived from
 dependencies) and **"blocks / depends-on"** links that determine what is ready to be picked
-up vs. blocked. **Open item:** the exact status set and workflow transitions still need to
-be defined (see §8).
+up vs. blocked. **Resolved (rev 11, was §8 item #2):** the default status lifecycle is
+**`Open → In Progress → Done`** for both story-level tickets (plus Kickoff's extra
+`In Review` state) and subtasks, with specific per-type loop-backs documented in
+`workflows/story.md`/`bug.md` (Dev ⇄ Test, ArchitectureDesign ⇄ DesignReview, UAT
+rejection routing). "Ready" vs. "blocked" is **derived**, not a stored status —
+computed from `SUBTASK_PRECEDENCE` (`isSubtaskReady()`/`resolveApplicablePrecedence()`,
+`schema/story-schema.ts`). Still open: whether a business ever needs to customize this
+default lifecycle per-project, beyond the built-in loop-backs already modeled.
 
 ### 5.4 Checkpoint Chain (canonical example)
 For an implementation Story touching one repo:
@@ -394,7 +513,8 @@ For an implementation Story touching one repo:
 - Review **passes** → mark it done, unblocking the next subtask in the chain.
 
 For a **multi-repo** Story: repeat the Develop→Code Review→Merge/Deploy chain **once per
-repo**, each subtask tagged with its repo (Component / `repo` field).
+repo**, each subtask tagged with its repo via the native Jira **Component** field (§4,
+rev 11 — not a custom `repo` field).
 
 **Note:** the as-built Story/Bug graph elaborates this canonical shape with parallel
 prerequisites (`ArchitectureDesign` / `Database` / `Infra` → `Dev`), parallel test tiers
@@ -413,6 +533,60 @@ etc., differentiated by their type and their subtasks.
 - **On claiming a ticket where a branch already exists:** prompt the user to either
   **fetch/continue the existing branch** or **create a new one.**
 
+### 5.6 Human Registry & the Two-Axis Owner Model (rev 11)
+
+**Human↔persona registry:** one **native Jira Project Role per persona** (Architect,
+Developer, DBA, PM, …). A human's membership in a given Project Role means they're
+authorized to act as that persona on this project. A human can hold **multiple** roles
+(small-team/solo flexibility — e.g. one person is both Developer and Code Reviewer,
+consistent with the existing self-review carve-out, brief §4/§8.3). Reuses Jira's own
+role/membership mechanism rather than a separate TAI-maintained roster — same "reuse
+native Jira mechanics" pattern as `Component` for repo tracking (§4) and native sub-task
+issue types for `SubtaskType` (§5.2). TAI caches the membership list locally like
+everything else (§7).
+
+**The two-axis owner model.** Every Story-level ticket (Kickoff/Story/Bug/Spike) and every
+Subtask carries **two distinct fields**, never conflated:
+1. **Native Jira `Assignee`** — the real human doing the work.
+2. **A `persona` custom field** (single-select, one `Persona` enum value) — which role
+   they're acting in *for this specific ticket*. Defaults to `SUBTASK_OWNER[type]` for
+   subtasks (§5.2) or **PM** for story-level tickets (the established default story-owner
+   pattern, `workflows/*.md`), and is always overridable, exactly like `Deploy`/
+   `PostDeploy`'s existing "default owner, overridable per instance" note. The ad-hoc
+   `Spike` subtask has no default and must have it set explicitly at creation, same as it
+   has no default human Assignee.
+
+**Why a stored field, not a derived value:** since a human can hold multiple Project
+Roles, looking up "which persona is this" purely from the assignee's role membership is
+ambiguous whenever they hold more than one relevant role. An explicit, stored `persona`
+field removes that ambiguity and is what makes effort/time-tracking roll up correctly by
+persona regardless of which human actually did the work (the schema-level rationale
+already stated for `SUBTASK_OWNER`).
+
+**Assignment-helper (answers "does TAI help PM assign tickets to humans"):** when a
+ticket needs a human `Assignee`, TAI looks up which humans hold the Project Role matching
+that ticket's `persona` field, and surfaces the candidates — plus lightweight signals
+(current open-ticket count per person, whether one already has a branch/related work in
+flight) — to whoever is driving the PM/Orchestrator session. Once a human is picked, **TAI
+performs the actual Jira `Assignee`-set call itself**, under the driving human's own
+already-authenticated MCP session (§3.2) — no separate manual Jira login/assignment step
+is needed. A human can always reassign directly in Jira too; that's an ordinary override,
+handled the same "flag on refresh, don't block" way as any other human-made change
+(§3.6/§7).
+
+**Permission caching:** TAI does **not** pre-validate or cache what a given human is
+*permitted* to do in Jira beyond membership in the persona Project Roles above. Consistent
+with §3.3's existing pattern: TAI attempts the real Jira call (an assignment, same as a
+transition), and if Jira itself rejects it (e.g. missing "Assign Issues" permission), that
+rejection is treated as the same kind of unplanned checkpoint already defined for
+transitions — no new mechanism needed.
+
+**Review-gate validation, updated:** a `ReviewGate`'s `Approved:` comment (§3.3/`REVIEW_GATES`)
+now additionally requires the commenting human to hold the required persona's Project
+Role — closes a gap where TAI previously had no way to verify a raw Jira comment author
+actually corresponds to "the PM" or "the UX Designer" beyond trusting the comment's
+content.
+
 ---
 
 ## 6. Source Control / Branching Model
@@ -427,7 +601,7 @@ etc., differentiated by their type and their subtasks.
   stashing dirty state. **Open item:** confirm worktree-swap vs. plain checkout as the
   default switch behavior.
 - **Commits** begin with the Jira issue key so Jira's dev panel links them and so we can
-  derive the affected repo for the `repo`/Component field.
+  derive the affected repo for the Component field (§4, rev 11).
 - **Multi-repo Story:** one dev→review→merge/deploy subtask chain per repo.
 
 ---
@@ -446,10 +620,17 @@ from source; the workspace holds state that may not exist anywhere else yet.
       config/                    # project + workflow + persona config
       personas/                  # cached persona extensions (from Confluence)
       issues/
-        <ISSUE-KEY>.json         # raw cached issue (epic/story/bug/subtask), + cachedAt
+        <ISSUE-KEY>.json         # raw cached issue (epic/story/bug/subtask), + cachedAt;
+                                  #   comments are part of this payload, not separate files
+        <ISSUE-KEY>/attachments/ # cached attachments/images, fetched lazily on first use (rev 11)
       confluence/
-        <PAGE-ID>.md             # raw cached page content, + cachedAt
+        <PAGE-ID>.md             # raw cached page content, + cachedAt; comments likewise
+                                  #   part of this payload (§3.9 for the Q:/Approved:/
+                                  #   Rejected: marker convention that reads them)
+        <PAGE-ID>/attachments/   # cached images/diagrams, fetched lazily on first use (rev 11)
       links/                     # cached Jira↔Confluence link index
+      last-sync.json             # checkpoint timestamp for the bulk "what changed since
+                                  #   last sync" JQL/CQL query (rev 11, see below)
       discovered-constraints.json  # DEFERRED (§3.3) — not built in v1
   work/
     <project-key>/
@@ -486,6 +667,29 @@ layout. It is built by scanning `.tai/work/**/status.json` and carries its own
 regenerate by scanning. This avoids paying the cost of a full scan on every read while
 never letting the root file become a second, driftable source of truth.
 
+**Bulk change detection & explicit offline sync (rev 11):** the per-item `cachedAt`-vs-
+`lastUpdated` check above answers "is *this* item stale" but not "what changed while I
+was away." For that, TAI runs a bulk **JQL** (`updated >= "<last-sync>"`) / **CQL**
+equivalent query at defined refresh points, using `last-sync.json`'s checkpoint —
+reusing native search rather than polling every cached item individually. Day-to-day
+refresh stays **lazy** (on-demand, or first use in a session, per §4's existing rule);
+on top of that, an explicit full-sync command lets someone about to go offline (flight,
+no wifi) eagerly prime the whole project's cache once, rather than discovering gaps
+mid-flight.
+
+**Attachments (rev 11):** images and other attachments (wireframes, diagrams) are cached
+the same lazy way as everything else — fetched and stored under the owning issue's or
+page's `attachments/` folder on first use, not proactively for the whole project. This
+matters specifically for UX/diagram-heavy docs, where the image often *is* the content.
+
+**No cache locking, no eviction (rev 11):** the cache is disposable and always
+rebuildable from source (this section's opening line) — if two sessions write the same
+cached file concurrently, whichever write lands last simply reflects the most recently
+fetched state; nothing authoritative lives only in the cache, so this isn't a corruption
+risk worth solving for. (Two humans working the *same* subtask concurrently is a
+claiming/assignment question, §5.5, not a cache-locking one.) Nothing is pruned from
+`.tai/cache` for v1 — not worth building ahead of an observed need.
+
 *(Exact structure is provisional and will be finalized when the filesystem storage adapter
 is designed.)*
 
@@ -495,23 +699,32 @@ is designed.)*
 
 Carry these forward; resolve them in upcoming design sessions.
 
-1. **Story-type taxonomy:** the working set is now **Kickoff / Story / Bug / Spike**
-   (`workflows/*.md`); confirm this is final and whether any further phase-specific types
-   are needed. (Earlier candidate names Research/Implementation were folded into these.)
-2. **Jira statuses & workflows:** define the concrete status set and allowed transitions
-   for each issue type, including how "ready" vs. "blocked" is derived from dependencies.
+1. ~~**Story-type taxonomy**~~ — **RESOLVED (rev 11):** **Kickoff / Story / Bug / Spike**
+   is final for now, no new type added ahead of a real need — the taxonomy stays open/
+   extensible (§5.1/§5.2) so a business can add one later (e.g. a Chore/Maintenance type)
+   if a concrete gap actually appears in practice. (Earlier candidate names Research/
+   Implementation were folded into these.)
+2. ~~**Jira statuses & workflows**~~ — **RESOLVED (rev 11):** default lifecycle is
+   `Open → In Progress → Done` (plus Kickoff's `In Review`), with per-type loop-backs
+   already documented in `workflows/story.md`/`bug.md`; "ready"/"blocked" is derived from
+   `SUBTASK_PRECEDENCE`, not stored. See §5.3. Still open: per-project customization of
+   this default beyond the built-in loop-backs.
 3. **Scope of the "same persona can't approve" rule:** is it scoped to the same human, the
    same persona role, or both? (Currently: business-enforced, not code-locked, to allow
    solo self-review.) *Note (rev 10):* the Code Reviewer persona expresses a "should not
    review own authored work by default, overridable for solo dev" stance — the scope
    question here is still what's unresolved.
-4. **Multi-repo checkpoint chain shape:** confirm the per-repo dev→review→deploy chain
-   modeling and how Component vs. custom `repo` field is populated (manual vs. derived from
-   commit).
+4. ~~**Multi-repo checkpoint chain shape**~~ — **RESOLVED (rev 11):** native Jira
+   **Component** field (not a custom `repo` field), populated by deriving the repo from a
+   commit's Jira-key prefix with manual fallback. See §4.
 5. **Failed-checkpoint triage ownership:** the retry-once-then-human rule is set; confirm
    whether the Orchestrator persona may perform the re-triage automatically within that
    single retry.
-6. **Finalized default persona roster** and each persona's default issue-type permissions.
+6. ~~**Finalized default persona roster and default issue-type permissions**~~ —
+   **RESOLVED:** the 9-persona roster (§3.1) is final, and every persona's `create`/
+   `workOn`/`complete`/`update` permission block was individually audited against the
+   schema (design-notes §1), fixing several real gaps in the process (e.g. Ada's missing
+   `Subtask:Investigate`, Dario's missing `Subtask:Dev`). See each `personas/*.md` file.
 7. **Storage interface operation set:** the minimum operations the abstraction must expose
    (issue CRUD, query/JQL-equivalent, status transition, comments, issue links, custom
    fields, attachments) and what Jira-specific concepts must *not* leak so the filesystem
@@ -529,10 +742,14 @@ Carry these forward; resolve them in upcoming design sessions.
     recognized (Project → Epic → Story, or does a very large system warrant an optional
     Initiative level above Epic?) and where the Analyst/Orchestrator decides to stop
     decomposing further.
-13. **Refinement subtask triggering:** who/what flags a Story as needing a refinement
-    subtask — a human manually, or can the Orchestrator/Analyst detect insufficient detail
-    and propose one? And what formally marks a Story "ready for implementation" once
-    refinement is done (a status transition, a checkpoint, or just Orchestrator judgment)?
+13. **Refinement subtask triggering:** *Partly resolved.* Three non-exclusive triggers can
+    flag a Story as needing `Investigate`: a human manually, PM (Orchestrator) recognizing
+    insufficient detail while querying what's ready, or the Analyst self-flagging during
+    other work (e.g. decomposition). Regardless of who flags it, the Analyst always
+    creates the actual `Investigate` subtask — the flagging persona never creates it on
+    the Analyst's behalf (see `personas/pm.md`, `personas/analyst.md`). **Still open:**
+    what formally marks a Story "ready for implementation" once refinement is done (a
+    status transition, a checkpoint, or just Orchestrator judgment)?
 14. **Escalation notification channel:** a Jira-rejected transition (§3.3) gets a comment/
     label in Jira and an entry in the local status rollup (§7) — is that sufficient, or
     does human escalation need an active push notification (email, Slack, Teams) so it
@@ -552,7 +769,7 @@ Carry these forward; resolve them in upcoming design sessions.
     the existing list — does that require a human decision, or can the Analyst/Architect
     propose a new type during a refinement subtask?
 17. **Analyst output review gate (§5.2):** does `Investigate` output need a formal review
-    type (mirroring `Design Review`), or does the default human sign-off (§3.4) already
+    type (mirroring `DesignReview`), or does the default human sign-off (§3.4) already
     cover it well enough? If a formal gate is added, it may need **two independent
     reviewers checking different things** — PM for business/acceptance fit, Architect for
     whether the requirement is clearly enough defined to design and implement — rather than
@@ -581,8 +798,8 @@ each new persona to help build the next.
   building — **start with the storage plugin interface and the local filesystem backend,**
   since that unblocks everything before the Jira MCP path is fully wired.
 - **Phase 4+:** Implement each remaining persona and immediately use it on the next Story in
-  the backlog. Wire in the Atlassian MCP storage adapter. Add workflows (quick, bugfix).
-  Layer in checkpoints, autocompletion, multi-repo, caching.
+  the backlog. Wire in the Atlassian MCP storage adapter. Layer in checkpoints,
+  autocompletion, multi-repo, caching.
 
 ---
 
@@ -602,15 +819,23 @@ each new persona to help build the next.
 
 ## 11. Glossary
 
-- **Persona** — an AI role (Analyst, Architect, Dev, …) with a configurable definition and
+- **Persona** — an AI role (Analyst, Architect, Developer, …) with a configurable definition and
   permission set.
+- **Persona field** — a stored per-ticket custom field naming which persona is acting in
+  this specific ticket; distinct from the native Jira `Assignee` (a real human) — the
+  two-axis owner model, §5.6.
+- **Jira Project Role** — one per persona (rev 11); a human's membership means they're
+  authorized to act as that persona on this project. Backs the human registry and
+  assignment-helper, §5.6.
 - **Storage plugin / backend** — a swappable implementation of the source-of-truth
   interface (Jira, filesystem, other).
 - **Checkpoint** — a human-oversight gate modeled as a dependent subtask; overrides
   autocompletion.
 - **Autocompletion** — condition-gated completion of work without human sign-off.
-- **Workflow** — a named scenario (complete / quick / bugfix / …) defining participating
-  personas and steps.
+- **Workflow** — the per-Story-type process (Kickoff/Story/Bug/Spike, `workflows/*.md`)
+  defining subtask structure, precedence, and gates. (An earlier "named scenario"
+  sense — complete/quick/bugfix — was considered and dropped, rev 11 §3.5; absorbed by
+  the story-type + optional-subtask design.)
 - **Work unit** — the standard branch/work granularity: a Jira Story or Bug.
 - **Orchestrator** — the PM persona that can query "what's ready" and dispatch work to other
   personas, subject to checkpoints.

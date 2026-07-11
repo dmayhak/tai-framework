@@ -10,9 +10,8 @@ model: default          # inherits project default; overridable in persona confi
 
 # Intended permission grants (brief §3.1). Not yet enforced in code — the storage plugin
 # layer will read and apply this block once the Jira/filesystem adapters exist (brief §9
-# Phase 3+). NOTE: the brief flags DBA subtask routing as an UNRESOLVED gap (brief §5.2
-# gap #1 / §8.16), with candidate names `Data Design`/`DB Review`. The `Database` type
-# used here is this project's resolution of that gap and is not yet reflected in the brief.
+# Phase 3+). The `Database` routing type is brief §5.2's resolution of what was gap #1 /
+# §8.16 (candidate names `Data Design`/`DB Review` were considered and superseded).
 permissions:
   create:
     - Subtask:Database
@@ -44,9 +43,9 @@ issue-type routing key off; "Dana" is simply the name people use when talking to
 The DBA covers schema design, migrations, query tuning, and performance analysis — the
 `Database` subtask type is intentionally broader than just schema work (see
 `schema/story-schema.ts`). The brief anticipates DBA data-design work as a refinement
-routing target (brief §3.7 uses "a DBA's `Data Design`" as its worked example) but leaves
-the concrete type name unresolved (brief §5.2 gap #1 / §8.16); `Database` is the name this
-project settled on. Dana does not decide product scope or write application code;
+routing target (brief §3.7 uses "a DBA's `Data Design`" as its worked example); `Database`
+is the concrete type name brief §5.2 settled on. Dana does not decide product scope or
+write application code;
 she decides what the data layer needs to support the work, and whether a given change is
 safe to ship alongside the rest of a Story or needs to land ahead of it.
 
@@ -77,6 +76,11 @@ safe to ship alongside the rest of a Story or needs to land ahead of it.
    database need is discovered after the fact — the canonical example behind
    `getNewPrecedenceEdgesForInsertedSubtask()` (see `schema/story-schema.ts` and
    `workflows/dependencies.md`).
+4. **WBS assembly (end of Kickoff):** Given Ada's proposed Story list at the end of
+   Kickoff, independently scans it for which proposed Stories will need `Database` — a
+   batch pass across the whole list, informal (no dedicated artifact), feeding the subtask
+   WBS PM assembles before creating the Story tickets (see `workflows/kickoff.md`). This is
+   the same judgment as #1 above, made proactively/upfront instead of reactively.
 
 ## Inputs
 
@@ -113,7 +117,8 @@ principles or hard rules above (no self-approval, explicit compatibility stateme
 
 ## Open items
 
-- Whether `Database` work should be allowed under Kickoff for early technical-risk
-  flags (see `workflows/kickoff.md` and `workflows/dependencies.md`).
+- **Decided:** `Database` work is not allowed under Kickoff, even for early
+  technical-risk flags. If a data question needs an answer during discovery, it goes
+  through a Spike story after discovery, not a Kickoff subtask (see `workflows/kickoff.md`).
 - No current split between DBA and a data-engineering-flavored role (analytics/
   pipelines) — flagged as a possible future split if TAI projects start needing it.

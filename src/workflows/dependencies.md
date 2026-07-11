@@ -71,12 +71,27 @@ a root and is always ready.
 ### Current default shape (Story/Bug)
 ```
 ArchitectureDesign ─> DesignReview ─┐
-Database ───────────────────────────┼─> Dev ─> CodeReview ─┬─> IntegrationTest ─┐
-Infra ──────────────────────────────┘                     ├─> SystemTest ──────┼─> UAT ─> Deploy ─> PostDeploy
-                                                           └─> E2ETest ─────────┘
+UxDesign ────────────────────────────┤
+Database ────────────────────────────┼─> Dev ─> CodeReview ─> IntegrationTest ─> SystemTest ─> E2ETest ─> UAT ─> Deploy ─> PostDeploy
+Infra ────────────────────────────────┘
 ```
-Test tiers run in **parallel** off CodeReview, not chained to each other,
-and all present tiers must complete before the chain proceeds.
+`UxDesign` under Story is Story-level detailing/tweaking beyond Kickoff's
+higher-level flows (not on Bug) — it gates `Dev` the same way as its sibling
+prerequisites.
+
+**Test tiers run SEQUENTIALLY by default (D12), not in parallel:**
+`IntegrationTest → SystemTest → E2ETest`, cheapest/fastest tier first — each
+gates the next, rather than all three racing off `CodeReview` simultaneously.
+This catches a regression at the cheapest tier before spending time on a more
+expensive one that would have failed for the same reason. Each tier also keeps
+a direct `CodeReview` edge for when an earlier tier in the sequence isn't
+present on this story instance (same coexistence pattern as `DesignReview`/
+`UAT` below) — e.g. if `IntegrationTest` is skipped, `SystemTest` falls back to
+being gated directly by `CodeReview` instead of being permanently blocked.
+**Whether a given tier applies to a Story/Bug at all remains a per-instance
+judgment call** by whoever adds the subtask set (Tester, typically) — the same
+present-when-added pattern already used for `DesignReview`/`UAT`/`Database`/
+`Infra`, not a formal rule engine.
 
 **`DesignReview` and `UAT` are optional gates** (present-when-added), and both
 are **purely additive** to the static graph — when either is absent the graph
@@ -144,19 +159,40 @@ mutually exclusive:
 - Jira Automation rules could be added to hard-enforce transition
   guards, but that's a separate, optional layer on top.
 
+## Decided
+
+- **`RelatesTo` does create a real Jira link** — but not indiscriminately.
+  The bar is: link `A` to `B` only when the information in `B` (and what it
+  links to — e.g. Confluence pages) **has a material bearing on completing
+  `A` more efficiently**. This is a judgment call by whoever discovers it
+  (usually the Analyst), not "everything that's topically related." It's
+  meant to prevent the everything-links-to-everything clutter the old open
+  question worried about, while still making genuinely useful context
+  Jira-discoverable, not just buried in PRD/Confluence prose. Confluence-doc
+  links (docs to tickets, tickets to docs) use the same relation and the
+  same bar.
+- **Traversal depth for `RelatesTo` is one hop only.** If `A` relates to `B`,
+  working on `A` means reading `B`. It does **not** mean also reading `C`
+  just because `B` relates to `C` — that's a separate judgment call to make
+  (or not) when working `B` itself, not something `A`'s context inherits
+  transitively. This bounds context-gathering; see the design-notes doc for
+  the fuller "how much do we read before starting work" discussion (§8).
+  **Resolved (§8, rev 11): the same one-hop rule applies to Confluence
+  page-to-page links, not just ticket-to-ticket** — a briefing includes
+  pages linked directly to the subtask/parent, but doesn't transitively
+  follow those pages' own outgoing links (`PROJECT_BRIEF.md` §3.6).
+- **When a mid-flight-inserted subtask's new precedence edge targets
+  something already In Progress or Done** (e.g. `Dev` already started before
+  `Database` was recognized as needed): the system creates/adjusts the link
+  **and flags it** — it doesn't silently link with no signal, but it also
+  doesn't block or require active human intervention before proceeding.
+
 ## Open Questions
-- Should `RelatesTo` edges even auto-create Jira links, or just get
-  recorded in the PRD/Confluence text? Blocking edges are rare and
-  high-value to surface; "relates to" edges could be numerous and
-  create link clutter if every soft association becomes a Jira link.
-- Does the parallel-test-tier assumption (Integration/System/E2E all
-  gated by CodeReview, not chained) match actual intended workflow, or
-  should some test tiers gate others (e.g. E2E only after System passes)?
+- **Resolved (D12):** test tiers are sequential by default
+  (`IntegrationTest → SystemTest → E2ETest`), not parallel — see "Current
+  default shape" above.
 - Should Jira Automation be used to hard-block transitions, or is
   TAI's own orchestrator sufficient as the single source of truth for
-  "what's actually workable right now"?
-- When a subtask is inserted mid-flight and its new precedence edges
-  target something that's already In Progress or Done (e.g. Dev already
-  started before Database was recognized as needed), should the system
-  just create the link and flag it, or actively warn that a dependency
-  arrived later than it should have?
+  "what's actually workable right now"? *(Brief §3.3/§4 already answers
+  this at the framework level: TAI's own plugin layer is the enforcer;
+  native Jira validators/Automation are optional defense-in-depth only.)*
