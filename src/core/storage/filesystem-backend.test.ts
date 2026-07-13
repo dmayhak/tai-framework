@@ -135,6 +135,27 @@ describe("comments and labels", () => {
             const fetched = await workTracker.getIssue(issue.key);
             assert.equal(fetched?.comments.length, 1);
             assert.equal(fetched?.comments[0].id, comment.id);
+            assert.equal(comment.createdAt, comment.updatedAt);
+        });
+    });
+
+    test("editComment updates body and updatedAt, leaves createdAt/author/id alone", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Bug,
+                summary: "Fix it",
+            });
+            const original = await workTracker.addComment(issue.key, "Q: what's the repro?");
+            const edited = await workTracker.editComment(issue.key, original.id, "Q: what's the exact repro?");
+
+            assert.equal(edited.id, original.id);
+            assert.equal(edited.body, "Q: what's the exact repro?");
+            assert.equal(edited.createdAt, original.createdAt);
+            assert.deepEqual(edited.author, original.author);
+
+            const fetched = await workTracker.getIssue(issue.key);
+            assert.equal(fetched?.comments[0].body, "Q: what's the exact repro?");
         });
     });
 
@@ -228,6 +249,21 @@ describe("pages", () => {
             assert.equal(comment.body, "Approved: looks good");
             const fetched = await docStore.getPage({ id: page.id });
             assert.equal(fetched?.comments.length, 1);
+        });
+    });
+
+    test("editComment on a page updates body and updatedAt", async () => {
+        await withBackend(async ({ docStore }) => {
+            const page = await docStore.createPage({ spaceKey: "TAI", title: "Notes", content: "..." });
+            const original = await docStore.addComment({ id: page.id }, "Approved: looks good");
+            const edited = await docStore.editComment({ id: page.id }, original.id, "Approved: looks good, ship it");
+
+            assert.equal(edited.id, original.id);
+            assert.equal(edited.body, "Approved: looks good, ship it");
+            assert.equal(edited.createdAt, original.createdAt);
+
+            const fetched = await docStore.getPage({ id: page.id });
+            assert.equal(fetched?.comments[0].body, "Approved: looks good, ship it");
         });
     });
 });

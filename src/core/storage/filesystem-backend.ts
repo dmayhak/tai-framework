@@ -381,14 +381,29 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async addComment(key: IssueKey, body: string): Promise<Comment> {
             const existing = await mustGetIssue(rootDir, key);
-            const comment: Comment = { id: randomUUID(), author: currentUser, body, createdAt: new Date().toISOString() };
+            const now = new Date().toISOString();
+            const comment: Comment = { id: randomUUID(), author: currentUser, body, createdAt: now, updatedAt: now };
             const updated: Issue = {
                 ...existing,
                 comments: [...existing.comments, comment],
-                updatedAt: new Date().toISOString(),
+                updatedAt: now,
             };
             await writeIssueFile(rootDir, updated);
             return comment;
+        },
+
+        async editComment(key: IssueKey, commentId: string, body: string): Promise<Comment> {
+            const existing = await mustGetIssue(rootDir, key);
+            const target = existing.comments.find((c) => c.id === commentId);
+            if (!target) throw new Error(`Comment not found: ${commentId} on ${key}`);
+            const edited: Comment = { ...target, body, updatedAt: new Date().toISOString() };
+            const updated: Issue = {
+                ...existing,
+                comments: existing.comments.map((c) => (c.id === commentId ? edited : c)),
+                updatedAt: new Date().toISOString(),
+            };
+            await writeIssueFile(rootDir, updated);
+            return edited;
         },
 
         async addLabel(key: IssueKey, label: string): Promise<void> {
@@ -506,14 +521,29 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async addComment(ref: PageRef, body: string): Promise<Comment> {
             const existing = await mustResolvePage(rootDir, ref);
-            const comment: Comment = { id: randomUUID(), author: currentUser, body, createdAt: new Date().toISOString() };
+            const now = new Date().toISOString();
+            const comment: Comment = { id: randomUUID(), author: currentUser, body, createdAt: now, updatedAt: now };
             const updated: Page = {
                 ...existing,
                 comments: [...existing.comments, comment],
-                updatedAt: new Date().toISOString(),
+                updatedAt: now,
             };
             await writePageFile(rootDir, updated);
             return comment;
+        },
+
+        async editComment(ref: PageRef, commentId: string, body: string): Promise<Comment> {
+            const existing = await mustResolvePage(rootDir, ref);
+            const target = existing.comments.find((c) => c.id === commentId);
+            if (!target) throw new Error(`Comment not found: ${commentId} on page ${existing.id}`);
+            const edited: Comment = { ...target, body, updatedAt: new Date().toISOString() };
+            const updated: Page = {
+                ...existing,
+                comments: existing.comments.map((c) => (c.id === commentId ? edited : c)),
+                updatedAt: new Date().toISOString(),
+            };
+            await writePageFile(rootDir, updated);
+            return edited;
         },
 
         async getChildren(ref: PageRef, limit?: number): Promise<readonly Page[]> {

@@ -53,6 +53,10 @@ export interface Comment {
     readonly author: HumanRef;
     readonly body: string;
     readonly createdAt: string; // ISO 8601
+    readonly updatedAt: string; // ISO 8601 — equals createdAt until edited. Matters for
+    // brief §3.9's "fresh re-scan, never cached" comment-marker rule: an edited
+    // `Approved:`/`Q:`/`Rejected:` comment can change what it means, so callers doing
+    // freshness comparisons need to see the edit, not just additions/deletions.
 }
 
 export interface AttachmentRef {
@@ -165,6 +169,7 @@ export interface WorkTracker {
     assignIssue(key: IssueKey, human: HumanRef | null): Promise<MutationResult>;
 
     addComment(key: IssueKey, body: string): Promise<Comment>;
+    editComment(key: IssueKey, commentId: string, body: string): Promise<Comment>;
     addLabel(key: IssueKey, label: string): Promise<void>;
     removeLabel(key: IssueKey, label: string): Promise<void>;
 
@@ -201,12 +206,24 @@ export interface Page {
     readonly id: PageId;
     readonly spaceKey: string;
     readonly title: string;
-    readonly content: string; // markdown
+    readonly content: string; // markdown — see note below for the Jira/Confluence backend
     readonly parentId?: PageId;
     readonly createdAt: string;
     readonly updatedAt: string;
     readonly comments: readonly Comment[];
 }
+// For the future Jira/Confluence backend (Phase 4+): verified live against the real
+// Atlassian MCP server that WRITING markdown containing a ```mermaid fenced block
+// converts it cleanly into Confluence's native diagram macro — that direction is
+// fine. But READING it back through the same MCP's markdown-conversion option is
+// lossy: the macro's structure collapses into mangled plain text (parameter labels
+// and code concatenated together, fence markers gone). External-URL images
+// (`![alt](url)`) round-trip cleanly either direction; that specific test didn't
+// cover an uploaded/attached image reference, which likely goes through the same
+// macro mechanism as diagrams and should be verified before relying on it. Whatever
+// implements DocStore.getPage/getChildren on that backend should fetch raw
+// storage-format content (not markdown-converted) for any page that might contain a
+// diagram, to avoid silently corrupting it on every read-modify-write cycle.
 
 export interface CreatePageInput {
     readonly spaceKey: string;
@@ -225,6 +242,7 @@ export interface DocStore {
     getPage(ref: PageRef): Promise<Page | null>;
     updatePage(ref: PageRef, patch: PagePatch): Promise<Page>;
     addComment(ref: PageRef, body: string): Promise<Comment>;
+    editComment(ref: PageRef, commentId: string, body: string): Promise<Comment>;
     getChildren(ref: PageRef, limit?: number): Promise<readonly Page[]>;
 
     // Complementary view of the same link data as WorkTracker.getLinkedPages/
