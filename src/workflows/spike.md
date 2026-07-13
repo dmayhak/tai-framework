@@ -15,11 +15,13 @@ not shippable code.
 | `Database` | DBA | e.g. "can our schema support this" |
 | `Infra` | DevOps | e.g. infra feasibility checks |
 
-Note: a `Spike` *subtask* also exists (usable inside a Story, for smaller
+Note: a `SpikeTask` *subtask* also exists (usable inside a Story, for smaller
 ad-hoc investigations that don't warrant a full Spike story). It has no
 fixed owner — assignee is set explicitly at creation, since a spike
 question could belong to any persona depending on what's being
-investigated.
+investigated. (Renamed from `Spike` to `SpikeTask` to avoid colliding with
+this story-level `StoryType.Spike` — Jira issue-type names must be unique
+site-wide.)
 
 ## Who owns it (story-level)
 
@@ -27,11 +29,11 @@ investigated.
 — kept uniform even though a Spike is *scoped* by whoever raised the question (see
 below). Two distinct things, not in tension: **the Spike's `persona` field defaults to
 PM** (brief §5.6, the two-axis owner model — the native Jira Assignee is a separate
-field, a real human holding the PM Project Role); the **raiser owns scoping authority**
-(what question the Spike actually investigates).
+field, a real human listed under PM in the Persona Roster, rev 12); the **raiser owns
+scoping authority** (what question the Spike actually investigates).
 Subtask-level ownership is unambiguous already — `Feasibility`/`Database`/`Infra` have
-fixed owners (Architect/DBA/DevOps); the ad-hoc `Spike` *subtask* has no fixed owner and
-is assigned explicitly at creation (`SUBTASK_OWNER[Spike] = null`, see
+fixed owners (Architect/DBA/DevOps); the ad-hoc `SpikeTask` *subtask* has no fixed owner
+and is assigned explicitly at creation (`SUBTASK_OWNER[SpikeTask] = null`, see
 `schema/story-schema.ts`). This resolves D8's ownership-model question in full.
 
 ## Scope discipline: no default Analyst involvement
@@ -64,17 +66,25 @@ A Spike does **not** always spawn a Story. It concludes as one of three outcomes
 (Architect/DBA/DevOps/etc.) **proposes** the outcome in their conclusion doc; **PM
 confirms** it — mirroring the propose/create split already used for Ada's decomposition
 (`personas/analyst.md`). Recorded as the conclusion note on the Spike's Confluence
-output, plus PM transitioning the Spike to Done with that outcome noted. The broader D9
-output-taxonomy question (what *every* ticket type produces, formally modeled) is still
-open — this only resolves Spike's specific case.
+output, plus PM transitioning the Spike to **`Done`** (new Story / Confluence-only
+outcomes) or **`Canceled`** (cancelled/deferred outcome, brief §5.3 rev 16 — this used to
+collapse into `Done` with the outcome only noted in text; a distinct status now makes an
+abandoned Spike visible at a glance, e.g. on a board or filter, without reading the
+conclusion doc). The broader D9 output-taxonomy question (what *every* ticket type
+produces, formally modeled) is still open — this only resolves Spike's specific case.
 
 ## Status Transitions (story-level)
 
-Same 3-state flow as the other story types: `Open → In Progress → Done`.
+`To Do → In Progress → Done`, with **`Canceled`** as an alternate terminal state reachable
+from either `To Do` or `In Progress` (brief §5.3 rev 16).
 
-- **Open:** created, no present subtask has started.
+- **To Do:** created, no present subtask has started.
 - **In Progress:** at least one of `Feasibility`/`Database`/`Infra` is underway.
-- **Done:** the investigation concluded and PM confirmed one of the three outcomes above.
+- **Done:** the investigation concluded with a **new Story** or **Confluence-only**
+  outcome, PM confirmed.
+- **Canceled:** the investigation concluded with the **cancelled/deferred** outcome, PM
+  confirmed — same "PM confirms the proposed outcome" mechanics as `Done` above, just a
+  different terminal status.
 
 ## Naming Convention
 

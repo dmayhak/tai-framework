@@ -112,14 +112,17 @@ reviewing those story types rather than assuming a different convention there.
 
 ## Status Transitions (story-level)
 
-`Open → In Progress → In Review → Done`
+`To Do → In Progress → In Review → Done`, plus `Canceled` as an alternate terminal state
+reachable from `To Do`, `In Progress`, or `In Review` (brief §5.3 rev 16) — e.g. the
+initiative itself gets deprioritized before discovery concludes.
 
-- **Open:** PM has created the shell; no subtask work has started.
+- **To Do:** PM has created the shell; no subtask work has started.
 - **In Progress:** at least one of `Research`/`Requirements`/`UxDesign`/`ArchitectureDesign`
   is underway.
 - **In Review:** all present subtasks are Done; waiting on the PM+UX `Approved:` gate
   (see Review Gate above).
 - **Done:** gate passed, Story/Spike tickets created from the WBS.
+- **Canceled:** the Kickoff itself was called off before reaching the review gate.
 
 ## Human Overrides (unforeseen subtask types)
 

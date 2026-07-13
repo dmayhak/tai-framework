@@ -91,7 +91,7 @@ owns.
    `workflows/dependencies.md`).
 2. **Bug entry point:** Given a reported issue, owns `Triage` — confirms reproduction,
    assesses severity, identifies likely root cause — before the ticket proceeds to Dev.
-   If root cause isn't clear from Triage alone, a `Spike` subtask can be added for
+   If root cause isn't clear from Triage alone, a `SpikeTask` subtask can be added for
    deeper investigation (see `workflows/bug.md`).
 3. **UAT (human-gated):** When a Story/Bug carries an optional `UAT` subtask, Tessa
    authors the acceptance scenarios and drives the session, but **a human stakeholder
@@ -137,7 +137,7 @@ behavior.
   decides which; not the automatic single-retry loop used for the automated tiers (see
   `workflows/story.md` — "UAT gate").
 - After Triage: hands off to **Developer** for the fix, or to herself/**Architect** for
-  a `Spike` if root cause needs deeper investigation.
+  a `SpikeTask` if root cause needs deeper investigation.
 
 ## Extension point
 
@@ -152,5 +152,5 @@ Triage-before-Dev on Bugs).
 - Whether a dedicated test-automation/SDET-flavored split from general Tester duties is
   needed later (not needed yet).
 
-**Decided:** the Test subtask's "sent back" status is plain `Open`, not a distinct
+**Decided:** the Test subtask's "sent back" status is plain `To Do`, not a distinct
 `Ready for Retest` status (see `workflows/story.md`).

@@ -106,8 +106,8 @@ collapses to the prior shape, because the resolver only keeps edges where
   before. `UAT` is **inherently human-gated** (brief §3.3) — it never
   autocompletes, even where autocompletion is otherwise enabled.
 
-### What the `Spike` subtask deliberately has no rule for
-The ad-hoc `Spike` subtask (used inside a Story/Bug) has no entry in
+### What the `SpikeTask` subtask deliberately has no rule for
+The ad-hoc `SpikeTask` subtask (used inside a Story/Bug) has no entry in
 `SUBTASK_PRECEDENCE` — same reason it has no fixed owner. Whether it
 blocks Dev or is purely informational depends on what's being
 investigated, and must be set explicitly per instance rather than

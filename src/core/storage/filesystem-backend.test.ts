@@ -1,0 +1,339 @@
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { StoryType, SubtaskType, Persona, DependencyRelation, Status } from "../schema/story-schema.js";
+import { createFilesystemBackend } from "./filesystem-backend.js";
+import { toHumanId, toIssueKey, type HumanRef, type StorageBackend } from "./interface.js";
+
+const CURRENT_USER: HumanRef = { id: toHumanId("del@example.com"), displayName: "Del", email: "del@example.com" };
+
+// Each test gets its own temp dir — never touches the repo's real .tai/.
+async function withBackend(fn: (backend: StorageBackend) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(path.join(tmpdir(), "tai-fs-backend-"));
+    try {
+        await fn(createFilesystemBackend(dir, CURRENT_USER));
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+}
+
+describe("issue CRUD", () => {
+    test("create, get, and update round-trip", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const created = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Build the thing",
+            });
+            assert.equal(created.key, "TAI-1");
+            assert.equal(created.status, Status.ToDo);
+            assert.equal(created.assignee, null);
+            assert.equal(created.persona, null);
+            assert.deepEqual(created.labels, []);
+            assert.deepEqual(created.comments, []);
+
+            const fetched = await workTracker.getIssue(created.key);
+            assert.deepEqual(fetched, created);
+
+            const updated = await workTracker.updateIssue(created.key, {
+                summary: "Build the better thing",
+                persona: Persona.Developer,
+                description: "some detail",
+            });
+            assert.equal(updated.summary, "Build the better thing");
+            assert.equal(updated.persona, Persona.Developer);
+            assert.equal(updated.description, "some detail");
+
+            // tri-state: null clears an optional field
+            const cleared = await workTracker.updateIssue(created.key, { description: null });
+            assert.equal(cleared.description, undefined);
+        });
+    });
+
+    test("getIssue returns null for a missing key", async () => {
+        await withBackend(async ({ workTracker }) => {
+            assert.equal(await workTracker.getIssue(toIssueKey("TAI-999")), null);
+        });
+    });
+
+    test("sequential unique key generation across many creates", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const keys: string[] = [];
+            for (let i = 0; i < 5; i++) {
+                const issue = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    summary: `Task ${i}`,
+                });
+                keys.push(issue.key);
+            }
+            assert.deepEqual(keys, ["TAI-1", "TAI-2", "TAI-3", "TAI-4", "TAI-5"]);
+        });
+    });
+});
+
+describe("transitions and assignment", () => {
+    test("transition is permissive and returns ok:true (v1 filesystem backend)", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Spike,
+                summary: "Investigate",
+            });
+            const result = await workTracker.transition(issue.key, Status.Canceled);
+            assert.equal(result.ok, true);
+            if (result.ok) assert.equal(result.issue.status, Status.Canceled);
+
+            const fetched = await workTracker.getIssue(issue.key);
+            assert.equal(fetched?.status, Status.Canceled);
+        });
+    });
+
+    test("getAvailableTransitions returns every Status", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Kickoff,
+                summary: "Kick it off",
+            });
+            const transitions = await workTracker.getAvailableTransitions(issue.key);
+            assert.deepEqual([...transitions].sort(), Object.values(Status).sort());
+        });
+    });
+
+    test("assignIssue sets and clears the native assignee", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Implement",
+            });
+            const assigned = await workTracker.assignIssue(issue.key, CURRENT_USER);
+            assert.equal(assigned.ok, true);
+            if (assigned.ok) assert.deepEqual(assigned.issue.assignee, CURRENT_USER);
+
+            const unassigned = await workTracker.assignIssue(issue.key, null);
+            if (unassigned.ok) assert.equal(unassigned.issue.assignee, null);
+        });
+    });
+});
+
+describe("comments and labels", () => {
+    test("addComment attributes to currentUser and appends", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Bug,
+                summary: "Fix it",
+            });
+            const comment = await workTracker.addComment(issue.key, "Q: what's the repro?");
+            assert.equal(comment.body, "Q: what's the repro?");
+            assert.deepEqual(comment.author, CURRENT_USER);
+
+            const fetched = await workTracker.getIssue(issue.key);
+            assert.equal(fetched?.comments.length, 1);
+            assert.equal(fetched?.comments[0].id, comment.id);
+        });
+    });
+
+    test("addLabel is idempotent, removeLabel removes", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Bug,
+                summary: "Fix it",
+            });
+            await workTracker.addLabel(issue.key, "urgent");
+            await workTracker.addLabel(issue.key, "urgent"); // duplicate, should no-op
+            let fetched = await workTracker.getIssue(issue.key);
+            assert.deepEqual(fetched?.labels, ["urgent"]);
+
+            await workTracker.removeLabel(issue.key, "urgent");
+            fetched = await workTracker.getIssue(issue.key);
+            assert.deepEqual(fetched?.labels, []);
+        });
+    });
+});
+
+describe("issue links", () => {
+    test("createLink + getLinkedIssues resolve both directions", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const a = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "A" });
+            const b = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "B" });
+            await workTracker.createLink(a.key, DependencyRelation.DependsOn, b.key);
+
+            const outgoing = await workTracker.getLinkedIssues(a.key, DependencyRelation.DependsOn, "outgoing");
+            assert.deepEqual([...outgoing], [{ relation: DependencyRelation.DependsOn, key: b.key }]);
+
+            const incoming = await workTracker.getLinkedIssues(b.key, DependencyRelation.DependsOn, "incoming");
+            assert.deepEqual([...incoming], [{ relation: DependencyRelation.DependsOn, key: a.key }]);
+
+            // wrong direction from b's perspective finds nothing
+            const none = await workTracker.getLinkedIssues(b.key, DependencyRelation.DependsOn, "outgoing");
+            assert.deepEqual([...none], []);
+        });
+    });
+});
+
+describe("pages", () => {
+    test("createPage, getPage by id and by title, updatePage", async () => {
+        await withBackend(async ({ docStore }) => {
+            const page = await docStore.createPage({
+                spaceKey: "TAI",
+                title: "Persona Roster",
+                content: "| Persona | Humans |\n|---|---|\n",
+            });
+            assert.equal(page.id, "TAI-1");
+
+            const byId = await docStore.getPage({ id: page.id });
+            assert.deepEqual(byId, page);
+
+            const byTitle = await docStore.getPage({ spaceKey: "TAI", title: "Persona Roster" });
+            assert.deepEqual(byTitle, page);
+
+            const missing = await docStore.getPage({ spaceKey: "TAI", title: "Nope" });
+            assert.equal(missing, null);
+
+            const updated = await docStore.updatePage({ id: page.id }, { content: "updated body" });
+            assert.equal(updated.content, "updated body");
+            assert.equal(updated.title, "Persona Roster"); // unchanged
+        });
+    });
+
+    test("getChildren filters by parentId", async () => {
+        await withBackend(async ({ docStore }) => {
+            const parent = await docStore.createPage({ spaceKey: "TAI", title: "ADRs", content: "index" });
+            const child1 = await docStore.createPage({
+                spaceKey: "TAI",
+                title: "ADR 1",
+                content: "...",
+                parentId: parent.id,
+            });
+            await docStore.createPage({ spaceKey: "TAI", title: "Unrelated", content: "..." });
+
+            const children = await docStore.getChildren({ id: parent.id });
+            assert.deepEqual(
+                children.map((c) => c.id),
+                [child1.id]
+            );
+        });
+    });
+
+    test("addComment on a page", async () => {
+        await withBackend(async ({ docStore }) => {
+            const page = await docStore.createPage({ spaceKey: "TAI", title: "Notes", content: "..." });
+            const comment = await docStore.addComment({ id: page.id }, "Approved: looks good");
+            assert.equal(comment.body, "Approved: looks good");
+            const fetched = await docStore.getPage({ id: page.id });
+            assert.equal(fetched?.comments.length, 1);
+        });
+    });
+});
+
+describe("issue<->page links", () => {
+    test("linkPage is visible from both WorkTracker and DocStore sides", async () => {
+        await withBackend(async ({ workTracker, docStore }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Kickoff,
+                summary: "Discovery",
+            });
+            const page = await docStore.createPage({ spaceKey: "TAI", title: "PRD", content: "..." });
+
+            await workTracker.linkPage(issue.key, page.id);
+
+            const linkedPages = await workTracker.getLinkedPages(issue.key);
+            assert.deepEqual([...linkedPages], [page.id]);
+
+            const linkedIssues = await docStore.getLinkedIssues({ id: page.id });
+            assert.deepEqual([...linkedIssues], [issue.key]);
+        });
+    });
+});
+
+describe("search", () => {
+    test("filters by type, status, persona, assignee, parentKey, updatedSince, limit", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const parent = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Parent",
+            });
+            const dev = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Dev work",
+                persona: Persona.Developer,
+                parentKey: parent.key,
+            });
+            await workTracker.assignIssue(dev.key, CURRENT_USER);
+            const review = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.CodeReview,
+                summary: "Review it",
+                persona: Persona.CodeReviewer,
+                parentKey: parent.key,
+            });
+            await workTracker.transition(review.key, Status.Done);
+
+            const byType = await workTracker.search({ projectKey: "TAI", issueTypes: [SubtaskType.Dev] });
+            assert.deepEqual(
+                byType.map((i) => i.key),
+                [dev.key]
+            );
+
+            const byStatus = await workTracker.search({ projectKey: "TAI", statuses: [Status.Done] });
+            assert.deepEqual(
+                byStatus.map((i) => i.key),
+                [review.key]
+            );
+
+            const byPersona = await workTracker.search({ projectKey: "TAI", persona: Persona.Developer });
+            assert.deepEqual(
+                byPersona.map((i) => i.key),
+                [dev.key]
+            );
+
+            const byAssignee = await workTracker.search({ projectKey: "TAI", assignee: CURRENT_USER.id });
+            assert.deepEqual(
+                byAssignee.map((i) => i.key),
+                [dev.key]
+            );
+
+            const byParent = await workTracker.search({ projectKey: "TAI", parentKey: parent.key });
+            assert.equal(byParent.length, 2);
+
+            const future = new Date(Date.now() + 60_000).toISOString();
+            const noneUpdatedSince = await workTracker.search({ projectKey: "TAI", updatedSince: future });
+            assert.deepEqual(noneUpdatedSince, []);
+
+            const limited = await workTracker.search({ projectKey: "TAI", limit: 1 });
+            assert.equal(limited.length, 1);
+        });
+    });
+
+    test("search on an unknown project returns an empty array, not an error", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const results = await workTracker.search({ projectKey: "NOPE" });
+            assert.deepEqual(results, []);
+        });
+    });
+});
+
+describe("attachments (stub level)", () => {
+    test("listAttachments returns an empty array when none exist", async () => {
+        await withBackend(async ({ workTracker, docStore }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Bug,
+                summary: "Fix it",
+            });
+            assert.deepEqual(await workTracker.listAttachments(issue.key), []);
+
+            const page = await docStore.createPage({ spaceKey: "TAI", title: "Doc", content: "..." });
+            assert.deepEqual(await docStore.listAttachments({ id: page.id }), []);
+        });
+    });
+});

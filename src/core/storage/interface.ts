@@ -1,0 +1,253 @@
+/**
+ * TAI Framework — Storage Plugin Interface
+ * The swappable abstraction over the system of record (Jira+Confluence, a local
+ * filesystem fallback, or a future third-party backend via its own MCP server —
+ * brief §3.2). Every persona, workflow, and command is built against this interface,
+ * never against a specific backend directly — this is the single most important
+ * design artifact in the system (brief §3.2's own words).
+ *
+ * Two focused interfaces, matching the brief's own product split rather than one
+ * giant interface or several fragmented ones: WorkTracker (the Jira-like ticket
+ * hierarchy) and DocStore (the Confluence-like doc hierarchy). A StorageBackend
+ * bundles one of each, since a single backend (Jira+Confluence, or the filesystem)
+ * always implements both halves together.
+ */
+
+import type {
+    StoryType,
+    SubtaskType,
+    Persona,
+    DependencyRelation,
+    Status,
+} from "../schema/story-schema.js";
+
+// ---------- Branded IDs ----------
+
+// Cheap insurance against swapping an issue key for a page id (or a raw unbranded
+// string) at a call site — strict mode won't catch that otherwise.
+type Brand<T, B extends string> = T & { readonly __brand: B };
+
+export type IssueKey = Brand<string, "IssueKey">;
+export type PageId = Brand<string, "PageId">;
+export type HumanId = Brand<string, "HumanId">;
+
+// Thin cast helpers so call sites and backends aren't full of inline `as` casts.
+export const toIssueKey = (s: string): IssueKey => s as IssueKey;
+export const toPageId = (s: string): PageId => s as PageId;
+export const toHumanId = (s: string): HumanId => s as HumanId;
+
+// ---------- Core shapes ----------
+
+export interface HumanRef {
+    readonly id: HumanId;
+    readonly displayName: string;
+    readonly email?: string;
+}
+// HumanId is backend-scoped and opaque: a Jira accountId on the Jira backend, an
+// email or locally-assigned id on the filesystem backend. Reconciling a HumanRef
+// against the Persona Roster (brief §5.6) is domain logic built ON TOP of this
+// interface via DocStore — not this interface's job.
+
+export interface Comment {
+    readonly id: string;
+    readonly author: HumanRef;
+    readonly body: string;
+    readonly createdAt: string; // ISO 8601
+}
+
+export interface AttachmentRef {
+    readonly id: string;
+    readonly filename: string;
+    readonly sizeBytes?: number;
+}
+
+export interface Issue {
+    readonly key: IssueKey;
+    readonly projectKey: string;
+    // 'epic': Epic has no formal StoryType/SubtaskType entry in the schema yet — a
+    // known gap, tracked as a follow-up, not worth blocking this interface on.
+    readonly issueType: StoryType | SubtaskType | "epic";
+    readonly summary: string;
+    readonly description?: string;
+    readonly status: Status;
+    readonly assignee: HumanRef | null; // two-axis owner model, axis 1 — the real human (brief §5.6)
+    readonly persona: Persona | null; // axis 2 — which role is acting; stored, never derived
+    // Required-by-convention depending on issueType (Epic: none; Story/Bug: an Epic;
+    // Subtask: a Story/Bug) — not enforced at the type level, documented only.
+    readonly parentKey?: IssueKey;
+    // Subtask-scoped in TAI's model (brief §4/§5.4 — repo tracking, one component per
+    // subtask). A Story/Bug's own value has no defined meaning; don't rely on it there.
+    readonly component?: string;
+    readonly severity?: string;
+    readonly priority?: string;
+    readonly labels: readonly string[];
+    readonly createdAt: string;
+    readonly updatedAt: string;
+    // Comments are part of this payload, not a separate fetch (brief §7).
+    readonly comments: readonly Comment[];
+}
+
+export interface CreateIssueInput {
+    readonly projectKey: string;
+    readonly issueType: StoryType | SubtaskType | "epic";
+    readonly summary: string;
+    readonly description?: string;
+    readonly assignee?: HumanRef | null;
+    readonly persona?: Persona | null;
+    readonly parentKey?: IssueKey;
+    readonly component?: string;
+    readonly severity?: string;
+    readonly priority?: string;
+    readonly labels?: readonly string[];
+}
+
+// Tri-state on every nullable field: `undefined` = leave unchanged, `null` = clear,
+// a value = set. Backend-managed fields (key, createdAt, updatedAt, comments,
+// status — status only changes via transition()) are deliberately excluded.
+export interface IssuePatch {
+    readonly summary?: string;
+    readonly description?: string | null;
+    readonly assignee?: HumanRef | null;
+    readonly persona?: Persona | null;
+    readonly component?: string | null;
+    readonly severity?: string | null;
+    readonly priority?: string | null;
+}
+
+export interface IssueFilter {
+    readonly projectKey: string;
+    readonly issueTypes?: readonly (StoryType | SubtaskType | "epic")[];
+    readonly statuses?: readonly Status[];
+    readonly assignee?: HumanId;
+    readonly persona?: Persona;
+    readonly parentKey?: IssueKey;
+    readonly updatedSince?: string; // ISO — powers brief §7's bulk incremental-sync case
+    // Bounds result size. Full cursor pagination is deferred (documented, not built —
+    // no real project is anywhere near needing it yet); a Jira-backed implementation
+    // can page internally up to this bound without violating the interface.
+    readonly limit?: number;
+}
+
+export interface IssueLink {
+    readonly relation: DependencyRelation;
+    readonly key: IssueKey;
+}
+
+// Rejection vs. connectivity failure are DIFFERENT cases the brief treats
+// differently (§3.3's escalate-immediately-no-retry vs. §3.6's queue-and-retry on
+// reconnect) — collapsing them into one `ok: false` shape would force callers to
+// string-match `reason` to tell them apart. Convention: throw
+// StorageConnectivityError for network/infra failures; return `ok: false` only for a
+// genuine backend-side rejection (validator, permission, missing field, concurrent
+// change — brief §3.3's "unplanned checkpoint").
+export type MutationResult =
+    | { readonly ok: true; readonly issue: Issue }
+    | { readonly ok: false; readonly reason: string };
+
+export class StorageConnectivityError extends Error {}
+
+// ---------- WorkTracker ----------
+
+export interface WorkTracker {
+    createIssue(input: CreateIssueInput): Promise<Issue>;
+    getIssue(key: IssueKey): Promise<Issue | null>;
+    updateIssue(key: IssueKey, patch: IssuePatch): Promise<Issue>;
+
+    // Raw backend transition/assignment state — NOT the same as TAI's own
+    // precedence-derived "ready/blocked" (that's isSubtaskReady() /
+    // resolveApplicablePrecedence() in story-schema.ts, computed over already-fetched
+    // Issue data; no storage call needed for it).
+    transition(key: IssueKey, target: Status): Promise<MutationResult>;
+    getAvailableTransitions(key: IssueKey): Promise<readonly Status[]>;
+    // Mirrors transition()'s rejection shape — brief §5.6 explicitly reuses the
+    // transition pattern for assignment rejection ("the same kind of unplanned
+    // checkpoint already defined for transitions — no new mechanism needed").
+    assignIssue(key: IssueKey, human: HumanRef | null): Promise<MutationResult>;
+
+    addComment(key: IssueKey, body: string): Promise<Comment>;
+    addLabel(key: IssueKey, label: string): Promise<void>;
+    removeLabel(key: IssueKey, label: string): Promise<void>;
+
+    createLink(from: IssueKey, relation: DependencyRelation, to: IssueKey): Promise<void>;
+    // direction 'outgoing' (default): links where `key` is the `from` end (what this
+    // depends on / relates to). 'incoming': where `key` is the `to` end (what depends
+    // on this). Disambiguates DependsOn's direction, which story-schema.ts documents
+    // as one-directional but this interface must specify explicitly too.
+    getLinkedIssues(
+        key: IssueKey,
+        relation?: DependencyRelation,
+        direction?: "outgoing" | "incoming"
+    ): Promise<readonly IssueLink[]>;
+
+    // Issue<->Page association (brief §4: pages tie to the parent issue that needs
+    // them as input; §3.6: briefing generation walks these one-hop). Undirected —
+    // unlike DependsOn/RelatesTo, link direction has no meaning for a doc reference.
+    linkPage(key: IssueKey, page: PageId): Promise<void>;
+    getLinkedPages(key: IssueKey): Promise<readonly PageId[]>;
+
+    listAttachments(key: IssueKey): Promise<readonly AttachmentRef[]>;
+    getAttachment(key: IssueKey, attachmentId: string): Promise<Buffer>;
+
+    search(filter: IssueFilter): Promise<readonly Issue[]>;
+}
+
+// ---------- DocStore ----------
+
+// Lookup by opaque id, or by (space, title) — callers often know a page's title and
+// space but not its id ahead of time (e.g. finding the Persona Roster, brief §5.6).
+export type PageRef = { readonly id: PageId } | { readonly spaceKey: string; readonly title: string };
+
+export interface Page {
+    readonly id: PageId;
+    readonly spaceKey: string;
+    readonly title: string;
+    readonly content: string; // markdown
+    readonly parentId?: PageId;
+    readonly createdAt: string;
+    readonly updatedAt: string;
+    readonly comments: readonly Comment[];
+}
+
+export interface CreatePageInput {
+    readonly spaceKey: string;
+    readonly title: string;
+    readonly content: string;
+    readonly parentId?: PageId;
+}
+
+export interface PagePatch {
+    readonly title?: string;
+    readonly content?: string;
+}
+
+export interface DocStore {
+    createPage(input: CreatePageInput): Promise<Page>;
+    getPage(ref: PageRef): Promise<Page | null>;
+    updatePage(ref: PageRef, patch: PagePatch): Promise<Page>;
+    addComment(ref: PageRef, body: string): Promise<Comment>;
+    getChildren(ref: PageRef, limit?: number): Promise<readonly Page[]>;
+
+    // Complementary view of the same link data as WorkTracker.getLinkedPages/
+    // linkPage — not a second store.
+    getLinkedIssues(ref: PageRef): Promise<readonly IssueKey[]>;
+
+    listAttachments(ref: PageRef): Promise<readonly AttachmentRef[]>;
+    getAttachment(ref: PageRef, attachmentId: string): Promise<Buffer>;
+}
+// Deliberate: the Persona Roster (brief §5.6) and persona extensions (§3.1) are NOT
+// a separate interface — they're ordinary pages (e.g.
+// getPage({ spaceKey, title: "Persona Roster" })) under the Config folder (§4 rev
+// 14). Domain logic for parsing the roster table into a lookup lives above this
+// interface, not in it.
+
+// ---------- StorageBackend ----------
+
+export interface StorageBackend {
+    // Deliberately NOT a closed union of known backend names — brief §3.2 explicitly
+    // allows third-party backends via their own MCP servers, and a closed union
+    // would both block that and invite callers to branch on it, which is exactly the
+    // kind of leak this interface exists to prevent.
+    readonly kind: string;
+    readonly workTracker: WorkTracker;
+    readonly docStore: DocStore;
+}
