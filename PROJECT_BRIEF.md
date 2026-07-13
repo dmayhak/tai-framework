@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-13 (rev 18 — **§4's "the Confluence space key matches the Jira
+> **Last updated:** 2026-07-13 (rev 19 — **§5.5 gains a hard assignment gate: a ticket must
+> have a human `Assignee` before it may leave `To Do`.** Work in progress with nobody
+> accountable for it is the exact failure mode this framework exists to prevent (§1), and it
+> is invisible on a board. Enforced centrally in the storage plugin's `transition` operation
+> alongside the existing checkpoint checks — an ordinary blocked checkpoint, not §3.3's
+> unplanned-checkpoint/escalation path. Paired with a **pre-assign-at-creation** rule: when a
+> ticket's `persona` resolves to exactly ONE authorized human in the Persona Roster (a solo
+> developer; a team with a single PM), TAI sets `Assignee` at creation rather than deferring
+> to a claim. With more than one candidate it does not guess — it falls back to the §5.6
+> assignment-helper.
+> Prior: rev 18 — **§4's "the Confluence space key matches the Jira
 > project key" rule (rev 11) is wrong and is withdrawn.** TAI's own space is keyed `TA`, not
 > `TAI`: Confluence derives a space key from the space *name* at creation and may shorten or
 > disambiguate it, and a human can rename it later — so the two drift for reasons outside
@@ -665,9 +675,33 @@ etc., differentiated by their type and their subtasks.
 ### 5.5 Assignment & Claiming
 - Jira **Assignee is a real human.** Our plugin layer (not Jira) enforces "act on tickets
   assigned to you, or claim an unassigned 'ready' ticket first."
+- **No unassigned work in progress (rev 19).** A ticket **must have a human `Assignee`
+  before it may leave `To Do`** — for *any* non-terminal onward status (`In Progress`,
+  `In Review`). This is a **hard gate, enforced in the storage plugin's `transition`
+  operation** (§3.3), alongside the checkpoint checks that already live there — not
+  re-implemented per persona.
+  - **Why a hard gate and not a nudge:** the entire premise of the framework is that a
+    *named human* oversees the AI persona doing the work (§1). Work that is in progress with
+    nobody accountable for it is precisely the failure mode Team AI exists to prevent — and
+    it is invisible on a board, because an unassigned in-progress ticket looks like
+    everything else. Unlike `Canceled`/`Done` (terminal, where an owner no longer matters),
+    an in-flight ticket always has someone answerable for it.
+  - **Rejection shape:** attempting such a transition fails the same way any other blocked
+    transition does — the storage layer returns a `MutationResult` rejection with a reason,
+    and the caller surfaces it. It is an ordinary blocked checkpoint, **not** the §3.3
+    unplanned-checkpoint/escalation path (nothing surprising happened; the rule is known).
+- **Pre-assign at creation when the assignee is unambiguous (rev 19).** When a ticket's
+  `persona` (§5.6) resolves to **exactly one** authorized human in the Persona Roster, TAI
+  sets `Assignee` **at creation time** rather than leaving it to be claimed later. Common
+  cases: a solo developer (every persona maps to the same one person), or a team with a
+  single PM/DBA/etc. When the roster lists **more than one** candidate for that persona,
+  TAI does **not** guess — it falls back to the assignment-helper (§5.6): surface the
+  candidates with their lightweight load signals and let the human driving the session pick.
 - Ready, unassigned tickets are **claimable.** People *should* work their own tickets, but
-  we deliberately do **not** hard-lock this — people take time off, need help, hand work
-  off. So a branch for some work may already exist in the repo from a prior owner.
+  we deliberately do **not** hard-lock *who* may pick a ticket up — people take time off,
+  need help, hand work off. (Distinct from the rule above, which lock*s* that *somebody* is
+  assigned, not *which* somebody.) So a branch for some work may already exist in the repo
+  from a prior owner.
 - **On claiming a ticket where a branch already exists:** prompt the user to either
   **fetch/continue the existing branch** or **create a new one.**
 

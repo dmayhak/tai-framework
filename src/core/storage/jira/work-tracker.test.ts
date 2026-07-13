@@ -159,6 +159,9 @@ describe("transition", () => {
                         issuetype: { name: "Dev" },
                         summary: "s",
                         status: { name: "In Progress" },
+                        // Assigned, or the §5.5 gate would (correctly) block this before Jira
+                        // is ever called.
+                        assignee: { accountId: "a1", displayName: "del" },
                         created: "x",
                         updated: "y",
                     },
@@ -169,6 +172,67 @@ describe("transition", () => {
         const res = await wt.transition(toIssueKey("TAI-21"), Status.InProgress);
         assert.equal(res.ok, true);
         assert.deepEqual(posted, { transition: { id: "21" } });
+    });
+
+    /**
+     * Brief §5.5 (rev 19): no unassigned work in progress. Enforced here, in the storage
+     * plugin's transition op, alongside the other checkpoint checks — never per-persona.
+     */
+    describe("the assignment gate", () => {
+        function trackerFor(assignee: unknown) {
+            return trackerWith(
+                stubFetch((url, init) => {
+                    if (url.includes("/transitions") && init.method === "GET") {
+                        return json({
+                            transitions: [
+                                { id: "21", name: "Start", to: { name: "In Progress" } },
+                                { id: "41", name: "Done", to: { name: "Done" } },
+                                { id: "2", name: "Cancel", to: { name: "Canceled" } },
+                            ],
+                        });
+                    }
+                    if (init.method === "POST") return new Response(null, { status: 204 });
+                    return json({
+                        key: "TAI-21",
+                        fields: {
+                            project: { key: "TAI" },
+                            issuetype: { name: "Dev" },
+                            summary: "s",
+                            status: { name: "To Do" },
+                            assignee,
+                            created: "x",
+                            updated: "y",
+                        },
+                    });
+                })
+            );
+        }
+
+        it("blocks In Progress when nobody is assigned", async () => {
+            const res = await trackerFor(null).transition(toIssueKey("TAI-21"), Status.InProgress);
+            assert.equal(res.ok, false);
+            assert.match(res.ok === false ? res.reason : "", /no Assignee/i);
+        });
+
+        it("blocks In Review when nobody is assigned", async () => {
+            const res = await trackerFor(null).transition(toIssueKey("TAI-21"), Status.InReview);
+            assert.equal(res.ok, false);
+        });
+
+        it("allows In Progress once a human is assigned", async () => {
+            const res = await trackerFor({ accountId: "a1", displayName: "del" }).transition(
+                toIssueKey("TAI-21"),
+                Status.InProgress
+            );
+            assert.equal(res.ok, true);
+        });
+
+        it("exempts terminal states — once work stops, an owner no longer matters", async () => {
+            const done = await trackerFor(null).transition(toIssueKey("TAI-21"), Status.Done);
+            assert.equal(done.ok, true);
+            const canceled = await trackerFor(null).transition(toIssueKey("TAI-21"), Status.Canceled);
+            assert.equal(canceled.ok, true);
+        });
     });
 
     it("rejects (ok:false) when the target status is unreachable from here", async () => {

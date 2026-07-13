@@ -193,6 +193,26 @@ export function createJiraWorkTracker(
          */
         async transition(key: IssueKey, target: Status): Promise<MutationResult> {
             return asMutation(async () => {
+                // TAI's OWN checkpoints are checked BEFORE calling Jira (§3.3: "We check
+                // conditions *before* ever calling the Jira 'transition' API"). This is one of
+                // them, not a Jira rule.
+                //
+                // No unassigned work in progress (§5.5, rev 19): a ticket may not leave `To Do`
+                // for a non-terminal status without a human Assignee. The whole premise is that
+                // a NAMED human oversees the persona doing the work (§1) — an in-flight ticket
+                // with nobody accountable is the failure mode this framework exists to prevent,
+                // and it's invisible on a board. Terminal states (Done/Canceled) are exempt:
+                // once work has stopped, an owner no longer matters.
+                if (target === Status.InProgress || target === Status.InReview) {
+                    const current = await fetchIssue(key);
+                    if (current.assignee === null) {
+                        throw new JiraRejection(
+                            `${key} has no Assignee. A ticket must be assigned to a human before it can move to "${target}" (brief §5.5). Assign it, or let the assignment-helper surface candidates for its persona.`,
+                            409
+                        );
+                    }
+                }
+
                 const { transitions } = await client.request<{
                     transitions: { id: string; name: string; to: { name: string } }[];
                 }>("GET", `${API}/issue/${key}/transitions`);
