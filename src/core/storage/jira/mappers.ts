@@ -13,6 +13,7 @@ import {
     SubtaskType,
     DependencyRelation,
     DEFAULT_JIRA_LINK_TYPE_NAME,
+    PERSONA_ROLE_LABEL,
 } from "../../schema/story-schema.js";
 import {
     type Issue,
@@ -92,25 +93,15 @@ export function fromJiraIssueType(name: string): IssueType {
 
 /**
  * The `Persona` single-select custom field (brief §5.6, the two-axis owner model).
- * Note the two entries that do NOT fall out of the enum value mechanically — these are
- * exactly where a "clever" derivation (capitalise the kebab-case key) would break:
- *   ux-designer  -> "UX Designer"   (not "Ux Designer")
- *   code-reviewer-> "Code Reviewer"
- *   dba          -> "DBA"           (not "Dba")
- *   pm           -> "PM"            (not "Pm")
- * Verified against the live field's actual options.
+ *
+ * The field's option strings ARE the canonical role labels (PERSONA_ROLE_LABEL) — they were
+ * provisioned in Jira to match, and the Persona Roster's column uses the same labels, so all
+ * three read from one source rather than keeping copies that could drift. Verified against
+ * the live field's actual options. The entries that would trip a naive "capitalise the
+ * kebab-case key" derivation — "UX Designer", "Code Reviewer", "DBA", "PM" — are exactly why
+ * this is a written-out map and not computed.
  */
-export const JIRA_PERSONA: Record<Persona, string> = {
-    [Persona.Analyst]: "Analyst",
-    [Persona.Pm]: "PM",
-    [Persona.Architect]: "Architect",
-    [Persona.UxDesigner]: "UX Designer",
-    [Persona.Developer]: "Developer",
-    [Persona.Dba]: "DBA",
-    [Persona.CodeReviewer]: "Code Reviewer",
-    [Persona.Tester]: "Tester",
-    [Persona.DevOps]: "DevOps",
-};
+export const JIRA_PERSONA: Record<Persona, string> = PERSONA_ROLE_LABEL;
 
 const JIRA_PERSONA_REVERSE: ReadonlyMap<string, Persona> = new Map(
     Object.entries(JIRA_PERSONA).map(([k, v]) => [v, k as Persona])
