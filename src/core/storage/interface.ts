@@ -212,18 +212,43 @@ export interface Page {
     readonly updatedAt: string;
     readonly comments: readonly Comment[];
 }
-// For the future Jira/Confluence backend (Phase 4+): verified live against the real
-// Atlassian MCP server that WRITING markdown containing a ```mermaid fenced block
-// converts it cleanly into Confluence's native diagram macro — that direction is
-// fine. But READING it back through the same MCP's markdown-conversion option is
-// lossy: the macro's structure collapses into mangled plain text (parameter labels
-// and code concatenated together, fence markers gone). External-URL images
-// (`![alt](url)`) round-trip cleanly either direction; that specific test didn't
-// cover an uploaded/attached image reference, which likely goes through the same
-// macro mechanism as diagrams and should be verified before relying on it. Whatever
-// implements DocStore.getPage/getChildren on that backend should fetch raw
-// storage-format content (not markdown-converted) for any page that might contain a
-// diagram, to avoid silently corrupting it on every read-modify-write cycle.
+// For the future Jira/Confluence backend (Phase 4+) — diagram rendering, verified
+// live against the real Atlassian MCP server and the real TAI Confluence/Jira site:
+//
+// Confluence has no native Mermaid rendering and neither does plain markdown import
+// — writing a ```mermaid fenced block converts it into a generic `macro-diagram`
+// shell that nothing renders ("Unknown macro"), and reading an existing diagram back
+// through the MCP's markdown-conversion option is separately lossy (the structure
+// collapses into mangled plain text, fence markers gone). A rendering app must be
+// installed (we used "Mermaid Macros for Confluence" by 9ByNight — free, Forge-based,
+// zero data-access permissions). Confirmed working end-to-end, including writing new
+// diagrams programmatically via this backend, not just reading ones a human added by
+// hand: content must be raw storage/XHTML format (content_format 'storage', never
+// 'markdown'), structured as an `<ac:adf-extension>` node wrapping an
+// `<ac:adf-node type="extension">`, with:
+//   - extension-key: "<app-id>/<env-id>/static/mermaid-diagram-macro" (site/app-install
+//     specific — read it off an existing working diagram on the target site rather
+//     than hardcoding the value found on the TAI dev site; not confirmed portable
+//     across different Atlassian sites even with the identical app installed)
+//   - guest-params > source: the Mermaid source, with `<`/`>`/`&` entity-escaped
+//     (not CDATA-wrapped, unlike the old macro-diagram shell's plain-text-body)
+//   - guest-params > display: "diagram"
+//   - an `<ac:adf-fallback>` sibling duplicating the same node (present in every
+//     working example observed; unclear if Confluence requires it or just always
+//     emits it — kept for parity rather than tested with it omitted)
+// Every `<ac:adf-extension>`/`<ac:adf-node>` needs a unique local-id, reused as both
+// the outer node's `local-id` attribute and the nested `parameters > local-id`.
+//
+// Jira has no equivalent hurdle: with a Mermaid-rendering app installed ("Mermaid
+// Diagrams for Jira" by 9ByNight, same vendor), a plain code block containing Mermaid
+// syntax in an issue's description or a comment — no special macro, no escaping, just
+// ordinary Issue.description/Comment.body text — is auto-detected and rendered in a
+// dedicated panel next to the issue. Nothing about WorkTracker needs to change for
+// this to work; it's a property of the installed app, not this interface.
+//
+// External-URL images (`![alt](url)`) round-trip cleanly on the Confluence side
+// either direction; an uploaded/attached image reference wasn't tested and likely
+// goes through a similar macro mechanism — verify before relying on it.
 
 export interface CreatePageInput {
     readonly spaceKey: string;
