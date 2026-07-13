@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-13 (rev 17 — **§3.2's transport changes: Jira/Confluence are
+> **Last updated:** 2026-07-13 (rev 18 — **§4's "the Confluence space key matches the Jira
+> project key" rule (rev 11) is wrong and is withdrawn.** TAI's own space is keyed `TA`, not
+> `TAI`: Confluence derives a space key from the space *name* at creation and may shorten or
+> disambiguate it, and a human can rename it later — so the two drift for reasons outside
+> TAI's control. It went unnoticed for six revisions because the MCP tooling resolves spaces
+> by *name*, masking the mismatch. `projectKey` and `spaceKey` are now separate config values
+> that the storage backend takes independently; nothing may derive one from the other. Also
+> corrects rev 17's hazard note, which wrongly claimed the `mcp-atlassian` wrapper inverts
+> issue-link direction — it does not; that was a misreading of Atlassian's docs. Ground truth,
+> verified live: for the `Blocks` type, the **inward** issue blocks the **outward** one.
+> Prior: rev 17 — **§3.2's transport changes: Jira/Confluence are
 > reached via the Atlassian REST API, not the Atlassian Remote MCP Server.** The MCP-server
 > design (revs 1–16) was tested live in Phase 4's opening spike (Jira `TAI-16`) and does not
 > work: auth succeeds headlessly, but the tool surface returned is three read-only Teamwork
@@ -441,8 +451,17 @@ These are settled. Change them deliberately and update this file if you do.
   Jira issue key (§6) is used to look up the touched repo and auto-populate Component; a
   human or persona can still set/correct it manually before any commit exists yet (e.g. at
   subtask creation, or if the automation can't resolve it).
-- **Confluence:** one Confluence space per Jira project — **the space key matches the
-  Jira project key** (rev 11; e.g. Jira project `PROJ` gets Confluence space `PROJ`).
+- **Confluence:** one Confluence space per Jira project. The space key is **configured, not
+  derived** — it is **not** safe to assume it equals the Jira project key.
+  - *Corrected (rev 18).* Rev 11 asserted "the space key matches the Jira project key"
+    (`PROJ` → `PROJ`). That is **false in practice, and false on this very project**: TAI's
+    own Confluence space is keyed **`TA`**, not `TAI`. Confluence derives a space key from
+    the space *name* at creation time and will happily shorten or disambiguate it, and a
+    human can rename it afterwards — so the two keys drift for reasons entirely outside
+    TAI's control. The mismatch went unnoticed for six revisions because the MCP tooling
+    resolves a space by *name*, silently masking it. Any code that computes a space key from
+    a project key is therefore wrong: **`projectKey` and `spaceKey` are separate config
+    values**, and the storage backend takes both.
   Pages link to the Jira item that **needs that page as input.** Pages tie to the
   **parent** issue (Story or Epic — whichever the content is actually scoped to; e.g. an
   Epic-level decomposition proposal ties to the Epic itself, while a Kickoff's PRD/UX

@@ -39,12 +39,16 @@ import {
 
 // ---------- Path helpers ----------
 
-// Jira project keys (and, by brief §4's "space key matches project key" convention,
-// Confluence space keys) never contain a hyphen — confirmed by the real Atlassian
-// MCP tools' own key validation pattern (`^[A-Z][A-Z0-9_]+$`). Issue keys and page
-// ids generated below always take the form `<PROJECT-OR-SPACE-KEY>-<N>`, so the
-// project/space can always be recovered by splitting on the first hyphen — used to
-// resolve a bare IssueKey/PageId back to its containing directory.
+// Jira project keys and Confluence space keys never contain a hyphen — confirmed by the
+// real Atlassian key validation pattern (`^[A-Z][A-Z0-9_]+$`). Issue keys and page ids
+// generated below always take the form `<PROJECT-OR-SPACE-KEY>-<N>`, so the project/space
+// can always be recovered by splitting on the first hyphen — used to resolve a bare
+// IssueKey/PageId back to its containing directory.
+//
+// Note this backend MINTS both keys itself, so they're trivially consistent here. Do not
+// generalise that to the Jira backend: brief §4 (rev 18) withdrew the old "space key
+// matches project key" rule — the real TAI project is Jira `TAI` / Confluence `TA`, and the
+// two are independent config values.
 function ownerKeyOf(id: string): string {
     const i = id.indexOf("-");
     if (i < 0) throw new Error(`Malformed key/id, expected "<KEY>-<N>": ${id}`);
