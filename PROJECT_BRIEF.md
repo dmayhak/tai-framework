@@ -183,9 +183,14 @@ backend, is what actually enforces identical behavior (Jira `TAI-15`).
 > authoritative); `create` and `update` use **different description encodings** (`create`
 > stores the string raw and uninterpreted, `update` converts markdown → Jira wiki markup);
 > `create` was seen **corrupting** input nondeterministically (escaping `**`, eating `+`
-> characters); `create` responses **omit custom fields**, so a re-fetch is required; issue-link
-> direction is **inverted** from raw REST's convention; and Confluence comment editing has no
-> tool at all. TAI's own backend does not go through this layer, and must not inherit these.
+> characters); `create` responses **omit custom fields**, so a re-fetch is required; and
+> Confluence comment editing has no tool at all. TAI's own backend does not go through this
+> layer, and must not inherit these.
+>
+> *(Corrected: an earlier revision of this note also claimed the wrapper inverted issue-link
+> direction. It does not — it passes `inwardIssue`/`outwardIssue` through faithfully. The
+> error was in reading Atlassian's docs, not in the wrapper. Ground truth, verified against
+> the live API: for the `Blocks` link type, the **inward** issue blocks the **outward** one.)*
 
 ### 3.3 Checkpoints
 Human oversight gates on work progression. **Critical constraint discovered during
