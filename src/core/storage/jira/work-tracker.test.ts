@@ -271,3 +271,26 @@ describe("createLink", () => {
         assert.equal(body?.outwardIssue.key, "TAI-11", "the blocked goes outward");
     });
 });
+
+describe("linkPage", () => {
+    /**
+     * REGRESSION. `object.url` must be a genuine URL — Jira's remote-link API validates it
+     * and 400s on a bare page id ("Invalid 'URL'..."). Found by running the conformance suite
+     * (TAI-15) against live Jira, not by any unit test, since a stub fetch will happily accept
+     * whatever string you hand it.
+     */
+    it("builds a real, resolvable Confluence URL, not the bare page id", async () => {
+        let body: { object: { url: string } } | undefined;
+        const wt = trackerWith(
+            stubFetch((_url, init) => {
+                body = JSON.parse(String(init.body));
+                return new Response(null, { status: 201 });
+            })
+        );
+        await wt.linkPage(toIssueKey("TAI-13"), "12058646" as never);
+        assert.equal(
+            body?.object.url,
+            "https://example.atlassian.net/wiki/pages/viewpage.action?pageId=12058646"
+        );
+    });
+});

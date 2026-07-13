@@ -360,12 +360,28 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             return updated;
         },
 
-        // Permissive by design for v1: every Status is reachable from every Status,
-        // rather than simulating a fake Jira workflow-validator just to exercise the
-        // ok:false path. Real rejection semantics get exercised once the Jira backend
-        // exists (Phase 4+) — see the plan for the fuller rationale.
+        // Permissive by design for v1 re: WORKFLOW shape — every Status is reachable from
+        // every Status, rather than simulating a fake Jira workflow-validator just to
+        // exercise the ok:false path. Real rejection-on-workflow semantics get exercised by
+        // the Jira backend (see the conformance suite's `strictWorkflow` capability flag).
+        //
+        // The assignment gate below is NOT part of that permissiveness, though — brief §5.5
+        // says it is "enforced... in the storage plugin's transition operation," meaning
+        // every backend's, not just Jira's. Confirmed by the conformance suite (TAI-15): this
+        // backend previously allowed an unassigned issue into In Progress while the Jira
+        // backend blocked it, which is exactly the kind of behavioral divergence types alone
+        // can't catch.
         async transition(key: IssueKey, target: Status): Promise<MutationResult> {
             const existing = await mustGetIssue(rootDir, key);
+            if (
+                (target === Status.InProgress || target === Status.InReview) &&
+                existing.assignee === null
+            ) {
+                return {
+                    ok: false,
+                    reason: `${key} has no Assignee. A ticket must be assigned to a human before it can move to "${target}" (brief §5.5).`,
+                };
+            }
             const updated: Issue = { ...existing, status: target, updatedAt: new Date().toISOString() };
             await writeIssueFile(rootDir, updated);
             return { ok: true, issue: updated };

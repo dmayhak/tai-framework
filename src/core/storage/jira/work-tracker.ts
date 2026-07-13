@@ -354,10 +354,15 @@ export function createJiraWorkTracker(
          * direction worth modelling.
          */
         async linkPage(key: IssueKey, page: PageId): Promise<void> {
+            // `object.url` must be a genuine URL — Jira's remote-link API validates it and
+            // 400s on a bare id (found by running the conformance suite, TAI-15). The classic
+            // `viewpage.action?pageId=` permalink resolves site-wide without needing the
+            // page's space key, which WorkTracker has no reason to know.
+            const url = `${client.siteUrl}/wiki/pages/viewpage.action?pageId=${page}`;
             await client.request("POST", `${API}/issue/${key}/remotelink`, {
                 globalId: `tai-page-${page}`,
                 object: {
-                    url: `${page}`,
+                    url,
                     title: `${page}`,
                 },
                 // `relationship` is what getLinkedPages filters on to distinguish TAI's own

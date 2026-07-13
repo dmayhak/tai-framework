@@ -67,17 +67,30 @@ export function createConfluenceDocStore(
     // spaceKey -> numeric spaceId. Confluence's v2 write APIs want the id, never the key.
     // Cached: it cannot change for the life of a session, and it's on the hot path for
     // every page creation.
+    //
+    // Confluence Cloud has a dual-key system: an immutable "system" key assigned at space
+    // creation, and an editable "alias" (what a human sees/renames in the UI — up to 10
+    // times). The `keys=` filter on this endpoint ALREADY resolves against the current
+    // alias, not just the system key (verified live: a space whose real system key is `TA1`
+    // is correctly returned by `?keys=TAIT`, its current alias). An earlier version of this
+    // function re-filtered that result with a strict `s.key === config.spaceKey` check,
+    // which threw the API's own correct match away and produced a confusing "space not
+    // found" whenever config used the human-visible alias instead of the hidden system key.
+    // Matching on either field is what makes config genuinely alias-or-key agnostic, which
+    // is the friendlier of the two options brief §4 (rev 18) left open after finding that
+    // `spaceKey` and the Jira `projectKey` are never safely derivable from each other.
     let spaceIdCache: string | undefined;
     async function spaceId(): Promise<string> {
         if (spaceIdCache) return spaceIdCache;
-        const res = await client.request<{ results: { id: string; key: string }[] }>(
-            "GET",
-            `${API}/spaces?keys=${encodeURIComponent(config.spaceKey)}`
+        const res = await client.request<{
+            results: { id: string; key: string; currentActiveAlias?: string }[];
+        }>("GET", `${API}/spaces?keys=${encodeURIComponent(config.spaceKey)}`);
+        const found = res.results.find(
+            (s) => s.key === config.spaceKey || s.currentActiveAlias === config.spaceKey
         );
-        const found = res.results.find((s) => s.key === config.spaceKey);
         if (!found) {
             throw new Error(
-                `Confluence space "${config.spaceKey}" not found. Note the space key is NOT the Jira project key (brief §4, rev 18) — check your config.`
+                `Confluence space "${config.spaceKey}" not found (checked by system key and by current alias). Space key and Jira project key are never safely derivable from each other (brief §4, rev 18) — double check your config.`
             );
         }
         spaceIdCache = found.id;

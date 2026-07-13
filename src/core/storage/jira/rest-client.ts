@@ -120,7 +120,12 @@ export interface RestClientOptions {
 }
 
 export class RestClient {
-    private readonly siteUrl: string;
+    /**
+     * Public: `WorkTracker.linkPage()` needs it to build a real page URL for Jira's
+     * remote-link API, which validates `object.url` as an actual URL — a bare page id isn't
+     * one, and Jira rejects it with a 400 (found by running the conformance suite, TAI-15).
+     */
+    readonly siteUrl: string;
     private readonly auth: AtlassianAuth;
     private readonly fetchImpl: typeof fetch;
 

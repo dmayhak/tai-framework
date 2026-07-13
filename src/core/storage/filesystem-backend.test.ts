@@ -91,6 +91,39 @@ describe("transitions and assignment", () => {
         });
     });
 
+    // Brief §5.5 (rev 19): no unassigned work in progress. Regression — this backend used
+    // to be unconditionally permissive, which diverged from the Jira backend's gate. Caught
+    // by the conformance suite (TAI-15).
+    test("blocks In Progress / In Review without an Assignee", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Needs an owner",
+            });
+            const inProgress = await workTracker.transition(issue.key, Status.InProgress);
+            assert.equal(inProgress.ok, false);
+            const inReview = await workTracker.transition(issue.key, Status.InReview);
+            assert.equal(inReview.ok, false);
+        });
+    });
+
+    test("allows In Progress / In Review once assigned; terminal states never need one", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Needs an owner",
+            });
+            const unassignedDone = await workTracker.transition(issue.key, Status.Done);
+            assert.equal(unassignedDone.ok, true, "terminal states are exempt from the gate");
+
+            await workTracker.assignIssue(issue.key, CURRENT_USER);
+            const started = await workTracker.transition(issue.key, Status.InProgress);
+            assert.equal(started.ok, true);
+        });
+    });
+
     test("getAvailableTransitions returns every Status", async () => {
         await withBackend(async ({ workTracker }) => {
             const issue = await workTracker.createIssue({
