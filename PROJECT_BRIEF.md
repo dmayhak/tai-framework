@@ -4,7 +4,19 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-12 (rev 16 — new **`Canceled`** status added to §5.3: a
+> **Last updated:** 2026-07-13 (rev 17 — **§3.2's transport changes: Jira/Confluence are
+> reached via the Atlassian REST API, not the Atlassian Remote MCP Server.** The MCP-server
+> design (revs 1–16) was tested live in Phase 4's opening spike (Jira `TAI-16`) and does not
+> work: auth succeeds headlessly, but the tool surface returned is three read-only Teamwork
+> Graph tools — no issue creation, no transitions, no comments, no pages. The real
+> Jira/Confluence tools sit behind interactive OAuth 2.1, which would leave CI and the
+> integration tests with no headless path. Direct REST works, needs zero new dependencies,
+> and drops a lossy translation layer. Critically, **`StorageBackend`/`WorkTracker`/`DocStore`
+> needed no change at all** — the Phase 3 abstraction absorbed the swap exactly as intended.
+> §3.2 also now carries a hazard note about third-party MCP wrappers (`mcp-atlassian`), whose
+> defects were catalogued the hard way while building TAI's own backlog through one. §10
+> updated to match.
+> Prior: rev 16 — new **`Canceled`** status added to §5.3: a
 > second terminal state for work abandoned before completion, available on every issue
 > type (story-level and subtasks alike). Gap found while cross-checking the real Jira
 > site's full status list — nothing to reuse — surfaced by `workflows/spike.md`'s
@@ -135,17 +147,45 @@ AI roles that Claude/Gemini assume to do work. Each persona:
 ### 3.2 Storage Plugin (Source of Truth)
 An abstraction with swappable backends:
 - **Jira** (default, source of truth) + **Confluence** (design docs), accessed via the
-  **Atlassian Remote MCP Server** (`https://mcp.atlassian.com`). The MCP server
-  authenticates *as the actual human user* and respects their existing Jira/Confluence
-  permissions — this is a feature, not a limitation: an AI persona acts with exactly the
-  authority of the human driving it.
+  **Atlassian REST API** (`/rest/api/3` for Jira, `/wiki/api/v2` for Confluence),
+  authenticated as the actual human user. Access respects that human's existing
+  Jira/Confluence permissions — a feature, not a limitation: an AI persona acts with exactly
+  the authority of the human driving it.
+  - **Auth (v1):** the human's own **API token** (`Authorization: Basic base64(email:token)`).
+    Works headlessly, which is what lets CI and the integration tests run without a browser.
+    **OAuth 2.1 (3LO)** can be layered on later if true per-user delegation is wanted; the
+    backend takes auth as an injected provider, so this is a config change, not a redesign.
+  - **Not the Atlassian Remote MCP Server** (`https://mcp.atlassian.com`) — this was the
+    original design (revs 1–16) and it does **not work** for TAI. Tested live (rev 17, Jira
+    `TAI-16`): authentication is fine (API-token Basic auth initializes cleanly over
+    streamable HTTP, no browser needed), but the tool surface returned under headless auth is
+    **three read-only Teamwork Graph tools** — `getTeamworkGraphContext`,
+    `getTeamworkGraphObject`, `addTeamworkGraphContext`. No `createIssue`, no `transition`,
+    no `addComment`, no `createPage`. The full Jira/Confluence tool surface appears to sit
+    behind interactive OAuth 2.1, which would leave CI and the integration tests with no
+    headless path at all. Going direct to REST also removes an entire lossy translation
+    layer — see the MCP-wrapper hazards note below.
 - **Local filesystem** fallback — a directory structure + naming convention that mimics the
   Jira hierarchy, for solo developers and offline work.
-- **Other systems** (Jira competitors) can be added via their own MCP servers, implementing
-  the same storage interface.
+- **Other systems** (Jira competitors) can be added via their own adapters (REST or MCP,
+  whichever that product actually offers), implementing the same storage interface.
 
 The storage interface contract is the single most important design artifact in the system.
-TypeScript interfaces enforce that every backend implements it identically.
+TypeScript interfaces enforce that every backend implements it identically — but note that
+**types enforce shape, not behavior.** A shared **conformance suite**, run against every
+backend, is what actually enforces identical behavior (Jira `TAI-15`).
+
+> **Hazard, for anyone driving Jira/Confluence through a third-party MCP wrapper**
+> (e.g. `mcp-atlassian`, which is what a Claude Code / Gemini session typically has
+> configured — a local Python server hitting REST with an API token; *not* Atlassian's own
+> remote server). Observed live while building TAI's own backlog through it: JQL errors are
+> **silently swallowed** (an invalid query returns `[]`, not an error — so "empty" is never
+> authoritative); `create` and `update` use **different description encodings** (`create`
+> stores the string raw and uninterpreted, `update` converts markdown → Jira wiki markup);
+> `create` was seen **corrupting** input nondeterministically (escaping `**`, eating `+`
+> characters); `create` responses **omit custom fields**, so a re-fetch is required; issue-link
+> direction is **inverted** from raw REST's convention; and Confluence comment editing has no
+> tool at all. TAI's own backend does not go through this layer, and must not inherit these.
 
 ### 3.3 Checkpoints
 Human oversight gates on work progression. **Critical constraint discovered during
@@ -920,8 +960,10 @@ each new persona to help build the next.
 
 - **Language:** TypeScript (strict), Node.js 20+, ESM.
 - **Runtimes targeted:** Claude Code and Gemini CLI first; Antigravity CLI later.
-- **Storage/integration:** Atlassian Remote MCP Server (OAuth 2.1, permission-respecting)
-  for Jira + Confluence; local filesystem adapter as fallback.
+- **Storage/integration:** Atlassian **REST API** (`/rest/api/3`, `/wiki/api/v2`),
+  authenticated as the human via API token (OAuth 2.1 3LO layerable later); local filesystem
+  adapter as fallback. Native `fetch` — no HTTP client dependency. **Not** the Atlassian
+  Remote MCP Server; see §3.2 for why that was tried and rejected (rev 17).
 - **Dev tooling:** `tsx` for watch/dev, `tsc` for build, ESLint + `@typescript-eslint`.
 - **Session bootstrap files:** `CLAUDE.md` and `GEMINI.md` at repo root both point every
   session to **read this brief first.**
