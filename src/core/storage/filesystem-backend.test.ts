@@ -20,6 +20,34 @@ async function withBackend(fn: (backend: StorageBackend) => Promise<void>): Prom
 }
 
 describe("issue CRUD", () => {
+    // REGRESSION (TAI-15 code review): real Jira structurally rejects a parentless subtask;
+    // this backend used to accept one silently — a portability trap for code developed and
+    // tested here that would only fail once it hit Jira.
+    test("rejects a subtask created with no parentKey", async () => {
+        await withBackend(async ({ workTracker }) => {
+            await assert.rejects(
+                () =>
+                    workTracker.createIssue({
+                        projectKey: "TAI",
+                        issueType: SubtaskType.Dev,
+                        summary: "Orphaned subtask",
+                    }),
+                /every subtask has a parent/
+            );
+        });
+    });
+
+    test("accepts a story-level issue with no parentKey (Epics/Stories don't require one)", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Top-level work",
+            });
+            assert.equal(issue.parentKey, undefined);
+        });
+    });
+
     test("create, get, and update round-trip", async () => {
         await withBackend(async ({ workTracker }) => {
             const created = await workTracker.createIssue({
@@ -65,6 +93,7 @@ describe("issue CRUD", () => {
                 const issue = await workTracker.createIssue({
                     projectKey: "TAI",
                     issueType: SubtaskType.Dev,
+                    parentKey: toIssueKey("TAI-0"),
                     summary: `Task ${i}`,
                 });
                 keys.push(issue.key);
@@ -99,6 +128,7 @@ describe("transitions and assignment", () => {
             const issue = await workTracker.createIssue({
                 projectKey: "TAI",
                 issueType: SubtaskType.Dev,
+                parentKey: toIssueKey("TAI-0"),
                 summary: "Needs an owner",
             });
             const inProgress = await workTracker.transition(issue.key, Status.InProgress);
@@ -113,6 +143,7 @@ describe("transitions and assignment", () => {
             const issue = await workTracker.createIssue({
                 projectKey: "TAI",
                 issueType: SubtaskType.Dev,
+                parentKey: toIssueKey("TAI-0"),
                 summary: "Needs an owner",
             });
             const unassignedDone = await workTracker.transition(issue.key, Status.Done);
@@ -141,6 +172,7 @@ describe("transitions and assignment", () => {
             const issue = await workTracker.createIssue({
                 projectKey: "TAI",
                 issueType: SubtaskType.Dev,
+                parentKey: toIssueKey("TAI-0"),
                 summary: "Implement",
             });
             const assigned = await workTracker.assignIssue(issue.key, CURRENT_USER);

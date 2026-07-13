@@ -35,6 +35,7 @@ defineStorageConformance("filesystem", async (): Promise<ConformanceHarness> => 
             strictWorkflow: false, // permissive by design — every Status reachable from every Status
             validatesAssignee: false, // no external directory to validate an assignee against
             answersPageToIssueLinks: true, // reads its own local link index directly
+            clearedDescriptionIsEmptyString: false, // genuinely clears to undefined
         },
         validAssignee: CURRENT_USER,
         invalidAssignee: NOBODY, // "invalid" has no meaning here; capability flag documents that

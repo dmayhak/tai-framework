@@ -12,7 +12,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { Status, type DependencyRelation } from "../schema/story-schema.js";
+import { Status, SubtaskType, DependencyRelation } from "../schema/story-schema.js";
 import {
     type StorageBackend,
     type WorkTracker,
@@ -35,7 +35,9 @@ import {
     toIssueKey,
     toPageId,
     StorageConnectivityError,
+    DEFAULT_SEARCH_LIMIT,
 } from "./interface.js";
+import { violatesAssignmentGate, entryGateReason, exitGateReason } from "./assignment-gate.js";
 
 // ---------- Path helpers ----------
 
@@ -107,6 +109,11 @@ function applyTriState<T>(current: T | undefined, patch: T | null | undefined): 
     if (patch === null) return undefined;
     return patch;
 }
+
+// The brief §5.5 assignment gate itself (violatesAssignmentGate/entryGateReason/
+// exitGateReason) lives in assignment-gate.ts, shared with jira/work-tracker.ts — TAI-15's
+// code review found the two backends' copies of this rule had already drifted textually,
+// concrete evidence that hand-duplicating it doesn't stay in sync. One implementation now.
 
 // JSON.stringify drops keys whose value is `undefined`, so a freshly-constructed
 // in-memory object (built from a CreateIssueInput/CreatePageInput where an optional
@@ -310,9 +317,20 @@ async function readDirAttachment(dir: string, id: string): Promise<Buffer> {
  * user rather than taking an author parameter per call (brief §3.2) — comments and
  * links created through this backend are always attributed to them.
  */
+// Every subtask has a parent Story/Bug/Kickoff/Spike (brief §5.1). Real Jira enforces this
+// structurally and rejects a parentless subtask outright. This backend previously accepted
+// one silently — a portability trap found by the conformance suite (TAI-15): code developed
+// and tested here could create parentless subtasks that would only fail once run against Jira.
+const SUBTASK_TYPES = new Set<string>(Object.values(SubtaskType));
+
 export function createFilesystemBackend(rootDir: string, currentUser: HumanRef): StorageBackend {
     const workTracker: WorkTracker = {
         async createIssue(input: CreateIssueInput): Promise<Issue> {
+            if (SUBTASK_TYPES.has(input.issueType) && !input.parentKey) {
+                throw new Error(
+                    `Cannot create a "${input.issueType}" subtask with no parentKey — every subtask has a parent (brief §5.1). Real Jira rejects this structurally; this backend now matches that rather than silently accepting it.`
+                );
+            }
             const dir = issuesDir(rootDir, input.projectKey);
             await mkdir(dir, { recursive: true });
             const key = await nextIssueKey(dir, input.projectKey);
@@ -345,6 +363,9 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async updateIssue(key: IssueKey, patch: IssuePatch): Promise<Issue> {
             const existing = await mustGetIssue(rootDir, key);
+            if (patch.assignee === null && violatesAssignmentGate(existing.status, null)) {
+                throw new Error(exitGateReason(key, existing.status));
+            }
             const updated: Issue = omitUndefined({
                 ...existing,
                 summary: patch.summary ?? existing.summary,
@@ -373,14 +394,8 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
         // can't catch.
         async transition(key: IssueKey, target: Status): Promise<MutationResult> {
             const existing = await mustGetIssue(rootDir, key);
-            if (
-                (target === Status.InProgress || target === Status.InReview) &&
-                existing.assignee === null
-            ) {
-                return {
-                    ok: false,
-                    reason: `${key} has no Assignee. A ticket must be assigned to a human before it can move to "${target}" (brief §5.5).`,
-                };
+            if (violatesAssignmentGate(target, existing.assignee)) {
+                return { ok: false, reason: entryGateReason(key, target) };
             }
             const updated: Issue = { ...existing, status: target, updatedAt: new Date().toISOString() };
             await writeIssueFile(rootDir, updated);
@@ -394,6 +409,9 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async assignIssue(key: IssueKey, human: HumanRef | null): Promise<MutationResult> {
             const existing = await mustGetIssue(rootDir, key);
+            if (violatesAssignmentGate(existing.status, human)) {
+                return { ok: false, reason: exitGateReason(key, existing.status) };
+            }
             const updated: Issue = { ...existing, assignee: human, updatedAt: new Date().toISOString() };
             await writeIssueFile(rootDir, updated);
             return { ok: true, issue: updated };
@@ -457,13 +475,30 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             direction: "outgoing" | "incoming" = "outgoing"
         ): Promise<readonly IssueLink[]> {
             const data = await readLinks(rootDir);
-            return data.issueLinks
-                .filter((l) => (relation ? l.relation === relation : true))
-                .filter((l) => (direction === "outgoing" ? l.from === key : l.to === key))
-                .map((l) => ({
-                    relation: l.relation,
-                    key: toIssueKey(direction === "outgoing" ? l.to : l.from),
-                }));
+            const out: IssueLink[] = [];
+            for (const l of data.issueLinks) {
+                if (relation && l.relation !== relation) continue;
+
+                // RelatesTo is symmetric (schema/story-schema.ts: "non-blocking association,
+                // informational only") — unlike DependsOn, direction has no meaning for it.
+                // REGRESSION this fixes (TAI-15 code review): this backend used to apply the
+                // same directional from/to filter to every relation, so getLinkedIssues for
+                // the identical RelatesTo link returned different results depending on which
+                // direction was requested, while the Jira backend already treats it
+                // symmetrically — return the far end regardless of which slot it's in.
+                if (l.relation === DependencyRelation.RelatesTo) {
+                    if (l.from === key) out.push({ relation: l.relation, key: toIssueKey(l.to) });
+                    else if (l.to === key) out.push({ relation: l.relation, key: toIssueKey(l.from) });
+                    continue;
+                }
+
+                if (direction === "outgoing" && l.from === key) {
+                    out.push({ relation: l.relation, key: toIssueKey(l.to) });
+                } else if (direction === "incoming" && l.to === key) {
+                    out.push({ relation: l.relation, key: toIssueKey(l.from) });
+                }
+            }
+            return out;
         },
 
         async linkPage(key: IssueKey, page: PageId): Promise<void> {
@@ -489,7 +524,7 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async search(filter: IssueFilter): Promise<readonly Issue[]> {
             const issues = await readJsonDir<Issue>(issuesDir(rootDir, filter.projectKey));
-            let results = issues.filter((i) => {
+            const results = issues.filter((i) => {
                 if (filter.issueTypes && !filter.issueTypes.includes(i.issueType)) return false;
                 if (filter.statuses && !filter.statuses.includes(i.status)) return false;
                 if (filter.assignee && i.assignee?.id !== filter.assignee) return false;
@@ -498,8 +533,7 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 if (filter.updatedSince && i.updatedAt < filter.updatedSince) return false;
                 return true;
             });
-            if (filter.limit !== undefined) results = results.slice(0, filter.limit);
-            return results;
+            return results.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);
         },
     };
 

@@ -34,6 +34,15 @@ export interface ConfluenceDocStoreConfig {
      * very project turned out to be Jira `TAI` / Confluence `TA` — Confluence mints a space
      * key from the space *name* and may shorten it, and a human can rename it afterwards.
      * It is separate config.
+     *
+     * NOT USED TO RESOLVE ANY OPERATION BELOW (fixed — TAI-15 code review). Every `PageRef`/
+     * `CreatePageInput` in interface.ts is self-sufficient: `{id}` needs no space at all, and
+     * `{spaceKey, title}` / `CreatePageInput.spaceKey` always carries its own. An earlier
+     * version of this file resolved every call against THIS value regardless of what the
+     * caller actually asked for — so a caller requesting a different space silently got data
+     * from (or written to) the configured one instead. This field is kept only as descriptive
+     * default config for whatever future caller needs "this project's home space" without
+     * itself tracking one; no method here reads it anymore.
      */
     readonly spaceKey: string;
     readonly mermaid?: MermaidConfig;
@@ -64,43 +73,54 @@ export function createConfluenceDocStore(
 ): DocStore {
     const mermaid = config.mermaid ?? TAI_DEV_MERMAID;
 
-    // spaceKey -> numeric spaceId. Confluence's v2 write APIs want the id, never the key.
-    // Cached: it cannot change for the life of a session, and it's on the hot path for
-    // every page creation.
+    // key/alias -> numeric spaceId, AND the reverse (numeric id -> canonical key), each keyed
+    // per-space rather than a single flat value — TAI-15's code review found the earlier
+    // single-cache version silently ignored a caller-supplied space that differed from
+    // whatever was configured. Both directions are cached: resolution is on the hot path for
+    // every page creation/lookup, and it cannot change for the life of a session.
     //
     // Confluence Cloud has a dual-key system: an immutable "system" key assigned at space
     // creation, and an editable "alias" (what a human sees/renames in the UI — up to 10
     // times). The `keys=` filter on this endpoint ALREADY resolves against the current
     // alias, not just the system key (verified live: a space whose real system key is `TA1`
-    // is correctly returned by `?keys=TAIT`, its current alias). An earlier version of this
-    // function re-filtered that result with a strict `s.key === config.spaceKey` check,
-    // which threw the API's own correct match away and produced a confusing "space not
-    // found" whenever config used the human-visible alias instead of the hidden system key.
-    // Matching on either field is what makes config genuinely alias-or-key agnostic, which
-    // is the friendlier of the two options brief §4 (rev 18) left open after finding that
-    // `spaceKey` and the Jira `projectKey` are never safely derivable from each other.
-    let spaceIdCache: string | undefined;
-    async function spaceId(): Promise<string> {
-        if (spaceIdCache) return spaceIdCache;
+    // is correctly returned by `?keys=TAIT`, its current alias). Matching on either field is
+    // what makes lookups genuinely alias-or-key agnostic — the friendlier of the two options
+    // brief §4 (rev 18) left open after finding `spaceKey` and the Jira `projectKey` are
+    // never safely derivable from each other.
+    const spaceIdByKey = new Map<string, string>();
+    const spaceKeyById = new Map<string, string>();
+
+    async function resolveSpaceId(key: string): Promise<string> {
+        const cached = spaceIdByKey.get(key);
+        if (cached) return cached;
         const res = await client.request<{
             results: { id: string; key: string; currentActiveAlias?: string }[];
-        }>("GET", `${API}/spaces?keys=${encodeURIComponent(config.spaceKey)}`);
-        const found = res.results.find(
-            (s) => s.key === config.spaceKey || s.currentActiveAlias === config.spaceKey
-        );
+        }>("GET", `${API}/spaces?keys=${encodeURIComponent(key)}`);
+        const found = res.results.find((s) => s.key === key || s.currentActiveAlias === key);
         if (!found) {
             throw new Error(
-                `Confluence space "${config.spaceKey}" not found (checked by system key and by current alias). Space key and Jira project key are never safely derivable from each other (brief §4, rev 18) — double check your config.`
+                `Confluence space "${key}" not found (checked by system key and by current alias). Space key and Jira project key are never safely derivable from each other (brief §4, rev 18) — double check your config.`
             );
         }
-        spaceIdCache = found.id;
-        return spaceIdCache;
+        spaceIdByKey.set(key, found.id);
+        spaceKeyById.set(found.id, found.key);
+        return found.id;
     }
 
-    function toPage(raw: RawPage): Page {
+    /** The reverse of resolveSpaceId — needed so a Page reports the space it's ACTUALLY in,
+     *  not whichever space happened to be configured at construction time. */
+    async function resolveSpaceKeyForId(id: string): Promise<string> {
+        const cached = spaceKeyById.get(id);
+        if (cached) return cached;
+        const space = await client.request<{ key: string }>("GET", `${API}/spaces/${id}`);
+        spaceKeyById.set(id, space.key);
+        return space.key;
+    }
+
+    async function toPage(raw: RawPage): Promise<Page> {
         return {
             id: toPageId(raw.id),
-            spaceKey: config.spaceKey,
+            spaceKey: await resolveSpaceKeyForId(raw.spaceId),
             title: raw.title,
             content: storageToMarkdown(raw.body?.storage?.value ?? ""),
             ...(raw.parentId ? { parentId: toPageId(raw.parentId) } : {}),
@@ -128,10 +148,16 @@ export function createConfluenceDocStore(
         };
     }
 
-    /** Resolve a PageRef to a concrete id. Title lookup is a search within the space. */
+    /**
+     * Resolve a PageRef to a concrete id. Title lookup is a search within THE SPACE THE
+     * CALLER ASKED FOR (`ref.spaceKey`) — never a single configured space. This is the fix:
+     * an earlier version always searched `config.spaceKey` regardless of what `ref` said,
+     * so a caller requesting a different space either silently got the wrong space's page or
+     * a false 404, with no error surfacing the mismatch.
+     */
     async function resolveId(ref: PageRef): Promise<PageId | null> {
         if ("id" in ref) return ref.id;
-        const sid = await spaceId();
+        const sid = await resolveSpaceId(ref.spaceKey);
         const res = await client.request<{ results: { id: string; title: string }[] }>(
             "GET",
             `${API}/spaces/${sid}/pages?title=${encodeURIComponent(ref.title)}&limit=250`
@@ -160,7 +186,7 @@ export function createConfluenceDocStore(
     return {
         async createPage(input: CreatePageInput): Promise<Page> {
             const created = await client.request<RawPage>("POST", `${API}/pages`, {
-                spaceId: await spaceId(),
+                spaceId: await resolveSpaceId(input.spaceKey),
                 title: input.title,
                 ...(input.parentId ? { parentId: input.parentId } : {}),
                 body: {

@@ -236,7 +236,11 @@ export function toIssue(raw: RawIssue, personaFieldId: string): Issue {
         projectKey: f.project.key,
         issueType: fromJiraIssueType(f.issuetype.name),
         summary: f.summary,
-        ...(f.description ? { description: f.description } : {}),
+        // Explicit presence check, not truthy — a falsy check would collapse an
+        // intentionally-cleared description ("") to the same undefined as a missing one,
+        // breaking round-trip fidelity for a value IssuePatch's tri-state contract treats as
+        // meaningful (found by the conformance suite, TAI-15).
+        ...(f.description !== undefined && f.description !== null ? { description: f.description } : {}),
         status: fromJiraStatus(f.status.name),
         assignee: toHumanRef(f.assignee),
         persona: personaRaw?.value ? fromJiraPersona(personaRaw.value) : null,

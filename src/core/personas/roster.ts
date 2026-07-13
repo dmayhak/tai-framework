@@ -162,8 +162,25 @@ export function parseRoster(markdown: string): Roster {
 
     const header = tableCells(lines[start]!)!.map(normLabel);
     const personaCol = header.indexOf("persona");
-    // The humans column is "the other one" — accept any header, since teams rename it.
-    const humansCol = personaCol === 0 ? 1 : 0;
+
+    // Prefer a NAME-based match for the humans column ("authorized humans", "humans",
+    // "assignees", ...) rather than assuming it's simply "the other column" — that
+    // assumption silently breaks the moment the table gains a third column (found by the
+    // conformance suite / code review, TAI-15): personaCol !== 0 would hardcode humansCol to
+    // 0 regardless of how many other columns exist, reading the wrong cell with no error.
+    let humansCol = header.findIndex((h, idx) => idx !== personaCol && /human|assignee/.test(h));
+    if (humansCol === -1) {
+        if (header.length === 2) {
+            // Exactly two columns and neither matched by name (a team renamed it to
+            // something this heuristic doesn't recognise) — "the other column" is still
+            // unambiguous here, so this narrow fallback is safe.
+            humansCol = personaCol === 0 ? 1 : 0;
+        } else {
+            throw new Error(
+                `Persona Roster table has ${header.length} columns and none look like an authorized-humans column (expected one containing "human" or "assignee"). Refusing to guess which column to read — that could silently deny every review gate.`
+            );
+        }
+    }
 
     for (let i = start + 2; i < lines.length; i++) {
         const cells = tableCells(lines[i]!);

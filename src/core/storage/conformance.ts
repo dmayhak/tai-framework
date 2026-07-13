@@ -65,6 +65,16 @@ export interface StorageCapabilities {
      * it throws, and that throw is asserted here, not swallowed.
      */
     readonly answersPageToIssueLinks: boolean;
+
+    /**
+     * Does clearing `description` (via `IssuePatch.description: null`) read back as `""`
+     * rather than `undefined`? Found by running this suite against live Jira: Jira's own
+     * storage does not distinguish "no description" from "empty description" through this
+     * write path — the filesystem backend has no such limitation and genuinely clears to
+     * `undefined`. `false` here means the backend can represent true absence; `true` means
+     * "cleared" and "explicitly emptied" collapse to the same thing on read.
+     */
+    readonly clearedDescriptionIsEmptyString: boolean;
 }
 
 // ---------- Harness: what each backend supplies to run the shared suite ----------
@@ -207,9 +217,17 @@ export function defineStorageConformance(
                 assert.equal(untouched.description, "keep me", "omitting description must leave it alone");
                 assert.equal(untouched.priority, "High", "omitting priority must leave it alone");
 
-                // null -> cleared
+                // null -> cleared. What "cleared" reads back as is a genuine capability
+                // difference, found by running this against live Jira: Jira's own storage
+                // does not distinguish "no description" from "empty description" through this
+                // write path — clearing via null reads back as "", not absent. The filesystem
+                // backend has no such limitation and genuinely clears to undefined.
                 const cleared = await h.backend.workTracker.updateIssue(issue.key, { description: null });
-                assert.equal(cleared.description, undefined, "null must clear description");
+                assert.equal(
+                    cleared.description,
+                    h.capabilities.clearedDescriptionIsEmptyString ? "" : undefined,
+                    "null must clear description (to undefined, or to \"\" where the backend can't represent true absence)"
+                );
 
                 // a value -> set
                 const reset = await h.backend.workTracker.updateIssue(issue.key, {

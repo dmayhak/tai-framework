@@ -85,6 +85,37 @@ describe("parseRoster", () => {
         assert.equal(roster.humansFor(Persona.UxDesigner)[0]?.email, "d@e.co");
     });
 
+    /**
+     * REGRESSION SUITE (TAI-15 code review). The humans column used to be picked purely by
+     * position ("whichever column isn't Persona"), which silently reads the wrong cell the
+     * moment the table has a third column, or is reordered in a way that heuristic doesn't
+     * anticipate. It's now name-based (looks for "human"/"assignee" in the header).
+     */
+    it("finds the humans column by name when a third column is added", () => {
+        const md =
+            "| Persona | Notes | Authorized humans |\n| --- | --- | --- |\n| PM | some note | p@m.co |";
+        const roster = parseRoster(md);
+        assert.equal(roster.humansFor(Persona.Pm)[0]?.email, "p@m.co");
+    });
+
+    it("finds the humans column by name regardless of column order", () => {
+        const md = "| Notes | Authorized humans | Persona |\n| --- | --- | --- |\n| x | p@m.co | PM |";
+        const roster = parseRoster(md);
+        assert.equal(roster.humansFor(Persona.Pm)[0]?.email, "p@m.co");
+    });
+
+    it("still falls back to 'the other column' for an unrecognised 2-column header", () => {
+        // Exactly 2 columns, neither named "human"/"assignee" — still unambiguous.
+        const md = "| Persona | Owner |\n| --- | --- |\n| PM | p@m.co |";
+        const roster = parseRoster(md);
+        assert.equal(roster.humansFor(Persona.Pm)[0]?.email, "p@m.co");
+    });
+
+    it("refuses to guess for 3+ columns with no recognisable humans column", () => {
+        const md = "| Persona | Notes | Other |\n| --- | --- | --- |\n| PM | x | y |";
+        assert.throws(() => parseRoster(md), /none look like an authorized-humans column/);
+    });
+
     it("supports one human under multiple personas (solo/small-team)", () => {
         const roster = parseRoster(LIVE_ROSTER);
         const personas = roster.personasFor({ id: toHumanId("x"), email: "del@mayhak.com" });

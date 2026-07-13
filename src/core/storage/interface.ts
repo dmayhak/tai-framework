@@ -128,9 +128,24 @@ export interface IssueFilter {
     readonly updatedSince?: string; // ISO — powers brief §7's bulk incremental-sync case
     // Bounds result size. Full cursor pagination is deferred (documented, not built —
     // no real project is anywhere near needing it yet); a Jira-backed implementation
-    // can page internally up to this bound without violating the interface.
+    // can page internally up to this bound without violating the interface. When omitted,
+    // every backend applies DEFAULT_SEARCH_LIMIT below — never "everything."
     readonly limit?: number;
 }
+
+/**
+ * The limit search() applies when a caller passes no `limit`. EVERY backend must use this
+ * same default — a caller doing a full scan with no limit specified must get the same
+ * result size regardless of which backend answers.
+ *
+ * REGRESSION this fixes (TAI-15 code review): the filesystem backend used to return every
+ * matching issue unbounded when `limit` was omitted, while the Jira backend capped at 50 —
+ * real Jira has no unbounded fetch to offer (full cursor pagination is the deferred feature
+ * noted above), so "unbounded" was never actually achievable on both backends, only one.
+ * A caller relying on "no limit means everything" would silently get truncated results the
+ * moment the same code ran against Jira.
+ */
+export const DEFAULT_SEARCH_LIMIT = 50;
 
 export interface IssueLink {
     readonly relation: DependencyRelation;

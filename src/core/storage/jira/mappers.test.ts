@@ -190,6 +190,24 @@ describe("toIssue", () => {
         assert.equal(issue.priority, "High");
     });
 
+    it("preserves an explicitly-cleared empty-string description (not the same as absent)", () => {
+        // REGRESSION: a truthy check used to collapse description: "" to the same undefined
+        // as a missing/null description, losing the distinction IssuePatch's tri-state
+        // contract says matters (a patch CAN legitimately set description to "").
+        const issue = toIssue(rawIssue({ description: "" }), PERSONA_FIELD);
+        assert.equal(issue.description, "");
+    });
+
+    it("still treats a missing description as absent", () => {
+        const issue = toIssue(rawIssue({ description: undefined }), PERSONA_FIELD);
+        assert.equal(issue.description, undefined);
+    });
+
+    it("still treats a null description as absent", () => {
+        const issue = toIssue(rawIssue({ description: null }), PERSONA_FIELD);
+        assert.equal(issue.description, undefined);
+    });
+
     it("maps comments inline (they are part of the issue payload, brief §7)", () => {
         const issue = toIssue(
             rawIssue({

@@ -29,8 +29,10 @@ import {
     type PageId,
     toIssueKey,
     toPageId,
+    DEFAULT_SEARCH_LIMIT,
 } from "../interface.js";
 import { RestClient, JiraRejection } from "./rest-client.js";
+import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
 import {
     type RawIssue,
     type RawComment,
@@ -178,6 +180,12 @@ export function createJiraWorkTracker(
         },
 
         async updateIssue(key: IssueKey, patch: IssuePatch): Promise<Issue> {
+            if (patch.assignee === null) {
+                const current = await fetchIssue(key);
+                if (violatesAssignmentGate(current.status, null)) {
+                    throw new JiraRejection(exitGateReason(key, current.status), 409);
+                }
+            }
             await client.request("PUT", `${API}/issue/${key}`, {
                 fields: toJiraFields(patch),
             });
@@ -203,13 +211,15 @@ export function createJiraWorkTracker(
                 // with nobody accountable is the failure mode this framework exists to prevent,
                 // and it's invisible on a board. Terminal states (Done/Canceled) are exempt:
                 // once work has stopped, an owner no longer matters.
+                // Only fetch the issue when the target is actually gated — avoids an extra
+                // round trip on every ordinary transition (Done/Canceled/To Do), and avoids
+                // a regression found while fixing this: an earlier version fetched
+                // unconditionally, which broke on any transition target with no assignee
+                // data available yet.
                 if (target === Status.InProgress || target === Status.InReview) {
                     const current = await fetchIssue(key);
-                    if (current.assignee === null) {
-                        throw new JiraRejection(
-                            `${key} has no Assignee. A ticket must be assigned to a human before it can move to "${target}" (brief §5.5). Assign it, or let the assignment-helper surface candidates for its persona.`,
-                            409
-                        );
+                    if (violatesAssignmentGate(target, current.assignee)) {
+                        throw new JiraRejection(entryGateReason(key, target), 409);
                     }
                 }
 
@@ -249,6 +259,12 @@ export function createJiraWorkTracker(
          */
         async assignIssue(key: IssueKey, human: HumanRef | null): Promise<MutationResult> {
             return asMutation(async () => {
+                if (human === null) {
+                    const current = await fetchIssue(key);
+                    if (violatesAssignmentGate(current.status, null)) {
+                        throw new JiraRejection(exitGateReason(key, current.status), 409);
+                    }
+                }
                 await client.request("PUT", `${API}/issue/${key}/assignee`, {
                     accountId: human ? human.id : null,
                 });
@@ -407,7 +423,7 @@ export function createJiraWorkTracker(
             const res = await client.request<{ issues: RawIssue[] }>("POST", `${API}/search/jql`, {
                 jql,
                 fields: fields.split(","),
-                maxResults: filter.limit ?? 50,
+                maxResults: filter.limit ?? DEFAULT_SEARCH_LIMIT,
             });
             // Note: this endpoint paginates with `nextPageToken`/`isLast`. Cursor pagination is
             // deliberately deferred (interface.ts: `limit` bounds the result; no real project is

@@ -88,6 +88,9 @@ defineStorageConformance(
                 strictWorkflow: false,
                 validatesAssignee: true, // Jira rejects a nonexistent accountId — verified live
                 answersPageToIssueLinks: false, // Jira owns the remote link; no reverse index exists
+                // Verified live: PUT description:null reads back as "", not absent — Jira's
+                // own storage has no true "no description" state distinct from "empty".
+                clearedDescriptionIsEmptyString: true,
             },
             validAssignee,
             invalidAssignee,
