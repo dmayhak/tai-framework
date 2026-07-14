@@ -4,7 +4,27 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-13 (rev 17 — **§3.2's transport changes: Jira/Confluence are
+> **Last updated:** 2026-07-13 (rev 19 — **§5.5 gains a hard assignment gate: a ticket must
+> have a human `Assignee` before it may leave `To Do`.** Work in progress with nobody
+> accountable for it is the exact failure mode this framework exists to prevent (§1), and it
+> is invisible on a board. Enforced centrally in the storage plugin's `transition` operation
+> alongside the existing checkpoint checks — an ordinary blocked checkpoint, not §3.3's
+> unplanned-checkpoint/escalation path. Paired with a **pre-assign-at-creation** rule: when a
+> ticket's `persona` resolves to exactly ONE authorized human in the Persona Roster (a solo
+> developer; a team with a single PM), TAI sets `Assignee` at creation rather than deferring
+> to a claim. With more than one candidate it does not guess — it falls back to the §5.6
+> assignment-helper.
+> Prior: rev 18 — **§4's "the Confluence space key matches the Jira
+> project key" rule (rev 11) is wrong and is withdrawn.** TAI's own space is keyed `TA`, not
+> `TAI`: Confluence derives a space key from the space *name* at creation and may shorten or
+> disambiguate it, and a human can rename it later — so the two drift for reasons outside
+> TAI's control. It went unnoticed for six revisions because the MCP tooling resolves spaces
+> by *name*, masking the mismatch. `projectKey` and `spaceKey` are now separate config values
+> that the storage backend takes independently; nothing may derive one from the other. Also
+> corrects rev 17's hazard note, which wrongly claimed the `mcp-atlassian` wrapper inverts
+> issue-link direction — it does not; that was a misreading of Atlassian's docs. Ground truth,
+> verified live: for the `Blocks` type, the **inward** issue blocks the **outward** one.
+> Prior: rev 17 — **§3.2's transport changes: Jira/Confluence are
 > reached via the Atlassian REST API, not the Atlassian Remote MCP Server.** The MCP-server
 > design (revs 1–16) was tested live in Phase 4's opening spike (Jira `TAI-16`) and does not
 > work: auth succeeds headlessly, but the tool surface returned is three read-only Teamwork
@@ -183,9 +203,14 @@ backend, is what actually enforces identical behavior (Jira `TAI-15`).
 > authoritative); `create` and `update` use **different description encodings** (`create`
 > stores the string raw and uninterpreted, `update` converts markdown → Jira wiki markup);
 > `create` was seen **corrupting** input nondeterministically (escaping `**`, eating `+`
-> characters); `create` responses **omit custom fields**, so a re-fetch is required; issue-link
-> direction is **inverted** from raw REST's convention; and Confluence comment editing has no
-> tool at all. TAI's own backend does not go through this layer, and must not inherit these.
+> characters); `create` responses **omit custom fields**, so a re-fetch is required; and
+> Confluence comment editing has no tool at all. TAI's own backend does not go through this
+> layer, and must not inherit these.
+>
+> *(Corrected: an earlier revision of this note also claimed the wrapper inverted issue-link
+> direction. It does not — it passes `inwardIssue`/`outwardIssue` through faithfully. The
+> error was in reading Atlassian's docs, not in the wrapper. Ground truth, verified against
+> the live API: for the `Blocks` link type, the **inward** issue blocks the **outward** one.)*
 
 ### 3.3 Checkpoints
 Human oversight gates on work progression. **Critical constraint discovered during
@@ -436,8 +461,17 @@ These are settled. Change them deliberately and update this file if you do.
   Jira issue key (§6) is used to look up the touched repo and auto-populate Component; a
   human or persona can still set/correct it manually before any commit exists yet (e.g. at
   subtask creation, or if the automation can't resolve it).
-- **Confluence:** one Confluence space per Jira project — **the space key matches the
-  Jira project key** (rev 11; e.g. Jira project `PROJ` gets Confluence space `PROJ`).
+- **Confluence:** one Confluence space per Jira project. The space key is **configured, not
+  derived** — it is **not** safe to assume it equals the Jira project key.
+  - *Corrected (rev 18).* Rev 11 asserted "the space key matches the Jira project key"
+    (`PROJ` → `PROJ`). That is **false in practice, and false on this very project**: TAI's
+    own Confluence space is keyed **`TA`**, not `TAI`. Confluence derives a space key from
+    the space *name* at creation time and will happily shorten or disambiguate it, and a
+    human can rename it afterwards — so the two keys drift for reasons entirely outside
+    TAI's control. The mismatch went unnoticed for six revisions because the MCP tooling
+    resolves a space by *name*, silently masking it. Any code that computes a space key from
+    a project key is therefore wrong: **`projectKey` and `spaceKey` are separate config
+    values**, and the storage backend takes both.
   Pages link to the Jira item that **needs that page as input.** Pages tie to the
   **parent** issue (Story or Epic — whichever the content is actually scoped to; e.g. an
   Epic-level decomposition proposal ties to the Epic itself, while a Kickoff's PRD/UX
@@ -641,9 +675,33 @@ etc., differentiated by their type and their subtasks.
 ### 5.5 Assignment & Claiming
 - Jira **Assignee is a real human.** Our plugin layer (not Jira) enforces "act on tickets
   assigned to you, or claim an unassigned 'ready' ticket first."
+- **No unassigned work in progress (rev 19).** A ticket **must have a human `Assignee`
+  before it may leave `To Do`** — for *any* non-terminal onward status (`In Progress`,
+  `In Review`). This is a **hard gate, enforced in the storage plugin's `transition`
+  operation** (§3.3), alongside the checkpoint checks that already live there — not
+  re-implemented per persona.
+  - **Why a hard gate and not a nudge:** the entire premise of the framework is that a
+    *named human* oversees the AI persona doing the work (§1). Work that is in progress with
+    nobody accountable for it is precisely the failure mode Team AI exists to prevent — and
+    it is invisible on a board, because an unassigned in-progress ticket looks like
+    everything else. Unlike `Canceled`/`Done` (terminal, where an owner no longer matters),
+    an in-flight ticket always has someone answerable for it.
+  - **Rejection shape:** attempting such a transition fails the same way any other blocked
+    transition does — the storage layer returns a `MutationResult` rejection with a reason,
+    and the caller surfaces it. It is an ordinary blocked checkpoint, **not** the §3.3
+    unplanned-checkpoint/escalation path (nothing surprising happened; the rule is known).
+- **Pre-assign at creation when the assignee is unambiguous (rev 19).** When a ticket's
+  `persona` (§5.6) resolves to **exactly one** authorized human in the Persona Roster, TAI
+  sets `Assignee` **at creation time** rather than leaving it to be claimed later. Common
+  cases: a solo developer (every persona maps to the same one person), or a team with a
+  single PM/DBA/etc. When the roster lists **more than one** candidate for that persona,
+  TAI does **not** guess — it falls back to the assignment-helper (§5.6): surface the
+  candidates with their lightweight load signals and let the human driving the session pick.
 - Ready, unassigned tickets are **claimable.** People *should* work their own tickets, but
-  we deliberately do **not** hard-lock this — people take time off, need help, hand work
-  off. So a branch for some work may already exist in the repo from a prior owner.
+  we deliberately do **not** hard-lock *who* may pick a ticket up — people take time off,
+  need help, hand work off. (Distinct from the rule above, which lock*s* that *somebody* is
+  assigned, not *which* somebody.) So a branch for some work may already exist in the repo
+  from a prior owner.
 - **On claiming a ticket where a branch already exists:** prompt the user to either
   **fetch/continue the existing branch** or **create a new one.**
 

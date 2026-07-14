@@ -39,6 +39,25 @@ export const DEFAULT_PERSONA_DISPLAY_NAME: Record<Persona, string> = {
     [Persona.DevOps]: "Duncan",
 };
 
+// Canonical human-readable ROLE labels — distinct from the friendly names above.
+// This is the single source for "what a role is called in prose": the label that appears
+// in the Persona Roster's `Persona` column (§5.6) AND the option strings provisioned for
+// the Jira `Persona` custom field. Both must agree, so they read from here rather than each
+// hardcoding their own copy (the two entries that don't fall out of the enum value
+// mechanically — "UX Designer", "Code Reviewer", "DBA", "PM" — are exactly where independent
+// copies would drift).
+export const PERSONA_ROLE_LABEL: Record<Persona, string> = {
+    [Persona.Analyst]: "Analyst",
+    [Persona.Pm]: "PM",
+    [Persona.Architect]: "Architect",
+    [Persona.UxDesigner]: "UX Designer",
+    [Persona.Developer]: "Developer",
+    [Persona.Dba]: "DBA",
+    [Persona.CodeReviewer]: "Code Reviewer",
+    [Persona.Tester]: "Tester",
+    [Persona.DevOps]: "DevOps",
+};
+
 // ---------- Story Types ----------
 
 export enum StoryType {

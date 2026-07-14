@@ -20,6 +20,34 @@ async function withBackend(fn: (backend: StorageBackend) => Promise<void>): Prom
 }
 
 describe("issue CRUD", () => {
+    // REGRESSION (TAI-15 code review): real Jira structurally rejects a parentless subtask;
+    // this backend used to accept one silently — a portability trap for code developed and
+    // tested here that would only fail once it hit Jira.
+    test("rejects a subtask created with no parentKey", async () => {
+        await withBackend(async ({ workTracker }) => {
+            await assert.rejects(
+                () =>
+                    workTracker.createIssue({
+                        projectKey: "TAI",
+                        issueType: SubtaskType.Dev,
+                        summary: "Orphaned subtask",
+                    }),
+                /every subtask has a parent/
+            );
+        });
+    });
+
+    test("accepts a story-level issue with no parentKey (Epics/Stories don't require one)", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Top-level work",
+            });
+            assert.equal(issue.parentKey, undefined);
+        });
+    });
+
     test("create, get, and update round-trip", async () => {
         await withBackend(async ({ workTracker }) => {
             const created = await workTracker.createIssue({
@@ -65,6 +93,7 @@ describe("issue CRUD", () => {
                 const issue = await workTracker.createIssue({
                     projectKey: "TAI",
                     issueType: SubtaskType.Dev,
+                    parentKey: toIssueKey("TAI-0"),
                     summary: `Task ${i}`,
                 });
                 keys.push(issue.key);
@@ -91,6 +120,41 @@ describe("transitions and assignment", () => {
         });
     });
 
+    // Brief §5.5 (rev 19): no unassigned work in progress. Regression — this backend used
+    // to be unconditionally permissive, which diverged from the Jira backend's gate. Caught
+    // by the conformance suite (TAI-15).
+    test("blocks In Progress / In Review without an Assignee", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: toIssueKey("TAI-0"),
+                summary: "Needs an owner",
+            });
+            const inProgress = await workTracker.transition(issue.key, Status.InProgress);
+            assert.equal(inProgress.ok, false);
+            const inReview = await workTracker.transition(issue.key, Status.InReview);
+            assert.equal(inReview.ok, false);
+        });
+    });
+
+    test("allows In Progress / In Review once assigned; terminal states never need one", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const issue = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: toIssueKey("TAI-0"),
+                summary: "Needs an owner",
+            });
+            const unassignedDone = await workTracker.transition(issue.key, Status.Done);
+            assert.equal(unassignedDone.ok, true, "terminal states are exempt from the gate");
+
+            await workTracker.assignIssue(issue.key, CURRENT_USER);
+            const started = await workTracker.transition(issue.key, Status.InProgress);
+            assert.equal(started.ok, true);
+        });
+    });
+
     test("getAvailableTransitions returns every Status", async () => {
         await withBackend(async ({ workTracker }) => {
             const issue = await workTracker.createIssue({
@@ -108,6 +172,7 @@ describe("transitions and assignment", () => {
             const issue = await workTracker.createIssue({
                 projectKey: "TAI",
                 issueType: SubtaskType.Dev,
+                parentKey: toIssueKey("TAI-0"),
                 summary: "Implement",
             });
             const assigned = await workTracker.assignIssue(issue.key, CURRENT_USER);
