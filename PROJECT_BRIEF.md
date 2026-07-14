@@ -4,7 +4,15 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-13 (rev 19 — **§5.5 gains a hard assignment gate: a ticket must
+> **Last updated:** 2026-07-14 (rev 20 — **two new open questions captured, not yet
+> designed:** §8.19, the git-hosting layer (Bitbucket/GitHub) must be pluggable like the
+> Storage Plugin (§3.2), not hardcoded to whichever host TAI's own repo happens to use; and
+> §8.20, the Develop→CodeReview→Merge/Deploy chain (§5.4) should operate on a real git pull
+> request, not stay Jira-subtask-only — the Developer persona's work should end by opening
+> an actual PR, and the Code Reviewer persona should approve/request-changes on that PR.
+> Both flagged during Bitbucket Pipelines CI setup; see §6 and §8 for the open-question
+> text.
+> Prior: rev 19 — **§5.5 gains a hard assignment gate: a ticket must
 > have a human `Assignee` before it may leave `To Do`.** Work in progress with nobody
 > accountable for it is the exact failure mode this framework exists to prevent (§1), and it
 > is invisible on a board. Enforced centrally in the storage plugin's `transition` operation
@@ -791,6 +799,14 @@ comment's content.
 
 ## 6. Source Control / Branching Model
 
+- **Git host is pluggable (rev 20, open item, §8.19):** TAI's own repo happens to be on
+  Bitbucket, but that must not be baked in — Bitbucket and GitHub both need to be
+  first-class targets, mirroring the Storage Plugin pattern (§3.2). Not yet designed.
+- **The CodeReview checkpoint must act on a real git PR (rev 20, open item, §8.20):** the
+  Develop→CodeReview→Merge/Deploy chain below is currently Jira-subtask-only. The dev
+  process should end by opening an actual pull request on the git host, and the Code
+  Reviewer persona's review should approve/request-changes on that real PR. Not yet
+  designed.
 - **Branch unit:** parent Story/Bug. Name = parent issue key + very short slug
   (e.g. `PROJ-123-user-login`).
 - **Subtasks accumulate** onto their parent Story's branch; they do not get their own
@@ -991,6 +1007,22 @@ Carry these forward; resolve them in upcoming design sessions.
     how a conflict between the roster and hand-edited native roles is resolved. Not
     required for the registry to function; purely an optional native-Jira visibility/
     defense-in-depth enhancement once scheduled.
+19. **Git-hosting plugin abstraction (rev 20, §6):** end users should be able to use
+    Bitbucket **or** GitHub — the git host must be pluggable, not hardcoded to whichever
+    one TAI's own repo happens to use, mirroring the Storage Plugin pattern (§3.2): one
+    interface contract, swappable backends. Undesigned: what operations the interface
+    needs to expose (PR create/get/merge/approve/comment, branch/commit status, etc.),
+    and whether this is a sibling abstraction to the Storage Plugin or folded into it.
+20. **CodeReview checkpoint must act on a real git PR (rev 20, §6):** the
+    Develop→CodeReview→Merge/Deploy chain (§5.4) is currently modeled as Jira-subtask
+    transitions only, with no actual git pull request in the loop. The dev process should
+    end with the Developer persona opening a real PR on the git host (§8.19), and the Code
+    Reviewer persona's review should approve or request changes on *that* PR — not just
+    flip a parallel Jira status with no corresponding git-side action. Undesigned: how PR
+    state syncs back to the Jira subtask (webhook vs. polling), what happens if a human
+    reviews/merges the PR directly on the git host outside TAI, and whether PR approval
+    alone satisfies the CodeReview checkpoint or the Jira transition remains the source of
+    truth.
 
 ---
 
