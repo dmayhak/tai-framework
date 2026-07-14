@@ -4,14 +4,27 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-14 (rev 20 — **two new open questions captured, not yet
-> designed:** §8.19, the git-hosting layer (Bitbucket/GitHub) must be pluggable like the
-> Storage Plugin (§3.2), not hardcoded to whichever host TAI's own repo happens to use; and
-> §8.20, the Develop→CodeReview→Merge/Deploy chain (§5.4) should operate on a real git pull
-> request, not stay Jira-subtask-only — the Developer persona's work should end by opening
-> an actual PR, and the Code Reviewer persona should approve/request-changes on that PR.
-> Both flagged during Bitbucket Pipelines CI setup; see §6 and §8 for the open-question
-> text.
+> **Last updated:** 2026-07-14 (rev 21 — **§8.19 and §8.20 resolved via TAI-33/TAI-34
+> (Spikes, dogfooded through TAI's own Jira project) — design only, nothing built yet.**
+> §8.19: a new sibling `GitHostBackend`/`GitHost` interface, not folded into
+> `StorageBackend` — git hosting is a different domain and an independent configuration
+> axis from Jira/Confluence, but reuses the same pattern (branded IDs, `MutationResult`/
+> `StorageConnectivityError`, an open `kind` discriminator). One interface, not split like
+> `WorkTracker`/`DocStore`, since git hosting has no internal product seam. Scoped to what
+> the checkpoint chain actually needs (PR CRUD, approve/request-changes, merge, commit
+> status) — explicitly excludes a "trigger CI" operation, since this session's own
+> Bitbucket work found that can't be guaranteed retroactively. §8.20: the
+> Develop→CodeReview→Merge/Deploy chain (§5.4) now opens and acts on a real PR; PR state
+> syncs one-way into the Jira subtask at existing refresh points (§3.6), never the reverse
+> — the Jira subtask stays authoritative for TAI's own dependency graph. A human
+> reviewing/merging directly on the git host, bypassing TAI, is treated as authoritative
+> and simply reflected, not fought (same principle as §4's Confluence-gate-reopening
+> rule). See §5.4 and §6 for the updated text, and TAI-33/TAI-34's ADRs (Confluence, TA
+> space) for full reasoning. **Recommended next step, not yet scheduled:** one
+> implementation Story building both the interface and the checkpoint together, per both
+> ADRs' Consequences sections.
+> Prior: rev 20 — two new open questions captured (§8.19, §8.20 above, before they were
+> resolved), flagged during Bitbucket Pipelines CI setup.
 > Prior: rev 19 — **§5.5 gains a hard assignment gate: a ticket must
 > have a human `Assignee` before it may leave `To Do`.** Work in progress with nobody
 > accountable for it is the exact failure mode this framework exists to prevent (§1), and it
@@ -668,6 +681,31 @@ For an implementation Story touching one repo:
   multiple parties care). AI may retry once; second failure escalates to a human.
 - Review **passes** → mark it done, unblocking the next subtask in the chain.
 
+**Design resolved but not yet implemented (rev 21, TAI-34 ADR, §8.20):** this chain
+operates on a real git PR, not Jira transitions alone —
+```
+[Dev subtask] --opens PR--> [CodeReview subtask] --approves PR--> [Merge/Deploy subtask] --merges PR-->
+```
+- **Dev completes** → Developer persona calls `GitHost.createPullRequest` (source =
+  the Story's branch, per this section; destination = the repo's default branch), then
+  links the PR to the CodeReview subtask via a Jira remote issue link (the same mechanism
+  already used to link a Confluence ADR to its issue). CodeReview becomes actionable.
+- **CodeReview actionable** → Code Reviewer persona reviews the real PR diff, not just
+  Jira ticket content. A decision makes two calls: `GitHost.reviewPullRequest` (the real
+  PR) and `WorkTracker.transition` (the Jira subtask) — separate backends, same decision.
+- **Review fails** (persona- or human-authored directly on the git host) → unchanged from
+  above.
+- **Review passes** → CodeReview done, unblocking Merge/Deploy.
+- **Merge/Deploy** → `GitHost.mergePullRequest`, gated on `GitHost.getCommitStatuses`
+  being green first — CI becomes a load-bearing merge gate, not advisory.
+- **PR state syncs one-way into the Jira subtask**, at existing refresh points (§3.6),
+  never the reverse — the Jira subtask stays what TAI's own precedence engine reads. A
+  human acting directly on the git host (approve/request-changes/merge) is detected on
+  next refresh and reflected, never fought — same stance as §4's Confluence-gate-
+  reopening rule.
+
+See TAI-33's ADR for the `GitHost` interface this depends on.
+
 For a **multi-repo** Story: repeat the Develop→Code Review→Merge/Deploy chain **once per
 repo**, each subtask tagged with its repo via the native Jira **Component** field (§4,
 rev 11 — not a custom `repo` field).
@@ -799,14 +837,22 @@ comment's content.
 
 ## 6. Source Control / Branching Model
 
-- **Git host is pluggable (rev 20, open item, §8.19):** TAI's own repo happens to be on
-  Bitbucket, but that must not be baked in — Bitbucket and GitHub both need to be
-  first-class targets, mirroring the Storage Plugin pattern (§3.2). Not yet designed.
-- **The CodeReview checkpoint must act on a real git PR (rev 20, open item, §8.20):** the
-  Develop→CodeReview→Merge/Deploy chain below is currently Jira-subtask-only. The dev
-  process should end by opening an actual pull request on the git host, and the Code
-  Reviewer persona's review should approve/request-changes on that real PR. Not yet
-  designed.
+- **Git host is pluggable (rev 21, design resolved via TAI-33, §8.19).** A sibling
+  `GitHostBackend`/`GitHost` interface alongside `StorageBackend` — not folded into it,
+  since git hosting is an independent configuration axis (a team can mix Jira+Bitbucket,
+  Jira+GitHub, filesystem+GitHub) — reusing the Storage Plugin's *pattern* (branded IDs,
+  `MutationResult`/`StorageConnectivityError`, an open `kind` discriminator) without
+  reusing its interface. Scoped to PR CRUD, approve/request-changes, merge, and commit
+  status — not the full breadth of either host's API. See the TAI-33 ADR (Confluence, TA
+  space). **Not yet implemented** — `src/core/git/interface.ts` doesn't exist yet;
+  deferred to a follow-on Story alongside TAI-34's checkpoint work (below).
+- **The CodeReview checkpoint acts on a real git PR (rev 21, design resolved via TAI-34,
+  §8.20).** See §5.4 for the revised chain. PR state syncs one-way into the Jira subtask
+  at existing refresh points (§3.6) — never the reverse; the Jira subtask stays what
+  TAI's own precedence engine reads. A human reviewing/merging directly on the git host
+  is treated as authoritative, not fought — same principle as this section's own
+  human-authority stance and §4's Confluence-gate-reopening rule. See the TAI-34 ADR.
+  **Not yet implemented.**
 - **Branch unit:** parent Story/Bug. Name = parent issue key + very short slug
   (e.g. `PROJ-123-user-login`).
 - **Subtasks accumulate** onto their parent Story's branch; they do not get their own
@@ -1007,22 +1053,24 @@ Carry these forward; resolve them in upcoming design sessions.
     how a conflict between the roster and hand-edited native roles is resolved. Not
     required for the registry to function; purely an optional native-Jira visibility/
     defense-in-depth enhancement once scheduled.
-19. **Git-hosting plugin abstraction (rev 20, §6):** end users should be able to use
-    Bitbucket **or** GitHub — the git host must be pluggable, not hardcoded to whichever
-    one TAI's own repo happens to use, mirroring the Storage Plugin pattern (§3.2): one
-    interface contract, swappable backends. Undesigned: what operations the interface
-    needs to expose (PR create/get/merge/approve/comment, branch/commit status, etc.),
-    and whether this is a sibling abstraction to the Storage Plugin or folded into it.
-20. **CodeReview checkpoint must act on a real git PR (rev 20, §6):** the
-    Develop→CodeReview→Merge/Deploy chain (§5.4) is currently modeled as Jira-subtask
-    transitions only, with no actual git pull request in the loop. The dev process should
-    end with the Developer persona opening a real PR on the git host (§8.19), and the Code
-    Reviewer persona's review should approve or request changes on *that* PR — not just
-    flip a parallel Jira status with no corresponding git-side action. Undesigned: how PR
-    state syncs back to the Jira subtask (webhook vs. polling), what happens if a human
-    reviews/merges the PR directly on the git host outside TAI, and whether PR approval
-    alone satisfies the CodeReview checkpoint or the Jira transition remains the source of
-    truth.
+19. ~~**Git-hosting plugin abstraction**~~ — **RESOLVED (rev 21, TAI-33 Spike/ADR):** a
+    sibling `GitHostBackend`/`GitHost` interface, not folded into `StorageBackend` — git
+    hosting is an independent configuration axis from Jira/Confluence, reusing the Storage
+    Plugin's *pattern* (branded IDs, `MutationResult`/`StorageConnectivityError`, an open
+    `kind` discriminator) without reusing its interface. One `GitHost` interface, not split
+    like `WorkTracker`/`DocStore` — git hosting has no equivalent internal product seam.
+    Scoped to PR CRUD, approve/request-changes, merge, and commit status; explicitly
+    excludes a "trigger CI" operation (can't be guaranteed retroactively, per this
+    session's own Bitbucket Pipelines work). See §6 and the TAI-33 ADR (Confluence, TA
+    space). **Design only — not yet implemented**, see §9 for when.
+20. ~~**CodeReview checkpoint must act on a real git PR**~~ — **RESOLVED (rev 21, TAI-34
+    Spike/ADR):** the Develop→CodeReview→Merge/Deploy chain (§5.4) now opens and acts on a
+    real PR. PR state syncs **one-way** into the Jira subtask at existing refresh points
+    (§3.6) — never the reverse; the Jira subtask stays what TAI's own precedence engine
+    reads, answering the "which is the source of truth" question. A human reviewing or
+    merging directly on the git host, outside TAI, is detected on next refresh and
+    reflected, not fought — same principle as §4's Confluence-gate-reopening rule. See
+    §5.4 and the TAI-34 ADR (Confluence, TA space). **Design only — not yet implemented.**
 
 ---
 
