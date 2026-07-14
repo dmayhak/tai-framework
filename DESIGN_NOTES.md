@@ -1,16 +1,16 @@
-# TAI Design Notes (working document)
+# TAI Design Notes (closed — archival record)
 
-> **Status:** Scratch / in-progress. This is a **temporary** discussion document, not a
-> source of truth. `PROJECT_BRIEF.md` remains authoritative for anything settled.
-> Findings here get integrated into the brief, `src/personas/*.md`, `src/workflows/*.md`,
-> and `src/core/schema/story-schema.ts` once ironed out — then this doc is trimmed or
-> retired. Don't cite this doc from code or from the brief; cite the destination instead.
->
-> **How we're working through this:** one topic at a time, in the order below, in
-> conversation — not all at once. This file accumulates the conclusions as we go so
-> nothing gets lost between sessions. Items are visited from multiple deliberate angles
-> (e.g. "spike ownership" shows up under Personas, Subtask Types, and Humans) — that's
-> intentional, not duplication to clean up.
+> **Status:** Closed as of rev 11 (see `PROJECT_BRIEF.md`'s changelog header). This is
+> **not** a source of truth — `PROJECT_BRIEF.md` is authoritative for anything settled;
+> don't cite this doc from code or from the brief, cite the destination instead. Every
+> finding below has already been integrated into the brief, `src/personas/*.md`,
+> `src/workflows/*.md`, and `src/core/schema/story-schema.ts` (each section ends with a
+> `→` pointer to where). What's kept here is the **discussion trail** — the alternatives
+> considered and the reasoning behind each decision — which the brief states more tersely
+> as settled fact. Consult this file when you need the *why* behind something the brief
+> just asserts; consult the brief (or code) for the *current* state of anything, since
+> post-closure corrections (renames, reconciliations against the real Jira/Confluence
+> setup) are made there, not backported here.
 
 ---
 
@@ -1243,31 +1243,21 @@ Explicitly **not now** — noted here so it isn't lost. Comes after the above is
 
 ---
 
-## Suggested order of attack
+## Closing status
 
-Your ordering (Personas → Story types → Subtask types → Workflows → Humans → Confluence →
-Cache → Unit-of-work) already builds naturally from "who" to "what" to "how it flows" to
-the surrounding infrastructure. One sequencing note: personas and subtask types reference
-each other constantly (a persona's permissions are stated in terms of subtask types, and
-subtask types name a default persona) — so expect some back-and-forth between §1 and §3
-rather than a clean one-pass-and-done through either.
-
-**Recommendation for where to start:** either **Analyst** (fastest — it's the most mature
-file already, good for confirming the discussion format works) or **PM** (more open ground:
-Orchestrator duties, D8/D9/D15 all brush up against it). Open to whichever you'd rather
-tackle first.
-
----
-
-## Status: all 8 planned sections closed
-
-Sections 1-8 above are all closed, in the order this note originally recommended. Every
+Sections 1-8 above are all closed, in the order originally planned (Personas → Story
+types → Subtask types → Workflows → Humans → Confluence → Cache → Unit-of-work). Every
 parking-lot item (D5/D7/D8/D9/D10/D12/D15) and the two-axis owner model are resolved;
 Section 9 (Plugin implementation) stays explicitly out of scope per its own header. A
 final consistency pass (cross-references, stale forward-pointers, a couple of doc-drift
 bugs in `personas/code-reviewer.md` and `schema/story-schema.ts`'s TODO list) was done
 after Section 8 closed — see the fixes noted inline above rather than duplicating them
-here. Per this doc's own stated lifecycle ("get integrated into the brief/schema, then
-this doc is trimmed or retired"), the natural next step is deciding whether to retire or
-trim this file now that its findings are integrated — not a design question, a
-housekeeping one, left for you to call.
+here.
+
+Housekeeping resolved (2026-07-11): this doc is kept, not deleted, as the discussion-trail
+record described in the status header — everything it settled has a `→` pointer to where
+it actually lives now. Corrections made *after* this closure (e.g. the `SpikeTask` rename,
+the `To Do`/`In Review` status reconciliation against the real Jira project, both rev
+13/15 in the brief) are **not** backported into this file; they're a different kind of
+event — reality-checking an already-shipped decision against the live Jira/Confluence
+setup, not a design discussion — and belong solely in the brief's changelog.

@@ -48,6 +48,21 @@ export enum StoryType {
     Bug = "bug", // subtask structure TBD
 }
 
+// ---------- Statuses ----------
+
+// The closed status lifecycle resolved in brief §5.3 (rev 15/16), encoded here for the
+// first time — previously only described in prose. Values are the real Jira display
+// strings (verified live against the actual TAI project), not internal keys like
+// StoryType/SubtaskType use — both backends can use these strings directly, no separate
+// ID-vs-display translation needed the way subtask/story issue-type IDs require.
+export enum Status {
+    ToDo = "To Do",
+    InProgress = "In Progress",
+    InReview = "In Review", // universal on the issue type by default, but only Kickoff's flow actually transitions into it (§5.3)
+    Done = "Done",
+    Canceled = "Canceled", // rev 16 — a second terminal state; counts as satisfied for SUBTASK_PRECEDENCE purposes, same as Done
+}
+
 // ---------- Subtask Types ----------
 
 export enum SubtaskType {
@@ -68,7 +83,7 @@ export enum SubtaskType {
     Uat = "uat",                             // Tester + human stakeholder — optional, inherently human-gated (§3.3), gates Deploy
     Deploy = "deploy",                       // DevOps (default) — manual or gated deployment
     PostDeploy = "post-deploy",              // DevOps (default) — manual follow-up work after a deployment
-    Spike = "spike",                         // No fixed owner — assignee set explicitly at creation time
+    SpikeTask = "spike-task",                // No fixed owner — assignee set explicitly at creation time; ad-hoc, in-story escape hatch (distinct from StoryType.Spike, a standalone story-level ticket — renamed from `Spike` to avoid the Jira issue-type name collision)
     Triage = "triage",                       // Tester (default) — Bug entry point: confirm repro, assess severity, identify root cause
 }
 
@@ -83,9 +98,9 @@ export enum SubtaskType {
 // being acted in; Assignee = which real human is acting it out.
 //
 // A value of `null` here means there is no default `persona` value — it
-// must be set explicitly at creation time (currently only true for Spike,
-// since a spike question could belong to any persona depending on what's
-// being investigated). Deploy/PostDeploy default to DevOps but the
+// must be set explicitly at creation time (currently only true for
+// SpikeTask, since a spike question could belong to any persona depending
+// on what's being investigated). Deploy/PostDeploy default to DevOps but the
 // `persona` field may be set to a different persona per-instance (e.g. a
 // DBA-led data backfill post-deploy) — same override, always overridable
 // even for the fixed-owner types above.
@@ -107,7 +122,7 @@ export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
     [SubtaskType.Uat]: Persona.Tester, // Tester drives; a human stakeholder co-signs (see ALWAYS_HUMAN_GATED_SUBTASKS)
     [SubtaskType.Deploy]: Persona.DevOps,
     [SubtaskType.PostDeploy]: Persona.DevOps,
-    [SubtaskType.Spike]: null,
+    [SubtaskType.SpikeTask]: null,
     [SubtaskType.Triage]: Persona.Tester,
 };
 
@@ -146,7 +161,7 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.Infra,
         SubtaskType.Deploy,
         SubtaskType.PostDeploy,
-        SubtaskType.Spike, // ad-hoc investigation without spinning up a full Spike story
+        SubtaskType.SpikeTask, // ad-hoc investigation without spinning up a full Spike story
     ],
     [StoryType.Bug]: [
         SubtaskType.Triage, // entry point — replaces Research/Requirements/UxDesign for reported issues
@@ -161,7 +176,7 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.Infra,
         SubtaskType.Deploy,
         SubtaskType.PostDeploy,
-        SubtaskType.Spike, // for root-cause investigation when the fix isn't obvious
+        SubtaskType.SpikeTask, // for root-cause investigation when the fix isn't obvious
     ],
 };
 
@@ -338,7 +353,7 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
     ],
 };
 
-// Note: the ad-hoc `Spike` SUBTASK (used inside a Story/Bug) deliberately
+// Note: the ad-hoc `SpikeTask` SUBTASK (used inside a Story/Bug) deliberately
 // has no entry here, same reason it has no fixed owner — whether it
 // blocks Dev or is purely informational depends on what's being
 // investigated, and must be set explicitly per instance.
@@ -438,9 +453,9 @@ export interface ReviewGate {
 
 // Sign-off for any gate here is tracked via an `Approved:`-prefixed Jira comment from
 // each of requiredReviewers — no custom field. The commenting human must additionally
-// hold that persona's Jira Project Role (brief §5.6) — this is what lets TAI verify a
-// raw Jira comment author actually corresponds to "the PM" or "the UX Designer", not
-// just trusting the comment's content. An edit to the Confluence doc(s) backing an
+// appear in that persona's Persona Roster entry (brief §5.6, rev 12) — this is what lets
+// TAI verify a raw Jira comment author actually corresponds to "the PM" or "the UX
+// Designer", not just trusting the comment's content. An edit to the Confluence doc(s) backing an
 // already-passed gate REOPENS it (brief §6) — detected via the same cachedAt/lastUpdated
 // staleness check used everywhere else (brief §3.6/§7), not a separate mechanism. See
 // design-notes doc "Review-gate approval tracking" and workflows/kickoff.md.
@@ -502,10 +517,11 @@ export const REVIEW_GATES: ReviewGate[] = [
  *   every Subtask carries a stored `persona` field, separate from the native
  *   Jira Assignee — defaulting to SUBTASK_OWNER[type] (subtasks) or PM
  *   (story-level), always overridable, and set explicitly at creation with NO
- *   default for the ad-hoc Spike subtask (same as it has no default human
- *   Assignee either). A STORED field, not derived from Jira Project Role
- *   membership, because a human can hold more than one relevant role. This
- *   resolves both the ad-hoc Spike subtask's "what persona drives it" question
+ *   default for the ad-hoc SpikeTask subtask (same as it has no default human
+ *   Assignee either). A STORED field, not derived from Persona Roster
+ *   membership (brief §5.6, rev 12), because a human can be listed under
+ *   more than one relevant persona. This
+ *   resolves both the ad-hoc SpikeTask subtask's "what persona drives it" question
  *   and PostDeploy's "how does default-owner-with-override relate to human
  *   Assignee" question — both were previously open TODOs here, now settled.
  *

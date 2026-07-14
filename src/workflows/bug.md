@@ -45,7 +45,7 @@ routine dev/test rework loops that happened before anything ever shipped.
 | `Infra` | DevOps | If the bug is infra-related |
 | `Deploy` | DevOps (default, overridable) | Fix deployment — may need to be expedited depending on severity |
 | `PostDeploy` | DevOps (default, overridable) | Manual follow-up work after deployment (e.g. data backfill, flag flip) — owner often varies by what the follow-up actually is |
-| `Spike` | No fixed owner | For root-cause investigation when the fix isn't obvious from Triage alone |
+| `SpikeTask` | No fixed owner | For root-cause investigation when the fix isn't obvious from Triage alone |
 
 ## Output
 
@@ -76,18 +76,22 @@ and specifically **Priority=1 (Urgent/Emergency) is what triggers the expedited 
 below. They often correlate but aren't the same field — a low-priority bug can still be
 high-severity if nobody's demanding an immediate fix yet.
 
-If root cause isn't clear from Triage alone, a `Spike` subtask can be
-added for deeper investigation — same pattern as Story's ad-hoc Spike
+If root cause isn't clear from Triage alone, a `SpikeTask` subtask can be
+added for deeper investigation — same pattern as Story's ad-hoc SpikeTask
 usage.
 
 ## Status Transitions (story-level)
 
-Same 3-state flow as Story: `Open → In Progress → Done`.
+Same 3-state flow as Story: `To Do → In Progress → Done`, plus `Canceled` as an
+alternate terminal state (brief §5.3 rev 16) — e.g. a reported Bug that turns out to be
+"working as intended," a duplicate, or otherwise not worth fixing.
 
-- **Open:** reported, `Triage` hasn't started.
+- **To Do:** reported, `Triage` hasn't started.
 - **In Progress:** `Triage` or any later subtask is underway — covers the whole chain
   including failure loops and the D5 expedited path.
 - **Done:** every present subtask is Done, including `UAT` sign-off if present.
+- **Canceled:** the Bug was decided against — not a fix, a duplicate, or otherwise
+  won't-fix — typically straight from Triage.
 
 ## Dev → Test Failure Loop
 Identical to the Story workflow: Dev marks Done to unblock Test; a failed

@@ -11,12 +11,12 @@ model: default          # inherits project default; overridable in persona confi
 # Intended permission grants (brief §3.1). Not yet enforced in code — the storage plugin
 # layer will read and apply this block once the Jira/filesystem adapters exist (brief §9
 # Phase 3+). Subtask type names below extend the open, evolving taxonomy in brief §5.2
-# (the brief's `Develop` candidate is named `Dev` here; the ad-hoc `Spike` subtask is not
-# in the brief's §5.2 list).
+# (the brief's `Develop` candidate is named `Dev` here; the ad-hoc `SpikeTask` subtask is
+# not in the brief's §5.2 list).
 permissions:
   create:
     - Subtask:Dev                 # own core subtask type, matching every other persona's pattern
-    - Subtask:Spike               # ad-hoc, in-story investigation when the fix/approach isn't obvious
+    - Subtask:SpikeTask           # ad-hoc, in-story investigation when the fix/approach isn't obvious
   workOn:
     - Subtask:Dev
   complete:
@@ -70,9 +70,9 @@ persona when the spec doesn't cover something.
    `Infra` prerequisites satisfied), implements the `Dev` subtask, including unit tests.
 2. **Bug:** Given a Triaged Bug, implements the fix as the `Dev` subtask, same
    unit-test-inclusive standard as a Story (see `workflows/bug.md`).
-3. **Ad-hoc Spike:** When the approach isn't obvious mid-implementation, can raise a
-   `Spike` subtask for investigation rather than guessing at a solution (see
-   `workflows/dependencies.md` — the ad-hoc `Spike` subtask has no fixed owner and is
+3. **Ad-hoc SpikeTask:** When the approach isn't obvious mid-implementation, can raise a
+   `SpikeTask` subtask for investigation rather than guessing at a solution (see
+   `workflows/dependencies.md` — the ad-hoc `SpikeTask` subtask has no fixed owner and is
    assigned at creation).
 
 ## Inputs

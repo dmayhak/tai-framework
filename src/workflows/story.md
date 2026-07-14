@@ -32,7 +32,7 @@ separate field, a real human holding the PM Project Role.
 | `Infra` | DevOps | |
 | `Deploy` | DevOps (default, overridable) | Manual or gated deployment |
 | `PostDeploy` | DevOps (default, overridable) | Manual follow-up work after deployment (e.g. data backfill, flag flip) — owner often varies by what the follow-up actually is |
-| `Spike` | No fixed owner — assigned explicitly at creation | Ad-hoc investigation without spinning up a full Spike story |
+| `SpikeTask` | No fixed owner — assigned explicitly at creation | Ad-hoc investigation without spinning up a full Spike story |
 
 ## Output
 
@@ -141,16 +141,25 @@ new `Rollback` subtask/action type:
 
 ## Status Transitions (story-level)
 
-`Open → In Progress → Done` — no separate "In Review" the way Kickoff has, since Story
-has no single whole-story gate (`CodeReview`/`DesignReview`/`UAT` are all subtask-level
-sign-offs, not a story-level one).
+`To Do → In Progress → Done` — Story's own flow never transitions through `In Review`,
+even though that status exists on the issue type (rev 15: Jira's shared default workflow
+includes it on every type; TAI's own logic simply never drives a Story into it, per §3.3's
+"TAI's plugin layer decides what's meaningful" pattern), since Story has no single
+whole-story gate (`CodeReview`/`DesignReview`/`UAT` are all subtask-level sign-offs, not a
+story-level one). `Canceled` is also available, as an alternate terminal state from
+`To Do` or `In Progress` (brief §5.3 rev 16) — for a Story decided against before
+completion (deprioritized, superseded, or otherwise not worth finishing).
 
-- **Open:** created, no present subtask has started.
+- **To Do:** created, no present subtask has started.
 - **In Progress:** at least one present subtask has started — covers the entire
   `Dev → CodeReview → Test tiers → UAT → Deploy → PostDeploy` chain, including any
   Dev ⇄ Test or ArchitectureDesign ⇄ DesignReview failure loops. The Story stays
   In Progress through all of that; loops don't regress the story-level status.
-- **Done:** every present subtask is Done, including `UAT` being signed off if present.
+- **Done:** every present subtask is Done (or Canceled, brief §5.3 rev 16 — a cancelled
+  subtask doesn't block the Story from completing), including `UAT` being signed off if
+  present.
+- **Canceled:** the Story itself was decided against, independent of any present
+  subtasks' own statuses.
 
 ## Why no "Defect" subtask
 A failed Dev/Test loop before deployment is normal iteration, not a
@@ -163,7 +172,7 @@ rework.
 ## Decided
 - **Reopen/retest count** is derived from Jira's transition history as
   needed (at report time), not tracked via an explicit counter field.
-- The Test subtask's "sent back" status is plain **`Open`** — no distinct
+- The Test subtask's "sent back" status is plain **`To Do`** — no distinct
   `Ready for Retest` status.
 
 ## Open Questions

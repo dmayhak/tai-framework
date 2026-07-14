@@ -121,7 +121,7 @@ PostDeploy ownership).
 ## Open items
 
 - Whether `PostDeploy` should ever move to the same "no fixed owner, assign at creation"
-  treatment as the ad-hoc `Spike` subtask, instead of its current default-owner-with-
+  treatment as the ad-hoc `SpikeTask` subtask, instead of its current default-owner-with-
   override — parked for §5 (Humans)/the two-axis owner model (D15), not decided here.
 
 **Resolved (D7):** a failed `PostDeploy` check's severity decides the response — minor

@@ -4,12 +4,60 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-10 (rev 11 — full design-notes review pass, §3-§8: subtask
-> taxonomy↔Jira mapping, D7/D9/D12 resolved, scenario-workflow layer dropped, the
-> two-axis owner model (D15) and Jira Project Role registry, Confluence structure/naming/
-> gate-reopening rules, local cache bulk-sync/attachments, new §3.9 Comment Conventions,
-> and briefing/kickoff/connectivity-loss mechanics for a unit of work — see DESIGN_NOTES.md
-> for the full session-by-session history)
+> **Last updated:** 2026-07-13 (rev 17 — **§3.2's transport changes: Jira/Confluence are
+> reached via the Atlassian REST API, not the Atlassian Remote MCP Server.** The MCP-server
+> design (revs 1–16) was tested live in Phase 4's opening spike (Jira `TAI-16`) and does not
+> work: auth succeeds headlessly, but the tool surface returned is three read-only Teamwork
+> Graph tools — no issue creation, no transitions, no comments, no pages. The real
+> Jira/Confluence tools sit behind interactive OAuth 2.1, which would leave CI and the
+> integration tests with no headless path. Direct REST works, needs zero new dependencies,
+> and drops a lossy translation layer. Critically, **`StorageBackend`/`WorkTracker`/`DocStore`
+> needed no change at all** — the Phase 3 abstraction absorbed the swap exactly as intended.
+> §3.2 also now carries a hazard note about third-party MCP wrappers (`mcp-atlassian`), whose
+> defects were catalogued the hard way while building TAI's own backlog through one. §10
+> updated to match.
+> Prior: rev 16 — new **`Canceled`** status added to §5.3: a
+> second terminal state for work abandoned before completion, available on every issue
+> type (story-level and subtasks alike). Gap found while cross-checking the real Jira
+> site's full status list — nothing to reuse — surfaced by `workflows/spike.md`'s
+> "cancelled/deferred" outcome, which previously had no distinct status and collapsed
+> into `Done`. Counts as satisfied for `SUBTASK_PRECEDENCE` purposes, same as `Done`.
+> `spike.md`/`story.md`/`bug.md`/`kickoff.md` all updated with their own `Canceled`
+> transition.
+> Prior: rev 15 — §5.3 status names/scope corrected against the
+> actual TAI Jira project: the default status is **`To Do`**, not `Open` (cosmetic —
+> avoids renaming what's likely a shared/global Jira status across the whole site); and
+> **`In Review` exists on every issue type by default**, not just Kickoff — Jira's shared
+> default workflow doesn't allow withholding one status from most types without a
+> separate per-type workflow, so it's simpler to leave it universally present and let
+> TAI's own logic (§3.3) decide which types actually transition into it. Only Kickoff
+> does. Every `workflows/*.md` and `personas/tester.md` status reference updated to
+> match.
+> Then: rev 14 — §4's Confluence folder convention extended to
+> **config-type content**: the Persona Roster and persona extensions aren't tied to a
+> ticket, so they don't fit the `<JIRA-KEY> — <Doc Type>: …` naming rule below; they get
+> their own top-level **`Config`** folder instead. Reflects the actual TAI Confluence
+> space now in use — `Config` → `Persona Roster` created there, seeded with the
+> project's first (solo) team member across all 9 personas.
+> Before that: rev 13 — the ad-hoc, no-fixed-owner **subtask**-level
+> `Spike` type (§5.2) is renamed **`SpikeTask`**, discovered as a real naming collision
+> while provisioning Jira issue types for the actual TAI project: Jira issue-type names
+> are unique site-wide, and the pre-existing **Story**-level `Spike` type (§5.1) already
+> owns the name "Spike." `StoryType.Spike` is unchanged; only the subtask-level ad-hoc
+> escape-hatch type (`SUBTASK_OWNER[SpikeTask] = null`, `schema/story-schema.ts`) is
+> affected, along with every persona/workflow doc that referenced it. Also fixed two stale
+> "Jira Project Role" references left behind by rev 12's registry redesign below.
+> Before that: rev 12 — §5.6 human registry redesigned: TAI's own
+> storage-agnostic **Persona Roster** (Confluence-page-backed on the Jira backend, a local
+> file on the filesystem backend) replaces the native-Jira-Project-Role design from rev 11,
+> because Jira Cloud's Free plan cannot create/edit Project Roles at all — for either
+> project type — and a Jira-only construct doesn't work for the filesystem backend anyway.
+> Native Project Role sync becomes an optional, deferred paid-tier enhancement (§8.18).
+> Before that: rev 11 — full design-notes review pass, §3-§8: subtask taxonomy↔Jira mapping,
+> D7/D9/D12 resolved, scenario-workflow layer dropped, the two-axis owner model (D15),
+> Confluence structure/naming/gate-reopening rules, local cache bulk-sync/attachments, new
+> §3.9 Comment Conventions, and briefing/kickoff/connectivity-loss mechanics for a unit of
+> work — see DESIGN_NOTES.md for the full session-by-session history)
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
 
 ---
@@ -99,17 +147,45 @@ AI roles that Claude/Gemini assume to do work. Each persona:
 ### 3.2 Storage Plugin (Source of Truth)
 An abstraction with swappable backends:
 - **Jira** (default, source of truth) + **Confluence** (design docs), accessed via the
-  **Atlassian Remote MCP Server** (`https://mcp.atlassian.com`). The MCP server
-  authenticates *as the actual human user* and respects their existing Jira/Confluence
-  permissions — this is a feature, not a limitation: an AI persona acts with exactly the
-  authority of the human driving it.
+  **Atlassian REST API** (`/rest/api/3` for Jira, `/wiki/api/v2` for Confluence),
+  authenticated as the actual human user. Access respects that human's existing
+  Jira/Confluence permissions — a feature, not a limitation: an AI persona acts with exactly
+  the authority of the human driving it.
+  - **Auth (v1):** the human's own **API token** (`Authorization: Basic base64(email:token)`).
+    Works headlessly, which is what lets CI and the integration tests run without a browser.
+    **OAuth 2.1 (3LO)** can be layered on later if true per-user delegation is wanted; the
+    backend takes auth as an injected provider, so this is a config change, not a redesign.
+  - **Not the Atlassian Remote MCP Server** (`https://mcp.atlassian.com`) — this was the
+    original design (revs 1–16) and it does **not work** for TAI. Tested live (rev 17, Jira
+    `TAI-16`): authentication is fine (API-token Basic auth initializes cleanly over
+    streamable HTTP, no browser needed), but the tool surface returned under headless auth is
+    **three read-only Teamwork Graph tools** — `getTeamworkGraphContext`,
+    `getTeamworkGraphObject`, `addTeamworkGraphContext`. No `createIssue`, no `transition`,
+    no `addComment`, no `createPage`. The full Jira/Confluence tool surface appears to sit
+    behind interactive OAuth 2.1, which would leave CI and the integration tests with no
+    headless path at all. Going direct to REST also removes an entire lossy translation
+    layer — see the MCP-wrapper hazards note below.
 - **Local filesystem** fallback — a directory structure + naming convention that mimics the
   Jira hierarchy, for solo developers and offline work.
-- **Other systems** (Jira competitors) can be added via their own MCP servers, implementing
-  the same storage interface.
+- **Other systems** (Jira competitors) can be added via their own adapters (REST or MCP,
+  whichever that product actually offers), implementing the same storage interface.
 
 The storage interface contract is the single most important design artifact in the system.
-TypeScript interfaces enforce that every backend implements it identically.
+TypeScript interfaces enforce that every backend implements it identically — but note that
+**types enforce shape, not behavior.** A shared **conformance suite**, run against every
+backend, is what actually enforces identical behavior (Jira `TAI-15`).
+
+> **Hazard, for anyone driving Jira/Confluence through a third-party MCP wrapper**
+> (e.g. `mcp-atlassian`, which is what a Claude Code / Gemini session typically has
+> configured — a local Python server hitting REST with an API token; *not* Atlassian's own
+> remote server). Observed live while building TAI's own backlog through it: JQL errors are
+> **silently swallowed** (an invalid query returns `[]`, not an error — so "empty" is never
+> authoritative); `create` and `update` use **different description encodings** (`create`
+> stores the string raw and uninterpreted, `update` converts markdown → Jira wiki markup);
+> `create` was seen **corrupting** input nondeterministically (escaping `**`, eating `+`
+> characters); `create` responses **omit custom fields**, so a re-fetch is required; issue-link
+> direction is **inverted** from raw REST's convention; and Confluence comment editing has no
+> tool at all. TAI's own backend does not go through this layer, and must not inherit these.
 
 ### 3.3 Checkpoints
 Human oversight gates on work progression. **Critical constraint discovered during
@@ -285,8 +361,8 @@ below). All three apply to **both** Jira issue comments and Confluence comments
   relationship (Confluence) keeps the discussion together; a thread is **closed** once a
   terminal resolution comment appears within it, not merely by any reply existing.
 - **`Approved:`** — review-gate sign-off (`REVIEW_GATES`). One such comment required from
-  each persona in the gate's `requiredReviewers`, and the commenting human must hold that
-  persona's Jira Project Role (§5.6) for it to count.
+  each persona in the gate's `requiredReviewers`, and the commenting human must appear in
+  that persona's Persona Roster entry (§5.6) for it to count.
 - **`Rejected: <Dev|Requirements|...>`** — rejection routing (e.g. UAT failure). Marker
   preferred; when absent, TAI infers intent from the comment text, escalating to a human
   only if genuinely ambiguous (humans can't be relied on to type structured markers every
@@ -383,6 +459,12 @@ These are settled. Change them deliberately and update this file if you do.
     in every view), a Confluence page has no equivalent type-icon affordance in its page
     tree or search results — the key and doc type need to be visible in the title itself
     for a human scanning a page list to know what's what.
+  - **Config-type content (rev 13):** the Persona Roster (§5.6) and persona extensions
+    (§3.1) aren't tied to any single ticket, so the `<JIRA-KEY> — <Doc Type>: …` naming
+    convention above doesn't apply to them — there's no ticket key to put in the title. They
+    get their own top-level **`Config`** folder in the project's space (sibling to the
+    doc-type folders above), with plain descriptive titles (`Persona Roster`, and future
+    persona-extension pages named after the persona).
   - **Human edits to an already-gated doc (rev 11):** editing a Confluence page backing
     an already-passed `ReviewGate` (e.g. the PRD, after the Kickoff PM+UX gate already
     signed off) **reopens that gate** — TAI flags it and requires re-approval before
@@ -451,7 +533,7 @@ test tiers).
 | Triage | Tester | Bug entry point |
 | Deploy | DevOps (default, overridable) | Implementation |
 | PostDeploy | DevOps (default, overridable) | Implementation follow-up |
-| Spike (subtask) | No fixed owner — assigned at creation | Ad-hoc investigation inside a Story/Bug |
+| SpikeTask | No fixed owner — assigned at creation | Ad-hoc investigation inside a Story/Bug (renamed from `Spike`, rev 12 — collided with the `Spike` **Story**-level type; Jira issue-type names must be unique site-wide) |
 
 **Resolved (was Open gap #1 / §8.16):** the DBA and DevOps personas now have concrete
 routing types — `Database` for DBA; `Infra` / `Deploy` / `PostDeploy` for DevOps. A type
@@ -484,8 +566,8 @@ carries the signal" naming convention — already established per Story type in
 `workflows/kickoff.md`/`story.md`/`bug.md`/`spike.md` — apply at the subtask level too,
 not just the story level.
 
-**No time-box/estimate custom field.** Time-boxed work (`Feasibility`, the ad-hoc `Spike`
-subtask) uses Jira's own native Original Estimate/Time Tracking field if a team wants to
+**No time-box/estimate custom field.** Time-boxed work (`Feasibility`, the ad-hoc
+`SpikeTask` subtask) uses Jira's own native Original Estimate/Time Tracking field if a team wants to
 track it — no TAI-specific field, consistent with reusing `Priority` rather than inventing
 a field for the Bug D5 expedited path.
 
@@ -493,13 +575,45 @@ a field for the Bug D5 expedited path.
 Issues carry statuses (pending / in-progress / done, plus blocked/ready as derived from
 dependencies) and **"blocks / depends-on"** links that determine what is ready to be picked
 up vs. blocked. **Resolved (rev 11, was §8 item #2):** the default status lifecycle is
-**`Open → In Progress → Done`** for both story-level tickets (plus Kickoff's extra
-`In Review` state) and subtasks, with specific per-type loop-backs documented in
-`workflows/story.md`/`bug.md` (Dev ⇄ Test, ArchitectureDesign ⇄ DesignReview, UAT
-rejection routing). "Ready" vs. "blocked" is **derived**, not a stored status —
-computed from `SUBTASK_PRECEDENCE` (`isSubtaskReady()`/`resolveApplicablePrecedence()`,
-`schema/story-schema.ts`). Still open: whether a business ever needs to customize this
-default lifecycle per-project, beyond the built-in loop-backs already modeled.
+**`To Do → In Progress → Done`** for both story-level tickets and subtasks, with specific
+per-type loop-backs documented in `workflows/story.md`/`bug.md` (Dev ⇄ Test,
+ArchitectureDesign ⇄ DesignReview, UAT rejection routing). "Ready" vs. "blocked" is
+**derived**, not a stored status — computed from `SUBTASK_PRECEDENCE`
+(`isSubtaskReady()`/`resolveApplicablePrecedence()`, `schema/story-schema.ts`). Still
+open: whether a business ever needs to customize this default lifecycle per-project,
+beyond the built-in loop-backs already modeled.
+
+**Naming and `In Review`, corrected against the actual Jira project (rev 15):** the
+status is natively named **`To Do`**, not `Open` — cosmetic, but this doc now uses Jira's
+real name rather than a made-up one. More substantively: Jira's default shared workflow
+carries an **`In Review`** status on *every* issue type by default, not just Kickoff — it
+isn't practical (or worth the ongoing maintenance) to give Kickoff a separate workflow
+just to withhold one status from every other type. Consistent with §3.3's "TAI's own
+plugin layer is the enforcer, not native Jira" philosophy: `In Review` being *available*
+on a Story/Bug/Spike/subtask is harmless — TAI's own logic decides which transitions are
+meaningful for a given type and never drives a non-Kickoff ticket into it. Only Kickoff's
+workflow (`workflows/kickoff.md`) actually uses it.
+
+**`Canceled` (rev 16) — a second terminal state, for work abandoned before completion.**
+Gap found while reconciling against the real Jira site: no status for "we decided not to
+do this" existed anywhere (confirmed via the site's full Statuses admin list — nothing to
+reuse, a genuinely new status). Applies to **every issue type — story-level tickets and
+subtasks alike** — not just the Spike outcome that surfaced it (`workflows/spike.md`'s
+"cancelled/deferred" outcome previously had no distinct status to land in; it was marked
+`Done` with the outcome buried in a note, which this fixes). Reachable from `To Do` or
+`In Progress`, terminal like `Done`.
+- **Precedence treatment:** a `Canceled` subtask counts as **satisfied** for
+  `SUBTASK_PRECEDENCE` purposes, same as `Done` — it unblocks dependents rather than
+  leaving them permanently stuck (`isSubtaskReady()`, `schema/story-schema.ts`; the
+  function already takes a caller-supplied "done" set rather than hardcoding a status
+  string, so no code change is needed there — just documenting, here and at the call
+  site, that "done" for precedence purposes means `Done` **or** `Canceled`).
+- **Status category:** create it under Jira's **`Done`** category (not `To Do`/
+  `In Progress`) — Jira only has three status categories, and `Canceled` is terminal
+  work, not pending work, even though it isn't "completed" in the original sense.
+- Like the other statuses (§5.3 above), this is a manual Jira admin step (Issues →
+  Statuses → Add status, then add it to the actual workflow) — no MCP tool creates
+  statuses.
 
 ### 5.4 Checkpoint Chain (canonical example)
 For an implementation Story touching one repo:
@@ -533,17 +647,43 @@ etc., differentiated by their type and their subtasks.
 - **On claiming a ticket where a branch already exists:** prompt the user to either
   **fetch/continue the existing branch** or **create a new one.**
 
-### 5.6 Human Registry & the Two-Axis Owner Model (rev 11)
+### 5.6 Human Registry & the Two-Axis Owner Model (rev 12)
 
-**Human↔persona registry:** one **native Jira Project Role per persona** (Architect,
-Developer, DBA, PM, …). A human's membership in a given Project Role means they're
-authorized to act as that persona on this project. A human can hold **multiple** roles
-(small-team/solo flexibility — e.g. one person is both Developer and Code Reviewer,
-consistent with the existing self-review carve-out, brief §4/§8.3). Reuses Jira's own
-role/membership mechanism rather than a separate TAI-maintained roster — same "reuse
-native Jira mechanics" pattern as `Component` for repo tracking (§4) and native sub-task
-issue types for `SubtaskType` (§5.2). TAI caches the membership list locally like
-everything else (§7).
+**Human↔persona registry: TAI's own Persona Roster, not a native Jira construct.**
+Originally scoped (rev 11) as one native Jira Project Role per persona, reusing Jira's
+role mechanism the same way `Component` reuses Jira for repo tracking (§4). **Revisited
+(rev 12):** Jira Cloud's **Free plan cannot create or edit Project Roles at all**, for
+either team-managed or company-managed projects — only a site *downgraded* from a paid
+plan keeps its old roles, frozen and read-only. Since Team AI is meant to be usable by
+free-tier teams (not just paid), and since a Jira-only role mechanism has no equivalent
+for the **filesystem backend** at all (a Jira-specific concept leaking into what should
+be a storage-agnostic model — the exact concern open question §8.7 asks about), the
+registry is redesigned around a mechanism TAI owns outright:
+
+- TAI maintains its own **Persona Roster**: per project, a mapping of
+  `persona id → [authorized humans]`. A human can appear under **multiple** personas
+  (small-team/solo flexibility — e.g. one person is both Developer and Code Reviewer,
+  consistent with the existing self-review carve-out, brief §4/§8.3).
+- **Stored through the storage plugin, like everything else (§3.2):** on the Jira/
+  Confluence backend, the roster is a page in the project's Confluence space — same
+  "shared, human-editable, cached locally" treatment already established for persona
+  extensions (§3.1). On the filesystem backend, it's a plain local file alongside the
+  other project config (§7). Either way, editing it is a normal document edit — no Jira
+  admin rights, no plan-tier dependency, no provisioning step.
+- TAI caches the roster locally like everything else (§7), refreshed at the usual
+  refresh points (§3.6).
+
+**Deferred (not v1): native Jira Project Role as an optional sync target.** On a paid
+plan (Standard+) where real custom Project Roles exist, TAI could additionally mirror the
+Persona Roster into native Project Roles — giving a team native-Jira visibility into
+"who's the Architect" without leaving Jira, and optional defense-in-depth (an admin could
+hand-configure a validator against it), consistent with §3.3's general stance that native
+Jira mechanisms are optional reinforcement, never a dependency. The TAI-owned roster is
+authoritative and fully sufficient on its own, on any tier or backend, with or without
+this sync. What triggers the sync (automatic plan-tier detection vs. an explicit opt-in
+command) and how conflicts between the two are handled is left undesigned until this is
+actually scheduled — same posture as §3.3's learning-loop deferral. See open question
+§8.18.
 
 **The two-axis owner model.** Every Story-level ticket (Kickoff/Story/Bug/Spike) and every
 Subtask carries **two distinct fields**, never conflated:
@@ -553,19 +693,21 @@ Subtask carries **two distinct fields**, never conflated:
    subtasks (§5.2) or **PM** for story-level tickets (the established default story-owner
    pattern, `workflows/*.md`), and is always overridable, exactly like `Deploy`/
    `PostDeploy`'s existing "default owner, overridable per instance" note. The ad-hoc
-   `Spike` subtask has no default and must have it set explicitly at creation, same as it
-   has no default human Assignee.
+   `SpikeTask` subtask has no default and must have it set explicitly at creation, same as
+   it has no default human Assignee.
 
-**Why a stored field, not a derived value:** since a human can hold multiple Project
-Roles, looking up "which persona is this" purely from the assignee's role membership is
-ambiguous whenever they hold more than one relevant role. An explicit, stored `persona`
+**Why a stored field, not a derived value:** since a human can appear under multiple
+personas in the Persona Roster, looking up "which persona is this" purely from roster
+membership is ambiguous whenever they're listed under more than one relevant persona. An
+explicit, stored `persona`
 field removes that ambiguity and is what makes effort/time-tracking roll up correctly by
 persona regardless of which human actually did the work (the schema-level rationale
 already stated for `SUBTASK_OWNER`).
 
 **Assignment-helper (answers "does TAI help PM assign tickets to humans"):** when a
-ticket needs a human `Assignee`, TAI looks up which humans hold the Project Role matching
-that ticket's `persona` field, and surfaces the candidates — plus lightweight signals
+ticket needs a human `Assignee`, TAI looks up which humans are listed under that ticket's
+`persona` field in the **Persona Roster**, and surfaces the candidates — plus lightweight
+signals
 (current open-ticket count per person, whether one already has a branch/related work in
 flight) — to whoever is driving the PM/Orchestrator session. Once a human is picked, **TAI
 performs the actual Jira `Assignee`-set call itself**, under the driving human's own
@@ -575,17 +717,17 @@ handled the same "flag on refresh, don't block" way as any other human-made chan
 (§3.6/§7).
 
 **Permission caching:** TAI does **not** pre-validate or cache what a given human is
-*permitted* to do in Jira beyond membership in the persona Project Roles above. Consistent
+*permitted* to do in Jira beyond membership in the Persona Roster above. Consistent
 with §3.3's existing pattern: TAI attempts the real Jira call (an assignment, same as a
 transition), and if Jira itself rejects it (e.g. missing "Assign Issues" permission), that
 rejection is treated as the same kind of unplanned checkpoint already defined for
 transitions — no new mechanism needed.
 
 **Review-gate validation, updated:** a `ReviewGate`'s `Approved:` comment (§3.3/`REVIEW_GATES`)
-now additionally requires the commenting human to hold the required persona's Project
-Role — closes a gap where TAI previously had no way to verify a raw Jira comment author
-actually corresponds to "the PM" or "the UX Designer" beyond trusting the comment's
-content.
+now additionally requires the commenting human to appear in the **Persona Roster** under
+the required persona — closes a gap where TAI previously had no way to verify a raw Jira
+comment author actually corresponds to "the PM" or "the UX Designer" beyond trusting the
+comment's content.
 
 ---
 
@@ -618,7 +760,10 @@ from source; the workspace holds state that may not exist anywhere else yet.
   cache/
     <project-key>/
       config/                    # project + workflow + persona config
-      personas/                  # cached persona extensions (from Confluence)
+      personas/                  # cached persona extensions (from Confluence);
+                                  #   roster.json (rev 12) — the Persona Roster (§5.6),
+                                  #   cached from its Confluence page (Jira backend) or
+                                  #   read directly (filesystem backend)
       issues/
         <ISSUE-KEY>.json         # raw cached issue (epic/story/bug/subtask), + cachedAt;
                                   #   comments are part of this payload, not separate files
@@ -704,11 +849,13 @@ Carry these forward; resolve them in upcoming design sessions.
    extensible (§5.1/§5.2) so a business can add one later (e.g. a Chore/Maintenance type)
    if a concrete gap actually appears in practice. (Earlier candidate names Research/
    Implementation were folded into these.)
-2. ~~**Jira statuses & workflows**~~ — **RESOLVED (rev 11):** default lifecycle is
-   `Open → In Progress → Done` (plus Kickoff's `In Review`), with per-type loop-backs
-   already documented in `workflows/story.md`/`bug.md`; "ready"/"blocked" is derived from
-   `SUBTASK_PRECEDENCE`, not stored. See §5.3. Still open: per-project customization of
-   this default beyond the built-in loop-backs.
+2. ~~**Jira statuses & workflows**~~ — **RESOLVED (rev 11, naming corrected rev 15):**
+   default lifecycle is `To Do → In Progress → Done`, with per-type loop-backs already
+   documented in `workflows/story.md`/`bug.md`; "ready"/"blocked" is derived from
+   `SUBTASK_PRECEDENCE`, not stored. `In Review` exists on every issue type (Jira's shared
+   default workflow), but only Kickoff's flow actually transitions into it — TAI's own
+   logic decides what's meaningful per type, same as everywhere else (§3.3). See §5.3.
+   Still open: per-project customization of this default beyond the built-in loop-backs.
 3. **Scope of the "same persona can't approve" rule:** is it scoped to the same human, the
    same persona role, or both? (Currently: business-enforced, not code-locked, to allow
    solo self-review.) *Note (rev 10):* the Code Reviewer persona expresses a "should not
@@ -780,6 +927,12 @@ Carry these forward; resolve them in upcoming design sessions.
     (§3.5, `workflows/kickoff.md`), but it gates *Kickoff discovery output*, not
     *`Investigate` story-refinement output* — so the dual-reviewer question for
     `Investigate`, and whether these two gates should be unified, both remain open.
+18. **Native Project Role sync (deferred, rev 12, §5.6):** whether/when to mirror the
+    TAI-owned Persona Roster into real Jira Project Roles for teams on a paid plan —
+    what triggers it (automatic plan-tier detection vs. an explicit opt-in command), and
+    how a conflict between the roster and hand-edited native roles is resolved. Not
+    required for the registry to function; purely an optional native-Jira visibility/
+    defense-in-depth enhancement once scheduled.
 
 ---
 
@@ -807,8 +960,10 @@ each new persona to help build the next.
 
 - **Language:** TypeScript (strict), Node.js 20+, ESM.
 - **Runtimes targeted:** Claude Code and Gemini CLI first; Antigravity CLI later.
-- **Storage/integration:** Atlassian Remote MCP Server (OAuth 2.1, permission-respecting)
-  for Jira + Confluence; local filesystem adapter as fallback.
+- **Storage/integration:** Atlassian **REST API** (`/rest/api/3`, `/wiki/api/v2`),
+  authenticated as the human via API token (OAuth 2.1 3LO layerable later); local filesystem
+  adapter as fallback. Native `fetch` — no HTTP client dependency. **Not** the Atlassian
+  Remote MCP Server; see §3.2 for why that was tried and rejected (rev 17).
 - **Dev tooling:** `tsx` for watch/dev, `tsc` for build, ESLint + `@typescript-eslint`.
 - **Session bootstrap files:** `CLAUDE.md` and `GEMINI.md` at repo root both point every
   session to **read this brief first.**
@@ -824,9 +979,13 @@ each new persona to help build the next.
 - **Persona field** — a stored per-ticket custom field naming which persona is acting in
   this specific ticket; distinct from the native Jira `Assignee` (a real human) — the
   two-axis owner model, §5.6.
-- **Jira Project Role** — one per persona (rev 11); a human's membership means they're
-  authorized to act as that persona on this project. Backs the human registry and
-  assignment-helper, §5.6.
+- **Persona Roster** — TAI's own storage-agnostic mapping of `persona id → authorized
+  humans` (rev 12; supersedes the earlier native-Jira-Project-Role design, dropped
+  because Jira's Free plan can't create Project Roles and the filesystem backend has no
+  equivalent). Confluence-page-backed on the Jira backend, a local file on the
+  filesystem backend. Backs the human registry and assignment-helper, §5.6. Syncing it
+  into real Jira Project Roles on paid tiers is an optional, deferred enhancement
+  (§8.18), never a dependency.
 - **Storage plugin / backend** — a swappable implementation of the source-of-truth
   interface (Jira, filesystem, other).
 - **Checkpoint** — a human-oversight gate modeled as a dependent subtask; overrides
