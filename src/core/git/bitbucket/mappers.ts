@@ -121,10 +121,18 @@ export function toPullRequestRef(pr: BitbucketPullRequestJson, repo: RepoId): Pu
         sourceBranch: pr.source.branch.name,
         destinationBranch: pr.destination.branch.name,
         author: toHumanRef(pr.author),
-        // Only REVIEWER-role participants are what TAI-34's checkpoint inspects — PARTICIPANT
-        // role covers e.g. the author or other watchers, not requested reviewers.
+        // REGRESSION this fixes (found live, TAI-38's own end-to-end demo, 2026-07-15):
+        // filtering strictly to role === "REVIEWER" silently dropped a real approval. A
+        // human who approves a PR they were never formally requested to review lands in
+        // `participants` with role PARTICIPANT, not REVIEWER — Bitbucket only assigns the
+        // REVIEWER role to people added as reviewers at PR-creation time. TAI-34's
+        // checkpoint cares whether SOMEONE actually reviewed, not just whether a formally
+        // requested reviewer did — so this includes every REVIEWER-role participant
+        // (requested, whether or not they've acted yet) plus any PARTICIPANT who has
+        // actually left a decision (state is non-null). A PARTICIPANT with no decision
+        // (state null — e.g. the author, a watcher) is correctly excluded either way.
         reviewers: pr.participants
-            .filter((p) => p.role === "REVIEWER")
+            .filter((p) => p.role === "REVIEWER" || p.state !== null)
             .map((p) => ({ human: toHumanRef(p.user), status: toReviewerStatus(p.state) })),
         sourceCommit: toCommitSha(pr.source.commit.hash),
         url: pr.links.html.href,

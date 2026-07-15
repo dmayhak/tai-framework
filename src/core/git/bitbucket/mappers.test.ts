@@ -81,10 +81,19 @@ describe("toPullRequestRef", () => {
                 role: "REVIEWER",
                 state: null,
             },
-            // A PARTICIPANT (e.g. a watcher) must never show up as a "reviewer" — only
-            // REVIEWER-role participants are what TAI-34's checkpoint inspects.
+            // A PARTICIPANT with no decision (e.g. a watcher, or the author) must never show
+            // up as a "reviewer".
             {
                 user: { account_id: "watcher-1", display_name: "Watcher" },
+                role: "PARTICIPANT",
+                state: null,
+            },
+            // Found LIVE (TAI-38's own end-to-end demo, 2026-07-15): a human who approves a
+            // PR they were never formally requested to review lands here — role
+            // PARTICIPANT, state "approved". This MUST still count as a reviewer, or a real
+            // approval silently vanishes from what TAI-34's checkpoint inspects.
+            {
+                user: { account_id: "ad-hoc-approver", display_name: "Ad Hoc Approver" },
                 role: "PARTICIPANT",
                 state: "approved",
             },
@@ -94,7 +103,7 @@ describe("toPullRequestRef", () => {
         links: { html: { href: "https://bitbucket.org/dmayhak/tai-framework/pull-requests/7" } },
     };
 
-    it("maps state, branches, commit, and filters reviewers to REVIEWER role only", () => {
+    it("maps state, branches, commit, and reviewers (requested REVIEWERs + any participant with a real decision)", () => {
         const ref = toPullRequestRef(BASE_PR, toRepoId("dmayhak/tai-framework"));
         assert.equal(ref.id, "7");
         assert.equal(ref.repo, "dmayhak/tai-framework");
@@ -102,10 +111,18 @@ describe("toPullRequestRef", () => {
         assert.equal(ref.sourceBranch, "TAI-37-git-host");
         assert.equal(ref.destinationBranch, "master");
         assert.equal(ref.sourceCommit, "abc123def456");
-        assert.equal(ref.reviewers.length, 3, "the PARTICIPANT-role watcher must be excluded");
+        assert.equal(
+            ref.reviewers.length,
+            4,
+            "3 requested REVIEWERs + the ad-hoc PARTICIPANT approver; the no-decision watcher is excluded"
+        );
         assert.deepEqual(
             ref.reviewers.map((r) => r.status),
-            ["approved", "changesRequested", "pending"]
+            ["approved", "changesRequested", "pending", "approved"]
+        );
+        assert.ok(
+            !ref.reviewers.some((r) => r.human.id === "watcher-1"),
+            "a PARTICIPANT with no decision must still be excluded"
         );
     });
 
