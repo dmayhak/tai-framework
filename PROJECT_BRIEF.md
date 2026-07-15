@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-15 (rev 22 — **six new open design questions added
+> **Last updated:** 2026-07-15 (rev 23 — **§8.21–§8.26 (the six BMAD/GSD/Spec-Kit-inspired
+> questions from rev 22) resolved: one adopted narrowly (§8.21, uncertainty markers scoped
+> to Kickoff docs only), one adopted lightly (§8.25, a one-line brief-compliance pointer per
+> workflow doc, not a full checklist), three deferred for having no current consumer
+> (§8.22 completion markers, §8.23 checkpoint taxonomy, §8.24 persona manifest — all
+> revisit when their actual driving work, e.g. Epic TAI-7, starts), and one declined
+> (§8.26 retrospective/correct-course type — no real gap has surfaced yet in TAI's own
+> dogfooding).** These are documentation-convention decisions only — **none of the six have
+> been applied yet** to the actual `personas/*.md` / `workflows/*.md` files; that's
+> follow-on work, not done by this revision.
+> Prior: rev 22 — **six new open design questions added
 > (§8.21–§8.26)**, surfaced by surveying BMAD-METHOD, GSD (Get Sh*t Done), and GitHub Spec
 > Kit for ideas applicable to `src/personas/*.md` / `src/workflows/*.md`: explicit
 > uncertainty markers in generated artifacts (Spec Kit's `NEEDS CLARIFICATION`), a
@@ -1082,44 +1092,55 @@ Carry these forward; resolve them in upcoming design sessions.
     merging directly on the git host, outside TAI, is detected on next refresh and
     reflected, not fought — same principle as §4's Confluence-gate-reopening rule. See
     §5.4 and the TAI-34 ADR (Confluence, TA space). **Design only — not yet implemented.**
-21. **Explicit uncertainty markers in generated artifacts** (rev 22, inspired by GitHub
-    Spec Kit's `NEEDS CLARIFICATION` convention): should persona-authored docs (PRD, ADR,
-    etc.) be required to leave an explicit machine-checkable marker on any genuine gap,
-    with a doc's review gate (e.g. Kickoff's PM+UX gate, §3.5) mechanically blocked on zero
-    unresolved markers — rather than depending on the persona's own judgment plus a human
-    reviewer to happen to notice what's missing? Would give a concrete, gate-checkable
-    answer to this session's open question about how deep Ada's clarifying conversation
-    should go before writing a Story.
-22. **Structured completion-marker convention for persona handoff** (rev 22, inspired by
-    GSD's `agent-contracts.md` pattern): each persona's `Handoff` section (`personas/*.md`)
-    is currently narrative prose. Would a fixed, per-persona heading marker (e.g.
-    `## REVIEW PASSED`, `## DESIGN BLOCKED`) at the end of a persona's actual output make
-    handoff detection deterministic for tooling, ahead of Epic TAI-7's autocompletion work
-    — versus continuing to rely on an orchestrator/human reading prose to tell what
-    happened?
-23. **Finer-grained checkpoint taxonomy** (rev 22, inspired by GSD's three-way
-    `human-verify` / `decision` / `human-action` split): should §3.4/§5.4's current binary
-    human-sign-off-default be split into distinct checkpoint *kinds* — e.g. "human should
-    glance at this," "human must choose," "human must physically act outside TAI" — so that
-    autocompletion conditions (open question §8.9) can be defined per kind rather than one
-    flag covering everything from a UAT sign-off to an external OAuth consent step?
-24. **Lightweight persona roster/manifest file** (rev 22, inspired by BMAD-METHOD's
-    `module.yaml` agent-roster pattern): separate from each full `personas/*.md`, would a
-    single compact index file (id, `displayName`, one-line description per persona) be
-    useful for routing/display — particularly if personas eventually become independently
-    invokable units (e.g. individual Claude Code skills, relevant to TAI-37's git-host
-    work) rather than always loaded as full files?
-25. **Brief-compliance gate embedded in each workflow doc** (rev 22, inspired by GitHub
-    Spec Kit's `constitution.md` + "Constitution Check" gate re-verified at every plan
-    transition): should each `workflows/*.md` carry an explicit checklist gate that
-    re-verifies compliance with this brief at defined transition points, rather than
-    compliance to this brief being implicit / caught only by ad hoc review?
-26. **Retrospective / correct-course workflow type** (rev 22, inspired by BMAD-METHOD's
-    dedicated `bmad-retrospective` and `bmad-correct-course` skills): the current
-    Story-type taxonomy (Kickoff/Story/Bug/Spike, §5.1) has no type for post-mortem
-    reflection after work ships, or for formally course-correcting scope mid-flight — is
-    that a gap worth a new Story type or subtask type, or is it adequately covered by
-    existing mechanisms (a Bug for the former, an edited Story for the latter)?
+21. ~~**Explicit uncertainty markers in generated artifacts**~~ (rev 22, inspired by
+    GitHub Spec Kit's `NEEDS CLARIFICATION` convention) — **RESOLVED (rev 23), narrow:**
+    adopted, but scoped to **Kickoff-stage docs only** (PRD/UX flows, `workflows/kickoff.md`)
+    — a persona leaves a `NEEDS CLARIFICATION: <question>` marker on any genuine gap, and
+    the existing PM+UX Designer review gate (§3.5) is mechanically blocked while any marker
+    remains, rather than depending solely on a reviewer noticing what's missing. Answers
+    this session's open question about how deep Ada's clarifying conversation needs to go:
+    exactly deep enough that no marker remains at gate time. **Not yet applied** to
+    `personas/analyst.md` / `workflows/kickoff.md` — that's follow-on implementation, not
+    done by this revision. Extending the convention to `Investigate`/ADR output later,
+    if Kickoff usage proves it out, is a natural next step but not decided here.
+22. ~~**Structured completion-marker convention for persona handoff**~~ (rev 22, inspired
+    by GSD's `agent-contracts.md` pattern) — **DEFERRED (rev 23):** no current consumer —
+    nothing in TAI reads a handoff marker today, since autocompletion (Epic TAI-7) isn't
+    built yet. Deciding a marker format now, ahead of what would actually consume it, risks
+    getting it wrong. Revisit when TAI-7 starts. Narrative `Handoff` sections in
+    `personas/*.md` stay as-is until then.
+23. ~~**Finer-grained checkpoint taxonomy**~~ (rev 22, inspired by GSD's three-way
+    `human-verify` / `decision` / `human-action` split) — **DEFERRED (rev 23):** same
+    reasoning as §8.22 — its only real payoff is feeding autocompletion conditions
+    (open question §8.9), which isn't designed yet either. Splitting checkpoint *kinds* in
+    isolation, before the conditions that would key off them exist, risks choosing the
+    wrong categories. Revisit alongside §8.9 when Epic TAI-7 starts. §3.4/§5.4's current
+    binary human-sign-off-default stands until then.
+24. ~~**Lightweight persona roster/manifest file**~~ (rev 22, inspired by BMAD-METHOD's
+    `module.yaml` agent-roster pattern) — **DEFERRED (rev 23):** no current consumer —
+    personas are always loaded as full `personas/*.md` files today; nothing invokes a
+    persona independently of that. Revisit if/when personas become independently
+    invokable (e.g. individual Claude Code skills). Building this speculatively risks
+    drifting out of sync with the real persona files it would summarize. *(Distinct from
+    the existing **Persona Roster**, §5.6 — that's the human↔persona-id assignment mapping;
+    this would have been a manifest of the personas themselves. Naming collision flagged
+    here so a future revisit doesn't reuse the same term for two different things.)*
+25. ~~**Brief-compliance gate embedded in each workflow doc**~~ (rev 22, inspired by
+    GitHub Spec Kit's `constitution.md` + "Constitution Check" gate) — **RESOLVED
+    (rev 23), light:** adopted, but as a single pointer line at the top of each
+    `workflows/*.md` ("must comply with `PROJECT_BRIEF.md`; re-check before finalizing
+    output"), not a duplicated checklist. `CLAUDE.md` already forces every session to read
+    this brief first; a full per-workflow checklist would need to stay in sync with a brief
+    that revises often (rev 23 as of this entry) — real rot risk outweighs the benefit of a
+    heavier gate. **Not yet applied** to the actual `workflows/*.md` files — follow-on
+    implementation.
+26. ~~**Retrospective / correct-course workflow type**~~ (rev 22, inspired by
+    BMAD-METHOD's dedicated `bmad-retrospective` and `bmad-correct-course` skills) —
+    **DECLINED (rev 23):** no retrospective or formal course-correction has ever actually
+    been needed in TAI's own dogfooding to date — same "don't add ahead of a real need"
+    reasoning as §8 item 1's Story-type stance and §5.2's subtask-type stance. A Bug covers
+    post-ship issues; an edited Story covers mid-flight scope correction. Revisit only if a
+    concrete gap appears in practice.
 
 ---
 
