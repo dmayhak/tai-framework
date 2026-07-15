@@ -50,7 +50,16 @@ export interface BitbucketPullRequestJson {
     readonly source: { readonly branch: { readonly name: string }; readonly commit: { readonly hash: string } };
     readonly destination: { readonly branch: { readonly name: string } };
     readonly author: BitbucketUserJson;
-    readonly participants: readonly BitbucketParticipantJson[];
+    // REGRESSION this fixes (found live, TAIT integration suite, 2026-07-15): Bitbucket's
+    // list-pullrequests endpoint (GET .../pullrequests) returns a lighter PR representation
+    // than the single-PR endpoint (GET .../pullrequests/{id}) — `participants` is simply
+    // ABSENT from list responses, not an empty array. `toPullRequestRef` crashed reading
+    // `.filter()` off `undefined` the first time `listPullRequests` actually ran against
+    // live data; no mocked unit test caught it because every mock supplied a well-formed
+    // array. Optional here; `toPullRequestRef` defaults to `[]`. Practical consequence: a
+    // `PullRequestRef` from `listPullRequests` always reports empty `reviewers` — callers
+    // that need real reviewer state must `getPullRequest` the specific PR.
+    readonly participants?: readonly BitbucketParticipantJson[];
     readonly created_on: string;
     readonly updated_on: string;
     readonly links: { readonly html: { readonly href: string } };
@@ -131,7 +140,7 @@ export function toPullRequestRef(pr: BitbucketPullRequestJson, repo: RepoId): Pu
         // (requested, whether or not they've acted yet) plus any PARTICIPANT who has
         // actually left a decision (state is non-null). A PARTICIPANT with no decision
         // (state null — e.g. the author, a watcher) is correctly excluded either way.
-        reviewers: pr.participants
+        reviewers: (pr.participants ?? [])
             .filter((p) => p.role === "REVIEWER" || p.state !== null)
             .map((p) => ({ human: toHumanRef(p.user), status: toReviewerStatus(p.state) })),
         sourceCommit: toCommitSha(pr.source.commit.hash),

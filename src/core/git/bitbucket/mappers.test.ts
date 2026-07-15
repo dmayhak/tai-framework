@@ -137,6 +137,17 @@ describe("toPullRequestRef", () => {
             "declined"
         );
     });
+
+    it("REGRESSION (found live via listPullRequests, 2026-07-15): tolerates a missing participants field", () => {
+        // Bitbucket's list-pullrequests endpoint omits `participants` entirely (not `[]`) —
+        // crashed the mapper the first time it ran against real list-endpoint data.
+        const { participants: _omitted, ...withoutParticipants } = BASE_PR;
+        const ref = toPullRequestRef(
+            withoutParticipants as unknown as BitbucketPullRequestJson,
+            toRepoId("dmayhak/tai-framework")
+        );
+        assert.deepEqual(ref.reviewers, []);
+    });
 });
 
 describe("toCommitStatus", () => {

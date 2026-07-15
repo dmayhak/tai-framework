@@ -166,6 +166,30 @@ describe("mergePullRequest — the §3.3 rejection-vs-connectivity split", () =>
         assert.equal(res.ok === true ? res.pullRequest.state : undefined, "merged");
     });
 
+    it("always asks Bitbucket to close the source branch (brief §6 — a branch is scoped to one work unit)", async () => {
+        let capturedBody: unknown;
+        const host = hostWith(
+            stubFetch((_method, _url, body) => {
+                capturedBody = body;
+                return json({ ...PR_JSON, state: "MERGED" });
+            })
+        );
+        await host.mergePullRequest(REPO, toPullRequestId("7"), "squash");
+        assert.deepEqual(capturedBody, { merge_strategy: "squash", close_source_branch: true });
+    });
+
+    it("sets close_source_branch even with no explicit strategy", async () => {
+        let capturedBody: unknown;
+        const host = hostWith(
+            stubFetch((_method, _url, body) => {
+                capturedBody = body;
+                return json({ ...PR_JSON, state: "MERGED" });
+            })
+        );
+        await host.mergePullRequest(REPO, toPullRequestId("7"));
+        assert.deepEqual(capturedBody, { close_source_branch: true });
+    });
+
     it("returns ok:false (never throws) when Bitbucket rejects the merge — e.g. not approved yet", async () => {
         const host = hostWith(
             stubFetch(() => json({ error: { message: "This pull request requires approval before merging." } }, 400))

@@ -163,7 +163,15 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
                 const pr = await client.request<BitbucketPullRequestJson>(
                     "POST",
                     `/repositories/${workspace}/${slug}/pullrequests/${id}/merge`,
-                    strategy ? { merge_strategy: BB_MERGE_STRATEGY[strategy] } : {}
+                    {
+                        ...(strategy ? { merge_strategy: BB_MERGE_STRATEGY[strategy] } : {}),
+                        // TAI's own branching model (brief §6): a branch is scoped to one
+                        // work unit and never reused after its PR merges — nothing left to
+                        // keep it around for. Always ask Bitbucket to clean it up on merge,
+                        // matching the manual branch-deletion done by hand elsewhere in this
+                        // project (TAI-38's own demo branches).
+                        close_source_branch: true,
+                    }
                 );
                 return { ok: true, pullRequest: toPullRequestRef(pr, repo) };
             } catch (err) {
