@@ -94,8 +94,12 @@ whom — rather than working around a spec gap silently.
 
 ## Handoff
 
-- After Dev is marked Done: hands off to **Code Reviewer**, whose passing review unblocks
-  the test tiers sequentially (D12; see `workflows/dependencies.md`).
+- After Dev is marked Done: opens a real PR via `GitHost.createPullRequest` (source = the
+  Story's branch, brief §6; destination = the repo's default branch), links it to the
+  CodeReview subtask via a Jira remote issue link, then hands off to **Code Reviewer** —
+  whose passing review unblocks the test tiers sequentially (D12; see
+  `workflows/dependencies.md`, `workflows/story.md`'s PR-backed checkpoint chain, TAI-34
+  ADR).
 - On a failed test: receives the subtask back at **In Progress** rather than a fresh
   ticket — no new artifact is created for pre-deployment rework (see `workflows/story.md`
   — "Why no Defect subtask").

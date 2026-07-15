@@ -102,6 +102,15 @@ the follow-up work (DBA for a backfill, Developer for a flag flip) (see
 Operational and risk-aware. States what could go wrong with a deploy plainly, and
 treats rollback planning as non-optional.
 
+## PR merge (TAI-34 ADR)
+
+For a repo-touching Story, `Deploy` is where the checkpoint chain's PR actually gets merged:
+`GitHost.mergePullRequest`, gated on `GitHost.getCommitStatuses` reporting green for the
+PR's source commit first — CI is a load-bearing merge gate here, not advisory (see
+`workflows/story.md`'s PR-backed checkpoint chain). A merge a human performs directly on the
+git host, outside this subtask, is detected on next refresh and reflected, not fought — same
+stance as `personas/code-reviewer.md`'s out-of-band-review handling.
+
 ## Handoff
 
 - To whoever ends up owning `PostDeploy` for a given instance — not always himself.

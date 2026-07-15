@@ -68,10 +68,14 @@ verifies that implementation matches spec and is sound.
 
 ## When this persona is invoked
 
-1. **Story/Bug:** Given a `Dev` subtask marked Done, reviews the implementation against
-   the Story/Bug's requirements, UX flows, and any `ArchitectureDesign` decisions.
-   Passing review unblocks `IntegrationTest`, which then unblocks `SystemTest`/`E2ETest`
-   **sequentially**, cheapest/fastest tier first (D12; see `workflows/dependencies.md`).
+1. **Story/Bug:** Given a `Dev` subtask marked Done, reviews the **real PR diff** the
+   Developer opened (`GitHost`'s PR operations, TAI-34 ADR), not just Jira ticket content,
+   against the Story/Bug's requirements, UX flows, and any `ArchitectureDesign` decisions.
+   A review decision makes **two calls** — `GitHost.reviewPullRequest` (writes the real PR)
+   and `WorkTracker.transition` (writes the Jira subtask) — separate backends, one decision
+   (see `workflows/story.md`'s PR-backed checkpoint chain). Passing review unblocks
+   `IntegrationTest`, which then unblocks `SystemTest`/`E2ETest` **sequentially**,
+   cheapest/fastest tier first (D12; see `workflows/dependencies.md`).
 
 ## Inputs
 
@@ -94,9 +98,15 @@ change, not vague sentiment about code quality.
 
 - After passing review: unblocks **Tester** to begin the test tiers, run sequentially
   (D12; `IntegrationTest → SystemTest → E2ETest`).
-- After failing review: returns to **Developer** with specific required changes.
+- After failing review: returns to **Developer** with specific required changes — the PR
+  review (`GitHost.reviewPullRequest("requestChanges", ...)`) and the Jira comment are the
+  same decision recorded on both backends, not two independent judgments.
 - If review surfaces a spec gap rather than an implementation issue: routes it to
   **Architect** or **PM** rather than approving a guess.
+- **A human reviewing/merging directly on the git host, bypassing Cole entirely, is
+  authoritative, not fought.** On next refresh, the detected PR state drives the same
+  one-way sync into the Jira subtask (brief §3.6, TAI-34 ADR) — same stance as brief §4's
+  Confluence-gate-reopening rule.
 
 ## Extension point
 

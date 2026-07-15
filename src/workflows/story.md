@@ -72,6 +72,41 @@ of a hardcoded default. Out of scope for v1 — documented here so the
 current hardcoded behavior is understood as a placeholder, not a
 permanent decision.
 
+## PR-backed checkpoint chain (TAI-34 ADR, brief §5.4 rev 21)
+
+For a repo-touching Story, the `Dev → CodeReview → Merge/Deploy` chain above operates on a
+real git PR (`src/core/git/interface.ts`'s `GitHost`), not Jira transitions alone:
+
+```
+[Dev subtask] --opens PR--> [CodeReview subtask] --approves PR--> [Merge/Deploy subtask] --merges PR-->
+```
+
+- **Dev completes** → Developer calls `GitHost.createPullRequest` (source = the Story's
+  branch, brief §6; destination = the repo's default branch), then links the PR to the
+  CodeReview subtask via a Jira remote issue link — same mechanism already used to link an
+  issue to its Confluence ADR, no new linking primitive. CodeReview becomes actionable, same
+  as today.
+- **CodeReview actionable** → Code Reviewer reviews the real PR diff (`GitHost`'s PR
+  operations), not just Jira ticket content. A decision makes **two calls**: `GitHost.
+  reviewPullRequest` (writes the real PR) and `WorkTracker.transition` (writes the Jira
+  subtask) — separate backends, one reviewer decision.
+- **Review fails** (persona- or human-authored directly on the git host) → unchanged from
+  the Dev ⇄ Test loop above: reopen Dev, Jira comment with reviewer notes, retry-once-then-
+  escalate.
+- **Review passes** → CodeReview done, unblocking Merge/Deploy.
+- **Merge/Deploy** → `GitHost.mergePullRequest`, gated on `GitHost.getCommitStatuses` being
+  green first — CI is a load-bearing merge gate, not advisory.
+- **PR state syncs one-way into the Jira subtask**, at existing refresh points (brief §3.6),
+  never the reverse — the Jira subtask stays what TAI's own precedence engine reads. A human
+  acting directly on the git host (approve/request-changes/merge) is detected on next
+  refresh and reflected, never fought — same stance as brief §4's Confluence-gate-reopening
+  rule.
+
+See the TAI-33/TAI-34 ADRs (Confluence, TA space) for the full design. **Bootstrapping
+note:** TAI-37/TAI-38 — the Story that builds this mechanism — cannot use it for its own
+CodeReview, since it doesn't exist yet until that Story ships; that review goes through the
+old Jira-only process.
+
 ## Design Review gate (optional)
 
 When present, `DesignReview` sits between `ArchitectureDesign` and `Dev` — the
