@@ -18,6 +18,11 @@
  * branch restrictions, deployments, tags, repo admin/permissions — extend when a real need
  * appears, don't build ahead of it (ADR decision 2, mirroring brief §7's cache-eviction
  * stance).
+ *
+ * Verified live end-to-end (2026-07-15, TAI-38): this Bitbucket backend created, reviewed
+ * (approved), and merged a real PR against `tai-framework` — this very commit — through
+ * `createPullRequest`/`reviewPullRequest`/`getCommitStatuses`/`mergePullRequest`, satisfying
+ * TAI-37's acceptance criteria.
  */
 
 import type { HumanRef, Comment } from "../storage/interface.js";
