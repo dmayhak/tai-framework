@@ -4,7 +4,18 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-14 (rev 21 — **§8.19 and §8.20 resolved via TAI-33/TAI-34
+> **Last updated:** 2026-07-15 (rev 22 — **six new open design questions added
+> (§8.21–§8.26)**, surfaced by surveying BMAD-METHOD, GSD (Get Sh*t Done), and GitHub Spec
+> Kit for ideas applicable to `src/personas/*.md` / `src/workflows/*.md`: explicit
+> uncertainty markers in generated artifacts (Spec Kit's `NEEDS CLARIFICATION`), a
+> structured completion-marker convention for persona handoff (GSD's agent-contracts
+> pattern), a finer-grained checkpoint taxonomy beyond the current binary
+> human-sign-off-default (GSD), a lightweight persona roster/manifest file separate from
+> the full persona docs (BMAD's module-roster pattern), a brief-compliance gate embedded in
+> each workflow doc (Spec Kit's "Constitution Check"), and a retrospective/correct-course
+> workflow type (BMAD) that the Story/Bug/Spike/Kickoff taxonomy doesn't currently have.
+> **Ideas only — nothing decided, nothing else in this brief changed.** See §8.21–§8.26.
+> Prior: rev 21 — **§8.19 and §8.20 resolved via TAI-33/TAI-34
 > (Spikes, dogfooded through TAI's own Jira project) — design only, nothing built yet.**
 > §8.19: a new sibling `GitHostBackend`/`GitHost` interface, not folded into
 > `StorageBackend` — git hosting is a different domain and an independent configuration
@@ -1071,6 +1082,44 @@ Carry these forward; resolve them in upcoming design sessions.
     merging directly on the git host, outside TAI, is detected on next refresh and
     reflected, not fought — same principle as §4's Confluence-gate-reopening rule. See
     §5.4 and the TAI-34 ADR (Confluence, TA space). **Design only — not yet implemented.**
+21. **Explicit uncertainty markers in generated artifacts** (rev 22, inspired by GitHub
+    Spec Kit's `NEEDS CLARIFICATION` convention): should persona-authored docs (PRD, ADR,
+    etc.) be required to leave an explicit machine-checkable marker on any genuine gap,
+    with a doc's review gate (e.g. Kickoff's PM+UX gate, §3.5) mechanically blocked on zero
+    unresolved markers — rather than depending on the persona's own judgment plus a human
+    reviewer to happen to notice what's missing? Would give a concrete, gate-checkable
+    answer to this session's open question about how deep Ada's clarifying conversation
+    should go before writing a Story.
+22. **Structured completion-marker convention for persona handoff** (rev 22, inspired by
+    GSD's `agent-contracts.md` pattern): each persona's `Handoff` section (`personas/*.md`)
+    is currently narrative prose. Would a fixed, per-persona heading marker (e.g.
+    `## REVIEW PASSED`, `## DESIGN BLOCKED`) at the end of a persona's actual output make
+    handoff detection deterministic for tooling, ahead of Epic TAI-7's autocompletion work
+    — versus continuing to rely on an orchestrator/human reading prose to tell what
+    happened?
+23. **Finer-grained checkpoint taxonomy** (rev 22, inspired by GSD's three-way
+    `human-verify` / `decision` / `human-action` split): should §3.4/§5.4's current binary
+    human-sign-off-default be split into distinct checkpoint *kinds* — e.g. "human should
+    glance at this," "human must choose," "human must physically act outside TAI" — so that
+    autocompletion conditions (open question §8.9) can be defined per kind rather than one
+    flag covering everything from a UAT sign-off to an external OAuth consent step?
+24. **Lightweight persona roster/manifest file** (rev 22, inspired by BMAD-METHOD's
+    `module.yaml` agent-roster pattern): separate from each full `personas/*.md`, would a
+    single compact index file (id, `displayName`, one-line description per persona) be
+    useful for routing/display — particularly if personas eventually become independently
+    invokable units (e.g. individual Claude Code skills, relevant to TAI-37's git-host
+    work) rather than always loaded as full files?
+25. **Brief-compliance gate embedded in each workflow doc** (rev 22, inspired by GitHub
+    Spec Kit's `constitution.md` + "Constitution Check" gate re-verified at every plan
+    transition): should each `workflows/*.md` carry an explicit checklist gate that
+    re-verifies compliance with this brief at defined transition points, rather than
+    compliance to this brief being implicit / caught only by ad hoc review?
+26. **Retrospective / correct-course workflow type** (rev 22, inspired by BMAD-METHOD's
+    dedicated `bmad-retrospective` and `bmad-correct-course` skills): the current
+    Story-type taxonomy (Kickoff/Story/Bug/Spike, §5.1) has no type for post-mortem
+    reflection after work ships, or for formally course-correcting scope mid-flight — is
+    that a gap worth a new Story type or subtask type, or is it adequately covered by
+    existing mechanisms (a Bug for the former, an edited Story for the latter)?
 
 ---
 
