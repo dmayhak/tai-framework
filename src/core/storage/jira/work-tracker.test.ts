@@ -2,11 +2,47 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { Status } from "../../schema/story-schema.js";
-import { StorageConnectivityError, toIssueKey, toHumanId } from "../interface.js";
+import {
+    StorageConnectivityError,
+    toIssueKey,
+    toHumanId,
+    toPageId,
+    type DocStore,
+    type Page,
+    type PageRef,
+} from "../interface.js";
 import { RestClient, apiTokenAuth } from "./rest-client.js";
 import { createJiraWorkTracker } from "./work-tracker.js";
 
 const PERSONA_FIELD = "customfield_10105";
+const SPACE_KEY = "TA";
+
+/**
+ * A minimal DocStore fake — every test in this file except "the review gate" describe block
+ * transitions a `Dev` subtask, which `reviewGateApplies` short-circuits on `issue.issueType`
+ * alone (review-gate.ts) before ever touching the DocStore. So the default fake here never
+ * actually gets called; `pages` lets the review-gate tests below configure a real Persona
+ * Roster page when they need one.
+ */
+function fakeDocStore(pages: Page[] = []): DocStore {
+    const notImplemented = (): never => {
+        throw new Error("not implemented in this test fake");
+    };
+    return {
+        async getPage(ref: PageRef): Promise<Page | null> {
+            if ("id" in ref) return pages.find((p) => p.id === ref.id) ?? null;
+            return pages.find((p) => p.spaceKey === ref.spaceKey && p.title === ref.title) ?? null;
+        },
+        createPage: notImplemented,
+        updatePage: notImplemented,
+        addComment: notImplemented,
+        editComment: notImplemented,
+        getChildren: notImplemented,
+        getLinkedIssues: notImplemented,
+        listAttachments: notImplemented,
+        getAttachment: notImplemented,
+    };
+}
 
 /** A fetch stub that replays canned responses, so these stay offline and deterministic. */
 function stubFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
@@ -21,13 +57,13 @@ function json(body: unknown, status = 200): Response {
     });
 }
 
-function trackerWith(fetchImpl: typeof fetch) {
+function trackerWith(fetchImpl: typeof fetch, docStore: DocStore = fakeDocStore()) {
     const client = new RestClient({
         siteUrl: "https://example.atlassian.net",
         auth: apiTokenAuth("a@b.c", "token"),
         fetchImpl,
     });
-    return createJiraWorkTracker(client, { personaFieldId: PERSONA_FIELD });
+    return createJiraWorkTracker(client, { personaFieldId: PERSONA_FIELD, docStore, spaceKey: SPACE_KEY });
 }
 
 describe("error model — the §3.3 / §3.6 split", () => {
@@ -235,11 +271,135 @@ describe("transition", () => {
         });
     });
 
+    /**
+     * TAI-41 ADR's "hard" checkpoint kind, TAI-42's own scope: REVIEW_GATES enforcement
+     * (brief §3.3/§3.9/§5.6). Only Kickoff has a gate today (`REVIEW_GATES` in
+     * story-schema.ts), triggered on In Review -> Done.
+     */
+    describe("the review gate", () => {
+        const ROSTER_PAGE: Page = {
+            id: toPageId("PAGE-1"),
+            spaceKey: SPACE_KEY,
+            title: "Persona Roster",
+            content: [
+                "| Persona | Authorized humans |",
+                "| --- | --- |",
+                "| PM | Perry ([perry@example.com](mailto:perry@example.com)) |",
+                "| UX Designer | Uma ([uma@example.com](mailto:uma@example.com)) |",
+            ].join("\n"),
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+        };
+
+        function approvedComment(id: string, email: string, displayName: string) {
+            return {
+                id,
+                author: { accountId: id, displayName, emailAddress: email },
+                body: `Approved: looks good`,
+                created: "x",
+                updated: "x",
+            };
+        }
+
+        function kickoffTrackerWith(comments: unknown[], status = "In Review") {
+            return trackerWith(
+                stubFetch((url, init) => {
+                    if (url.includes("/transitions") && init.method === "GET") {
+                        return json({ transitions: [{ id: "41", name: "Finish", to: { name: "Done" } }] });
+                    }
+                    if (url.includes("/transitions") && init.method === "POST") {
+                        return new Response(null, { status: 204 });
+                    }
+                    return json({
+                        key: "TAI-1",
+                        fields: {
+                            project: { key: "TAI" },
+                            issuetype: { name: "Kickoff" },
+                            summary: "s",
+                            status: { name: status },
+                            assignee: { accountId: "a1", displayName: "del" },
+                            created: "x",
+                            updated: "y",
+                            comment: { comments },
+                        },
+                    });
+                }),
+                fakeDocStore([ROSTER_PAGE])
+            );
+        }
+
+        it("blocks Done when a required reviewer's Approved: sign-off is missing", async () => {
+            const wt = kickoffTrackerWith([approvedComment("c1", "perry@example.com", "Perry")]);
+            const res = await wt.transition(toIssueKey("TAI-1"), Status.Done);
+            assert.equal(res.ok, false);
+            assert.match(res.ok === false ? res.reason : "", /missing.*sign-off.*UX Designer/is);
+        });
+
+        it("blocks Done when the commenter isn't in the Persona Roster for that persona", async () => {
+            // Right marker, wrong human — "Approved:" from someone the roster doesn't list
+            // under PM must not count, or anyone could satisfy the gate by typing the marker.
+            const wt = kickoffTrackerWith([
+                approvedComment("c1", "not-pm@example.com", "Not Perry"),
+                approvedComment("c2", "uma@example.com", "Uma"),
+            ]);
+            const res = await wt.transition(toIssueKey("TAI-1"), Status.Done);
+            assert.equal(res.ok, false);
+            assert.match(res.ok === false ? res.reason : "", /PM/);
+        });
+
+        it("allows Done once both required reviewers have approved", async () => {
+            const wt = kickoffTrackerWith([
+                approvedComment("c1", "perry@example.com", "Perry"),
+                approvedComment("c2", "uma@example.com", "Uma"),
+            ]);
+            const res = await wt.transition(toIssueKey("TAI-1"), Status.Done);
+            assert.equal(res.ok, true);
+        });
+
+        it("re-scans fresh every call — an edited-away Approved: comment reopens the gate", async () => {
+            // Same shape as "missing sign-off" above, just documenting the fresh-re-scan
+            // property explicitly (brief §3.9): nothing here is a cached prior verdict, the
+            // marker scan runs directly against whatever `issue.comments` this fetch returns.
+            const wt = kickoffTrackerWith([approvedComment("c1", "perry@example.com", "Perry")]);
+            const res = await wt.transition(toIssueKey("TAI-1"), Status.Done);
+            assert.equal(res.ok, false);
+        });
+
+        /**
+         * REGRESSION guard (found in self-review before this ever shipped). Neither backend
+         * enforces strict workflow ordering (conformance.ts's `strictWorkflow: false` on both),
+         * so a gate keyed to "current status is In Review" would be trivially bypassable by
+         * transitioning straight from To Do / In Progress to Done. `reviewGateApplies` checks
+         * only the target, not the source, specifically to close this off.
+         */
+        it("still blocks Done when skipping straight from To Do (no strict workflow to rely on)", async () => {
+            const wt = kickoffTrackerWith([], "To Do");
+            const res = await wt.transition(toIssueKey("TAI-1"), Status.Done);
+            assert.equal(res.ok, false);
+        });
+    });
+
     it("rejects (ok:false) when the target status is unreachable from here", async () => {
         const wt = trackerWith(
-            stubFetch(() =>
-                json({ transitions: [{ id: "11", name: "Reopen", to: { name: "To Do" } }] })
-            )
+            stubFetch((url) => {
+                if (url.includes("/transitions")) {
+                    return json({ transitions: [{ id: "11", name: "Reopen", to: { name: "To Do" } }] });
+                }
+                // The Done-target fetch (needed to check the review gate — review-gate.ts,
+                // TAI-42) — a plain Dev subtask, so the gate itself is inapplicable here.
+                return json({
+                    key: "TAI-21",
+                    fields: {
+                        project: { key: "TAI" },
+                        issuetype: { name: "Dev" },
+                        summary: "s",
+                        status: { name: "In Progress" },
+                        created: "x",
+                        updated: "y",
+                    },
+                });
+            })
         );
         const res = await wt.transition(toIssueKey("TAI-21"), Status.Done);
         assert.equal(res.ok, false);

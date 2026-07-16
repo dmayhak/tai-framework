@@ -353,6 +353,52 @@ export function defineStorageConformance(
             });
         });
 
+        // ---------- Review gate (TAI-41 ADR, TAI-42) ----------
+
+        describe("WorkTracker: transition() and the review gate", () => {
+            it("blocks Kickoff In Review -> Done until required reviewers approve, then allows it", async () => {
+                // Persona Roster: the harness's own valid-assignee identity, listed under
+                // BOTH required reviewers (PM + UX Designer, story-schema.ts REVIEW_GATES) —
+                // a human may appear under multiple personas (brief §5.6), and it's the only
+                // identity either harness's fixed credentials can act as.
+                trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: "Persona Roster",
+                        content: [
+                            "| Persona | Authorized humans |",
+                            "| --- | --- |",
+                            `| PM | ${h.validAssignee.displayName} |`,
+                            `| UX Designer | ${h.validAssignee.displayName} |`,
+                        ].join("\n"),
+                    })
+                );
+
+                const kickoff = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Kickoff,
+                        summary: "Conformance: review gate",
+                        assignee: h.validAssignee,
+                    })
+                );
+                await h.backend.workTracker.transition(kickoff.key, Status.InProgress);
+                await h.backend.workTracker.transition(kickoff.key, Status.InReview);
+
+                const blocked = await h.backend.workTracker.transition(kickoff.key, Status.Done);
+                assert.equal(blocked.ok, false, "no Approved: comments yet — the gate must hold");
+
+                await h.backend.workTracker.addComment(kickoff.key, "Approved: looks good");
+
+                const passed = await h.backend.workTracker.transition(kickoff.key, Status.Done);
+                assert.equal(
+                    passed.ok,
+                    true,
+                    "one Approved: comment from a human listed under both required personas satisfies the gate"
+                );
+            });
+        });
+
         // ---------- Comments & labels ----------
 
         describe("WorkTracker: comments and labels", () => {
