@@ -57,9 +57,10 @@ comment prefixed `Approved:` (optionally with notes) on the Kickoff Story. TAI's
 layer scans for one `Approved:` comment from each persona in `REVIEW_GATES[Kickoff]
 .requiredReviewers` (PM and UX Designer) before allowing Story/Spike tickets to be
 created — symmetric with the framework-wide `Q:` open-question convention (see
-design-notes doc). **The commenting human must also hold that persona's Jira Project
-Role** (brief §5.6) — this is how TAI verifies a comment actually counts as "the PM" or
-"the UX Designer" signing off, not just anyone typing the marker.
+design-notes doc). **The commenting human must also appear in the Persona Roster**
+(brief §5.6, rev 12 — TAI's own roster, not a native Jira Project Role; free-tier Jira
+can't create those) **under that persona** — this is how TAI verifies a comment actually
+counts as "the PM" or "the UX Designer" signing off, not just anyone typing the marker.
 
 **Gate also requires zero unresolved `NEEDS CLARIFICATION` markers (rev 23, brief §8.21).**
 While drafting, PM (PRD) and UX Designer (UX flows) mark any genuine gap inline with

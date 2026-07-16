@@ -4,7 +4,14 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-15 (rev 24 — **§8.21 and §8.25 applied to the actual docs.**
+> **Last updated:** 2026-07-16 (rev 25 — **§8.9, §8.19, §8.20, §8.22, §8.23 updated to
+> reflect real implementation/design work.** §8.19/§8.20 (pluggable `GitHost`, PR-backed
+> CodeReview) marked **Implemented** — TAI-38/39/40 shipped `src/core/git/interface.ts`
+> and the Bitbucket backend; §5.4 and §6's matching "not yet implemented" notes updated to
+> match. §8.9/§8.22/§8.23 (autocompletion conditions, completion markers, checkpoint
+> taxonomy) **resolved via the TAI-41 ADR** (Confluence, TA space) — design only, not yet
+> built; §3.4 now points to it. §8.24/§8.26 are unaffected.
+> Prior: rev 24 — **§8.21 and §8.25 applied to the actual docs.**
 > `workflows/kickoff.md` now defines the `NEEDS CLARIFICATION` marker mechanism and blocks
 > its PM+UX Designer review gate on zero unresolved markers (§8.21); `personas/pm.md` and
 > `personas/ux-designer.md` each point back to it from their PRD/UX-flow output
@@ -321,6 +328,15 @@ configurable set of conditions that must be satisfied.
 Conditions are richer than a simple checklist and are likely themselves prompt-based, e.g.:
 - "Code review has no major issues and fewer than *X* minor ones."
 - "DB design passes DBA review and satisfies the Analyst's requirements."
+
+**Design resolved (rev 25, TAI-41 ADR, §8.9/§8.22/§8.23):** `AutocompletionCondition
+{ id, description }` (the `description` is the prompt text above); `transition()` never
+evaluates a condition live — the deciding persona evaluates it and records PASS/FAIL via a
+`Complete:` Jira-comment marker (extending §3.9's convention), which `transition()` reads.
+Checkpoints are `hard` (never autocompletes — `ALWAYS_HUMAN_GATED_SUBTASKS`/
+`REVIEW_GATES`) or `conditional` (this section's default, autocompletion-eligible per the
+above). See the TAI-41 ADR (Confluence, TA space). **Design only — not yet implemented**,
+see TAI-42/TAI-43.
 
 **Hard rule:** a persona may **never** approve/self-certify its own work. (See §4, item on
 same-persona approval.)
@@ -709,7 +725,7 @@ For an implementation Story touching one repo:
   multiple parties care). AI may retry once; second failure escalates to a human.
 - Review **passes** → mark it done, unblocking the next subtask in the chain.
 
-**Design resolved but not yet implemented (rev 21, TAI-34 ADR, §8.20):** this chain
+**Implemented (rev 21 design, TAI-34 ADR; rev 25 build, TAI-38/39/40, §8.20):** this chain
 operates on a real git PR, not Jira transitions alone —
 ```
 [Dev subtask] --opens PR--> [CodeReview subtask] --approves PR--> [Merge/Deploy subtask] --merges PR-->
@@ -872,15 +888,15 @@ comment's content.
   `MutationResult`/`StorageConnectivityError`, an open `kind` discriminator) without
   reusing its interface. Scoped to PR CRUD, approve/request-changes, merge, and commit
   status — not the full breadth of either host's API. See the TAI-33 ADR (Confluence, TA
-  space). **Not yet implemented** — `src/core/git/interface.ts` doesn't exist yet;
-  deferred to a follow-on Story alongside TAI-34's checkpoint work (below).
+  space). **Implemented (rev 25, TAI-38):** `src/core/git/interface.ts` plus a Bitbucket
+  backend at `src/core/git/bitbucket/`.
 - **The CodeReview checkpoint acts on a real git PR (rev 21, design resolved via TAI-34,
   §8.20).** See §5.4 for the revised chain. PR state syncs one-way into the Jira subtask
   at existing refresh points (§3.6) — never the reverse; the Jira subtask stays what
   TAI's own precedence engine reads. A human reviewing/merging directly on the git host
   is treated as authoritative, not fought — same principle as this section's own
   human-authority stance and §4's Confluence-gate-reopening rule. See the TAI-34 ADR.
-  **Not yet implemented.**
+  **Implemented (rev 25, TAI-38/39/40)**, verified against the live TAIT scratch repo.
 - **Branch unit:** parent Story/Bug. Name = parent issue key + very short slug
   (e.g. `PROJ-123-user-login`).
 - **Subtasks accumulate** onto their parent Story's branch; they do not get their own
@@ -1025,8 +1041,14 @@ Carry these forward; resolve them in upcoming design sessions.
    fields, attachments) and what Jira-specific concepts must *not* leak so the filesystem
    backend stays clean.
 8. **Ticket-switch mechanic:** worktree swap vs. plain checkout as default.
-9. **Autocompletion condition format:** the schema/prompt structure for extensible
-   condition definitions.
+9. ~~**Autocompletion condition format**~~ — **RESOLVED (rev 25, TAI-41 ADR):**
+   `AutocompletionCondition { id, description }`, `AutocompletionConfig` is
+   `{ enabled: false } | { enabled: true; conditions: [...] }` — AND-only for v1.
+   Configured per persona/subtask-type/per-issue-override (§3.4's three axes). The
+   condition's `description` is the prompt text; `transition()` never evaluates it
+   live — the deciding persona evaluates it and records the verdict via the §8.22
+   `Complete:` marker, which `transition()` reads. See the TAI-41 ADR (Confluence, TA
+   space). **Design only — not yet implemented**, see TAI-43.
 10. **Root status-file reconciliation:** exact staleness rule for `status.json` (TTL vs.
     trust-until-mismatch) and when a reconciliation scan is triggered automatically
     (session start? every command? explicit `/tai_` refresh command?).
@@ -1090,7 +1112,8 @@ Carry these forward; resolve them in upcoming design sessions.
     Scoped to PR CRUD, approve/request-changes, merge, and commit status; explicitly
     excludes a "trigger CI" operation (can't be guaranteed retroactively, per this
     session's own Bitbucket Pipelines work). See §6 and the TAI-33 ADR (Confluence, TA
-    space). **Design only — not yet implemented**, see §9 for when.
+    space). **Implemented (rev 25, TAI-38):** `GitHost` interface and Bitbucket backend
+    live at `src/core/git/interface.ts` and `src/core/git/bitbucket/`.
 20. ~~**CodeReview checkpoint must act on a real git PR**~~ — **RESOLVED (rev 21, TAI-34
     Spike/ADR):** the Develop→CodeReview→Merge/Deploy chain (§5.4) now opens and acts on a
     real PR. PR state syncs **one-way** into the Jira subtask at existing refresh points
@@ -1098,7 +1121,9 @@ Carry these forward; resolve them in upcoming design sessions.
     reads, answering the "which is the source of truth" question. A human reviewing or
     merging directly on the git host, outside TAI, is detected on next refresh and
     reflected, not fought — same principle as §4's Confluence-gate-reopening rule. See
-    §5.4 and the TAI-34 ADR (Confluence, TA space). **Design only — not yet implemented.**
+    §5.4 and the TAI-34 ADR (Confluence, TA space). **Implemented (rev 25, TAI-38/39/40):**
+    Develop opens a real PR, CodeReview acts on it, Merge/Deploy merges it gated on commit
+    status; verified against the live TAIT scratch repo (TAI-40 integration test).
 21. ~~**Explicit uncertainty markers in generated artifacts**~~ (rev 22, inspired by
     GitHub Spec Kit's `NEEDS CLARIFICATION` convention) — **RESOLVED (rev 23), narrow:**
     adopted, but scoped to **Kickoff-stage docs only** (PRD/UX flows, `workflows/kickoff.md`)
@@ -1113,18 +1138,23 @@ Carry these forward; resolve them in upcoming design sessions.
     work-breakdown doc. Extending the convention to `Investigate`/ADR output later, if
     Kickoff usage proves it out, is a natural next step but not decided here.
 22. ~~**Structured completion-marker convention for persona handoff**~~ (rev 22, inspired
-    by GSD's `agent-contracts.md` pattern) — **DEFERRED (rev 23):** no current consumer —
-    nothing in TAI reads a handoff marker today, since autocompletion (Epic TAI-7) isn't
-    built yet. Deciding a marker format now, ahead of what would actually consume it, risks
-    getting it wrong. Revisit when TAI-7 starts. Narrative `Handoff` sections in
-    `personas/*.md` stay as-is until then.
+    by GSD's `agent-contracts.md` pattern) — **RESOLVED (rev 25, TAI-41 ADR):** extends
+    the existing `Approved:`/`Rejected:`/`Q:` marker convention (§3.9) with `Complete:
+    <SubtaskType>` plus one `<condition-id>: PASS|FAIL` line per configured autocompletion
+    condition (§8.9), posted by the deciding persona (or human) as a Jira comment when the
+    subtask concludes. Deliberately **no** inference-fallback here, unlike the human-
+    authored markers — a persona's output format is under TAI's own prompt control, so a
+    missing/malformed marker is treated as FAIL, not inferred from prose. See the TAI-41
+    ADR (Confluence, TA space). **Design only — not yet implemented**, see TAI-42.
 23. ~~**Finer-grained checkpoint taxonomy**~~ (rev 22, inspired by GSD's three-way
-    `human-verify` / `decision` / `human-action` split) — **DEFERRED (rev 23):** same
-    reasoning as §8.22 — its only real payoff is feeding autocompletion conditions
-    (open question §8.9), which isn't designed yet either. Splitting checkpoint *kinds* in
-    isolation, before the conditions that would key off them exist, risks choosing the
-    wrong categories. Revisit alongside §8.9 when Epic TAI-7 starts. §3.4/§5.4's current
-    binary human-sign-off-default stands until then.
+    `human-verify` / `decision` / `human-action` split) — **RESOLVED (rev 25, TAI-41
+    ADR), declined as proposed:** GSD's three-way split doesn't map onto what exists in
+    `story-schema.ts` — no current checkpoint is a "pick from options" or an "external
+    physical action." Instead formalizes the two kinds already implicit in the code:
+    **`hard`** (never autocompletes — `ALWAYS_HUMAN_GATED_SUBTASKS`/`REVIEW_GATES`) and
+    **`conditional`** (default human-sign-off, autocompletion-eligible per §8.9/§8.22).
+    Additive over the existing binary default, not a breaking change. See the TAI-41 ADR
+    (Confluence, TA space). **Design only — not yet implemented**, see TAI-42.
 24. ~~**Lightweight persona roster/manifest file**~~ (rev 22, inspired by BMAD-METHOD's
     `module.yaml` agent-roster pattern) — **DEFERRED (rev 23):** no current consumer —
     personas are always loaded as full `personas/*.md` files today; nothing invokes a

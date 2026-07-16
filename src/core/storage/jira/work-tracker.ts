@@ -16,6 +16,7 @@ import {
 } from "../../schema/story-schema.js";
 import {
     type WorkTracker,
+    type DocStore,
     type Issue,
     type CreateIssueInput,
     type IssuePatch,
@@ -33,6 +34,8 @@ import {
 } from "../interface.js";
 import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
+import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
+import { loadRoster, type Roster } from "../../personas/roster.js";
 import {
     type RawIssue,
     type RawComment,
@@ -60,6 +63,18 @@ export interface JiraWorkTrackerConfig {
      * Use `discoverPersonaFieldId()` to resolve it by name at startup.
      */
     readonly personaFieldId: string;
+    /**
+     * The Confluence DocStore backing the same project (brief §5.6: the Persona Roster is
+     * an ordinary Confluence page, not a WorkTracker concern) — needed here so `transition()`
+     * can enforce `REVIEW_GATES` centrally (brief §3.3), which requires checking an
+     * `Approved:` commenter against the roster. Required, not optional: silently skipping
+     * the roster check when unconfigured would silently bypass a checkpoint, which brief
+     * §3.3 treats as never acceptable.
+     */
+    readonly docStore: DocStore;
+    /** Confluence space key the Persona Roster page lives in (brief §4 rev 18 — independent
+     *  of the Jira project key, never derived from it). */
+    readonly spaceKey: string;
 }
 
 /** Resolve the `Persona` custom field's site-specific id by its name. */
@@ -101,8 +116,20 @@ export function createJiraWorkTracker(
     client: RestClient,
     config: JiraWorkTrackerConfig
 ): WorkTracker {
-    const { personaFieldId } = config;
+    const { personaFieldId, docStore, spaceKey } = config;
     const fields = issueFields(personaFieldId);
+
+    // Lazy + memoized: only fetched the first time a review-gated transition is actually
+    // attempted (most transitions never touch a REVIEW_GATES-bearing story type), then
+    // reused for the rest of this WorkTracker's lifetime — brief §3.6's "refresh at session
+    // start / first use" cache-point model, not a per-call fetch. `cacheRoot: null` skips
+    // loadRoster's own `.tai/cache` disk write; that's the CLI's concern, not this internal
+    // check's.
+    let rosterPromise: Promise<Roster> | undefined;
+    function getRoster(): Promise<Roster> {
+        rosterPromise ??= loadRoster(docStore, { spaceKey, projectKey: spaceKey, cacheRoot: null });
+        return rosterPromise;
+    }
 
     async function fetchIssue(key: IssueKey): Promise<Issue> {
         const raw = await client.request<RawIssue>("GET", `${API}/issue/${key}?fields=${fields}`);
@@ -202,8 +229,8 @@ export function createJiraWorkTracker(
         async transition(key: IssueKey, target: Status): Promise<MutationResult> {
             return asMutation(async () => {
                 // TAI's OWN checkpoints are checked BEFORE calling Jira (§3.3: "We check
-                // conditions *before* ever calling the Jira 'transition' API"). This is one of
-                // them, not a Jira rule.
+                // conditions *before* ever calling the Jira 'transition' API"). These are two
+                // of them, not Jira rules.
                 //
                 // No unassigned work in progress (§5.5, rev 19): a ticket may not leave `To Do`
                 // for a non-terminal status without a human Assignee. The whole premise is that
@@ -211,15 +238,32 @@ export function createJiraWorkTracker(
                 // with nobody accountable is the failure mode this framework exists to prevent,
                 // and it's invisible on a board. Terminal states (Done/Canceled) are exempt:
                 // once work has stopped, an owner no longer matters.
+                //
+                // REVIEW_GATES (§3.3/§5.6, TAI-41 ADR's "hard" checkpoint kind): a story-level
+                // issue reaching Done for a StoryType with a review gate needs an `Approved:`
+                // comment from each required reviewer, roster-verified — checked regardless of
+                // the FROM status (review-gate.ts's own comment explains why: a gate keyed to
+                // "coming from In Review" would be trivially bypassable).
+                //
                 // Only fetch the issue when the target is actually gated — avoids an extra
-                // round trip on every ordinary transition (Done/Canceled/To Do), and avoids
-                // a regression found while fixing this: an earlier version fetched
-                // unconditionally, which broke on any transition target with no assignee
-                // data available yet.
-                if (target === Status.InProgress || target === Status.InReview) {
+                // round trip on every ordinary transition (Canceled/To Do), and avoids a
+                // regression found while fixing the assignment gate: an earlier version fetched
+                // unconditionally, which broke on any transition target with no assignee data
+                // available yet.
+                if (target === Status.InProgress || target === Status.InReview || target === Status.Done) {
                     const current = await fetchIssue(key);
-                    if (violatesAssignmentGate(target, current.assignee)) {
+                    if (
+                        (target === Status.InProgress || target === Status.InReview) &&
+                        violatesAssignmentGate(target, current.assignee)
+                    ) {
                         throw new JiraRejection(entryGateReason(key, target), 409);
+                    }
+                    if (reviewGateApplies(current, target)) {
+                        const roster = await getRoster();
+                        const check = checkReviewGate(current, roster);
+                        if (!check.ok) {
+                            throw new JiraRejection(reviewGateReason(key, check.missing), 409);
+                        }
                     }
                 }
 

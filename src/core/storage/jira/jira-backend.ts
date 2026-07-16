@@ -39,14 +39,15 @@ export async function createJiraBackend(config: JiraBackendConfig): Promise<Stor
     });
 
     const personaFieldId = await discoverPersonaFieldId(client);
+    const docStore = createConfluenceDocStore(client, {
+        spaceKey: config.spaceKey,
+        ...(config.mermaid ? { mermaid: config.mermaid } : {}),
+    });
 
     return {
         kind: "jira",
-        workTracker: createJiraWorkTracker(client, { personaFieldId }),
-        docStore: createConfluenceDocStore(client, {
-            spaceKey: config.spaceKey,
-            ...(config.mermaid ? { mermaid: config.mermaid } : {}),
-        }),
+        workTracker: createJiraWorkTracker(client, { personaFieldId, docStore, spaceKey: config.spaceKey }),
+        docStore,
     };
 }
 

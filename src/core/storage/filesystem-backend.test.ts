@@ -185,6 +185,127 @@ describe("transitions and assignment", () => {
     });
 });
 
+// TAI-41 ADR's "hard" checkpoint kind, TAI-42's own scope: REVIEW_GATES enforcement
+// (brief §3.3/§3.9/§5.6), same gate the Jira backend enforces (work-tracker.test.ts) — kept
+// identical across backends so this doesn't become another TAI-15-style divergence.
+describe("the review gate", () => {
+    async function rosterWith(backend: StorageBackend, rows: [role: string, human: string][]) {
+        await backend.docStore.createPage({
+            spaceKey: "TAI",
+            title: "Persona Roster",
+            content: [
+                "| Persona | Authorized humans |",
+                "| --- | --- |",
+                ...rows.map(([role, human]) => `| ${role} | ${human} |`),
+            ].join("\n"),
+        });
+    }
+
+    test("blocks Kickoff In Review -> Done when a required reviewer hasn't approved", async () => {
+        await withBackend(async (backend) => {
+            await rosterWith(backend, [["PM", "Del"]]); // UX Designer deliberately absent
+            const issue = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Kickoff,
+                summary: "Kick it off",
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(issue.key, Status.InReview);
+            await backend.workTracker.addComment(issue.key, "Approved: ready");
+
+            const res = await backend.workTracker.transition(issue.key, Status.Done);
+            assert.equal(res.ok, false);
+            assert.match(res.ok === false ? res.reason : "", /UX Designer/);
+        });
+    });
+
+    test("blocks Kickoff In Review -> Done when the commenter isn't in the roster for that persona", async () => {
+        await withBackend(async (backend) => {
+            await rosterWith(backend, [
+                ["PM", "Someone Else"],
+                ["UX Designer", "Someone Else"],
+            ]);
+            const issue = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Kickoff,
+                summary: "Kick it off",
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(issue.key, Status.InReview);
+            await backend.workTracker.addComment(issue.key, "Approved: ready"); // authored by CURRENT_USER
+
+            const res = await backend.workTracker.transition(issue.key, Status.Done);
+            assert.equal(res.ok, false);
+        });
+    });
+
+    test("allows Kickoff In Review -> Done once both required reviewers approve", async () => {
+        await withBackend(async (backend) => {
+            // One human can satisfy both required reviewers at once (brief §5.6: a human
+            // may appear under multiple personas) — a single Approved: comment suffices.
+            await rosterWith(backend, [
+                ["PM", "Del"],
+                ["UX Designer", "Del"],
+            ]);
+            const issue = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Kickoff,
+                summary: "Kick it off",
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(issue.key, Status.InReview);
+            await backend.workTracker.addComment(issue.key, "Approved: ready");
+
+            const res = await backend.workTracker.transition(issue.key, Status.Done);
+            assert.equal(res.ok, true);
+        });
+    });
+
+    /**
+     * REGRESSION guard (found in self-review before this ever shipped). This backend is
+     * permissive by design — every Status reachable from every Status — so a gate keyed to
+     * "current status is In Review" would be trivially bypassable by transitioning straight
+     * from To Do to Done. `reviewGateApplies` checks only the target, not the source,
+     * specifically to close this off.
+     */
+    test("still blocks Done when skipping straight from To Do (no strict workflow to rely on)", async () => {
+        await withBackend(async (backend) => {
+            await rosterWith(backend, [["PM", "Del"]]); // UX Designer deliberately absent
+            const issue = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Kickoff,
+                summary: "Kick it off",
+                assignee: CURRENT_USER,
+            });
+            const res = await backend.workTracker.transition(issue.key, Status.Done);
+            assert.equal(res.ok, false);
+        });
+    });
+
+    test("does not apply to a Dev subtask — only story-level issues carry a review gate", async () => {
+        await withBackend(async (backend) => {
+            // No Persona Roster page created at all — if the gate wrongly applied here, this
+            // would throw (loadRoster refuses to silently treat a missing roster as empty),
+            // not just fail. It must not even try.
+            const parent = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Parent",
+            });
+            const issue = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: parent.key,
+                summary: "Implement",
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(issue.key, Status.InReview);
+            const res = await backend.workTracker.transition(issue.key, Status.Done);
+            assert.equal(res.ok, true);
+        });
+    });
+});
+
 describe("comments and labels", () => {
     test("addComment attributes to currentUser and appends", async () => {
         await withBackend(async ({ workTracker }) => {

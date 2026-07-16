@@ -38,6 +38,8 @@ import {
     DEFAULT_SEARCH_LIMIT,
 } from "./interface.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "./assignment-gate.js";
+import { reviewGateApplies, checkReviewGate, reviewGateReason } from "./review-gate.js";
+import { loadRoster, type Roster } from "../personas/roster.js";
 
 // ---------- Path helpers ----------
 
@@ -324,6 +326,21 @@ async function readDirAttachment(dir: string, id: string): Promise<Buffer> {
 const SUBTASK_TYPES = new Set<string>(Object.values(SubtaskType));
 
 export function createFilesystemBackend(rootDir: string, currentUser: HumanRef): StorageBackend {
+    // Lazy + memoized per project, keyed the same way filesystem-backend.test.ts's own
+    // fixtures already do (spaceKey === projectKey — this backend has no independent
+    // Confluence-space concept, unlike the real Jira/Confluence split, brief §4 rev 18).
+    // Only fetched the first time a review-gated transition is actually attempted; brief
+    // §3.6's "refresh at session start / first use" cache-point model, not a per-call fetch.
+    const rosterByProject = new Map<string, Promise<Roster>>();
+    function getRoster(projectKey: string): Promise<Roster> {
+        let roster = rosterByProject.get(projectKey);
+        if (!roster) {
+            roster = loadRoster(docStore, { spaceKey: projectKey, projectKey, cacheRoot: null });
+            rosterByProject.set(projectKey, roster);
+        }
+        return roster;
+    }
+
     const workTracker: WorkTracker = {
         async createIssue(input: CreateIssueInput): Promise<Issue> {
             if (SUBTASK_TYPES.has(input.issueType) && !input.parentKey) {
@@ -396,6 +413,16 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             const existing = await mustGetIssue(rootDir, key);
             if (violatesAssignmentGate(target, existing.assignee)) {
                 return { ok: false, reason: entryGateReason(key, target) };
+            }
+            // REVIEW_GATES (§3.3/§5.6, TAI-41 ADR's "hard" checkpoint kind) — same gate the
+            // Jira backend enforces (work-tracker.ts), kept identical across backends so this
+            // doesn't become another TAI-15-style behavioral divergence.
+            if (reviewGateApplies(existing, target)) {
+                const roster = await getRoster(existing.projectKey);
+                const check = checkReviewGate(existing, roster);
+                if (!check.ok) {
+                    return { ok: false, reason: reviewGateReason(key, check.missing) };
+                }
             }
             const updated: Issue = { ...existing, status: target, updatedAt: new Date().toISOString() };
             await writeIssueFile(rootDir, updated);
