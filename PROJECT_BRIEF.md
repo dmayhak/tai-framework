@@ -4,7 +4,14 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-15 (rev 23 — **§8.21–§8.26 (the six BMAD/GSD/Spec-Kit-inspired
+> **Last updated:** 2026-07-15 (rev 24 — **§8.21 and §8.25 applied to the actual docs.**
+> `workflows/kickoff.md` now defines the `NEEDS CLARIFICATION` marker mechanism and blocks
+> its PM+UX Designer review gate on zero unresolved markers (§8.21); `personas/pm.md` and
+> `personas/ux-designer.md` each point back to it from their PRD/UX-flow output
+> descriptions. All five `workflows/*.md` files now open with the one-line brief-compliance
+> pointer (§8.25). §8.22–§8.24 (deferred) and §8.26 (declined) are unaffected — still
+> nothing to apply for those. See §8 items 21 and 25 for the updated status.
+> Prior: rev 23 — **§8.21–§8.26 (the six BMAD/GSD/Spec-Kit-inspired
 > questions from rev 22) resolved: one adopted narrowly (§8.21, uncertainty markers scoped
 > to Kickoff docs only), one adopted lightly (§8.25, a one-line brief-compliance pointer per
 > workflow doc, not a full checklist), three deferred for having no current consumer
@@ -1099,10 +1106,12 @@ Carry these forward; resolve them in upcoming design sessions.
     the existing PM+UX Designer review gate (§3.5) is mechanically blocked while any marker
     remains, rather than depending solely on a reviewer noticing what's missing. Answers
     this session's open question about how deep Ada's clarifying conversation needs to go:
-    exactly deep enough that no marker remains at gate time. **Not yet applied** to
-    `personas/analyst.md` / `workflows/kickoff.md` — that's follow-on implementation, not
-    done by this revision. Extending the convention to `Investigate`/ADR output later,
-    if Kickoff usage proves it out, is a natural next step but not decided here.
+    exactly deep enough that no marker remains at gate time. **Applied (rev 24)** to
+    `workflows/kickoff.md` (the gate mechanics) and `personas/pm.md`/`personas/ux-designer.md`
+    (pointers from the PRD/UX-flow output descriptions) — not `personas/analyst.md`, since
+    the resolution scopes this to the PRD/UX-flow docs the gate actually reads, not Ada's
+    work-breakdown doc. Extending the convention to `Investigate`/ADR output later, if
+    Kickoff usage proves it out, is a natural next step but not decided here.
 22. ~~**Structured completion-marker convention for persona handoff**~~ (rev 22, inspired
     by GSD's `agent-contracts.md` pattern) — **DEFERRED (rev 23):** no current consumer —
     nothing in TAI reads a handoff marker today, since autocompletion (Epic TAI-7) isn't
@@ -1132,8 +1141,9 @@ Carry these forward; resolve them in upcoming design sessions.
     output"), not a duplicated checklist. `CLAUDE.md` already forces every session to read
     this brief first; a full per-workflow checklist would need to stay in sync with a brief
     that revises often (rev 23 as of this entry) — real rot risk outweighs the benefit of a
-    heavier gate. **Not yet applied** to the actual `workflows/*.md` files — follow-on
-    implementation.
+    heavier gate. **Applied (rev 24)** — the pointer line is now the first line under the H1
+    in all five `workflows/*.md` files (`kickoff.md`, `story.md`, `bug.md`, `spike.md`,
+    `dependencies.md`).
 26. ~~**Retrospective / correct-course workflow type**~~ (rev 22, inspired by
     BMAD-METHOD's dedicated `bmad-retrospective` and `bmad-correct-course` skills) —
     **DECLINED (rev 23):** no retrospective or formal course-correction has ever actually

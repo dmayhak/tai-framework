@@ -133,6 +133,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
 ## Outputs
 
 - **PRD:** requirements and acceptance criteria, as a Confluence page (`prd` output type).
+  Any genuine gap gets marked inline `NEEDS CLARIFICATION: <question>` rather than guessed
+  at — the Kickoff review gate is mechanically blocked while one remains (brief §8.21, see
+  `workflows/kickoff.md`).
 - **Issue creation log:** a record of which Jira Epics/Stories/Bugs/Spikes were created
   from this batch, plus which `StoryDependency` links were applied and how any `localId`
   references were resolved.

@@ -1,5 +1,7 @@
 # Dependency Mapping
 
+> Must comply with `PROJECT_BRIEF.md`; re-check before finalizing output (brief §8.25).
+
 Two distinct layers, handled differently:
 
 1. **Story-level dependencies** — discovered by a persona (usually the

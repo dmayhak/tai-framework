@@ -92,7 +92,9 @@ implementation code; she decides how a user actually moves through what's being 
 ## Outputs
 
 - **UX flows:** as Confluence pages (`ux-flow` output type) — the user-journey narrative
-  ("here's what happens when someone tries to X").
+  ("here's what happens when someone tries to X"). Any genuine gap gets marked inline
+  `NEEDS CLARIFICATION: <question>` rather than guessed at — the Kickoff review gate is
+  mechanically blocked while one remains (brief §8.21, see `workflows/kickoff.md`).
 - **Wireframes/mockups:** each gets its **own** Confluence page (`wireframe` output type),
   not an image embedded in the flow doc — keeps each screen independently linkable,
   commentable, and versioned. A `wireframe-index` page ties the set together and is what

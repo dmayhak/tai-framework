@@ -1,5 +1,7 @@
 # Bug Workflow
 
+> Must comply with `PROJECT_BRIEF.md`; re-check before finalizing output (brief §8.25).
+
 ## Purpose
 Fix an issue found *after* something has already shipped. Usually skips
 Kickoff — a bug rarely needs fresh research, a PRD, or new UX design; it

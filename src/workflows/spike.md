@@ -1,5 +1,7 @@
 # Spike Workflow
 
+> Must comply with `PROJECT_BRIEF.md`; re-check before finalizing output (brief §8.25).
+
 ## Purpose
 Time-boxed technical investigation. Output is a decision/recommendation,
 not shippable code.

@@ -1,5 +1,7 @@
 # Story Workflow
 
+> Must comply with `PROJECT_BRIEF.md`; re-check before finalizing output (brief §8.25).
+
 ## Purpose
 Standard implementation work. Uses Jira's native Story type directly
 (`StoryType.Story` in the TAI schema — listed explicitly for clarity, not

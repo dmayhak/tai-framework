@@ -1,5 +1,7 @@
 # Kickoff Workflow
 
+> Must comply with `PROJECT_BRIEF.md`; re-check before finalizing output (brief §8.25).
+
 ## Purpose
 Discovery, requirements, and UX design for a new initiative, before any
 implementation work is scheduled.
@@ -58,6 +60,17 @@ created — symmetric with the framework-wide `Q:` open-question convention (see
 design-notes doc). **The commenting human must also hold that persona's Jira Project
 Role** (brief §5.6) — this is how TAI verifies a comment actually counts as "the PM" or
 "the UX Designer" signing off, not just anyone typing the marker.
+
+**Gate also requires zero unresolved `NEEDS CLARIFICATION` markers (rev 23, brief §8.21).**
+While drafting, PM (PRD) and UX Designer (UX flows) mark any genuine gap inline with
+`NEEDS CLARIFICATION: <question>` rather than guessing or silently glossing over it — the
+same "don't guess, mark it" discipline the brief adopted from GitHub Spec Kit. The gate is
+mechanically blocked while either doc still contains an unresolved marker, in addition to
+needing both required `Approved:` comments — a marker is resolved by editing it out once
+the question is actually answered, not by a reviewer simply noticing it and approving
+anyway. This gives a concrete, gate-checkable stopping point for how deep the
+requirements-gathering conversation (`Research`, `Requirements`, `UxDesign`) needs to go:
+deep enough that no marker remains, no deeper.
 
 **An edit to the PRD or UX-flow Confluence pages after the gate has already passed
 reopens it** (brief §6, rev 11) — detected the same way any staleness is detected
