@@ -4,7 +4,28 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-16 (rev 25 — **§8.9, §8.19, §8.20, §8.22, §8.23 updated to
+> **Last updated:** 2026-07-17 (rev 26 — **§8.27 added: no established place yet for
+> company/global-level docs or general epic-level docs.** Surfaced while scoping Epic
+> TAI-8, after shipping TAI-52 (persona config/permission enforcement, Epic TAI-6's first
+> Story — see §8.9/§8.22/§8.23, now **Implemented**, TAI-42/43). The existing Confluence
+> structure (§4) has two tiers — per-doc-type-instance pages tied to a Story/Epic via the
+> naming convention, and the project-level **Config** folder (rev 13, Persona Roster/
+> Personas) — but nothing for (a) docs that span **multiple TAI projects entirely**
+> (company coding standards, cross-team process, architecture spanning systems each with
+> their own Jira project/Confluence space — §4's "one space per project" model has no
+> answer for content that isn't scoped to any single project), or (b) a **general
+> epic-level doc** that isn't one instance of the fixed ADR/PRD/Test-Plan/etc. taxonomy
+> (e.g. an epic's own running design notes). Ideas only, nothing decided — see §8.27.
+> Also: §8.9/§8.22/§8.23 now read **Implemented** — TAI-42 wired checkpoint/review-gate
+> enforcement directly into `transition()` (both backends); TAI-43 built the
+> autocompletion decision engine (`autocompletion.ts`) as a standalone pure-function
+> module, deliberately **not yet called from `transition()`** — its own module doc says
+> why: which call site invokes it is an orchestration question for Epic TAI-6, not this
+> Story's. TAI-52 (Epic TAI-6's first Story) built the permission layer that engine will
+> need a caller through, but the actual autocompletion call site still awaits TAI-8's
+> persona-invocation loop. Corrects rev 25's "design only" status for §8.9/§8.22/§8.23,
+> which was accurate as of TAI-41 alone, before TAI-42/43 shipped.
+> Prior: rev 25 — **§8.9, §8.19, §8.20, §8.22, §8.23 updated to
 > reflect real implementation/design work.** §8.19/§8.20 (pluggable `GitHost`, PR-backed
 > CodeReview) marked **Implemented** — TAI-38/39/40 shipped `src/core/git/interface.ts`
 > and the Bitbucket backend; §5.4 and §6's matching "not yet implemented" notes updated to
@@ -335,8 +356,18 @@ evaluates a condition live — the deciding persona evaluates it and records PAS
 `Complete:` Jira-comment marker (extending §3.9's convention), which `transition()` reads.
 Checkpoints are `hard` (never autocompletes — `ALWAYS_HUMAN_GATED_SUBTASKS`/
 `REVIEW_GATES`) or `conditional` (this section's default, autocompletion-eligible per the
-above). See the TAI-41 ADR (Confluence, TA space). **Design only — not yet implemented**,
-see TAI-42/TAI-43.
+above). See the TAI-41 ADR (Confluence, TA space).
+
+**Implemented (rev 26):** checkpoint/review-gate enforcement (TAI-42, `review-gate.ts`) is
+wired directly into `transition()` on both backends. The autocompletion decision engine
+itself (TAI-43, `autocompletion.ts`) is built and tested as a standalone pure-function
+module — `checkpointKind`, `evaluateAutocompletion`, `parseCompletionMarker` — but
+deliberately **not yet called from anywhere**: its own module doc explains why, whether
+an Orchestrator pauses for a human before invoking it or proceeds automatically is an
+orchestration decision that belongs to Epic TAI-6, not this engine. TAI-52 (Epic TAI-6's
+first Story) built the permission layer (`PersonaScopedWorkTracker`) that a future caller
+will sit behind, but the actual call site — something invoking `evaluateAutocompletion`
+and acting on its verdict — still doesn't exist; that's TAI-8's persona-invocation loop.
 
 **Hard rule:** a persona may **never** approve/self-certify its own work. (See §4, item on
 same-persona approval.)
@@ -1048,7 +1079,10 @@ Carry these forward; resolve them in upcoming design sessions.
    condition's `description` is the prompt text; `transition()` never evaluates it
    live — the deciding persona evaluates it and records the verdict via the §8.22
    `Complete:` marker, which `transition()` reads. See the TAI-41 ADR (Confluence, TA
-   space). **Design only — not yet implemented**, see TAI-43.
+   space). **Implemented (rev 26, TAI-43):** `AutocompletionCondition`/`AutocompletionConfig`/
+   `evaluateAutocompletion` live in `autocompletion.ts` as a standalone, tested, pure-function
+   module — deliberately not yet called from anywhere; see §3.4 for the current status of
+   who's expected to eventually call it.
 10. **Root status-file reconciliation:** exact staleness rule for `status.json` (TTL vs.
     trust-until-mismatch) and when a reconciliation scan is triggered automatically
     (session start? every command? explicit `/tai_` refresh command?).
@@ -1145,7 +1179,9 @@ Carry these forward; resolve them in upcoming design sessions.
     subtask concludes. Deliberately **no** inference-fallback here, unlike the human-
     authored markers — a persona's output format is under TAI's own prompt control, so a
     missing/malformed marker is treated as FAIL, not inferred from prose. See the TAI-41
-    ADR (Confluence, TA space). **Design only — not yet implemented**, see TAI-42.
+    ADR (Confluence, TA space). **Implemented (rev 26, TAI-43 — corrects rev 25's "see
+    TAI-42," which named the wrong Story):** `parseCompletionMarker`/`latestCompletionMarker`
+    live in `autocompletion.ts` alongside the condition-evaluation logic they feed.
 23. ~~**Finer-grained checkpoint taxonomy**~~ (rev 22, inspired by GSD's three-way
     `human-verify` / `decision` / `human-action` split) — **RESOLVED (rev 25, TAI-41
     ADR), declined as proposed:** GSD's three-way split doesn't map onto what exists in
@@ -1154,7 +1190,8 @@ Carry these forward; resolve them in upcoming design sessions.
     **`hard`** (never autocompletes — `ALWAYS_HUMAN_GATED_SUBTASKS`/`REVIEW_GATES`) and
     **`conditional`** (default human-sign-off, autocompletion-eligible per §8.9/§8.22).
     Additive over the existing binary default, not a breaking change. See the TAI-41 ADR
-    (Confluence, TA space). **Design only — not yet implemented**, see TAI-42.
+    (Confluence, TA space). **Implemented (rev 26, TAI-43 — corrects rev 25's "see
+    TAI-42," which named the wrong Story):** `checkpointKind` lives in `autocompletion.ts`.
 24. ~~**Lightweight persona roster/manifest file**~~ (rev 22, inspired by BMAD-METHOD's
     `module.yaml` agent-roster pattern) — **DEFERRED (rev 23):** no current consumer —
     personas are always loaded as full `personas/*.md` files today; nothing invokes a
@@ -1181,6 +1218,29 @@ Carry these forward; resolve them in upcoming design sessions.
     reasoning as §8 item 1's Story-type stance and §5.2's subtask-type stance. A Bug covers
     post-ship issues; an edited Story covers mid-flight scope correction. Revisit only if a
     concrete gap appears in practice.
+27. **No established place for company/global-level docs or general epic-level docs**
+    (rev 26). Surfaced while scoping Epic TAI-8, right after Epic TAI-6's first Story
+    (TAI-52) shipped. The Confluence structure resolved in §4 covers two tiers well:
+    **per-doc-type-instance pages** (ADRs, PRDs, Test Plans, …) tied to a specific Story/
+    Epic via the `<JIRA-KEY> — <Doc Type>: …` naming convention, and the **project-level
+    Config folder** (rev 13) for content tied to no single ticket at all (Persona Roster,
+    the `Personas` override page). Neither tier has an answer for:
+    - **Company/global docs** — coding standards, cross-team process, architecture that
+      spans *multiple systems, each potentially its own TAI project*. §4's "one
+      Confluence space per Jira project" model has no natural home for content that isn't
+      scoped to any single project's space at all.
+    - **General epic-level docs** — an epic's own running design notes/context that isn't
+      one instance of the fixed ADR/PRD/Test-Plan/etc. taxonomy. §4 already allows a
+      doc-type page to tie to an Epic directly ("an Epic-level decomposition proposal
+      ties to the Epic itself") — so *typed* epic-scoped docs already have a home; what's
+      missing is a catch-all for epic-scoped content that isn't one of the typed kinds.
+    **Nothing decided.** Open questions for whenever this is actually scheduled: is a
+    global doc space per-org or a dedicated always-present TAI space; does an epic-level
+    catch-all get its own folder-per-epic or reuse the Config-folder pattern; how (if at
+    all) does a solo-dev/filesystem-backend project represent "company-level" when there's
+    only one project. Likely needs its own Spike, following the same design-before-Story
+    pattern as TAI-33/34/51, once real driving work needs it (own-dogfooding precedent:
+    don't build ahead of an observed need, §8 item 1's own reasoning).
 
 ---
 
