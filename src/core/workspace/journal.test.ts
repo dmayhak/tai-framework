@@ -56,4 +56,19 @@ describe("parseJournalEntries", () => {
     it("returns an empty array for an empty journal", () => {
         assert.deepEqual(parseJournalEntries(""), []);
     });
+
+    it("does not split on a detail line that looks like a loose '## word — text' heading (Gemini CLI review, PR #8)", () => {
+        const text = [
+            "## 2026-01-01T00:00:00.000Z — Started work",
+            "## Step — Setup",
+            "some notes about the step",
+            "## 2026-01-01T00:01:00.000Z — Ran tests",
+        ].join("\n");
+        const entries = parseJournalEntries(text);
+        assert.equal(entries.length, 2);
+        assert.equal(entries[0]?.description, "Started work");
+        assert.match(entries[0]?.detail ?? "", /## Step — Setup/);
+        assert.match(entries[0]?.detail ?? "", /some notes about the step/);
+        assert.equal(entries[1]?.description, "Ran tests");
+    });
 });

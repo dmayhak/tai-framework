@@ -296,6 +296,47 @@ describe("replayPending", () => {
         });
     });
 
+    it("stops at the first rejection rather than attempting later queued entries out of order (Gemini CLI review, PR #8)", async () => {
+        await withTempDir(async (dir) => {
+            const offlineTracker = new ScriptedWorkTracker().scriptAssignIssue(throwOffline).scriptTransition(throwOffline);
+            const queued = new ConnectivityQueuedWorkTracker(offlineTracker, dir, "TAI", "TAI-1");
+            await assert.rejects(() => queued.assignIssue(toIssueKey("TAI-1"), null));
+            await assert.rejects(() => queued.transition(toIssueKey("TAI-1"), Status.Done));
+
+            // First queued entry (assignIssue) now gets a REAL rejection on replay. The second
+            // (transition) has NO scripted behavior at all -- if replayPending attempted it,
+            // ScriptedWorkTracker would throw "no scripted behavior left", failing this test.
+            const nowRejects = new ScriptedWorkTracker().scriptAssignIssue(rejectMutation("blocked"));
+            const outcome = await replayPending(nowRejects, dir, "TAI", "TAI-1");
+
+            assert.equal(outcome.replayed, 0);
+            assert.equal(outcome.escalated.length, 1);
+            assert.equal(outcome.escalated[0]?.method, "assignIssue");
+            assert.equal(outcome.stillQueued, 1); // the transition entry, left untouched behind it
+            assert.deepEqual(nowRejects.calls, [`assignIssue(TAI-1)`]); // transition() never attempted
+        });
+    });
+
+    it("stops attempting further network calls once StorageConnectivityError is hit, rather than hammering an offline backend (Gemini CLI review, PR #8)", async () => {
+        await withTempDir(async (dir) => {
+            const offlineTracker = new ScriptedWorkTracker().scriptAddComment(throwOffline).scriptTransition(throwOffline);
+            const queued = new ConnectivityQueuedWorkTracker(offlineTracker, dir, "TAI", "TAI-1");
+            await assert.rejects(() => queued.addComment(toIssueKey("TAI-1"), "first"));
+            await assert.rejects(() => queued.transition(toIssueKey("TAI-1"), Status.Done));
+
+            // Still offline -- the second entry (transition) has no scripted behavior; if
+            // replayPending attempted it after the first StorageConnectivityError, this fake
+            // would throw "no scripted behavior left" and fail the test.
+            const stillOffline = new ScriptedWorkTracker().scriptAddComment(throwOffline);
+            const outcome = await replayPending(stillOffline, dir, "TAI", "TAI-1");
+
+            assert.equal(outcome.stillQueued, 2); // both entries -- one attempted-and-offline, one never touched
+            assert.equal(outcome.replayed, 0);
+            assert.deepEqual(outcome.escalated, []);
+            assert.deepEqual(stillOffline.calls, [`addComment(TAI-1)`]); // transition() never attempted
+        });
+    });
+
     it("returns an empty outcome when there's no journal at all yet", async () => {
         await withTempDir(async (dir) => {
             const tracker = new ScriptedWorkTracker();

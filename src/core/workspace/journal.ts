@@ -19,7 +19,11 @@ export interface JournalEntry {
     readonly detail: string;
 }
 
-const ENTRY_HEADER = /^## (\S+) — (.+)$/;
+// Restricted to the exact shape `new Date().toISOString()` always produces (millisecond
+// precision, "Z" suffix) rather than a loose `\S+` — an unrestricted pattern would also
+// match an ordinary "## Step — Setup"-style markdown sub-heading a persona writes into an
+// entry's own detail body, splitting one entry into two (Gemini CLI review, PR #8).
+const ENTRY_HEADER = /^## (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z) — (.+)$/;
 
 export async function appendJournalEntry(
     taiRoot: string,

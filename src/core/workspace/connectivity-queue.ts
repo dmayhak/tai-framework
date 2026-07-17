@@ -219,6 +219,16 @@ async function invokeQueuedCall(inner: WorkTracker, call: QueuedCall): Promise<u
  * Replays every not-yet-replayed `QUEUED:` journal entry against `inner`, in original
  * (FIFO) order, at the next refresh point (brief §3.6 timing — this is not a background
  * poller, a caller invokes it explicitly).
+ *
+ * **Stops at the first non-success** (a real rejection, a genuine error, or still-offline)
+ * rather than skipping past it to attempt later entries — found during Gemini CLI review,
+ * PR #8. Two reasons: (1) later queued writes in the SAME work session may be causally
+ * dependent on an earlier one (e.g. a comment explaining a decision, then a transition
+ * based on it) — attempting them out of order risks a logically inconsistent backend
+ * state; (2) once one entry throws `StorageConnectivityError`, the backend is presumably
+ * still down for the rest of the queue too — attempting N more calls guaranteed to fail
+ * the same way just hammers it for nothing. Entries after the stopping point are left
+ * exactly as they were (still `QUEUED:`, untouched) and folded into `stillQueued`.
  */
 export async function replayPending(
     inner: WorkTracker,
@@ -240,9 +250,15 @@ export async function replayPending(
     let replayed = 0;
     let stillQueued = 0;
     const escalated: { timestamp: string; method: string; reason: string }[] = [];
+    let stopped = false;
 
     for (const entry of entries) {
         if (!entry.description.startsWith("QUEUED:") || alreadyReplayedTimestamps.has(entry.timestamp)) continue;
+
+        if (stopped) {
+            stillQueued++; // left untouched, in order, behind whatever stopped the queue
+            continue;
+        }
 
         const call = parseQueuedCall(entry.detail);
         if (!call) continue; // malformed/foreign entry -- skip, don't crash the whole replay pass
@@ -251,13 +267,15 @@ export async function replayPending(
             const result = await invokeQueuedCall(inner, call);
             if (isRejection(result)) {
                 escalated.push({ timestamp: entry.timestamp, method: call.method, reason: result.reason });
-                continue; // real rejection -- leave QUEUED, do not mark replayed
+                stopped = true; // real rejection -- leave QUEUED, do not mark replayed, halt the queue here
+                continue;
             }
             await appendJournalEntry(taiRoot, projectKey, subtaskKey, `REPLAYED: ${call.method} (queued ${entry.timestamp})`);
             replayed++;
         } catch (err) {
             if (err instanceof StorageConnectivityError) {
-                stillQueued++; // still offline -- leave it for the next replay attempt
+                stillQueued++; // still offline -- stop attempting further network calls this pass
+                stopped = true;
                 continue;
             }
             escalated.push({
@@ -265,6 +283,7 @@ export async function replayPending(
                 method: call.method,
                 reason: err instanceof Error ? err.message : String(err),
             });
+            stopped = true;
         }
     }
 
