@@ -4,7 +4,18 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 26 — **§8.27 added: no established place yet for
+> **Last updated:** 2026-07-17 (rev 27 — **§5.3 gains a new `Backlog` status, and §8.28
+> captures the open question it leaves behind.** The user added `Backlog` directly in the
+> live Jira project — a pre-`To Do` status (native Jira behavior: excluded from the Kanban
+> board) for tickets that are newly created, under-specified, or otherwise judged not
+> ready. Resolved: it's now the **default landing status for new tickets** (superseding
+> rev 11's assumption that `To Do` was the entry point), sits under Jira's `To Do` status
+> category, and applies to every issue type (story-level and subtask, same scope as
+> `Canceled`, rev 16) — orthogonal to the existing `SUBTASK_PRECEDENCE`-derived readiness
+> machinery, which is unchanged. Deliberately left open (§8.28), not resolved here: the
+> `Backlog → To Do` transition is a **soft, unenforced convention for now** — no crisp
+> "ready" signal exists yet to hard-gate on, unlike rev 19's assignee-presence check.
+> Prior: rev 26 — **§8.27 added: no established place yet for
 > company/global-level docs or general epic-level docs.** Surfaced while scoping Epic
 > TAI-8, after shipping TAI-52 (persona config/permission enforcement, Epic TAI-6's first
 > Story — see §8.9/§8.22/§8.23, now **Implemented**, TAI-42/43). The existing Confluence
@@ -705,7 +716,9 @@ a field for the Bug D5 expedited path.
 Issues carry statuses (pending / in-progress / done, plus blocked/ready as derived from
 dependencies) and **"blocks / depends-on"** links that determine what is ready to be picked
 up vs. blocked. **Resolved (rev 11, was §8 item #2):** the default status lifecycle is
-**`To Do → In Progress → Done`** for both story-level tickets and subtasks, with specific
+**`To Do → In Progress → Done`** for both story-level tickets and subtasks (rev 27 below
+prepends a `Backlog` entry point ahead of `To Do` — the `In Progress`→`Done` portion here
+is unchanged), with specific
 per-type loop-backs documented in `workflows/story.md`/`bug.md` (Dev ⇄ Test,
 ArchitectureDesign ⇄ DesignReview, UAT rejection routing). "Ready" vs. "blocked" is
 **derived**, not a stored status — computed from `SUBTASK_PRECEDENCE`
@@ -744,6 +757,42 @@ subtasks alike** — not just the Spike outcome that surfaced it (`workflows/spi
 - Like the other statuses (§5.3 above), this is a manual Jira admin step (Issues →
   Statuses → Add status, then add it to the actual workflow) — no MCP tool creates
   statuses.
+
+**`Backlog` (rev 27) — a new PRE-`To Do` status; the default landing status for newly
+created tickets.** Added by the user directly in the live Jira project (manual admin
+step, same as `Canceled`). Distinct from a "blocked" ticket in the existing derived-
+readiness sense (§5.3's `SUBTASK_PRECEDENCE` machinery, unchanged and orthogonal — that's
+about a subtask waiting on a *sibling* subtask within an already-active Story) — `Backlog`
+is a coarser, upstream gate about whether a ticket should even be considered part of the
+active pipeline yet at all. A ticket sits in `Backlog` when it's newly created, has an
+incomplete spec, is blocked by something outside the precedence graph (another Story, an
+external dependency), or a human/process has otherwise judged it "not ready." Native Jira
+behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban board.
+
+- **Lifecycle position:** `Backlog → To Do → In Progress → (In Review) → Done/Canceled`.
+  Supersedes rev 11's assumption that `To Do` is the entry point — it's now the second
+  step, reached only once a ticket is judged ready. `Backlog → Done`/`Canceled` directly
+  (skipping `To Do`) is also valid, for a ticket that turns out unnecessary before ever
+  becoming ready.
+- **Default landing status:** any newly-created ticket lands in `Backlog`, not `To Do` —
+  Ada's proposed Epic/Story decomposition output, PM-created Story/Bug/Spike from a WBS
+  (§3.1), a refinement subtask's own output. This is a real behavior change from the
+  rev 11 default (everything previously landed straight in `To Do`).
+- **Status category:** Jira's **`To Do`** category (not a new one) — matches how Jira's
+  own default Kanban/Scrum templates categorize a `Backlog` status; it's still pending
+  work, just not yet actionable.
+- **Readiness gate (`Backlog` → `To Do`) is a SOFT convention for now, not a hard-enforced
+  gate.** Unlike §5.5's assignment gate (rev 19, hard-enforced in `transition()` because
+  "has a human assignee" is a crisp boolean) — "ready" here has no single crisp signal yet
+  (spec-complete, unblocked, and human/process-judged are three different kinds of check).
+  A human (or a persona, once one exists with the authority to judge readiness) moves a
+  ticket `Backlog → To Do` manually; TAI's plugin layer does not currently gate this
+  transition. See §8 item 28 for whether/how this should eventually harden.
+- Applies to **every issue type — story-level tickets and subtasks alike** — same scope
+  as `Canceled` (rev 16), for the same reason: a subtask can just as easily be created
+  ahead of its own readiness (e.g. a `Database` subtask flagged during Architecture work
+  but not yet detailed enough to start, §7's dynamic-subtask-insertion note) as a
+  story-level ticket can.
 
 ### 5.4 Checkpoint Chain (canonical example)
 For an implementation Story touching one repo:
@@ -1241,6 +1290,28 @@ Carry these forward; resolve them in upcoming design sessions.
     only one project. Likely needs its own Spike, following the same design-before-Story
     pattern as TAI-33/34/51, once real driving work needs it (own-dogfooding precedent:
     don't build ahead of an observed need, §8 item 1's own reasoning).
+28. **`Backlog → To Do` readiness gate: stays soft forever, or eventually hardens?**
+    (rev 27). §5.3 resolves that `Backlog` exists and where it sits in the lifecycle, but
+    deliberately leaves the transition OUT of it ungated in code — a human (or a persona,
+    once one has the authority) just moves a ticket when they judge it ready, the same way
+    every status transition worked before the rev 19 assignment gate existed. Genuinely
+    open:
+    - **What "ready" actually means**, precisely enough to check programmatically — some
+      candidate signals: no unresolved `NEEDS CLARIFICATION` marker (§8.21's convention,
+      currently scoped to Kickoff-stage docs only — would need extending or generalizing);
+      no unresolved `Q:` thread (§3.9); explicit precedence unblocked (§5.3's existing
+      machinery, though that's normally computed only once a Story is already active).
+      None of these alone captures "a human/process judged this ready," which is at least
+      part of what the user described wanting `Backlog` for.
+    - **Who/what may perform the transition** — human only (matching the framework's
+      "human sign-off is the default" posture, brief §3.4), or can PM/Orchestrator do it
+      autonomously once a candidate "ready" signal set is defined and passes?
+    - **Whether it's worth a hard gate at all.** The rev 19 assignment gate earned hard
+      enforcement because "work in progress with nobody accountable" was identified as a
+      concrete failure mode worth preventing structurally (brief §5.5's own reasoning). A
+      soft convention might simply be sufficient here indefinitely — revisit only if a
+      concrete "a ticket left Backlog before it should have" incident actually happens in
+      practice, not preemptively.
 
 ---
 
