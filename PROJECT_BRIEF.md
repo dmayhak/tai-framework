@@ -4,7 +4,19 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 27 — **§5.3 gains a new `Backlog` status, and §8.28
+> **Last updated:** 2026-07-17 (rev 28 — **§5.3 gains an Epic-status policy: `In Progress`
+> derives from children, `Done` never does.** The moment an Epic has any child that's left
+> `Backlog`, the Epic itself reads `In Progress` (simple dormant/active signal, not a
+> percentage rollup). But an Epic is never auto-marked `Done` just because every
+> currently-decomposed child is `Done`/`Canceled` — that's a false-completion trap given
+> Epics are open-ended (§3.7's recursive decomposition assumes more Stories can always be
+> added later; TAI-9's own history is the concrete proof — its GitHub `GitHost` backend
+> was deferred, so "current children finished" didn't mean "nothing more is coming").
+> Epic → `Done` is now explicitly a deliberate human judgment call (PM may propose it,
+> never self-closes it) — same "human sign-off is the default" posture as everywhere else
+> (§3.4). Applied live: TAI-8 moved to `Backlog` (nothing decomposed under it yet);
+> TAI-5/6/7/9 moved to `In Progress` (each has `Done` children — real work has happened).
+> Prior: rev 27 — **§5.3 gains a new `Backlog` status, and §8.28
 > captures the open question it leaves behind.** The user added `Backlog` directly in the
 > live Jira project — a pre-`To Do` status (native Jira behavior: excluded from the Kanban
 > board) for tickets that are newly created, under-specified, or otherwise judged not
@@ -793,6 +805,37 @@ behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban
   ahead of its own readiness (e.g. a `Database` subtask flagged during Architecture work
   but not yet detailed enough to start, §7's dynamic-subtask-insertion note) as a
   story-level ticket can.
+
+**Epic status (rev 28) — `In Progress` is derived from children; `Done` is never
+auto-derived, always a deliberate human decision.**
+
+- **`In Progress` is a simple derived signal:** the moment an Epic has ANY child that has
+  left `Backlog` (i.e., any child in `To Do`/`In Progress`/`In Review`/`Done`/`Canceled`),
+  the Epic itself reads `In Progress` — real engagement has started, distinct from a
+  still-dormant Epic with nothing decomposed under it yet (which itself sits in `Backlog`
+  until a first Spike/Story is scoped, per the section above). Coarse by design — this
+  isn't a percentage-complete rollup, just a dormant/active signal.
+- **`Done` is NOT derived from "all current children are `Done`/`Canceled`."** That's a
+  false-completion trap: Epics are open-ended thematic groupings (§5.1: "a feature set"),
+  and more Stories can always be decomposed under one later — brief §3.7's own recursive-
+  decomposition model assumes exactly this. TAI-9 ("Source control & multi-repo") is the
+  concrete proof already sitting in this project's own history: its GitHub `GitHost`
+  backend was explicitly deferred (§8.19's ADR decision), so "every currently-decomposed
+  child finished" did not mean "nothing more is coming" — the Epic correctly needed to
+  stay open rather than auto-closing the moment its first (Bitbucket-only) slice shipped.
+- **Epic → `Done` requires an explicit human judgment call:** someone decides "no more
+  Stories are realistically planned under this Epic" and transitions it manually. A
+  persona (PM, most naturally, given its role proposing/creating story-level tickets,
+  §3.1) MAY propose that an Epic looks complete, but never self-closes it — the same
+  "human sign-off is the default" posture as everywhere else (§3.4). Not a joint
+  two-persona gate like Kickoff's PM+UX sign-off — that pattern exists because a PRD+UX-
+  flow artifact has two genuinely distinct expert concerns; a single "is more work coming"
+  judgment doesn't need two reviewers.
+- **Explicitly deferred, not v1:** any automated "surface candidates for review" nudge
+  (e.g., a saved query for "all children `Done`/`Canceled`, no activity in N days") —
+  plausible future quality-of-life tooling, not an enforcement mechanism, and not
+  scheduled until a real need for it appears (same "don't build ahead of an observed
+  need" reasoning used throughout this brief).
 
 ### 5.4 Checkpoint Chain (canonical example)
 For an implementation Story touching one repo:
