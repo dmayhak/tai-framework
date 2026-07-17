@@ -177,8 +177,16 @@ function buildCheckpoints(raw: unknown): PersonaCheckpoints {
 
 function buildConfluenceOutputs(raw: unknown): string[] {
     if (!Array.isArray(raw)) return [];
+    // Every built-in `.md` file uses the `- type: xxx` object form, but a human editing a
+    // Confluence override/extension page (layers 2/3) may naturally write a plain string list
+    // instead — both are accepted rather than silently dropping the plain form (Gemini CLI
+    // review, PR #7).
     return raw
-        .map((item) => (isRecord(item) && typeof item.type === "string" ? item.type : null))
+        .map((item) => {
+            if (typeof item === "string") return item;
+            if (isRecord(item) && typeof item.type === "string") return item.type;
+            return null;
+        })
         .filter((t): t is string => t !== null);
 }
 
@@ -254,8 +262,16 @@ export interface PersonaOverride {
     readonly promptPageTitle?: string;
 }
 
-const OVERRIDE_HEADING = /^###\s+(.+?)\s*$/;
-const YAML_FENCE = /```ya?ml\r?\n([\s\S]*?)\r?\n```/;
+// Restricted to identifier-shaped headings (persona ids are always lowercase-hyphenated,
+// e.g. "code-reviewer", "release-manager") rather than any level-3 heading — an unrestricted
+// `.+?` would also match an ordinary prose subheading a human adds inside their own section
+// (e.g. "### Notes"), misreading it as a new persona and cutting the real one's section short
+// (Gemini CLI review, PR #7).
+const OVERRIDE_HEADING = /^###\s+([a-zA-Z][a-zA-Z0-9-]*)\s*$/;
+// Trailing whitespace after the language tag (` ```yaml  `) is common from copy-paste/editor
+// auto-formatting in human-edited Confluence content — matched here so it doesn't silently
+// fail to find the fence (Gemini CLI review, PR #7).
+const YAML_FENCE = /```ya?ml[ \t]*\r?\n([\s\S]*?)\r?\n```/;
 
 /**
  * Parses the `Personas` Confluence page: one `### <persona-id>` heading per override, each
@@ -431,8 +447,18 @@ export async function loadBuiltinPersonaConfigs(dir: string = defaultPersonasDir
     for (const entry of entries) {
         if (!entry.endsWith(".md")) continue;
         const raw = await readFile(path.join(dir, entry), "utf8");
-        const config = parseBuiltinPersonaFile(raw);
-        configs.set(config.id, config);
+        // A non-persona `.md` file (a README, a template, an editor backup) sitting in this
+        // directory shouldn't take down every OTHER persona's load — same "skip, don't crash"
+        // tolerance as the Confluence-content parsers above, just applied to disk contents
+        // instead (Gemini CLI review, PR #7).
+        try {
+            const config = parseBuiltinPersonaFile(raw);
+            configs.set(config.id, config);
+        } catch (err) {
+            console.warn(
+                `Skipping "${entry}" in ${dir}: not a valid persona file (${err instanceof Error ? err.message : err})`
+            );
+        }
     }
     return configs;
 }
@@ -463,7 +489,19 @@ export async function loadPersonaConfig(
     const overrides = overridesPage ? parsePersonasOverridePage(overridesPage.content) : new Map();
     const override = overrides.get(personaId);
 
-    const base = builtins.get(personaId) ?? emptyPersonaShell(personaId, override?.displayName ?? personaId);
+    let base = builtins.get(personaId) ?? emptyPersonaShell(personaId, override?.displayName ?? personaId);
+    // A user-added persona (no bundled `.md`) supplies its prompt via `promptPageTitle`
+    // instead — meaningless for a built-in override row, since the built-in file already has
+    // one (PersonaOverride's own doc comment). Without this fetch, a user-added persona's
+    // prompt silently stayed "" forever (Gemini CLI review, PR #7, a real bug this Story
+    // shipped: the field was parsed but never consumed).
+    if (!builtins.has(personaId) && override?.promptPageTitle) {
+        const promptPage = await docStore.getPage({
+            spaceKey: opts.spaceKey,
+            title: override.promptPageTitle,
+        } satisfies PageRef);
+        if (promptPage) base = { ...base, prompt: promptPage.content };
+    }
 
     let extension: PersonaExtension | undefined;
     const extensionPage = await docStore.getPage({ spaceKey: opts.spaceKey, title: personaId } satisfies PageRef);

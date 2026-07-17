@@ -70,5 +70,11 @@ export function canComplete(config: PersonaConfig, issue: Pick<Issue, "issueType
  */
 export function canUpdate(config: PersonaConfig, entityType: string, field: string): boolean {
     if (!config.enabled) return false;
-    return config.permissions.update.some((g) => g.entityType === entityType && g.field === field);
+    // entityType is case-INsensitive ("Story" === "story") — a human editing a Confluence
+    // override/extension page has no reason to know `entityLabel`'s exact capitalisation
+    // convention, and a casing mismatch should not silently deny an otherwise-intended grant
+    // (Gemini CLI review, PR #7). `field` stays exact-match: field names have no equivalent
+    // small closed vocabulary, so case-folding risks colliding two genuinely different names.
+    const wantedEntity = entityType.toLowerCase();
+    return config.permissions.update.some((g) => g.entityType.toLowerCase() === wantedEntity && g.field === field);
 }

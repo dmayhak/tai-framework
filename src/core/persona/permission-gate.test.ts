@@ -117,4 +117,13 @@ describe("canUpdate", () => {
     it("denies for a disabled persona", () => {
         assert.equal(canUpdate(devConfig({ enabled: false }), "Story", "implementationNotes"), false);
     });
+
+    it("is case-insensitive on entityType, so a human's lowercase Confluence edit still matches (Gemini CLI review, PR #7)", () => {
+        assert.equal(canUpdate(devConfig(), "story", "implementationNotes"), true);
+        assert.equal(canUpdate(devConfig(), "STORY", "implementationNotes"), true);
+    });
+
+    it("stays case-SENSITIVE on field — casing collisions between distinct field names aren't folded", () => {
+        assert.equal(canUpdate(devConfig(), "Story", "ImplementationNotes"), false);
+    });
 });

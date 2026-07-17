@@ -1,10 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { StoryType, SubtaskType } from "../schema/story-schema.js";
+import type { AttachmentRef, Comment, CreatePageInput, DocStore, Page, PagePatch, PageRef, IssueKey } from "../storage/interface.js";
 import {
     emptyPersonaShell,
     loadBuiltinPersonaConfigs,
+    loadPersonaConfig,
     mergePersonaConfig,
     parseBuiltinPersonaFile,
     parseExtensionPage,
@@ -13,6 +18,53 @@ import {
     parseUpdateGrant,
     type PersonaConfig,
 } from "./config.js";
+
+/** A minimal in-memory DocStore fake — only getPage is exercised by loadPersonaConfig. */
+class FakeDocStore implements DocStore {
+    private pages = new Map<string, Page>();
+
+    seed(spaceKey: string, title: string, content: string): void {
+        this.pages.set(`${spaceKey}::${title}`, {
+            id: `${spaceKey}::${title}` as Page["id"],
+            spaceKey,
+            title,
+            content,
+            createdAt: "x",
+            updatedAt: "x",
+            comments: [],
+        });
+    }
+
+    async getPage(ref: PageRef): Promise<Page | null> {
+        if ("id" in ref) return null;
+        return this.pages.get(`${ref.spaceKey}::${ref.title}`) ?? null;
+    }
+
+    async createPage(_input: CreatePageInput): Promise<Page> {
+        throw new Error("not used in these tests");
+    }
+    async updatePage(_ref: PageRef, _patch: PagePatch): Promise<Page> {
+        throw new Error("not used in these tests");
+    }
+    async addComment(_ref: PageRef, _body: string): Promise<Comment> {
+        throw new Error("not used in these tests");
+    }
+    async editComment(_ref: PageRef, _commentId: string, _body: string): Promise<Comment> {
+        throw new Error("not used in these tests");
+    }
+    async getChildren(_ref: PageRef): Promise<readonly Page[]> {
+        return [];
+    }
+    async getLinkedIssues(_ref: PageRef): Promise<readonly IssueKey[]> {
+        return [];
+    }
+    async listAttachments(_ref: PageRef): Promise<readonly AttachmentRef[]> {
+        return [];
+    }
+    async getAttachment(_ref: PageRef, _attachmentId: string): Promise<Buffer> {
+        throw new Error("not used in these tests");
+    }
+}
 
 describe("parsePermissionTarget", () => {
     it("parses a Subtask: label into a subtask target", () => {
@@ -117,6 +169,78 @@ describe("parseBuiltinPersonaFile", () => {
         const config = parseBuiltinPersonaFile("---\nid: x\ncheckpoints: {}\n---\nbody");
         assert.equal(config.checkpoints.humanSignOffDefault, true);
     });
+
+    it("accepts confluenceOutputs written as a plain string list, not just {type: ...} objects", () => {
+        // Every built-in file uses the object form, but a human editing a Confluence
+        // override/extension page might naturally write a plain list (Gemini CLI review, PR #7).
+        const config = parseBuiltinPersonaFile(
+            "---\nid: x\nconfluenceOutputs:\n  - implementation-notes\n  - type: also-fine\n---\nbody"
+        );
+        assert.deepEqual(config.confluenceOutputs, ["implementation-notes", "also-fine"]);
+    });
+});
+
+describe("loadBuiltinPersonaConfigs — tolerates a non-persona .md file in the directory", () => {
+    it("skips a file with no valid front-matter rather than crashing the whole load", async () => {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-personas-"));
+        try {
+            await writeFile(path.join(dir, "developer.md"), FIXTURE_MD, "utf8");
+            await writeFile(path.join(dir, "README.md"), "# Just some notes, no front-matter\n", "utf8");
+            const configs = await loadBuiltinPersonaConfigs(dir);
+            assert.deepEqual([...configs.keys()], ["developer"]);
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
+});
+
+describe("loadPersonaConfig — full 3-layer resolution via DocStore", () => {
+    it("fetches a user-added persona's prompt page via promptPageTitle (Gemini CLI review, PR #7 — previously parsed but never loaded)", async () => {
+        const docStore = new FakeDocStore();
+        docStore.seed(
+            "TA",
+            "Personas",
+            [
+                "### release-manager",
+                "",
+                "```yaml",
+                "displayName: Remy",
+                'promptPage: "Release Manager Persona"',
+                "permissions:",
+                "  create:",
+                "    - Subtask:Deploy",
+                "```",
+                "",
+            ].join("\n")
+        );
+        docStore.seed("TA", "Release Manager Persona", "Remy handles release coordination.");
+
+        const config = await loadPersonaConfig(docStore, "release-manager", {
+            spaceKey: "TA",
+            personasDir: await mkdtemp(path.join(tmpdir(), "tai-personas-empty-")),
+        });
+
+        assert.equal(config.displayName, "Remy");
+        assert.match(config.prompt, /Remy handles release coordination\./);
+        assert.deepEqual(config.permissions.create, [{ kind: "subtask", subtaskType: SubtaskType.Deploy }]);
+    });
+
+    it("leaves a built-in's prompt alone even if (unusually) promptPageTitle is set on its override row", async () => {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-personas-"));
+        await writeFile(path.join(dir, "developer.md"), FIXTURE_MD, "utf8");
+
+        const docStore = new FakeDocStore();
+        docStore.seed(
+            "TA",
+            "Personas",
+            ["### developer", "", "```yaml", 'promptPage: "Should Be Ignored"', "```", ""].join("\n")
+        );
+        docStore.seed("TA", "Should Be Ignored", "This must NOT end up as developer's prompt.");
+
+        const config = await loadPersonaConfig(docStore, "developer", { spaceKey: "TA", personasDir: dir });
+        assert.match(config.prompt, /Dario is the team's Developer\./);
+        assert.doesNotMatch(config.prompt, /Should NOT end up/);
+    });
 });
 
 describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
@@ -207,6 +331,33 @@ confluenceOutputs: []
         const page = `### broken\nno fence here, just prose\n`;
         const overrides = parsePersonasOverridePage(page);
         assert.equal(overrides.size, 0);
+    });
+
+    it("does not let a multi-word prose subheading hijack the parser (Gemini CLI review, PR #7)", () => {
+        // A "### How to run deployments"-style subheading a human adds inside their own
+        // section must not be read as a second persona, and must not prematurely end the real
+        // persona's section before its fence.
+        const page = `
+### developer
+
+\`\`\`yaml
+enabled: false
+\`\`\`
+
+### How to run deployments
+
+More prose, not a real override — this is NOT identifier-shaped (it has spaces), so the
+restricted heading regex never matches it at all.
+`;
+        const overrides = parsePersonasOverridePage(page);
+        assert.equal(overrides.get("developer")?.enabled, false);
+        assert.equal(overrides.has("How to run deployments"), false);
+    });
+
+    it("tolerates trailing whitespace after the yaml fence's language tag", () => {
+        const page = "### tester\n\n```yaml \nenabled: false\n```\n";
+        const overrides = parsePersonasOverridePage(page);
+        assert.equal(overrides.get("tester")?.enabled, false);
     });
 
     it("skips a section with malformed YAML rather than throwing, and still parses the rest", () => {
