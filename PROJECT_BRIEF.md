@@ -4,7 +4,16 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 28 — **§5.3 gains an Epic-status policy: `In Progress`
+> **Last updated:** 2026-07-17 (rev 29 — **§8.28 resolved: `Backlog → To Do` stays a soft,
+> unenforced convention indefinitely — no hard gate built.** Revisiting the question left
+> open at rev 27: whether/how the readiness transition should eventually harden. Declined
+> as premature, per §8 item 1's own "don't build ahead of an observed need" reasoning —
+> none of the candidate "ready" signals (no unresolved `NEEDS CLARIFICATION`, no unresolved
+> `Q:` thread, precedence-unblocked) alone captures "a human/process judged this ready,"
+> and the rev 19 assignment gate earned hard enforcement because it prevented a concrete,
+> identified failure mode (§5.5) — no equivalent incident has occurred here. Revisit only if
+> a real "ticket left `Backlog` before it should have" incident happens in practice.
+> Prior: rev 28 — **§5.3 gains an Epic-status policy: `In Progress`
 > derives from children, `Done` never does.** The moment an Epic has any child that's left
 > `Backlog`, the Epic itself reads `In Progress` (simple dormant/active signal, not a
 > percentage rollup). But an Epic is never auto-marked `Done` just because every
@@ -799,7 +808,8 @@ behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban
   (spec-complete, unblocked, and human/process-judged are three different kinds of check).
   A human (or a persona, once one exists with the authority to judge readiness) moves a
   ticket `Backlog → To Do` manually; TAI's plugin layer does not currently gate this
-  transition. See §8 item 28 for whether/how this should eventually harden.
+  transition. **Resolved (rev 29, §8 item 28): stays soft indefinitely** — no hard gate
+  planned; revisit only if a concrete "left `Backlog` too early" incident actually occurs.
 - Applies to **every issue type — story-level tickets and subtasks alike** — same scope
   as `Canceled` (rev 16), for the same reason: a subtask can just as easily be created
   ahead of its own readiness (e.g. a `Database` subtask flagged during Architecture work
@@ -1333,28 +1343,19 @@ Carry these forward; resolve them in upcoming design sessions.
     only one project. Likely needs its own Spike, following the same design-before-Story
     pattern as TAI-33/34/51, once real driving work needs it (own-dogfooding precedent:
     don't build ahead of an observed need, §8 item 1's own reasoning).
-28. **`Backlog → To Do` readiness gate: stays soft forever, or eventually hardens?**
-    (rev 27). §5.3 resolves that `Backlog` exists and where it sits in the lifecycle, but
-    deliberately leaves the transition OUT of it ungated in code — a human (or a persona,
-    once one has the authority) just moves a ticket when they judge it ready, the same way
-    every status transition worked before the rev 19 assignment gate existed. Genuinely
-    open:
-    - **What "ready" actually means**, precisely enough to check programmatically — some
-      candidate signals: no unresolved `NEEDS CLARIFICATION` marker (§8.21's convention,
-      currently scoped to Kickoff-stage docs only — would need extending or generalizing);
-      no unresolved `Q:` thread (§3.9); explicit precedence unblocked (§5.3's existing
-      machinery, though that's normally computed only once a Story is already active).
-      None of these alone captures "a human/process judged this ready," which is at least
-      part of what the user described wanting `Backlog` for.
-    - **Who/what may perform the transition** — human only (matching the framework's
-      "human sign-off is the default" posture, brief §3.4), or can PM/Orchestrator do it
-      autonomously once a candidate "ready" signal set is defined and passes?
-    - **Whether it's worth a hard gate at all.** The rev 19 assignment gate earned hard
-      enforcement because "work in progress with nobody accountable" was identified as a
-      concrete failure mode worth preventing structurally (brief §5.5's own reasoning). A
-      soft convention might simply be sufficient here indefinitely — revisit only if a
-      concrete "a ticket left Backlog before it should have" incident actually happens in
-      practice, not preemptively.
+28. ~~**`Backlog → To Do` readiness gate: stays soft forever, or eventually hardens?**~~
+    (rev 27) — **RESOLVED (rev 29): stays soft indefinitely, no hard gate built.** §5.3
+    resolves that `Backlog` exists and where it sits in the lifecycle, and leaves the
+    transition ungated in code — a human (or a persona, once one has the authority) just
+    moves a ticket when they judge it ready, the same way every status transition worked
+    before the rev 19 assignment gate existed. Declined to build a hard gate now: none of
+    the candidate "ready" signals (no unresolved `NEEDS CLARIFICATION` marker, §8.21; no
+    unresolved `Q:` thread, §3.9; precedence-unblocked, §5.3) alone captures "a
+    human/process judged this ready," and the rev 19 assignment gate earned hard
+    enforcement because it prevented a concrete, identified failure mode (§5.5's own
+    reasoning) — no equivalent incident exists here yet. Per §8 item 1's "don't build
+    ahead of an observed need," revisit only if a real "a ticket left `Backlog` before it
+    should have" incident actually happens in practice.
 
 ---
 
