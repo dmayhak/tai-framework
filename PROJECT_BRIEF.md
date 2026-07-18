@@ -4,7 +4,16 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 29 — **§8.28 resolved: `Backlog → To Do` stays a soft,
+> **Last updated:** 2026-07-17 (rev 30 — **§8.27 declined: neither gap it identified turns
+> out to be real.** Revisiting the two sub-questions left open at rev 26: company/global
+> docs are dropped from consideration outright — no cross-project scope exists to serve
+> (this framework's "one Confluence space per Jira project" model, §4, is sufficient as is).
+> The epic-level catch-all isn't missing either — untyped, non-ticket-tied content already
+> has a home in the existing **project-level `Config` folder** (§4, rev 13), the same one
+> that already holds the Persona Roster; nothing new needed for epic-scoped content either.
+> Both sub-questions collapse to "already covered by existing structure," not "needs a
+> Spike" as originally guessed.
+> Prior: rev 29 — **§8.28 resolved: `Backlog → To Do` stays a soft,
 > unenforced convention indefinitely — no hard gate built.** Revisiting the question left
 > open at rev 27: whether/how the readiness transition should eventually harden. Declined
 > as premature, per §8 item 1's own "don't build ahead of an observed need" reasoning —
@@ -1320,29 +1329,26 @@ Carry these forward; resolve them in upcoming design sessions.
     reasoning as §8 item 1's Story-type stance and §5.2's subtask-type stance. A Bug covers
     post-ship issues; an edited Story covers mid-flight scope correction. Revisit only if a
     concrete gap appears in practice.
-27. **No established place for company/global-level docs or general epic-level docs**
-    (rev 26). Surfaced while scoping Epic TAI-8, right after Epic TAI-6's first Story
-    (TAI-52) shipped. The Confluence structure resolved in §4 covers two tiers well:
-    **per-doc-type-instance pages** (ADRs, PRDs, Test Plans, …) tied to a specific Story/
-    Epic via the `<JIRA-KEY> — <Doc Type>: …` naming convention, and the **project-level
-    Config folder** (rev 13) for content tied to no single ticket at all (Persona Roster,
-    the `Personas` override page). Neither tier has an answer for:
-    - **Company/global docs** — coding standards, cross-team process, architecture that
-      spans *multiple systems, each potentially its own TAI project*. §4's "one
-      Confluence space per Jira project" model has no natural home for content that isn't
-      scoped to any single project's space at all.
+27. ~~**No established place for company/global-level docs or general epic-level docs**~~
+    (rev 26) — **DECLINED (rev 30): neither gap is real.** Surfaced while scoping Epic
+    TAI-8, right after Epic TAI-6's first Story (TAI-52) shipped. The Confluence structure
+    resolved in §4 covers two tiers well: **per-doc-type-instance pages** (ADRs, PRDs, Test
+    Plans, …) tied to a specific Story/Epic via the `<JIRA-KEY> — <Doc Type>: …` naming
+    convention, and the **project-level Config folder** (rev 13) for content tied to no
+    single ticket at all (Persona Roster, the `Personas` override page). Originally thought
+    neither tier answered:
+    - **Company/global docs** — coding standards, cross-team process, architecture spanning
+      multiple systems/projects. **Dropped from consideration**: no cross-project scope
+      exists to serve; §4's "one Confluence space per Jira project" model is sufficient as
+      is.
     - **General epic-level docs** — an epic's own running design notes/context that isn't
-      one instance of the fixed ADR/PRD/Test-Plan/etc. taxonomy. §4 already allows a
-      doc-type page to tie to an Epic directly ("an Epic-level decomposition proposal
-      ties to the Epic itself") — so *typed* epic-scoped docs already have a home; what's
-      missing is a catch-all for epic-scoped content that isn't one of the typed kinds.
-    **Nothing decided.** Open questions for whenever this is actually scheduled: is a
-    global doc space per-org or a dedicated always-present TAI space; does an epic-level
-    catch-all get its own folder-per-epic or reuse the Config-folder pattern; how (if at
-    all) does a solo-dev/filesystem-backend project represent "company-level" when there's
-    only one project. Likely needs its own Spike, following the same design-before-Story
-    pattern as TAI-33/34/51, once real driving work needs it (own-dogfooding precedent:
-    don't build ahead of an observed need, §8 item 1's own reasoning).
+      one instance of the fixed ADR/PRD/Test-Plan/etc. taxonomy. **Not actually missing**:
+      the existing project-level `Config` folder (rev 13) already serves as the home for
+      untyped, non-ticket-tied content — no separate epic-scoped catch-all needed. Typed
+      epic-scoped docs already had a home regardless (§4: "an Epic-level decomposition
+      proposal ties to the Epic itself").
+    No Spike needed — both sub-questions collapse to "already covered by existing
+    structure."
 28. ~~**`Backlog → To Do` readiness gate: stays soft forever, or eventually hardens?**~~
     (rev 27) — **RESOLVED (rev 29): stays soft indefinitely, no hard gate built.** §5.3
     resolves that `Backlog` exists and where it sits in the lifecycle, and leaves the
