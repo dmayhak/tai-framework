@@ -4,7 +4,15 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 36 — **§8.11 resolved: no pre-subtask work phase exists
+> **Last updated:** 2026-07-17 (rev 37 — **§8.12 resolved: no fixed decomposition-level
+> ladder, no `Initiative` tier above Epic.** §3.7 already establishes decomposition as
+> scope-relative and repeatable rather than a fixed `Project → Epic → Story` count — if a
+> system needs something above Epic, that's a native-Jira concept a business configures on
+> its own instance, not a new TAI schema type (no `Initiative` concept exists anywhere else
+> in the schema). Where the Analyst/Orchestrator stops decomposing is likewise not a
+> formula — "applicable at whatever scope is handed to it" means a human or the
+> Orchestrator decides scope per invocation, an inherent judgment call.
+> Prior: rev 36 — **§8.11 resolved: no pre-subtask work phase exists
 > to give a home to.** Premise declined — a persona creates the subtask as its first
 > action, before any exploration/brainstorming begins, so journaling/caching always has a
 > key. Settled alongside it, from discussion: subtask creation is **direct**, gated only by
@@ -556,6 +564,14 @@ project to propose a breakdown into Epics ("a project of projects"), then runs a
 not fix how many passes happen or where they stop — it fixes that decomposition is a
 repeatable persona operation, applicable at whatever scope is handed to it. (This mirrors
 BMAD's scale-adaptive planning depth.)
+
+**Scope-level count resolved (rev 37, §8 item 12): no fixed level ladder, no `Initiative`
+tier above Epic.** Decomposition is deliberately scope-relative and repeatable rather than
+a fixed `Project → Epic → Story` ladder with named levels — if a system genuinely needs
+something above Epic, that's a native-Jira concept a business configures on its own
+instance, not a new TAI schema type. **Where to stop is likewise not a formula:** "applicable
+at whatever scope is handed to it" means a human or the Orchestrator decides the scope for
+each invocation — an inherent judgment call, not something to compute.
 
 Separately, an **already-created Story** may need more detail before implementation
 subtasks can be meaningfully created under it. For this, a Story can carry a
@@ -1329,10 +1345,13 @@ Carry these forward; resolve them in upcoming design sessions.
     story-level ticket creation stays propose → PM confirms, unchanged. Precedence-graph
     wiring for a mid-flight-inserted subtask is already solved in code
     (`workflows/dependencies.md`'s "Dynamic Subtask Insertion").
-12. **Decomposition scope levels:** how many levels of recursive decomposition are formally
-    recognized (Project → Epic → Story, or does a very large system warrant an optional
-    Initiative level above Epic?) and where the Analyst/Orchestrator decides to stop
-    decomposing further.
+12. ~~**Decomposition scope levels:** how many levels of recursive decomposition are
+    formally recognized (Project → Epic → Story, or does a very large system warrant an
+    optional Initiative level above Epic?) and where the Analyst/Orchestrator decides to
+    stop decomposing further.~~ — **RESOLVED (rev 37): no fixed ladder, no `Initiative`
+    tier.** See §3.7 — decomposition is deliberately scope-relative and repeatable, not a
+    fixed level count; where to stop is a human/Orchestrator judgment call per invocation,
+    not a formula.
 13. **Refinement subtask triggering:** *Partly resolved.* Three non-exclusive triggers can
     flag a Story as needing `Investigate`: a human manually, PM (Orchestrator) recognizing
     insufficient detail while querying what's ready, or the Analyst self-flagging during
