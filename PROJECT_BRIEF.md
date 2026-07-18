@@ -4,7 +4,12 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 33 — **§8.7 resolved by implementation: the storage
+> **Last updated:** 2026-07-17 (rev 34 — **§8.8 resolved: worktree-swap is the default
+> ticket-switch mechanic, not plain checkout.** §6 already states the reason worktrees were
+> adopted at all — "so switching between tickets doesn't require stashing dirty state" — and
+> a plain-checkout default would reintroduce exactly that problem. Design decision only;
+> no worktree logic exists in `src/core/git/` yet.
+> Prior: rev 33 — **§8.7 resolved by implementation: the storage
 > interface's operation set already exists in code and is proven identical across
 > backends.** `src/core/storage/interface.ts`'s `WorkTracker`/`DocStore` cover issue/page
 > CRUD, the typed `search(filter)` JQL-equivalent, transitions, comments, links, and
@@ -1098,8 +1103,9 @@ comment's content.
 - **Branching strategies** (from GSD): `none` (commit to current branch), per-unit branch,
   and a milestone-style long-lived branch — configurable.
 - **Git worktrees** for parallel isolation, so switching between tickets doesn't require
-  stashing dirty state. **Open item:** confirm worktree-swap vs. plain checkout as the
-  default switch behavior.
+  stashing dirty state. **Resolved (rev 34, §8 item 8): worktree-swap is the default**
+  switch behavior — a plain checkout would reintroduce exactly the stashing problem
+  worktrees were adopted to avoid. Not yet implemented in code.
 - **Commits** begin with the Jira issue key so Jira's dev panel links them and so we can
   derive the affected repo for the Component field (§4, rev 11).
 - **Multi-repo Story:** one dev→review→merge/deploy subtask chain per repo.
@@ -1245,7 +1251,11 @@ Carry these forward; resolve them in upcoming design sessions.
    the filesystem and Jira backends by the conformance suite (`TAI-15`). Comment/link delete
    and attachment upload are the only gaps, left out as not-yet-needed rather than decided
    against.
-8. **Ticket-switch mechanic:** worktree swap vs. plain checkout as default.
+8. ~~**Ticket-switch mechanic:** worktree swap vs. plain checkout as default.~~ —
+   **RESOLVED (rev 34): worktree-swap.** See §6 — that's the entire stated reason
+   worktrees were adopted (avoiding stashing dirty state on ticket switch); a plain
+   checkout as default would reintroduce the problem worktrees exist to solve. Design
+   decision only — not yet implemented in code.
 9. ~~**Autocompletion condition format**~~ — **RESOLVED (rev 25, TAI-41 ADR):**
    `AutocompletionCondition { id, description }`, `AutocompletionConfig` is
    `{ enabled: false } | { enabled: true; conditions: [...] }` — AND-only for v1.
