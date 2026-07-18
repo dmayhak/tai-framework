@@ -4,7 +4,16 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 32 — **§8.5 resolved: "re-triage" on a failed checkpoint
+> **Last updated:** 2026-07-17 (rev 33 — **§8.7 resolved by implementation: the storage
+> interface's operation set already exists in code and is proven identical across
+> backends.** `src/core/storage/interface.ts`'s `WorkTracker`/`DocStore` cover issue/page
+> CRUD, the typed `search(filter)` JQL-equivalent, transitions, comments, links, and
+> attachments — validated by a 710-line conformance suite run against both the filesystem
+> and Jira backends (Jira `TAI-15`). Jira-specific concepts are kept out by construction:
+> no raw JQL, no raw custom-field ids (promoted to named typed fields instead), no
+> backend-specific content encoding (`Page.content` is always markdown). Comment/link
+> delete and attachment upload don't exist yet — not decided against, just not yet needed.
+> Prior: rev 32 — **§8.5 resolved: "re-triage" on a failed checkpoint
 > retry isn't a persona judgment call at all — it's deterministic plugin-layer mechanics.**
 > Where a failed checkpoint's retry goes is already fixed by the workflow's documented
 > loop-back structure (Dev ⇄ Test, ArchitectureDesign ⇄ DesignReview, UAT rejection
@@ -330,6 +339,23 @@ The storage interface contract is the single most important design artifact in t
 TypeScript interfaces enforce that every backend implements it identically — but note that
 **types enforce shape, not behavior.** A shared **conformance suite**, run against every
 backend, is what actually enforces identical behavior (Jira `TAI-15`).
+
+**Operation set resolved by implementation (rev 33, §8 item 7):** `src/core/storage/
+interface.ts` defines `WorkTracker` (issue CRUD minus delete — cancellation via `Canceled`,
+§5.3, covers that case instead; `transition`/`getAvailableTransitions`; `addComment`/
+`editComment`, no delete, matching the edit-only comment model elsewhere; `createLink`/
+`getLinkedIssues`; `linkPage`/`getLinkedPages`; `listAttachments`/`getAttachment`, read-only;
+`search(filter: IssueFilter)` as the typed JQL-equivalent) and `DocStore` (page CRUD,
+comments, children, linked issues, attachments), bundled as `StorageBackend`. Proven
+identical across the filesystem and Jira backends by the conformance suite referenced above.
+**What stays out, so the filesystem backend stays clean:** no raw JQL strings (`IssueFilter`
+is a typed object); no raw Jira custom-field ids (`persona`/`component`/`severity`/
+`priority` are promoted to named, typed fields instead of a generic field bag); no
+backend-specific content encoding (`Page.content` is always markdown — Confluence's
+storage/XHTML and ADF diagram-macro wrangling, documented in `interface.ts`, is internal to
+the Jira backend only). No comment/link delete or attachment upload exist yet — left out as
+not-yet-needed rather than decided against, same "don't build ahead of an observed need"
+posture as elsewhere (§8 item 1).
 
 > **Hazard, for anyone driving Jira/Confluence through a third-party MCP wrapper**
 > (e.g. `mcp-atlassian`, which is what a Claude Code / Gemini session typically has
@@ -1211,10 +1237,14 @@ Carry these forward; resolve them in upcoming design sessions.
    `workOn`/`complete`/`update` permission block was individually audited against the
    schema (design-notes §1), fixing several real gaps in the process (e.g. Ada's missing
    `Subtask:Investigate`, Dario's missing `Subtask:Dev`). See each `personas/*.md` file.
-7. **Storage interface operation set:** the minimum operations the abstraction must expose
+7. ~~**Storage interface operation set:** the minimum operations the abstraction must expose
    (issue CRUD, query/JQL-equivalent, status transition, comments, issue links, custom
    fields, attachments) and what Jira-specific concepts must *not* leak so the filesystem
-   backend stays clean.
+   backend stays clean.~~ — **RESOLVED (rev 33): already implemented and proven.** See §3.2
+   — `src/core/storage/interface.ts`'s `WorkTracker`/`DocStore`, validated identical across
+   the filesystem and Jira backends by the conformance suite (`TAI-15`). Comment/link delete
+   and attachment upload are the only gaps, left out as not-yet-needed rather than decided
+   against.
 8. **Ticket-switch mechanic:** worktree swap vs. plain checkout as default.
 9. ~~**Autocompletion condition format**~~ — **RESOLVED (rev 25, TAI-41 ADR):**
    `AutocompletionCondition { id, description }`, `AutocompletionConfig` is
