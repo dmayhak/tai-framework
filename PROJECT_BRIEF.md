@@ -4,7 +4,15 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 34 — **§8.8 resolved: worktree-swap is the default
+> **Last updated:** 2026-07-17 (rev 35 — **§8.10 half-resolved: `status.json`'s staleness
+> rule is neither TTL nor trust-until-mismatch — there isn't one.** `rollupStatus()`
+> (`src/core/workspace/status.ts`, TAI-56 ADR decision 6) always does a full rescan of
+> `.tai/work/**/status.json` on demand and overwrites the root file, with no comparison
+> against `generatedAt` at all — unlike the Jira/Confluence cache, this rollup only reads
+> local files TAI's own process just wrote, so there's no network cost to gate a skip on.
+> **Left open:** when a reconciliation scan triggers automatically (session start? every
+> command? explicit refresh?) — blocked on a CLI/command layer that doesn't exist yet.
+> Prior: rev 34 — **§8.8 resolved: worktree-swap is the default
 > ticket-switch mechanic, not plain checkout.** §6 already states the reason worktrees were
 > adopted at all — "so switching between tickets doesn't require stashing dirty state" — and
 > a plain-checkout default would reintroduce exactly that problem. Design decision only;
@@ -1172,9 +1180,18 @@ home yet — see open question in §8.
 **Root status file:** `status.json` at the repo root is a **rollup/index**, not an
 authoritative source — it is itself a cache, of the same kind as everything else in this
 layout. It is built by scanning `.tai/work/**/status.json` and carries its own
-`generatedAt`. Any tool reading it should trust it only if fresh; if stale or missing,
-regenerate by scanning. This avoids paying the cost of a full scan on every read while
-never letting the root file become a second, driftable source of truth.
+`generatedAt`.
+
+**Staleness rule resolved by implementation (rev 35, §8 item 10, TAI-56 ADR decision 6):
+there isn't one — always a full rescan on demand, never a TTL or trust-until-mismatch
+check.** `rollupStatus()` (`src/core/workspace/status.ts`) doesn't compare `generatedAt`
+against anything; it rescans `.tai/work/**/status.json` and overwrites the root file every
+time it's called. Unlike the Jira/Confluence cache (where staleness checks exist to avoid
+unnecessary *network* calls), this rollup only reads local files TAI's own process just
+wrote — no network cost to avoid, so nothing to gate a skip on. **Still open:** *when*
+`rollupStatus()` is invoked automatically (session start? every command? explicit refresh?)
+— unresolved because no CLI/command layer exists yet to wire a trigger into; nothing calls
+it outside its own tests today.
 
 **Bulk change detection & explicit offline sync (rev 11):** the per-item `cachedAt`-vs-
 `lastUpdated` check above answers "is *this* item stale" but not "what changed while I
@@ -1267,9 +1284,12 @@ Carry these forward; resolve them in upcoming design sessions.
    `evaluateAutocompletion` live in `autocompletion.ts` as a standalone, tested, pure-function
    module — deliberately not yet called from anywhere; see §3.4 for the current status of
    who's expected to eventually call it.
-10. **Root status-file reconciliation:** exact staleness rule for `status.json` (TTL vs.
-    trust-until-mismatch) and when a reconciliation scan is triggered automatically
-    (session start? every command? explicit `/tai_` refresh command?).
+10. **Root status-file reconciliation.** ~~Exact staleness rule for `status.json` (TTL vs.
+    trust-until-mismatch)~~ — **RESOLVED (rev 35): neither — always a full rescan on
+    demand**, no staleness check at all (see §7, TAI-56 ADR decision 6). **Still open:**
+    when a reconciliation scan is triggered automatically (session start? every command?
+    explicit `/tai_` refresh command?) — blocked on a CLI/command layer that doesn't exist
+    yet.
 11. **Pre-subtask work location:** where initial brainstorming/setup work (before a subtask
     exists to key off of) is cached and journaled, and how/whether it gets reattached once
     a real subtask is created for it.
