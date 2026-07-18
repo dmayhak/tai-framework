@@ -4,7 +4,16 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 31 — **§8.3 resolved: the "persona can't approve its own
+> **Last updated:** 2026-07-17 (rev 32 — **§8.5 resolved: "re-triage" on a failed checkpoint
+> retry isn't a persona judgment call at all — it's deterministic plugin-layer mechanics.**
+> Where a failed checkpoint's retry goes is already fixed by the workflow's documented
+> loop-back structure (Dev ⇄ Test, ArchitectureDesign ⇄ DesignReview, UAT rejection
+> routing, §5.3); whether to retry-vs-escalate is already fixed by the single-retry counter
+> (§4). Nothing discretionary is left for the Orchestrator persona to "decide" — no
+> persona-level permission is needed, same enforcement pattern already used for the
+> Jira-rejected-transition rule (§3.3: enforced once in the storage plugin's `transition`
+> operation, not per-persona).
+> Prior: rev 31 — **§8.3 resolved: the "persona can't approve its own
 > work" rule is scoped to the same human, not the same persona role.** Persona role was
 > never actually a live dimension — every workflow (`workflows/story.md`, etc.) always
 > routes authored work to a *different* persona role for review (Developer → Code
@@ -601,7 +610,12 @@ These are settled. Change them deliberately and update this file if you do.
   human must get involved. Context passed back and forth (e.g. reviewer → developer) is
   recorded as **Jira comments.** Comment placement follows a "who needs to know?" rule:
   if only the subtask's owner needs it, comment on the subtask; if multiple parties need
-  it, comment on the parent.
+  it, comment on the parent. **Triage ownership resolved (rev 32, §8 item 5):** routing a
+  failed checkpoint's retry isn't a discretionary act — the destination is already fixed
+  by the workflow's documented loop-back structure (§5.3's Dev ⇄ Test,
+  ArchitectureDesign ⇄ DesignReview, UAT rejection routing) and the retry-vs-escalate call
+  is already fixed by the single-retry counter above. It's deterministic plugin-layer
+  mechanics, not a judgment call requiring Orchestrator persona permission.
 - **Multi-repo:** a Story/Bug can touch **multiple repos**; a **subtask targets exactly one
   repo.** Each repo touched gets its own dev → review → merge/deploy subtask chain under the
   Story. **Decided (rev 11):** the affected repo is tracked via Jira's **native Component**
@@ -1185,9 +1199,13 @@ Carry these forward; resolve them in upcoming design sessions.
 4. ~~**Multi-repo checkpoint chain shape**~~ — **RESOLVED (rev 11):** native Jira
    **Component** field (not a custom `repo` field), populated by deriving the repo from a
    commit's Jira-key prefix with manual fallback. See §4.
-5. **Failed-checkpoint triage ownership:** the retry-once-then-human rule is set; confirm
+5. ~~**Failed-checkpoint triage ownership:** the retry-once-then-human rule is set; confirm
    whether the Orchestrator persona may perform the re-triage automatically within that
-   single retry.
+   single retry.~~ — **RESOLVED (rev 32): not a persona judgment call at all.** The retry
+   destination is already fixed by the workflow's documented loop-back structure (§5.3),
+   and retry-vs-escalate is already fixed by the single-retry counter (§4). Nothing
+   discretionary is left for the Orchestrator to "decide" — deterministic plugin-layer
+   mechanics, no persona-level permission needed.
 6. ~~**Finalized default persona roster and default issue-type permissions**~~ —
    **RESOLVED:** the 9-persona roster (§3.1) is final, and every persona's `create`/
    `workOn`/`complete`/`update` permission block was individually audited against the
