@@ -4,7 +4,16 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 30 — **§8.27 declined: neither gap it identified turns
+> **Last updated:** 2026-07-17 (rev 31 — **§8.3 resolved: the "persona can't approve its own
+> work" rule is scoped to the same human, not the same persona role.** Persona role was
+> never actually a live dimension — every workflow (`workflows/story.md`, etc.) always
+> routes authored work to a *different* persona role for review (Developer → Code
+> Reviewer), so "the same persona role approves its own output" can't structurally happen.
+> The only real way self-approval occurs is the same human filling both roles — the
+> solo-dev case §4 already named, with the override already sketched at the Code Reviewer
+> persona level (rev 10 note). No code change needed; existing workflow routing already
+> handles it.
+> Prior: rev 30 — **§8.27 declined: neither gap it identified turns
 > out to be real.** Revisiting the two sub-questions left open at rev 26: company/global
 > docs are dropped from consideration outright — no cross-project scope exists to serve
 > (this framework's "one Confluence space per Jira project" model, §4, is sufficient as is).
@@ -565,7 +574,10 @@ These are settled. Change them deliberately and update this file if you do.
 - **A persona can never approve its own work.** In a *team* setting this is the norm and is
   ultimately enforced by the business/process — for now our code does not hard-lock it,
   because a **solo developer legitimately reviews their own work.** (Revisit if we add
-  org-level enforcement.)
+  org-level enforcement.) **Scope resolved (rev 31, §8 item 3): the same-human dimension,
+  not persona role** — workflow routing already guarantees a different persona role
+  reviews any given persona's output, so self-approval can only happen when one human
+  fills both roles (the solo-dev case named above).
 - **Checkpoints are enforced in Team AI's plugin layer,** not via native Jira validators
   (see §3.3). Checkpoints override autocompletion.
 - **A Jira-rejected transition is an unplanned checkpoint, not a normal failure.** Team AI
@@ -1162,11 +1174,14 @@ Carry these forward; resolve them in upcoming design sessions.
    default workflow), but only Kickoff's flow actually transitions into it — TAI's own
    logic decides what's meaningful per type, same as everywhere else (§3.3). See §5.3.
    Still open: per-project customization of this default beyond the built-in loop-backs.
-3. **Scope of the "same persona can't approve" rule:** is it scoped to the same human, the
-   same persona role, or both? (Currently: business-enforced, not code-locked, to allow
-   solo self-review.) *Note (rev 10):* the Code Reviewer persona expresses a "should not
-   review own authored work by default, overridable for solo dev" stance — the scope
-   question here is still what's unresolved.
+3. ~~**Scope of the "same persona can't approve" rule:** is it scoped to the same human, the
+   same persona role, or both?~~ — **RESOLVED (rev 31): the same human, not persona role.**
+   Persona role was never a live dimension — every workflow always routes authored work to
+   a *different* persona role for review, so "the same persona role approves its own
+   output" can't structurally occur. Self-approval only happens when one human fills both
+   roles, which is exactly the solo-dev case §4 already carves out, with the override
+   already sketched at the Code Reviewer persona level (rev 10 note). No code change
+   needed — existing workflow routing already handles it.
 4. ~~**Multi-repo checkpoint chain shape**~~ — **RESOLVED (rev 11):** native Jira
    **Component** field (not a custom `repo` field), populated by deriving the repo from a
    commit's Jira-key prefix with manual fallback. See §4.
