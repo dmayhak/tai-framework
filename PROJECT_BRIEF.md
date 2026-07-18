@@ -4,7 +4,23 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 35 — **§8.10 half-resolved: `status.json`'s staleness
+> **Last updated:** 2026-07-17 (rev 36 — **§8.11 resolved: no pre-subtask work phase exists
+> to give a home to.** Premise declined — a persona creates the subtask as its first
+> action, before any exploration/brainstorming begins, so journaling/caching always has a
+> key. Settled alongside it, from discussion: subtask creation is **direct**, gated only by
+> the creating persona's existing per-issue-type `create` permission (§3.1) — PM may
+> pre-create a Story's whole known subtask chain, or any persona may create a subtask it
+> recognizes as needed mid-flight (the existing "present-when-added" pattern). **Story-level
+> ticket creation is unchanged** — still propose → PM confirms/creates (Spike outcomes,
+> PostDeploy Bug, Ada's decomposition), not direct. Precedence-link wiring for a
+> mid-flight-inserted subtask turned out to already be solved in code, not a gap at all:
+> `workflows/dependencies.md`'s "Dynamic Subtask Insertion" section and
+> `getNewPrecedenceEdgesForInsertedSubtask()` (`schema/story-schema.ts`) already compute the
+> new edges automatically — the PostDeploy example there is the exact scenario raised in
+> discussion. Also corrects a stale cross-reference found along the way: §5.3's rev-27
+> `Backlog` text pointed to "§7's dynamic-subtask-insertion note," which never existed in
+> §7 — the actual content is in `workflows/dependencies.md`.
+> Prior: rev 35 — **§8.10 half-resolved: `status.json`'s staleness
 > rule is neither TTL nor trust-until-mismatch — there isn't one.** `rollupStatus()`
 > (`src/core/workspace/status.ts`, TAI-56 ADR decision 6) always does a full rescan of
 > `.tai/work/**/status.json` on demand and overwrites the root file, with no comparison
@@ -887,7 +903,8 @@ behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban
 - Applies to **every issue type — story-level tickets and subtasks alike** — same scope
   as `Canceled` (rev 16), for the same reason: a subtask can just as easily be created
   ahead of its own readiness (e.g. a `Database` subtask flagged during Architecture work
-  but not yet detailed enough to start, §7's dynamic-subtask-insertion note) as a
+  but not yet detailed enough to start, `workflows/dependencies.md`'s "Dynamic Subtask
+  Insertion" section — corrected rev 36, previously mislabeled "§7's" note) as a
   story-level ticket can.
 
 **Epic status (rev 28) — `In Progress` is derived from children; `Done` is never
@@ -1174,8 +1191,21 @@ state).
 
 **Unit-of-work keying:** every unit of work below the initial brainstorming/setup phase is
 tied to a Jira **subtask**, and the subtask key is the folder name for its cache/workspace
-files (§4). Work that predates a subtask existing (e.g. initial brainstorming) has no fixed
-home yet — see open question in §8.
+files (§4). **Resolved (rev 36, §8 item 11): there is no pre-subtask phase to give a home
+to.** The premise is declined — a persona creates the subtask as its first action, before
+doing any exploration/brainstorming, so journaling/caching always has a key to hang off of.
+This composes with **who may create a subtask** (§3.1's per-persona `create` permission,
+per issue type): any persona authorized to create a given subtask type may do so directly
+and proactively — PM pre-creating a Story's whole known `Dev`/`CodeReview`/`Deploy` chain
+up front, or a `SpikeTask` assigned at creation — the same "present-when-added" pattern
+already used for optional subtasks (`DesignReview`, `UAT`, `PostDeploy`, …) covers a
+subtask recognized as needed only mid-flight. **Story-level ticket creation is different
+and unchanged:** it keeps the existing **propose → PM confirms/creates** pattern (DevOps
+proposing a post-deploy Bug, Spike outcomes, Ada's Epic/Story decomposition) — a persona
+discovering the need for a whole new Story doesn't create it directly, only proposes it.
+Precedence-graph wiring for a subtask inserted mid-flight is already solved, not something
+a human/persona manages by hand — see `workflows/dependencies.md`'s "Dynamic Subtask
+Insertion" (`getNewPrecedenceEdgesForInsertedSubtask()`, `schema/story-schema.ts`).
 
 **Root status file:** `status.json` at the repo root is a **rollup/index**, not an
 authoritative source — it is itself a cache, of the same kind as everything else in this
@@ -1290,9 +1320,15 @@ Carry these forward; resolve them in upcoming design sessions.
     when a reconciliation scan is triggered automatically (session start? every command?
     explicit `/tai_` refresh command?) — blocked on a CLI/command layer that doesn't exist
     yet.
-11. **Pre-subtask work location:** where initial brainstorming/setup work (before a subtask
-    exists to key off of) is cached and journaled, and how/whether it gets reattached once
-    a real subtask is created for it.
+11. ~~**Pre-subtask work location:** where initial brainstorming/setup work (before a
+    subtask exists to key off of) is cached and journaled, and how/whether it gets
+    reattached once a real subtask is created for it.~~ — **RESOLVED (rev 36): premise
+    declined, no pre-subtask phase exists.** A persona creates the subtask as its first
+    action, before any exploration begins — see §7. Settled alongside it: subtask creation
+    is direct, by whichever persona is authorized (§3.1's per-persona `create` permission);
+    story-level ticket creation stays propose → PM confirms, unchanged. Precedence-graph
+    wiring for a mid-flight-inserted subtask is already solved in code
+    (`workflows/dependencies.md`'s "Dynamic Subtask Insertion").
 12. **Decomposition scope levels:** how many levels of recursive decomposition are formally
     recognized (Project → Epic → Story, or does a very large system warrant an optional
     Initiative level above Epic?) and where the Analyst/Orchestrator decides to stop
