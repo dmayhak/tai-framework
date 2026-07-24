@@ -24,7 +24,10 @@ model: default          # inherits project default; overridable in persona confi
 permissions:
   propose:
     - Epic                      # during project → epic decomposition; PM holds `create`
-    - Story                     # during epic → story decomposition; PM holds `create`
+    - Story                     # PM now owns epic → story decomposition directly
+                                # (`workOn: Epic`, brief §3.7 rev 43) — this grant covers
+                                # Ada surfacing a Story proposal if pulled in for a specific
+                                # research question, not the default per-Epic pass
   create:
     - Subtask:Research          # Kickoff discovery subtask (workflows/kickoff.md)
     - Subtask:Investigate       # refinement-type subtask (brief §3.7, §5.2); valid on Story + Bug

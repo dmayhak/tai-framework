@@ -4,7 +4,26 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-24 (rev 42 — **§8.10 fully resolved: `rollupStatus()`
+> **Last updated:** 2026-07-24 (rev 44 — **§3.1: Architect owns `workOn: Spike`.**
+> Surfaced while PM (rev 43) decomposed TAI-8 and needed to create a Spike (design the
+> Gemini CLI host integration model) — same gap as rev 43's, one level up: no persona had
+> `workOn` for any bare Story-level type (`Kickoff`/`Spike`/`Story`/`Bug`), so nothing
+> created as a Spike could ever be `/tai_work`-ed. Architect is the natural owner —
+> `Subtask:Feasibility`/`ArchitectureDesign`/`DesignReview` are the same kind of work one
+> level down. `Kickoff`/`Story`/`Bug` are NOT addressed by this entry — no current need
+> surfaced one for them (Story/Bug work happens via their subtasks; Kickoff's PM-invoked
+> steps are a separate, not-yet-hit gap) — revisit only if a concrete need shows up, same
+> as every other gap in this doc.
+> Prior: rev 43 — **§3.1/§3.7: PM (not Analyst) owns Epic→Story
+> decomposition, invoked directly on the Epic.** Surfaced by TAI-8 itself: no persona had
+> `workOn: Epic`, so no unit-of-work invocation could ever act on one. `Epic` is now
+> granted to PM's `workOn`, folding the propose/create split into a single PM turn at this
+> level — PM decomposes the Epic and creates the resulting Stories/Subtasks itself, no
+> longer waiting on a separate Analyst proposal pass for it. Analyst's `propose: Epic`
+> still stands for the *project→Epic* level (§3.7's first pass, unaffected); only the
+> **second, per-Epic pass** changes owner. `personas/pm.md` and `personas/analyst.md`
+> updated to match.
+> Prior: rev 42 — **§8.10 fully resolved: `rollupStatus()`
 > fires at the same refresh points §3.6 already defines for per-item caches** — no separate
 > trigger concept, no dedicated refresh command needed as the primary mechanism. Not
 > actually blocked on a not-yet-built CLI layer as previously framed — blocked (same as
@@ -613,11 +632,16 @@ mechanism, not a new one.
 ### 3.7 Recursive Decomposition & Refinement
 For large projects, a single decomposition pass is too coarse. Personas can be invoked
 **recursively at progressively narrower scope**: the Analyst runs once against the overall
-project to propose a breakdown into Epics ("a project of projects"), then runs again
-**scoped to each individual Epic** to produce that Epic's Stories/Bugs. The framework does
-not fix how many passes happen or where they stop — it fixes that decomposition is a
-repeatable persona operation, applicable at whatever scope is handed to it. (This mirrors
-BMAD's scale-adaptive planning depth.)
+project to propose a breakdown into Epics ("a project of projects"); the **second pass —
+scoped to each individual Epic, producing that Epic's Stories/Bugs — is PM's, not
+Analyst's** (rev 43). PM is invoked directly on the Epic (`workOn: Epic`) and both
+decomposes and creates the resulting Stories/Bugs/Subtasks in that same turn, rather than
+waiting on a separate Analyst proposal pass at this level. (Ada remains available to PM
+as a research input if a specific question needs investigating, same as any other persona
+interaction — she just isn't the default owner of this pass.) The framework does not fix
+how many passes happen or where they stop — it fixes that decomposition is a repeatable
+persona operation, applicable at whatever scope is handed to it. (This mirrors BMAD's
+scale-adaptive planning depth.)
 
 **Scope-level count resolved (rev 37, §8 item 12): no fixed level ladder, no `Initiative`
 tier above Epic.** Decomposition is deliberately scope-relative and repeatable rather than

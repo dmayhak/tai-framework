@@ -18,6 +18,11 @@ permissions:
     - Subtask:ArchitectureDesign  # deeper, non-time-boxed design work
     - Subtask:DesignReview        # optional gate on ArchitectureDesign (brief §5.2)
   workOn:
+    - Spike                      # standalone technical-design/investigation ticket (brief
+                                # §3.1 rev 44) — same kind of work as Subtask:Feasibility/
+                                # ArchitectureDesign below, just at the bare-issue-type level;
+                                # surfaced when TAI-8 needed a Spike created and no persona
+                                # had `workOn: Spike` at all
     - Subtask:Feasibility
     - Subtask:ArchitectureDesign
     - Subtask:DesignReview
