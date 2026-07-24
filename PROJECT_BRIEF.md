@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-17 (rev 37 — **§8.12 resolved: no fixed decomposition-level
+> **Last updated:** 2026-07-24 (rev 38 — **§8.13 resolved (the "ready for
+> implementation" half): no formal marker or checkpoint.** `Investigate` isn't in
+> `SUBTASK_PRECEDENCE` at all (`workflows/dependencies.md`'s graph, `workflows/story.md`'s
+> own "no automatic unblock effect" note) — nothing downstream is structurally gated on it,
+> so there's no state for a formal "ready" signal to drive. `Investigate` reaching Done is
+> ordinary subtask completion, same as any other subtask; whichever persona creates the
+> next subtask (Dev, ArchitectureDesign, etc.) does so on its own judgment of the current
+> story content, same direct-creation authority §8.11/rev 36 already established. Same
+> "don't invent a signal without an observed failure" reasoning as rev 29's §8.28 decline —
+> revisit only if a concrete under-baked-requirements incident actually occurs.
+> Prior: rev 37 — **§8.12 resolved: no fixed decomposition-level
 > ladder, no `Initiative` tier above Epic.** §3.7 already establishes decomposition as
 > scope-relative and repeatable rather than a fixed `Project → Epic → Story` count — if a
 > system needs something above Epic, that's a native-Jira concept a business configures on
@@ -1357,9 +1367,15 @@ Carry these forward; resolve them in upcoming design sessions.
     insufficient detail while querying what's ready, or the Analyst self-flagging during
     other work (e.g. decomposition). Regardless of who flags it, the Analyst always
     creates the actual `Investigate` subtask — the flagging persona never creates it on
-    the Analyst's behalf (see `personas/pm.md`, `personas/analyst.md`). **Still open:**
+    the Analyst's behalf (see `personas/pm.md`, `personas/analyst.md`). ~~**Still open:**
     what formally marks a Story "ready for implementation" once refinement is done (a
-    status transition, a checkpoint, or just Orchestrator judgment)?
+    status transition, a checkpoint, or just Orchestrator judgment)?~~ — **RESOLVED
+    (rev 38): no formal marker.** `Investigate` has no entry in `SUBTASK_PRECEDENCE`
+    (`workflows/dependencies.md`), and `workflows/story.md` already documents it has "no
+    automatic unblock effect" — nothing structurally waits on it, so there's nothing for a
+    formal signal to drive. `Investigate` going Done is ordinary subtask completion; the
+    persona creating the next subtask judges readiness itself, same direct-creation
+    authority as item 11 (rev 36).
 14. **Escalation notification channel:** a Jira-rejected transition (§3.3) gets a comment/
     label in Jira and an entry in the local status rollup (§7) — is that sufficient, or
     does human escalation need an active push notification (email, Slack, Teams) so it
