@@ -113,9 +113,12 @@ describe("status mapping", () => {
         }
     });
 
-    it("accepts the two statuses that only exist because of live reconciliation", () => {
+    it("accepts the statuses that only exist because of live reconciliation", () => {
         assert.equal(fromJiraStatus("To Do"), Status.ToDo); // rev 15: not "Open"
         assert.equal(fromJiraStatus("Canceled"), Status.Canceled); // rev 16
+        // rev 27 — real Jira issues sit in this status by default; PR #9 code review found
+        // fromJiraStatus threw on every one of them until Backlog was added to the enum.
+        assert.equal(fromJiraStatus("Backlog"), Status.Backlog);
     });
 
     it("throws on a status outside the §5.3 lifecycle", () => {

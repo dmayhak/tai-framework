@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { toPageId, type DocStore, type Page } from "../storage/interface.js";
+import { StorageConnectivityError, toPageId, type DocStore, type Page } from "../storage/interface.js";
 import { cachePage, readCachedPage, refreshPage } from "./page-cache.js";
 
 function page(overrides: Partial<Page> = {}): Page {
@@ -70,6 +70,54 @@ describe("refreshPage / readCachedPage / cachePage", () => {
             await cachePage(dir, "TAI", page({ content: "updated", updatedAt: "2026-02-01T00:00:00Z" }));
             const after = await readCachedPage(dir, "TAI", "123");
             assert.equal(after?.content, "updated");
+        });
+    });
+
+    // PR #9 code review: offline (StorageConnectivityError) used to propagate as a hard
+    // crash instead of degrading to whatever's already cached (brief §3.6).
+    describe("degrades to the cached copy on StorageConnectivityError", () => {
+        it("returns the cached page instead of throwing when one exists, for an id-shaped ref", async () => {
+            await withTempDir(async (dir) => {
+                await cachePage(dir, "TAI", page());
+                const offlineDocStore = {
+                    async getPage(): Promise<Page | null> {
+                        throw new StorageConnectivityError("network unreachable");
+                    },
+                } as unknown as DocStore;
+
+                const result = await refreshPage(offlineDocStore, dir, "TAI", { id: toPageId("123") });
+                assert.deepEqual(result, page());
+            });
+        });
+
+        it("still throws for a title-shaped ref -- offline, there's no id to look the cache up by", async () => {
+            await withTempDir(async (dir) => {
+                const offlineDocStore = {
+                    async getPage(): Promise<Page | null> {
+                        throw new StorageConnectivityError("network unreachable");
+                    },
+                } as unknown as DocStore;
+
+                await assert.rejects(
+                    () => refreshPage(offlineDocStore, dir, "TAI", { spaceKey: "TA", title: "Some Page" }),
+                    StorageConnectivityError
+                );
+            });
+        });
+
+        it("still propagates a non-connectivity error rather than masking it as offline", async () => {
+            await withTempDir(async (dir) => {
+                const brokenDocStore = {
+                    async getPage(): Promise<Page | null> {
+                        throw new Error("something else entirely");
+                    },
+                } as unknown as DocStore;
+
+                await assert.rejects(
+                    () => refreshPage(brokenDocStore, dir, "TAI", { id: toPageId("123") }),
+                    /something else entirely/
+                );
+            });
         });
     });
 });

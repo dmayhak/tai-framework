@@ -5,7 +5,7 @@
  * rationale, identical here for `Page` instead of `Issue`.
  */
 
-import type { DocStore, Page, PageRef } from "../storage/interface.js";
+import { StorageConnectivityError, type DocStore, type Page, type PageRef } from "../storage/interface.js";
 import { pageCachePath, readJsonFile, writeJsonFile } from "./paths.js";
 
 export interface CachedPageEnvelope {
@@ -27,10 +27,23 @@ export async function cachePage(taiRoot: string, projectKey: string, page: Page)
     await writeJsonFile(filePath, { cachedAt: new Date().toISOString(), page } satisfies CachedPageEnvelope);
 }
 
-/** A refresh point (brief §3.6): fetches `ref` from `docStore`, caches it, and returns the
- *  fresh `Page` — or null if it doesn't exist. */
+/**
+ * A refresh point (brief §3.6): fetches `ref` from `docStore`, caches it, and returns the
+ * fresh `Page` — or null if it doesn't exist.
+ *
+ * **Degrades to the cached copy on `StorageConnectivityError`**, same as `refreshIssue`
+ * (issue-cache.ts) — only possible when `ref` is id-shaped, since the cache is keyed by
+ * page id and a title-based ref offline has no id to look one up by. A connectivity
+ * failure on a title-based ref, or with no prior cache entry, still throws/returns null.
+ */
 export async function refreshPage(docStore: DocStore, taiRoot: string, projectKey: string, ref: PageRef): Promise<Page | null> {
-    const page = await docStore.getPage(ref);
+    let page: Page | null;
+    try {
+        page = await docStore.getPage(ref);
+    } catch (err) {
+        if (!(err instanceof StorageConnectivityError) || !("id" in ref)) throw err;
+        return readCachedPage(taiRoot, projectKey, ref.id);
+    }
     if (!page) return null;
     await cachePage(taiRoot, projectKey, page);
     return page;

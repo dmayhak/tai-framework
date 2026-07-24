@@ -70,15 +70,18 @@ async function resolveConfig(): Promise<ResolvedConfig> {
 }
 
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
-    return [
-        `# Persona: ${turn.personaDisplayName} (${turn.personaId})`,
-        "",
-        turn.personaPrompt,
-        "",
-        "---",
-        "",
-        turn.briefingMarkdown,
-    ].join("\n");
+    const lines = [`# Persona: ${turn.personaDisplayName} (${turn.personaId})`, ""];
+
+    const { replayed, stillQueued, escalated } = turn.replayOutcome;
+    if (replayed > 0 || stillQueued > 0 || escalated.length > 0) {
+        lines.push(`_Offline write replay: ${replayed} replayed, ${stillQueued} still queued._`, "");
+        for (const e of escalated) {
+            lines.push(`**Escalation:** queued ${e.method} from ${e.timestamp} failed to replay: ${e.reason}`, "");
+        }
+    }
+
+    lines.push(turn.personaPrompt, "", "---", "", turn.briefingMarkdown);
+    return lines.join("\n");
 }
 
 function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, persona?: string): string {

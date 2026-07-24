@@ -4,6 +4,11 @@
  * Host-agnostic composition of already-built pieces — no I/O primitive invented here, no
  * fresh-vs-resume branch (brief §3.8: both are "the same briefing-then-invoke flow"):
  *
+ *   0. `replayPending` — flushes any writes a PRIOR offline session queued for this same
+ *      subtask (brief §3.6/TAI-56 ADR decision 3) before anything else reads its state.
+ *      Runs first: a queued-but-unreplayed transition could change what "the issue" even
+ *      is. Found missing entirely (PR #9 code review) — without this, a queued write
+ *      stayed stranded in journal.md forever, never actually reaching the backend.
  *   1. Load the issue and read its OWN `persona` field (brief §5.6 — stored, never derived;
  *      already resolved per-instance, so no `SUBTASK_OWNER` lookup is needed here).
  *   2. `canWorkOn` gate (brief §3.1) — throws `PersonaPermissionError` if denied, same shape
@@ -19,7 +24,7 @@ import type { Issue, IssueKey, StorageBackend } from "../storage/interface.js";
 import { canWorkOn } from "../persona/permission-gate.js";
 import { loadPersonaConfig, type LoadPersonaConfigOptions } from "../persona/config.js";
 import { PersonaScopedWorkTracker, PersonaPermissionError } from "../persona/scoped-work-tracker.js";
-import { ConnectivityQueuedWorkTracker } from "../workspace/connectivity-queue.js";
+import { ConnectivityQueuedWorkTracker, replayPending, type ReplayOutcome } from "../workspace/connectivity-queue.js";
 import { generateBriefing } from "../workspace/briefing.js";
 
 export interface PrepareWorkTurnDeps {
@@ -38,6 +43,10 @@ export interface WorkTurn {
     /** The persona's own `.md` body — unformatted, for the host adapter to assemble. */
     readonly personaPrompt: string;
     readonly briefingMarkdown: string;
+    /** Result of replaying this subtask's queued offline writes, if any (step 0). Surfaced,
+     *  not swallowed — an `escalated` entry is an unplanned checkpoint (brief §3.3) the host
+     *  adapter should show the human, same as any other rejection. */
+    readonly replayOutcome: ReplayOutcome;
 }
 
 export class NoOwningPersonaError extends Error {
@@ -57,6 +66,8 @@ export class NoOwningPersonaError extends Error {
  * same as brief §3.6's refresh points are read-only.
  */
 export async function prepareWorkTurn(deps: PrepareWorkTurnDeps, key: IssueKey): Promise<WorkTurn> {
+    const replayOutcome = await replayPending(deps.backend.workTracker, deps.taiRoot, deps.projectKey, key);
+
     const issue = await deps.backend.workTracker.getIssue(key);
     if (!issue) {
         throw new Error(`${key}: no such issue.`);
@@ -88,5 +99,6 @@ export async function prepareWorkTurn(deps: PrepareWorkTurnDeps, key: IssueKey):
         personaDisplayName: config.displayName,
         personaPrompt: config.prompt,
         briefingMarkdown,
+        replayOutcome,
     };
 }

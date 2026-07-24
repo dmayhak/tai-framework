@@ -12,7 +12,7 @@
  * compare-and-write logic without re-fetching each one individually.
  */
 
-import type { Issue, IssueKey, WorkTracker } from "../storage/interface.js";
+import { StorageConnectivityError, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { issueCachePath, readJsonFile, writeJsonFile } from "./paths.js";
 
 export interface CachedIssueEnvelope {
@@ -40,9 +40,21 @@ export async function cacheIssue(taiRoot: string, projectKey: string, issue: Iss
  * to disk if changed), and returns the fresh `Issue` — or null if the issue doesn't exist
  * (brief's existing "absent is opted into, not assumed" convention; a prior cache entry, if
  * any, is left as-is rather than deleted, since a 404 could be transient).
+ *
+ * **Degrades to the cached copy on `StorageConnectivityError`** (brief §3.6: "degrade to
+ * cache reads" is the read-side counterpart of `ConnectivityQueuedWorkTracker`'s
+ * queue-writes — TAI does not attempt live sync). A connectivity failure with no prior
+ * cache entry still returns null, same as a genuine 404 — there's nothing to degrade to.
+ * Found missing entirely (PR #9 code review): offline meant a hard crash, not a fallback.
  */
 export async function refreshIssue(workTracker: WorkTracker, taiRoot: string, projectKey: string, key: IssueKey): Promise<Issue | null> {
-    const issue = await workTracker.getIssue(key);
+    let issue: Issue | null;
+    try {
+        issue = await workTracker.getIssue(key);
+    } catch (err) {
+        if (!(err instanceof StorageConnectivityError)) throw err;
+        return readCachedIssue(taiRoot, projectKey, key);
+    }
     if (!issue) return null;
     await cacheIssue(taiRoot, projectKey, issue);
     return issue;
