@@ -4,7 +4,20 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-24 (rev 39 — **§8.16 resolved: new-subtask-type
+> **Last updated:** 2026-07-24 (rev 40 — **§8.17 resolved: no formal review
+> gate for `Investigate` output.** Unlike Kickoff's `REVIEW_GATES[Kickoff]` (a named,
+> multi-reviewer, story-level gate blocking downstream ticket creation), `Investigate` is
+> an ordinary subtask that doesn't block anything downstream (§8.13, rev 38) and isn't a
+> story-level gate — the generic per-subtask checkpoint (§3.4: human sign-off by default,
+> unless autocompletion-configured) already covers it. No dual-reviewer (PM+Architect)
+> structure, no unification with the Kickoff gate. **Addendum, raised during discussion:**
+> when `Investigate` is spawned reactively out of another in-flight subtask (e.g. Dev hits
+> an ambiguity mid-work), the originating subtask *can* be blocked on it — via the existing
+> `SubtaskDependencyOverride` ad-hoc-dependency escape hatch (`workflows/dependencies.md`),
+> not a new mechanism. This is a per-instance judgment call by whoever discovers the need,
+> same as who flags `Investigate` in the first place (§8.13) — not a change to the static
+> `SUBTASK_PRECEDENCE` graph, which still has no automatic edge for `Investigate`.
+> Prior: rev 39 — **§8.16 resolved: new-subtask-type
 > process mirrors §8.1's story-type taxonomy.** `SubtaskType` (`story-schema.ts:87`) is a
 > compile-time TypeScript enum, and `STORY_SUBTASK_MAP`/`SUBTASK_OWNER` are compile-time
 > `Record`s keyed off it — adding a genuinely new type is a schema/code edit, not a Jira-side
@@ -1409,7 +1422,7 @@ Carry these forward; resolve them in upcoming design sessions.
     is a compile-time enum (`story-schema.ts:87`) — adding a new one is always a human
     (developer) schema edit. A persona may propose the gap, same propose pattern as
     elsewhere, but never adds the type itself. Mirrors §8.1's story-type taxonomy stance.
-17. **Analyst output review gate (§5.2):** does `Investigate` output need a formal review
+17. ~~**Analyst output review gate (§5.2):** does `Investigate` output need a formal review
     type (mirroring `DesignReview`), or does the default human sign-off (§3.4) already
     cover it well enough? If a formal gate is added, it may need **two independent
     reviewers checking different things** — PM for business/acceptance fit, Architect for
@@ -1420,7 +1433,13 @@ Carry these forward; resolve them in upcoming design sessions.
     *Update (rev 10):* a Kickoff-stage **PM + UX Designer** review gate now exists as-built
     (§3.5, `workflows/kickoff.md`), but it gates *Kickoff discovery output*, not
     *`Investigate` story-refinement output* — so the dual-reviewer question for
-    `Investigate`, and whether these two gates should be unified, both remain open.
+    `Investigate`, and whether these two gates should be unified, both remain open.~~ —
+    **RESOLVED (rev 40): no formal gate.** `Investigate` is an ordinary subtask, not a
+    story-level gate like Kickoff's — the generic per-subtask checkpoint (§3.4) already
+    covers it. No dual-reviewer structure, no unification with Kickoff. **Addendum:** a
+    mid-flight-spawned `Investigate` blocking its originating subtask uses the existing
+    `SubtaskDependencyOverride` escape hatch (`workflows/dependencies.md`), not a new
+    mechanism — a per-instance call, not a static graph change.
 18. **Native Project Role sync (deferred, rev 12, §5.6):** whether/when to mirror the
     TAI-owned Persona Roster into real Jira Project Roles for teams on a paid plan —
     what triggers it (automatic plan-tier detection vs. an explicit opt-in command), and

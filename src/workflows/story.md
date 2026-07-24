@@ -20,7 +20,7 @@ separate field, a real human holding the PM Project Role.
 
 | Subtask | Owner (default) | Notes |
 |---|---|---|
-| `Investigate` | Analyst | Optional refinement — adds detail before implementation subtasks are (separately) created; no automatic unblock effect (brief §3.7, §8.13) |
+| `Investigate` | Analyst | Optional refinement — adds detail before implementation subtasks are (separately) created; no automatic unblock effect, no formal review gate (brief §3.7, §8.13/§8.17). A reactively-spawned `Investigate` can block its originating subtask via the ad-hoc-dependency escape hatch (`workflows/dependencies.md`) |
 | `UxDesign` | UX Designer | Optional — Story-level detailing/tweaking beyond Kickoff's higher-level flows; lets a smaller design doc attach at Story level when Epic-level isn't the right granularity. Gates `Dev`, same as `ArchitectureDesign`/`Database`/`Infra` |
 | `ArchitectureDesign` | Architect | Optional — feature-level design before Dev starts, when needed |
 | `DesignReview` | Architect (2nd pass or peer) | Optional gate on `ArchitectureDesign` — mirrors `CodeReview`; blocks `Dev` when present |

@@ -118,9 +118,16 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    elaborate its requirements — clarify acceptance criteria, surface edge cases, flag open
    questions for Architect/DBA — without touching implementation. Output lands on the
    parent's linked Confluence page (or local equivalent) and as an update to its
-   description/acceptance criteria. `Investigate` has no automatic "unblocks Dev" effect —
-   whether refined output leads to new implementation subtasks is a separate human/
-   Orchestrator decision (brief §3.7, §8.13 — still open on that half).
+   description/acceptance criteria. `Investigate` has no automatic "unblocks Dev" effect in
+   the static precedence graph, and needs no formal review gate of its own — the generic
+   per-subtask checkpoint (brief §3.4) already covers it (brief §8.13/§8.17, both resolved).
+   Whether refined output leads to new implementation subtasks is ordinary persona judgment
+   when that next subtask is created, not a formal signal.
+   **When `Investigate` is spawned reactively** out of another in-flight subtask (e.g. Dev
+   hits an ambiguity mid-work), the originating subtask can be blocked on it via the
+   existing `SubtaskDependencyOverride` ad-hoc-dependency escape hatch
+   (`workflows/dependencies.md`) — a per-instance call by whoever discovers the need, not a
+   change to the static graph.
    **Who flags the need for `Investigate` (brief §8.13, partly resolved):** three
    non-exclusive triggers — a human notices a Story is too thin and requests it; PM
    (Orchestrator), while querying what's ready, recognizes insufficient detail and flags
