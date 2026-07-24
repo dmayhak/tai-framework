@@ -4,7 +4,15 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-24 (rev 41 — **§8.14 resolved: Jira comment/label
+> **Last updated:** 2026-07-24 (rev 42 — **§8.10 fully resolved: `rollupStatus()`
+> fires at the same refresh points §3.6 already defines for per-item caches** — no separate
+> trigger concept, no dedicated refresh command needed as the primary mechanism. Not
+> actually blocked on a not-yet-built CLI layer as previously framed — blocked (same as
+> §8.14/§8.15) on the orchestrator/persona-invocation loop (TAI-8) existing to call it at
+> those points. **§3.6 also gains a third refresh point: completing a unit of work**, not
+> just starting/resuming — a persona should refresh before deciding a unit of work is
+> actually complete, since other in-flight information may bear on that decision.
+> Prior: rev 41 — **§8.14 resolved: Jira comment/label
 > + status rollup is sufficient for v1; active push notification is deferred, not
 > declined.** §3.3's escalation behavior already stops at journaling the rejection and
 > escalating to a human — that visibility is enough for now. An active push (email/Slack/
@@ -566,9 +574,10 @@ may spawn Story/Spike tickets.
 Jira/Confluence are shared, externally-editable sources of truth — a human or another AI
 agent may change a ticket or page at any time. Team AI does **not** attempt live sync.
 Instead, freshness is checked at defined **refresh points**: when starting/resuming a unit
-of work, and whenever an item is first used in a session (per §4's caching rule). At a
-refresh point, cached items are compared against source `lastUpdated` and re-pulled if
-stale.
+of work, when **completing** one (rev 41, §8.10 — refreshed before the completion decision
+itself, since other in-flight information may bear on what to do next), and whenever an
+item is first used in a session (per §4's caching rule). At a refresh point, cached items
+are compared against source `lastUpdated` and re-pulled if stale.
 
 Each refresh regenerates a **briefing** — a single aggregated markdown file combining the
 subtask, its **immediate parent** (Story/Bug/Kickoff/Spike), and linked Confluence pages
@@ -1375,12 +1384,16 @@ Carry these forward; resolve them in upcoming design sessions.
    `evaluateAutocompletion` live in `autocompletion.ts` as a standalone, tested, pure-function
    module — deliberately not yet called from anywhere; see §3.4 for the current status of
    who's expected to eventually call it.
-10. **Root status-file reconciliation.** ~~Exact staleness rule for `status.json` (TTL vs.
+10. ~~**Root status-file reconciliation.** Exact staleness rule for `status.json` (TTL vs.
     trust-until-mismatch)~~ — **RESOLVED (rev 35): neither — always a full rescan on
-    demand**, no staleness check at all (see §7, TAI-56 ADR decision 6). **Still open:**
+    demand**, no staleness check at all (see §7, TAI-56 ADR decision 6). ~~**Still open:**
     when a reconciliation scan is triggered automatically (session start? every command?
     explicit `/tai_` refresh command?) — blocked on a CLI/command layer that doesn't exist
-    yet.
+    yet.~~ — **RESOLVED (rev 42): same refresh points as §3.6's per-item cache rule** —
+    starting/resuming a unit of work, completing one (§3.6's newly-added third refresh
+    point), and first-use-in-session. Not actually blocked on a new CLI concept; blocked
+    (like §8.14/§8.15) on the orchestrator/persona-invocation loop (TAI-8) existing to call
+    `rollupStatus()` at those points.
 11. ~~**Pre-subtask work location:** where initial brainstorming/setup work (before a
     subtask exists to key off of) is cached and journaled, and how/whether it gets
     reattached once a real subtask is created for it.~~ — **RESOLVED (rev 36): premise
