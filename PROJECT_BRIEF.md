@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-24 (rev 40 — **§8.17 resolved: no formal review
+> **Last updated:** 2026-07-24 (rev 41 — **§8.14 resolved: Jira comment/label
+> + status rollup is sufficient for v1; active push notification is deferred, not
+> declined.** §3.3's escalation behavior already stops at journaling the rejection and
+> escalating to a human — that visibility is enough for now. An active push (email/Slack/
+> Teams) needs infrastructure that doesn't exist yet: no running orchestrator/CLI layer to
+> trigger from (§8.10's still-open trigger-timing half already flagged this gap for even an
+> automatic *rescan*), plus new integration config (channel, recipients, credentials) —
+> materially more than anything else closed so far. Deferred until the orchestrator/
+> persona-invocation loop (TAI-8) exists and gives a push notification an actual place to
+> hook in, same treatment as §8.15's learning-loop deferral.
+> Prior: rev 40 — **§8.17 resolved: no formal review
 > gate for `Investigate` output.** Unlike Kickoff's `REVIEW_GATES[Kickoff]` (a named,
 > multi-reviewer, story-level gate blocking downstream ticket creation), `Investigate` is
 > an ordinary subtask that doesn't block anything downstream (§8.13, rev 38) and isn't a
@@ -1401,10 +1411,15 @@ Carry these forward; resolve them in upcoming design sessions.
     formal signal to drive. `Investigate` going Done is ordinary subtask completion; the
     persona creating the next subtask judges readiness itself, same direct-creation
     authority as item 11 (rev 36).
-14. **Escalation notification channel:** a Jira-rejected transition (§3.3) gets a comment/
+14. ~~**Escalation notification channel:** a Jira-rejected transition (§3.3) gets a comment/
     label in Jira and an entry in the local status rollup (§7) — is that sufficient, or
     does human escalation need an active push notification (email, Slack, Teams) so it
-    isn't only discovered by someone checking Jira or running Team AI?
+    isn't only discovered by someone checking Jira or running Team AI?~~ — **RESOLVED
+    (rev 41): comment/label + status rollup is sufficient for v1.** Active push is
+    **deferred, not declined** — no orchestrator/CLI layer exists yet to trigger one from
+    (same gap §8.10's trigger-timing half already flagged), plus it needs new integration
+    config. Revisit once the orchestrator/persona-invocation loop (TAI-8) exists, same
+    treatment as §8.15's learning-loop deferral.
 15. **Learning-loop design (deferred, §3.3):** this entire mechanism — proactive metadata
     checks, the proposed/confirmed constraint cache, promotion authority (human only, or
     can the Orchestrator do it under a configured permission?), sharing scope (local vs.
