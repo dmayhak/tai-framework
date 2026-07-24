@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { Status, StoryType } from "../schema/story-schema.js";
-import { toIssueKey, type Issue, type WorkTracker } from "../storage/interface.js";
+import { StorageConnectivityError, toIssueKey, type Issue, type WorkTracker } from "../storage/interface.js";
 import { cacheIssue, readCachedIssue, refreshIssue } from "./issue-cache.js";
 
 function issue(overrides: Partial<Issue> = {}): Issue {
@@ -82,6 +82,52 @@ describe("refreshIssue / readCachedIssue / cacheIssue", () => {
             await cacheIssue(dir, "TAI", issue({ summary: "Updated", updatedAt: "2026-02-01T00:00:00Z" }));
             const after = await readCachedIssue(dir, "TAI", "TAI-1");
             assert.equal(after?.summary, "Updated");
+        });
+    });
+
+    // PR #9 code review: offline (StorageConnectivityError) used to propagate as a hard
+    // crash instead of degrading to whatever's already cached (brief §3.6).
+    describe("degrades to the cached copy on StorageConnectivityError", () => {
+        it("returns the cached issue instead of throwing when one exists", async () => {
+            await withTempDir(async (dir) => {
+                await cacheIssue(dir, "TAI", issue());
+                const offlineTracker = {
+                    async getIssue(): Promise<Issue | null> {
+                        throw new StorageConnectivityError("network unreachable");
+                    },
+                } as unknown as WorkTracker;
+
+                const result = await refreshIssue(offlineTracker, dir, "TAI", toIssueKey("TAI-1"));
+                assert.deepEqual(result, issue());
+            });
+        });
+
+        it("returns null, not a throw, when offline with nothing cached yet", async () => {
+            await withTempDir(async (dir) => {
+                const offlineTracker = {
+                    async getIssue(): Promise<Issue | null> {
+                        throw new StorageConnectivityError("network unreachable");
+                    },
+                } as unknown as WorkTracker;
+
+                const result = await refreshIssue(offlineTracker, dir, "TAI", toIssueKey("TAI-1"));
+                assert.equal(result, null);
+            });
+        });
+
+        it("still propagates a non-connectivity error rather than masking it as offline", async () => {
+            await withTempDir(async (dir) => {
+                const brokenTracker = {
+                    async getIssue(): Promise<Issue | null> {
+                        throw new Error("something else entirely");
+                    },
+                } as unknown as WorkTracker;
+
+                await assert.rejects(
+                    () => refreshIssue(brokenTracker, dir, "TAI", toIssueKey("TAI-1")),
+                    /something else entirely/
+                );
+            });
         });
     });
 });

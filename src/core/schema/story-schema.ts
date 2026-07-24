@@ -75,6 +75,11 @@ export enum StoryType {
 // StoryType/SubtaskType use — both backends can use these strings directly, no separate
 // ID-vs-display translation needed the way subtask/story issue-type IDs require.
 export enum Status {
+    // rev 27 — pre-`To Do` landing status for new/under-specified tickets, under Jira's `To
+    // Do` status category; soft/unenforced (rev 28/§8.28), orthogonal to SUBTASK_PRECEDENCE.
+    // Added here (PR #9 code review): real Jira issues sit in this status today (it's the
+    // default landing status), and `fromJiraStatus` threw on any of them until now.
+    Backlog = "Backlog",
     ToDo = "To Do",
     InProgress = "In Progress",
     InReview = "In Review", // universal on the issue type by default, but only Kickoff's flow actually transitions into it (§5.3)
