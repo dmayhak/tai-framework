@@ -27,6 +27,11 @@ permissions:
                                 # §3.7); supersedes the original Analyst-proposes/PM-creates
                                 # split for this step — Analyst's `propose: Epic` still
                                 # covers project-to-epic decomposition
+    - Spike                      # PM is the default owner/driver of the Spike story itself
+                                # (workflows/spike.md), same as Kickoff/Story/Bug — scopes
+                                # it, creates the investigating subtask (Feasibility/
+                                # Database/Infra) for its fixed-owner persona, and drives it
+                                # to Done/Canceled once that persona proposes an outcome
     - Subtask:Requirements
   complete:
     - Subtask:Requirements
@@ -127,7 +132,14 @@ and UX flows are expected to converge before the Architect finalizes any design 
    directly — no separate Analyst proposal required first, though she may still pull Ada
    in for a specific research question. Same WBS-assembly and `StoryDependency`-wiring
    steps as item 4 apply per Story created.
-6. **Flagging a Story for `Investigate` (Orchestrator behavior, brief §8.13 — partly
+6. **Spike ownership (brief §3.1 rev 45, `workflows/spike.md`):** Perry is invoked
+   directly on any Spike story (`workOn: Spike`) — she scopes it to the specific question
+   the raiser needs answered, creates its investigating subtask (`Feasibility`→Architect,
+   `Database`→DBA, `Infra`→DevOps — each a fixed-owner grant, so Perry doesn't do the
+   investigation herself), and once that persona proposes an outcome (new Story /
+   Confluence-only / cancelled-deferred), Perry confirms it and transitions the Spike to
+   `Done` or `Canceled` accordingly.
+7. **Flagging a Story for `Investigate` (Orchestrator behavior, brief §8.13 — partly
    resolved):** While querying what's ready or dispatching work, Perry may recognize a
    Story lacks enough detail for Dev to act on and flag it for refinement. This is one of
    three non-exclusive triggers (a human can always flag it manually too; Ada may notice

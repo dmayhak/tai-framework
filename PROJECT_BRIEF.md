@@ -4,16 +4,20 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-24 (rev 44 — **§3.1: Architect owns `workOn: Spike`.**
-> Surfaced while PM (rev 43) decomposed TAI-8 and needed to create a Spike (design the
-> Gemini CLI host integration model) — same gap as rev 43's, one level up: no persona had
-> `workOn` for any bare Story-level type (`Kickoff`/`Spike`/`Story`/`Bug`), so nothing
-> created as a Spike could ever be `/tai_work`-ed. Architect is the natural owner —
-> `Subtask:Feasibility`/`ArchitectureDesign`/`DesignReview` are the same kind of work one
-> level down. `Kickoff`/`Story`/`Bug` are NOT addressed by this entry — no current need
-> surfaced one for them (Story/Bug work happens via their subtasks; Kickoff's PM-invoked
-> steps are a separate, not-yet-hit gap) — revisit only if a concrete need shows up, same
-> as every other gap in this doc.
+> **Last updated:** 2026-07-24 (rev 45 — **§3.1: PM (not Architect) owns `workOn: Spike`
+> — corrects rev 44's wrong assignment.** `workflows/spike.md` — not consulted before rev
+> 44 — is explicit: "PM is the default owner/driver of the Spike story itself, same as
+> Kickoff/Story/Bug"; subtask-level ownership (`Feasibility`→Architect, `Database`→DBA,
+> `Infra`→DevOps) is separate and was already correctly granted, no change needed there.
+> PM scopes the Spike and creates its investigating subtask for that subtask's fixed-owner
+> persona to actually work; PM then drives the Spike to `Done`/`Canceled` once that
+> persona proposes an outcome. `Kickoff`/`Story`/`Bug` still have no `workOn` grant
+> anywhere — the same gap noted in rev 44, still unaddressed, revisit only if a concrete
+> need surfaces one.
+> Prior: rev 44 — **§3.1: Architect owns `workOn: Spike`** (WRONG, see rev 45) — surfaced
+> while PM (rev 43) decomposed TAI-8 and needed to create a Spike (design the Gemini CLI
+> host integration model); reasoned from "who does the investigating work" without
+> checking `workflows/spike.md`'s already-settled story-vs-subtask ownership split first.
 > Prior: rev 43 — **§3.1/§3.7: PM (not Analyst) owns Epic→Story
 > decomposition, invoked directly on the Epic.** Surfaced by TAI-8 itself: no persona had
 > `workOn: Epic`, so no unit-of-work invocation could ever act on one. `Epic` is now
