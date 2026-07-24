@@ -31,3 +31,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Local MCP server credentials (Jira/Bitbucket API tokens) -- never commit these
+/.gemini/settings.json
