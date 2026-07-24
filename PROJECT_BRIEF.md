@@ -4,7 +4,19 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-24 (rev 38 — **§8.13 resolved (the "ready for
+> **Last updated:** 2026-07-24 (rev 39 — **§8.16 resolved: new-subtask-type
+> process mirrors §8.1's story-type taxonomy.** `SubtaskType` (`story-schema.ts:87`) is a
+> compile-time TypeScript enum, and `STORY_SUBTASK_MAP`/`SUBTASK_OWNER` are compile-time
+> `Record`s keyed off it — adding a genuinely new type is a schema/code edit, not a Jira-side
+> action, categorically different from `workflows/kickoff.md`'s "Human Overrides" case
+> (which reuses an *existing* type in a story context that doesn't formally allow it, and
+> already generalizes across Story/Bug/Spike). A persona (Analyst/Architect) can propose a
+> new type when a real case doesn't fit the existing list — same propose pattern already
+> used for Spike outcomes, post-deploy Bugs, and Ada's decomposition — but a human
+> (developer) always makes the actual schema change. No AI-driven runtime taxonomy
+> expansion, same "extensible but not self-expanding" posture §8.1 already set for story
+> types.
+> Prior: rev 38 — **§8.13 resolved (the "ready for
 > implementation" half): no formal marker or checkpoint.** `Investigate` isn't in
 > `SUBTASK_PRECEDENCE` at all (`workflows/dependencies.md`'s graph, `workflows/story.md`'s
 > own "no automatic unblock effect" note) — nothing downstream is structurally gated on it,
@@ -1391,9 +1403,12 @@ Carry these forward; resolve them in upcoming design sessions.
     routing types are now concrete — `Database`; `Infra` / `Deploy` / `PostDeploy` — and a
     type may carry a **default owner that is overridable per instance** (`Deploy` /
     `PostDeploy`), settling the "route to more than one eligible persona" sub-question.
-    **Still open:** the process for adding a brand-new type when a real case doesn't fit
+    ~~**Still open:** the process for adding a brand-new type when a real case doesn't fit
     the existing list — does that require a human decision, or can the Analyst/Architect
-    propose a new type during a refinement subtask?
+    propose a new type during a refinement subtask?~~ — **RESOLVED (rev 39):** `SubtaskType`
+    is a compile-time enum (`story-schema.ts:87`) — adding a new one is always a human
+    (developer) schema edit. A persona may propose the gap, same propose pattern as
+    elsewhere, but never adds the type itself. Mirrors §8.1's story-type taxonomy stance.
 17. **Analyst output review gate (§5.2):** does `Investigate` output need a formal review
     type (mirroring `DesignReview`), or does the default human sign-off (§3.4) already
     cover it well enough? If a formal gate is added, it may need **two independent
