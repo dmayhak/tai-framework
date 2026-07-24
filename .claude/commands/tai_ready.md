@@ -1,0 +1,18 @@
+---
+description: Show what's ready to work on, optionally scoped to one persona (brief §3.8)
+---
+
+Run this and read its full output:
+
+```bash
+npx tsx src/hosts/claude-code/cli.ts ready $ARGUMENTS
+```
+
+The output lists issues that are actually ready to start (open, and — for a subtask — with
+every precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`), plus an
+"Already in flight" section for context (the root status rollup — display only, never the
+readiness source itself, brief §7).
+
+Present this list to the human. If they pick one, follow up with `/tai_work <KEY>` for that
+issue — same underlying flow, `/tai_ready` is only for when there's no specific key in mind
+yet (brief §3.8).
