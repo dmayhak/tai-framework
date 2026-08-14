@@ -5,7 +5,7 @@ description: Show what's ready to work on, optionally scoped to one persona (bri
 Run this and read its full output:
 
 ```bash
-npx tsx src/hosts/claude-code/cli.ts ready $ARGUMENTS
+npx tsx src/hosts/cli.ts ready $ARGUMENTS
 ```
 
 The output lists issues that are actually ready to start (open, and — for a subtask — with

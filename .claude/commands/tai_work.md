@@ -5,7 +5,7 @@ description: Load/refresh a TAI unit of work's briefing and invoke its owning pe
 Run this and read its full output:
 
 ```bash
-npx tsx src/hosts/claude-code/cli.ts work $ARGUMENTS
+npx tsx src/hosts/cli.ts work $ARGUMENTS
 ```
 
 The output starts with a `# Persona: <name> (<id>)` heading followed by that persona's own
