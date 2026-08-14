@@ -453,4 +453,26 @@ describe("linkPage", () => {
             "https://example.atlassian.net/wiki/pages/viewpage.action?pageId=12058646"
         );
     });
+
+    /**
+     * REGRESSION. Confirmed empirically against live Jira (2026-08-14, TAI-67/TAI-68): a
+     * remote link with no `application`/`relationship` set to Confluence's own native shape
+     * files under Jira's generic "Web Links" panel, indistinguishable from an arbitrary
+     * human-added link. Setting these two fields to exactly what Confluence's own "Link"
+     * action produces gets it into Jira's "Confluence content" panel AND Confluence's own
+     * "Jira work items" panel on the page — both directions from one link, no
+     * Confluence-page-side macro required.
+     */
+    it("sets application/relationship to Confluence's own native remote-link shape", async () => {
+        let body: { application?: { type: string; name: string }; relationship?: string } | undefined;
+        const wt = trackerWith(
+            stubFetch((_url, init) => {
+                body = JSON.parse(String(init.body));
+                return new Response(null, { status: 201 });
+            })
+        );
+        await wt.linkPage(toIssueKey("TAI-13"), "12058646" as never);
+        assert.deepEqual(body?.application, { type: "com.atlassian.confluence", name: "Confluence" });
+        assert.equal(body?.relationship, "Wiki Page");
+    });
 });

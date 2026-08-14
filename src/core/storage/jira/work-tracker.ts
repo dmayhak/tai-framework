@@ -420,14 +420,21 @@ export function createJiraWorkTracker(
             // page's space key, which WorkTracker has no reason to know.
             const url = `${client.siteUrl}/wiki/pages/viewpage.action?pageId=${page}`;
             await client.request("POST", `${API}/issue/${key}/remotelink`, {
+                // The `tai-page-` prefix is what `getLinkedPages` actually filters on below —
+                // `relationship`/`application` are cosmetic to that method, but load-bearing
+                // for Jira's own UI: setting them to the exact shape Confluence's native
+                // "Link" action itself produces gets this into Jira's "Confluence content"
+                // panel AND Confluence's own "Jira work items" panel on the page — confirmed
+                // empirically (2026-08-14) that both are driven purely by these fields on the
+                // remote link, no Confluence-page-side macro required at all. Without them,
+                // Jira has no way to tell this apart from an arbitrary human-added Web Link.
                 globalId: `tai-page-${page}`,
+                application: { type: "com.atlassian.confluence", name: "Confluence" },
+                relationship: "Wiki Page",
                 object: {
                     url,
                     title: `${page}`,
                 },
-                // `relationship` is what getLinkedPages filters on to distinguish TAI's own
-                // doc links from arbitrary web links a human may have attached.
-                relationship: "documentation",
             });
         },
 
