@@ -232,6 +232,20 @@ mutually exclusive:
   page-to-page links, not just ticket-to-ticket** — a briefing includes
   pages linked directly to the subtask/parent, but doesn't transitively
   follow those pages' own outgoing links (`PROJECT_BRIEF.md` §3.6).
+- **Reaffirmed (TAI-84 ADR, TAI-81 Spike): `generateBriefing` does not walk up to the
+  Epic.** Brief §3.6's "the Epic is not auto-included... a targeted follow-up read, not a
+  default" stands as-is — checked against real data, not just re-asserted: the issue
+  hierarchy is uniformly `Epic → {Kickoff|Story|Bug|Spike} → Subtask` (no story type sits
+  closer to its Epic than any other), and zero Epics in this project currently carry any
+  linked Confluence page — every ADR so far links to its own Spike/Story, never the Epic.
+  **The named mechanism for that "targeted follow-up read"**, concretely, not just prose
+  intent: call `refreshIssue`/`getLinkedPages` on the parent issue's own `parentKey`
+  directly — the same primitives `generateBriefing` itself already uses, invoked manually
+  and selectively rather than wired into the default path. This is already de facto
+  practice — every ADR in this project (including TAI-84's own) already recites its Epic's
+  framing in prose in its Context section, sourced this way. Revisit if a real Epic-level
+  doc ever actually gets linked via `linkPage()` — that's the trigger to re-open this with
+  real data, not before.
 - **When a mid-flight-inserted subtask's new precedence edge targets
   something already In Progress or Done** (e.g. `Dev` already started before
   `Database` was recognized as needed): the system creates/adjusts the link
