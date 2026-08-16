@@ -1,14 +1,21 @@
 #!/usr/bin/env node
 /**
- * TAI Framework — Claude Code host adapter (TAI-61 ADR decision 4)
+ * TAI Framework — host-agnostic command-layer entry point (TAI-61 ADR decision 4;
+ * generalized from a Claude-Code-only location by TAI-68/TAI-67's feasibility finding
+ * that nothing here was ever actually Claude-Code-specific)
  *
- * The core design insight this Story implements: for the Claude Code host, "invoke the
- * owning persona" (brief §3.8) is NOT a separate LLM API call — Claude Code IS the LLM
- * already running this session. This CLI's whole job is to print an assembled prompt
- * (persona instructions + briefing, or the ready-work list) to stdout; the
- * `.claude/commands/tai_work.md` / `tai_ready.md` slash commands shell out to it and let
- * Claude Code's own prompt-expansion turn that output into the session's next turn — no
- * new invocation mechanism on top of that.
+ * The core design insight this file implements: "invoke the owning persona" (brief §3.8)
+ * is NOT a separate LLM API call — the calling host IS the LLM already running the
+ * session. This CLI's whole job is to print an assembled prompt (persona instructions +
+ * briefing, or the ready-work list) to stdout; each host's own thin wrapper is what turns
+ * that stdout into the session's next turn — no new invocation mechanism on top of that,
+ * and no host-specific logic in this file itself:
+ *   - Claude Code: `.claude/commands/tai_work.md`/`tai_ready.md` — markdown instructing
+ *     the agent to run this script via its own `Bash` tool and read the output.
+ *   - Gemini CLI: `.gemini/commands/tai_work.toml`/`tai_ready.toml` — `!{...}` shell
+ *     injection, where the harness itself pre-executes this script and substitutes its
+ *     stdout into the prompt before the model sees it (TAI-67 feasibility assessment,
+ *     Confluence TA space page 18317313).
  *
  * Backend construction (which storage backend, from what credentials) is deliberately
  * minimal and env-var driven — nothing in the brief or either ADR (TAI-51/TAI-56/TAI-61)
@@ -16,14 +23,14 @@
  * not a settled design; revisit if a real multi-project/multi-backend need shows up.
  */
 
-import { toHumanId, toIssueKey, type StorageBackend } from "../../core/storage/interface.js";
-import { createFilesystemBackend } from "../../core/storage/filesystem-backend.js";
-import { createJiraBackend } from "../../core/storage/jira/jira-backend.js";
-import { apiTokenAuth } from "../../core/storage/jira/rest-client.js";
-import { prepareWorkTurn, NoOwningPersonaError } from "../../core/commands/work.js";
-import { findReadyWork } from "../../core/commands/ready.js";
-import { PersonaPermissionError } from "../../core/persona/scoped-work-tracker.js";
-import type { Persona } from "../../core/schema/story-schema.js";
+import { toHumanId, toIssueKey, type StorageBackend } from "../core/storage/interface.js";
+import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
+import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
+import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
+import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
+import { findReadyWork } from "../core/commands/ready.js";
+import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
+import type { Persona } from "../core/schema/story-schema.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
