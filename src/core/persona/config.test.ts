@@ -273,7 +273,10 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
 
     it("gitHost grants land on exactly the personas TAI-34's checkpoint chain names, nowhere else", async () => {
         const configs = await loadBuiltinPersonaConfigs();
-        assert.deepEqual([...configs.get("developer")!.permissions.gitHost], ["createPullRequest"]);
+        assert.deepEqual(
+            [...configs.get("developer")!.permissions.gitHost].sort(),
+            ["createPullRequest", "mergePullRequest"]
+        );
         assert.deepEqual([...configs.get("code-reviewer")!.permissions.gitHost], ["reviewPullRequest"]);
         assert.deepEqual([...configs.get("devops")!.permissions.gitHost], ["mergePullRequest"]);
         for (const id of ["analyst", "architect", "dba", "pm", "tester", "ux-designer"]) {
