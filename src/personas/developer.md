@@ -17,6 +17,18 @@ permissions:
   create:
     - Subtask:Dev                 # own core subtask type, matching every other persona's pattern
     - Subtask:SpikeTask           # ad-hoc, in-story investigation when the fix/approach isn't obvious
+    - Subtask:CodeReview          # TAI-83 ADR decision 2/7 — certain the moment Dev exists (the one
+                                   # unconditional SUBTASK_PRECEDENCE edge); dedup-search first
+                                   # (workTracker.search parentKey+issueTypes), persona field still
+                                   # defaults to Code Reviewer regardless of who created it
+    - Subtask:IntegrationTest     # TAI-83 ADR decision 7 — Dario often knows which test tiers apply
+    - Subtask:SystemTest          # to what he built; same dedup-first, owner-still-Tester mechanics
+    - Subtask:E2ETest             # as CodeReview above — creating isn't owning or completing it
+    - Subtask:Database            # TAI-83 ADR decision 7 — mid-implementation discovery (the exact
+    - Subtask:Infra               # case dependencies.md's own "Dynamic Subtask Insertion" section
+                                   # already describes); owner stays DBA/DevOps
+    - Subtask:Deploy              # TAI-83 ADR decision 7 — Dario knows when the code is actually
+    - Subtask:PostDeploy          # ready to ship / needs a follow-up; owner stays DevOps
   workOn:
     - Subtask:Dev
   complete:

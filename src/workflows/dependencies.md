@@ -140,6 +140,55 @@ applies any time a subtask is discovered mid-flight and wasn't part of
 the story's original set (e.g. PostDeploy not being recognized as
 necessary until Deploy planning is underway).
 
+## Eager Subtask Creation (who creates, and when)
+
+TAI-83 ADR (Confluence, TA space; TAI-80 Spike). Default convention is still "each
+persona creates its own subtask type once invoked" — this section is the named exception,
+not a replacement.
+
+**Any persona already active on a Story/Bug/Spike may create any subtask type on it, once
+they've formed a real in-context judgment (from their own work, not speculation) that it's
+needed** — not restricted to that type's default owner. Three properties keep this safe,
+and all three are required together:
+- **Real judgment, not speculation.** This is not blind pre-population of every possible
+  subtask type for every Story "just in case" — that reintroduces exactly the clutter the
+  present-when-added pattern (`DesignReview`/`UAT`/`Database`/`Infra`/test tiers, `Current
+  default shape` above) exists to avoid. A subtask gets created because someone doing real
+  work concluded it's actually needed for this instance — the same trigger that already
+  fires `getNewPrecedenceEdgesForInsertedSubtask()` (Dynamic Subtask Insertion, above), just
+  without waiting for the type's own owner to be the one to notice.
+- **Dedup search first.** Before creating, search `workTracker.search({ projectKey,
+  parentKey: <story>, issueTypes: [<type>] })` — `IssueFilter` already supports this
+  directly, no new mechanism. A hit means the ticket already exists (a human may have added
+  it manually, or another turn already ran this same check) — add a note/comment there
+  instead of creating a duplicate. A miss creates it.
+- **`persona` still defaults per `SUBTASK_OWNER`, regardless of creator.** Creating a
+  ticket doesn't make you its owner — `CreateIssueInput.persona` is a caller-supplied
+  field, set to the type's normal default owner exactly as if that owner had created it
+  themselves. Creation authority and execution ownership stay separate axes.
+
+**Where a broadened `create` grant is worth adding** (evidence, not an enforced
+whitelist — under the model above every persona *can* create any type; this is where it's
+actually plausible in practice): Developer often knows, from writing the code itself,
+whether `CodeReview` (certain the moment `Dev` exists — the one unconditional
+`SUBTASK_PRECEDENCE` edge), the relevant test tiers, a `Database`/`Infra` need (the exact
+mid-implementation-discovery case above), or `Deploy`/`PostDeploy` timing apply — see
+`personas/developer.md`'s `create` grant. Architect/PM similarly often recognize
+`Database`/`Infra`/`ArchitectureDesign` needs during design or requirements work. A
+persona that merely *suspects* a need outside what its own work directly surfaces (e.g.
+Developer suspecting `UxDesign` is needed) still flags it to the right owner/PM rather than
+creating it blind — recognizing a need from your own work is different from guessing at
+someone else's domain.
+
+**Known gap this doesn't cover (not resolved by TAI-83):** the existing WBS-assembly batch
+scan (`personas/pm.md` items 4/5, `workflows/kickoff.md`) only fires at Kickoff-gate-passing
+or Epic-decomposition. A Story created directly from a Spike's conclusion
+(`workflows/spike.md`'s "hands off to PM for creation" outcome) gets no formal multi-persona
+scan — PM makes an informal solo judgment call instead (a full batch scan is disproportionate
+for one Story). When that happens, PM should state which optional subtask types were
+considered and why none applied, in the Story's creation comment, so the judgment is visible
+and reviewable rather than silent.
+
 ## Ad-Hoc Subtask-Level Dependencies (escape hatch)
 
 Most dynamically-inserted subtasks are already covered by the static

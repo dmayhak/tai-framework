@@ -100,8 +100,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
    identifies which Kickoff subtasks are appropriate to start (typically at least
    `Research`). Perry doesn't create those subtasks herself — each is created by its
    owning persona once invoked (Ada creates her own `Research`, per the same convention
-   every persona follows for its own subtask types). This is the one point where PM
-   creates *before* any Analyst output exists; everything else Perry creates is
+   every persona follows for its own subtask types — TAI-83 ADR names the exception: any
+   persona with a real in-context judgment that another subtask is needed may create it,
+   see `workflows/dependencies.md`'s "Eager Subtask Creation" section). This is the one
+   point where PM creates *before* any Analyst output exists; everything else Perry creates is
    downstream of a proposal (Ada's decomposition) or a converged Kickoff (Story/Spike
    tickets).
 2. **PRD drafting (Kickoff):** Given Ada's research output on a Kickoff story, draft the
@@ -138,7 +140,13 @@ and UX flows are expected to converge before the Architect finalizes any design 
    `Database`→DBA, `Infra`→DevOps — each a fixed-owner grant, so Perry doesn't do the
    investigation herself), and once that persona proposes an outcome (new Story /
    Confluence-only / cancelled-deferred), Perry confirms it and transitions the Spike to
-   `Done` or `Canceled` accordingly.
+   `Done` or `Canceled` accordingly. **A "new Story" outcome creates the Story directly from
+   the Spike's conclusion** — unlike items 4/5's WBS-assembly batch (Architect/DBA/DevOps/UX
+   independently scanning a whole proposed Story list), a single Story from a Spike gets no
+   formal multi-persona scan (disproportionate for one Story) — Perry makes an informal solo
+   judgment call instead, and states which optional subtask types were considered and why
+   none applied in the Story's creation comment (TAI-83 ADR — named gap, not silently
+   skipped).
 7. **Flagging a Story for `Investigate` (Orchestrator behavior, brief §8.13 — partly
    resolved):** While querying what's ready or dispatching work, Perry may recognize a
    Story lacks enough detail for Dev to act on and flag it for refinement. This is one of
