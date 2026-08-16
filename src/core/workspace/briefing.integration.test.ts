@@ -12,7 +12,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { StoryType, SubtaskType } from "../schema/story-schema.js";
+import { DependencyRelation, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type StorageBackend } from "../storage/interface.js";
 import { generateBriefing } from "./briefing.js";
@@ -70,6 +70,40 @@ describe("generateBriefing against a real StorageBackend", () => {
             // generateBriefing's own return value.
             const cachedSubtask = await readCachedIssue(taiRoot, "TAI", subtask.key);
             assert.equal(cachedSubtask?.summary, "Implement it");
+        });
+    });
+
+    it("includes a RelatesTo-linked ticket AND its own linked page from real WorkTracker calls (TAI-77 ADR)", async () => {
+        await withBackendAndCache(async ({ workTracker, docStore }, taiRoot) => {
+            const parent = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Build the thing",
+            });
+            const subtask = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Implement it",
+                parentKey: parent.key,
+            });
+            const related = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "A related Story",
+            });
+            const relatedPage = await docStore.createPage({
+                spaceKey: "TA",
+                title: "TAI-related — Notes",
+                content: "Notes that live on the related ticket, not this one.",
+            });
+            await workTracker.createLink(subtask.key, DependencyRelation.RelatesTo, related.key);
+            await workTracker.linkPage(related.key, relatedPage.id);
+
+            const markdown = await generateBriefing(workTracker, docStore, taiRoot, "TAI", subtask.key);
+
+            assert.match(markdown, /## Linked Tickets/);
+            assert.match(markdown, /Relates to.*A related Story/);
+            assert.match(markdown, /Notes that live on the related ticket, not this one\./);
         });
     });
 });
