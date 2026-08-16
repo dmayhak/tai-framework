@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { toIssueKey, type Issue } from "../storage/interface.js";
 import { emptyPersonaShell, type PersonaConfig } from "./config.js";
-import { canComplete, canCreate, canUpdate, canWorkOn } from "./permission-gate.js";
+import { canComplete, canCreate, canPerformGitAction, canUpdate, canWorkOn } from "./permission-gate.js";
 
 function issue(overrides: Partial<Issue>): Issue {
     return {
@@ -98,6 +98,27 @@ describe("canComplete", () => {
         });
         assert.equal(canComplete(testerLike, issue({ issueType: SubtaskType.Uat })), false);
         assert.equal(canComplete(testerLike, issue({ issueType: SubtaskType.IntegrationTest })), true);
+    });
+});
+
+describe("canPerformGitAction", () => {
+    it("allows a granted action", () => {
+        const dev = devConfig({
+            permissions: { ...devConfig().permissions, gitHost: ["createPullRequest"] },
+        });
+        assert.equal(canPerformGitAction(dev, "createPullRequest"), true);
+    });
+
+    it("denies an ungranted action", () => {
+        assert.equal(canPerformGitAction(devConfig(), "mergePullRequest"), false);
+    });
+
+    it("denies for a disabled persona even if otherwise granted", () => {
+        const disabled = devConfig({
+            enabled: false,
+            permissions: { ...devConfig().permissions, gitHost: ["createPullRequest"] },
+        });
+        assert.equal(canPerformGitAction(disabled, "createPullRequest"), false);
     });
 });
 

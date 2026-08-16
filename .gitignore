@@ -11,6 +11,9 @@
 # TAI local cache
 /.tai/
 
+# Session handoff files -- local-PC-only, never committed
+/.handoff/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

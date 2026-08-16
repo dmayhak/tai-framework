@@ -19,7 +19,7 @@
 
 import { StoryType, type SubtaskType } from "../schema/story-schema.js";
 import type { Issue } from "../storage/interface.js";
-import type { PersonaConfig, PermissionTarget } from "./config.js";
+import type { PersonaConfig, PermissionTarget, GitHostAction } from "./config.js";
 
 const STORY_TYPES: ReadonlySet<string> = new Set(Object.values(StoryType));
 
@@ -68,6 +68,14 @@ export function canComplete(config: PersonaConfig, issue: Pick<Issue, "issueType
  * `IssuePatch` (`storage/interface.ts`) doesn't yet expose. Reconciling that gap is a
  * separate, pre-existing concern this Story doesn't take on.
  */
+/** May `config`'s persona perform `action` on `GitHost` (TAI-33/34 ADRs — create/review/merge
+ *  a PR)? Checked by `PersonaScopedGitHost` (TAI-73), the git-hosting sibling of
+ *  `PersonaScopedWorkTracker`, before delegating each gated method. */
+export function canPerformGitAction(config: PersonaConfig, action: GitHostAction): boolean {
+    if (!config.enabled) return false;
+    return config.permissions.gitHost.includes(action);
+}
+
 export function canUpdate(config: PersonaConfig, entityType: string, field: string): boolean {
     if (!config.enabled) return false;
     // entityType is case-INsensitive ("Story" === "story") — a human editing a Confluence

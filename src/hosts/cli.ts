@@ -29,7 +29,11 @@ import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import { findReadyWork } from "../core/commands/ready.js";
+import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
+import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
+import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
+import { toRepoId, toPullRequestId, type GitMutationResult, type PullRequestRef } from "../core/git/interface.js";
 import type { Persona } from "../core/schema/story-schema.js";
 
 interface ResolvedConfig {
@@ -37,6 +41,20 @@ interface ResolvedConfig {
     readonly taiRoot: string;
     readonly projectKey: string;
     readonly spaceKey: string;
+}
+
+// Loads `.env` from the current working directory into `process.env`, if present —
+// optional (a real shell profile export works just as well; see `.env.example`), so a
+// missing file is not an error. Node's own `process.loadEnvFile` (stable since v21.7,
+// this repo runs v24+) rather than the `dotenv` package — keeps the repo at the zero
+// runtime dependencies both the TAI-12 and TAI-33 ADRs deliberately committed to for
+// exactly this class of "small, native-platform-covered" need.
+function loadDotEnv(): void {
+    try {
+        process.loadEnvFile();
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
 }
 
 function requireEnv(name: string): string {
@@ -76,6 +94,48 @@ async function resolveConfig(): Promise<ResolvedConfig> {
     throw new Error(`Unknown TAI_BACKEND "${backendKind}" — expected "jira" or "filesystem".`);
 }
 
+/**
+ * Resolves a `PersonaScopedGitHost` for `issueKey`'s owning persona (TAI-73) — same
+ * identity-resolution shape `prepareWorkTurn` already uses for `WorkTracker` (the issue's
+ * own `persona` field, brief §5.6), applied to the git-hosting sibling interface. Requires
+ * `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` — only demanded here, not in `resolveConfig`, so
+ * `work`/`ready` never need Bitbucket credentials at all.
+ */
+async function resolveGitHost(
+    config: ResolvedConfig,
+    issueKey: string
+): Promise<{ readonly gitHost: PersonaScopedGitHost; readonly personaId: string }> {
+    const key = toIssueKey(issueKey);
+    const issue = await config.backend.workTracker.getIssue(key);
+    if (!issue) throw new Error(`${key}: no such issue.`);
+    if (!issue.persona) throw new NoOwningPersonaError(key);
+
+    const personaConfig = await loadPersonaConfig(config.backend.docStore, issue.persona, {
+        spaceKey: config.spaceKey,
+    });
+
+    const backend = createBitbucketBackend({
+        auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")),
+    });
+
+    return { gitHost: new PersonaScopedGitHost(backend.gitHost, personaConfig), personaId: personaConfig.id };
+}
+
+function renderPullRequestRef(pr: PullRequestRef, personaId: string): string {
+    return [
+        `# PR ${pr.id} (as ${personaId})`,
+        "",
+        `**${pr.title}**`,
+        `${pr.sourceBranch} → ${pr.destinationBranch} · ${pr.state}`,
+        pr.url,
+    ].join("\n");
+}
+
+function renderGitMutationResult(result: GitMutationResult, personaId: string): string {
+    if (result.ok) return renderPullRequestRef(result.pullRequest, personaId);
+    return `# Merge denied (as ${personaId})\n\n${result.reason}`;
+}
+
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
     const lines = [`# Persona: ${turn.personaDisplayName} (${turn.personaId})`, ""];
 
@@ -110,8 +170,64 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
 }
 
 async function main(): Promise<void> {
-    const [, , subcommand, arg] = process.argv;
+    loadDotEnv();
+    const [, , subcommand, arg, ...rest] = process.argv;
     const config = await resolveConfig();
+
+    if (subcommand === "git-pr") {
+        const [action, issueKey, repoArg, ...gitArgs] = [arg, ...rest];
+        if (!action || !issueKey || !repoArg) {
+            throw new Error(
+                "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
+                    "     | git-pr review <ISSUE-KEY> <REPO> <PR-ID> <approve|requestChanges> [COMMENT]\n" +
+                    "     | git-pr merge <ISSUE-KEY> <REPO> <PR-ID> [mergeCommit|squash|fastForward]"
+            );
+        }
+        const { gitHost, personaId } = await resolveGitHost(config, issueKey);
+        const repo = toRepoId(repoArg);
+
+        if (action === "create") {
+            const [sourceBranch, destinationBranch, title, description] = gitArgs;
+            if (!sourceBranch || !destinationBranch || !title) {
+                throw new Error(
+                    "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]"
+                );
+            }
+            const pr = await gitHost.createPullRequest({
+                repo,
+                title,
+                sourceBranch,
+                destinationBranch,
+                ...(description ? { description } : {}),
+            });
+            console.log(renderPullRequestRef(pr, personaId));
+            return;
+        }
+
+        if (action === "review") {
+            const [prId, decision, comment] = gitArgs;
+            if (!prId || (decision !== "approve" && decision !== "requestChanges")) {
+                throw new Error("Usage: git-pr review <ISSUE-KEY> <REPO> <PR-ID> <approve|requestChanges> [COMMENT]");
+            }
+            await gitHost.reviewPullRequest(repo, toPullRequestId(prId), decision, comment);
+            console.log(`# Review posted (as ${personaId})\n\n${decision} on PR ${prId}.`);
+            return;
+        }
+
+        if (action === "merge") {
+            const [prId, strategyArg] = gitArgs;
+            if (!prId) {
+                throw new Error("Usage: git-pr merge <ISSUE-KEY> <REPO> <PR-ID> [mergeCommit|squash|fastForward]");
+            }
+            const strategy =
+                strategyArg === "squash" || strategyArg === "fastForward" ? strategyArg : "mergeCommit";
+            const result = await gitHost.mergePullRequest(repo, toPullRequestId(prId), strategy);
+            console.log(renderGitMutationResult(result, personaId));
+            return;
+        }
+
+        throw new Error(`Unknown git-pr action "${action}" — expected "create", "review", or "merge".`);
+    }
 
     if (subcommand === "work") {
         if (!arg) throw new Error("Usage: tai_work <ISSUE-KEY>");
@@ -138,7 +254,7 @@ async function main(): Promise<void> {
         return;
     }
 
-    throw new Error(`Usage: tai_work <ISSUE-KEY> | tai_ready [persona]`);
+    throw new Error(`Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | git-pr create|review|merge ...`);
 }
 
 main().catch((err: unknown) => {

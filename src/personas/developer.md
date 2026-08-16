@@ -23,6 +23,20 @@ permissions:
     - Subtask:Dev
   update:
     - Story.implementationNotes
+  gitHost:
+    - createPullRequest           # TAI-33/34 ADRs — opens the real PR once Dev subtask completes,
+                                   # linked to the CodeReview subtask (TAI-73)
+    - mergePullRequest            # merges own already-CodeReview-approved work (real practice,
+                                   # confirmed with user 2026-08-15) — NOT self-certification
+                                   # (cannotApprove: own-output, below): the approval already
+                                   # happened as a separate CodeReview action, this is the
+                                   # mechanical follow-through. Invoked against the Dev
+                                   # subtask's own key, so it's whichever developer did the
+                                   # work — no separate Deploy subtask needed for
+                                   # framework-internal work. DevOps also holds this grant
+                                   # for Stories with a real Deploy subtask (infra-heavy
+                                   # work) — same "default owner, overridable per instance"
+                                   # pattern as Deploy itself (see devops.md)
   cannotApprove:
     - own-output                  # hard rule, brief §3.4 / §4 — cannot approve own CodeReview or test results
 
@@ -95,11 +109,18 @@ whom — rather than working around a spec gap silently.
 ## Handoff
 
 - After Dev is marked Done: opens a real PR via `GitHost.createPullRequest` (source = the
-  Story's branch, brief §6; destination = the repo's default branch), links it to the
-  CodeReview subtask via a Jira remote issue link, then hands off to **Code Reviewer** —
-  whose passing review unblocks the test tiers sequentially (D12; see
-  `workflows/dependencies.md`, `workflows/story.md`'s PR-backed checkpoint chain, TAI-34
-  ADR).
+  Story's branch, brief §6; destination = the repo's default branch) — concretely, via
+  `npx tsx src/hosts/cli.ts git-pr create <DEV-SUBTASK-KEY> ...` (TAI-73), which resolves
+  Dario's identity from the subtask's own `persona` field and enforces this `gitHost`
+  grant the same way `/tai_work` enforces `workOn` — links it to the CodeReview subtask
+  via a Jira remote issue link, then hands off to **Code Reviewer** — whose passing
+  review unblocks the test tiers sequentially (D12; see `workflows/dependencies.md`,
+  `workflows/story.md`'s PR-backed checkpoint chain, TAI-34 ADR).
+- **After CodeReview approves: Dario merges his own work** (`git-pr merge <DEV-SUBTASK-KEY>
+  ...`) — real practice, not a framework abstraction: the approval already happened as a
+  separate Code Reviewer action, so this isn't self-certification (`cannotApprove:
+  own-output` is untouched). No separate Deploy subtask needed for framework-internal work;
+  a Story with a genuine deploy step still routes that through DevOps as usual.
 - On a failed test: receives the subtask back at **In Progress** rather than a fresh
   ticket — no new artifact is created for pre-deployment rework (see `workflows/story.md`
   — "Why no Defect subtask").
