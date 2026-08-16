@@ -271,6 +271,16 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         assert.ok(!analyst.permissions.create.some((t) => t.kind === "issue"));
     });
 
+    it("gitHost grants land on exactly the personas TAI-34's checkpoint chain names, nowhere else", async () => {
+        const configs = await loadBuiltinPersonaConfigs();
+        assert.deepEqual([...configs.get("developer")!.permissions.gitHost], ["createPullRequest"]);
+        assert.deepEqual([...configs.get("code-reviewer")!.permissions.gitHost], ["reviewPullRequest"]);
+        assert.deepEqual([...configs.get("devops")!.permissions.gitHost], ["mergePullRequest"]);
+        for (const id of ["analyst", "architect", "dba", "pm", "tester", "ux-designer"]) {
+            assert.deepEqual(configs.get(id)!.permissions.gitHost, [], `${id} should have no gitHost grants`);
+        }
+    });
+
     it("Tester's UAT is workOn-able but NOT complete-able (human stakeholder must sign off)", async () => {
         const configs = await loadBuiltinPersonaConfigs();
         const tester = configs.get("tester")!;
@@ -443,6 +453,7 @@ describe("mergePersonaConfig", () => {
                 complete: [],
                 update: [],
                 approve: [],
+                gitHost: [],
                 cannotApprove: [], // an override attempting to loosen the hard rule
             },
             checkpoints: { humanSignOffDefault: false, extra: {} }, // attempting to loosen the other hard rule
@@ -463,6 +474,7 @@ describe("mergePersonaConfig", () => {
                 complete: [],
                 update: [{ entityType: "Story", field: "extraNotes" }],
                 approve: [],
+                gitHost: [],
             },
             prose: "Team-specific note.",
         });
@@ -481,7 +493,7 @@ describe("mergePersonaConfig", () => {
 
     it("an extension cannot loosen cannotApprove or humanSignOffDefault (no field to even carry them)", () => {
         const merged = mergePersonaConfig(base, undefined, {
-            permissions: { propose: [], create: [], workOn: [], complete: [], update: [], approve: [] },
+            permissions: { propose: [], create: [], workOn: [], complete: [], update: [], approve: [], gitHost: [] },
             prose: "",
         });
         assert.deepEqual(merged.permissions.cannotApprove, ["own-output"]);
@@ -502,6 +514,7 @@ describe("mergePersonaConfig", () => {
                 complete: [{ kind: "subtask", subtaskType: SubtaskType.Deploy }],
                 update: [],
                 approve: [],
+                gitHost: [],
                 cannotApprove: [], // still can't loosen it via the override row
             },
         });

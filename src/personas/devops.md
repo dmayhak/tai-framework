@@ -28,6 +28,10 @@ permissions:
     - Subtask:PostDeploy
   update:
     - Story.deployNotes
+  gitHost:
+    - mergePullRequest              # TAI-33/34 ADRs — the "Merge" half of the Deploy subtask's
+                                     # "Merge/Deploy" chain endpoint (TAI-73), gated on
+                                     # GitHost.getCommitStatuses being green first
   cannotApprove:
     - own-output                    # hard rule, brief §3.4 / §4 — no self-certification
 

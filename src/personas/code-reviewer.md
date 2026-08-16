@@ -21,6 +21,9 @@ permissions:
     - Subtask:CodeReview
   update:
     - Story.reviewNotes
+  gitHost:
+    - reviewPullRequest           # TAI-33/34 ADRs — approve/request-changes on the real PR,
+                                   # same decision as the Jira CodeReview transition (TAI-73)
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 

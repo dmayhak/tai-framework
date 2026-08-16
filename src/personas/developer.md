@@ -23,6 +23,9 @@ permissions:
     - Subtask:Dev
   update:
     - Story.implementationNotes
+  gitHost:
+    - createPullRequest           # TAI-33/34 ADRs — opens the real PR once Dev subtask completes,
+                                   # linked to the CodeReview subtask (TAI-73)
   cannotApprove:
     - own-output                  # hard rule, brief §3.4 / §4 — cannot approve own CodeReview or test results
 
@@ -95,11 +98,13 @@ whom — rather than working around a spec gap silently.
 ## Handoff
 
 - After Dev is marked Done: opens a real PR via `GitHost.createPullRequest` (source = the
-  Story's branch, brief §6; destination = the repo's default branch), links it to the
-  CodeReview subtask via a Jira remote issue link, then hands off to **Code Reviewer** —
-  whose passing review unblocks the test tiers sequentially (D12; see
-  `workflows/dependencies.md`, `workflows/story.md`'s PR-backed checkpoint chain, TAI-34
-  ADR).
+  Story's branch, brief §6; destination = the repo's default branch) — concretely, via
+  `npx tsx src/hosts/cli.ts git-pr create <DEV-SUBTASK-KEY> ...` (TAI-73), which resolves
+  Dario's identity from the subtask's own `persona` field and enforces this `gitHost`
+  grant the same way `/tai_work` enforces `workOn` — links it to the CodeReview subtask
+  via a Jira remote issue link, then hands off to **Code Reviewer** — whose passing
+  review unblocks the test tiers sequentially (D12; see `workflows/dependencies.md`,
+  `workflows/story.md`'s PR-backed checkpoint chain, TAI-34 ADR).
 - On a failed test: receives the subtask back at **In Progress** rather than a fresh
   ticket — no new artifact is created for pre-deployment rework (see `workflows/story.md`
   — "Why no Defect subtask").

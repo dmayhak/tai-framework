@@ -116,10 +116,21 @@ export interface PersonaPermissions {
     readonly update: readonly UpdateGrant[];
     /** Opaque named gates, e.g. "KickoffReviewGate" (brief §3.5) — not modeled further here. */
     readonly approve: readonly string[];
+    /** `GitHost` actions (TAI-33/34 ADRs) this persona may perform — a separate axis from
+     *  the Jira-issue-type-shaped grants above, since a PR isn't a Jira issue. Checked by
+     *  `PersonaScopedGitHost` (TAI-73), the git-hosting sibling of `PersonaScopedWorkTracker`. */
+    readonly gitHost: readonly GitHostAction[];
     /** Hard rule (brief §3.4/§4). Always "own-output" today; kept open (string[]) matching
      *  this project's other open, evolving taxonomies rather than a closed literal union. */
     readonly cannotApprove: readonly string[];
 }
+
+/** Scoped to exactly the `GitHost` operations the TAI-34 ADR's checkpoint chain gates —
+ *  same "don't build ahead of a need" restraint as `GitHost` itself (`git/interface.ts`'s
+ *  own doc comment): `getRepository`/`listBranches`/etc. are read-only and ungated. */
+export const GIT_HOST_ACTIONS = ["createPullRequest", "reviewPullRequest", "mergePullRequest"] as const;
+export type GitHostAction = (typeof GIT_HOST_ACTIONS)[number];
+const GIT_HOST_ACTION_SET: ReadonlySet<string> = new Set(GIT_HOST_ACTIONS);
 
 export interface PersonaCheckpoints {
     readonly humanSignOffDefault: boolean;
@@ -163,6 +174,9 @@ function buildPermissions(raw: unknown): PersonaPermissions {
             .filter((t): t is PermissionTarget => t !== null),
         update: asStringArray(p.update).map(parseUpdateGrant).filter((g): g is UpdateGrant => g !== null),
         approve: asStringArray(p.approve),
+        // Same "skip, don't crash" tolerance as parsePermissionTarget — an unrecognised
+        // action narrows the grant, never widens it.
+        gitHost: asStringArray(p.gitHost).filter((a): a is GitHostAction => GIT_HOST_ACTION_SET.has(a)),
         cannotApprove: asStringArray(p.cannotApprove),
     };
 }
@@ -209,6 +223,7 @@ export function emptyPersonaShell(id: string, displayName = id): PersonaConfig {
             complete: [],
             update: [],
             approve: [],
+            gitHost: [],
             cannotApprove: ["own-output"],
         },
         checkpoints: { humanSignOffDefault: true, extra: {} },
@@ -333,7 +348,10 @@ export function parsePersonasOverridePage(markdown: string): ReadonlyMap<string,
 export interface PersonaExtension {
     /** Additive-only grants — no `cannotApprove` (hard-rule carve-out: an extension can never
      *  grant it away, so there's nothing for this shape to carry). */
-    readonly permissions: Pick<PersonaPermissions, "propose" | "create" | "workOn" | "complete" | "update" | "approve">;
+    readonly permissions: Pick<
+        PersonaPermissions,
+        "propose" | "create" | "workOn" | "complete" | "update" | "approve" | "gitHost"
+    >;
     readonly prose: string;
 }
 
@@ -367,13 +385,14 @@ export function parseExtensionPage(markdown: string): PersonaExtension {
             complete: built.complete,
             update: built.update,
             approve: built.approve,
+            gitHost: built.gitHost,
         },
         prose,
     };
 }
 
 function emptyGrants(): PersonaExtension["permissions"] {
-    return { propose: [], create: [], workOn: [], complete: [], update: [], approve: [] };
+    return { propose: [], create: [], workOn: [], complete: [], update: [], approve: [], gitHost: [] };
 }
 
 // ---------- The 3-layer merge ----------
@@ -423,6 +442,7 @@ export function mergePersonaConfig(
             complete: unionTargets(afterOverride.permissions.complete, extension.permissions.complete),
             update: unionUpdateGrants(afterOverride.permissions.update, extension.permissions.update),
             approve: [...new Set([...afterOverride.permissions.approve, ...extension.permissions.approve])],
+            gitHost: [...new Set([...afterOverride.permissions.gitHost, ...extension.permissions.gitHost])],
             // cannotApprove: untouched, carried via the spread above.
         },
         prompt,
