@@ -4,7 +4,20 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-07-24 (rev 45 — **§3.1: PM (not Architect) owns `workOn: Spike`
+> **Last updated:** 2026-08-17 (rev 46 — **§3.1/§5.6: PM now owns `workOn: Kickoff/Story/
+> Bug`, closing the gap rev 45 left open.** The concrete need rev 45 said to wait for
+> surfaced immediately: `TAI-89` (a bare Bug, parent `TAI-8`) had no persona permitted to
+> work it. User direction: "the vast majority of story and bug items will be owned by the
+> PM or the Analyst — they are the most likely 'orchestrator' types to close story-level
+> Jira tickets." `personas/pm.md`'s `workOn` grant already carried a comment claiming
+> Kickoff/Story/Bug were owned "same as Spike" — this was aspirational, not yet true in the
+> actual list; rev 46 makes the grant match the comment. Analyst was deliberately left
+> alone (still no `workOn: Story`/`Bug`) — Analyst's role stays subtask-level
+> (`Subtask:Research`/`Subtask:Investigate`); if a concrete need for Analyst to own a bare
+> Story/Bug surfaces, grant it then, same "don't build ahead of an observed need" posture
+> as elsewhere. `TAI-86`/`TAI-88` (Spike, parent TAI-6) still stand to produce a proper ADR
+> ratifying this — this rev is the fast-tracked code+brief change, not that ADR.
+> Prior: rev 45 — **§3.1: PM (not Architect) owns `workOn: Spike`
 > — corrects rev 44's wrong assignment.** `workflows/spike.md` — not consulted before rev
 > 44 — is explicit: "PM is the default owner/driver of the Spike story itself, same as
 > Kickoff/Story/Bug"; subtask-level ownership (`Feasibility`→Architect, `Database`→DBA,

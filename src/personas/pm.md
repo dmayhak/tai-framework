@@ -32,6 +32,12 @@ permissions:
                                 # it, creates the investigating subtask (Feasibility/
                                 # Database/Infra) for its fixed-owner persona, and drives it
                                 # to Done/Canceled once that persona proposes an outcome
+    - Kickoff                    # PM is the default owner/driver of bare Kickoff/Story/Bug
+    - Story                      # tickets too (brief §5.6 rev 46) — same "orchestrator"
+    - Bug                        # role as Spike above: most Story/Bug work doesn't need a
+                                # dedicated owning persona beyond whoever drives it through
+                                # Jira; PM (or Analyst, for a research-heavy one pulled in
+                                # specifically) is that default
     - Subtask:Requirements
   complete:
     - Subtask:Requirements
