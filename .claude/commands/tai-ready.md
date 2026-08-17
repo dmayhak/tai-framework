@@ -13,6 +13,6 @@ every precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`
 "Already in flight" section for context (the root status rollup — display only, never the
 readiness source itself, brief §7).
 
-Present this list to the human. If they pick one, follow up with `/tai_work <KEY>` for that
-issue — same underlying flow, `/tai_ready` is only for when there's no specific key in mind
+Present this list to the human. If they pick one, follow up with `/tai-work <KEY>` for that
+issue — same underlying flow, `/tai-ready` is only for when there's no specific key in mind
 yet (brief §3.8).

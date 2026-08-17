@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-17 (rev 46 — **§3.1/§5.6: PM now owns `workOn: Kickoff/Story/
+> **Last updated:** 2026-08-17 (rev 47 — **§3.8: command surface standardized on hyphens,
+> `/tai-work`/`/tai-ready`, not `/tai_work`/`/tai_ready`.** TAI-89: the shipped wrapper
+> files used an underscore/`tai_` prefix while `git-pr` (a bare `cli.ts` subcommand about
+> to get its own wrapper via TAI-87) used a bare hyphen — an inconsistent command surface
+> otherwise. `.claude/commands/tai_work.md`/`tai_ready.md` and `.gemini/commands/
+> tai_work.toml`/`tai_ready.toml` renamed to `tai-work`/`tai-ready` (including their own
+> internal prose references to the slash command name); `personas/developer.md` updated
+> too. Deliberately scoped out: `src/hosts/cli.ts`'s internal subcommand strings (`work`,
+> `ready`, `git-pr`) and doc-comments in `src/core/commands/work.ts`/`ready.ts` mentioning
+> `/tai_work` as the slash-command name — not user-facing, out of this Bug's scope.
+> Prior: rev 46 — **§3.1/§5.6: PM now owns `workOn: Kickoff/Story/
 > Bug`, closing the gap rev 45 left open.** The concrete need rev 45 said to wait for
 > surfaced immediately: `TAI-89` (a bare Bug, parent `TAI-8`) had no persona permitted to
 > work it. User direction: "the vast majority of story and bug items will be owned by the
@@ -689,8 +699,8 @@ per §3.8), made once the Story is judged ready.
   off that work via the appropriate persona — but human-gated checkpoints still stop/pause
   the chain regardless.
 
-**Concrete kickoff commands (rev 11):** `/tai_work <KEY>` loads/refreshes that unit of
-work's briefing (§3.6) and invokes its owning persona directly. `/tai_ready [persona]`
+**Concrete kickoff commands (rev 11):** `/tai-work <KEY>` loads/refreshes that unit of
+work's briefing (§3.6) and invokes its owning persona directly. `/tai-ready [persona]`
 answers "what's ready for you to do" when the human doesn't have a specific key in mind
 yet. Both are thin wrappers over the same briefing-then-invoke flow — there's no
 separate code path for "starting fresh" vs. "resuming."

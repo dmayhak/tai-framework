@@ -124,7 +124,7 @@ whom — rather than working around a spec gap silently.
   Story's branch, brief §6; destination = the repo's default branch) — concretely, via
   `npx tsx src/hosts/cli.ts git-pr create <DEV-SUBTASK-KEY> ...` (TAI-73), which resolves
   Dario's identity from the subtask's own `persona` field and enforces this `gitHost`
-  grant the same way `/tai_work` enforces `workOn` — links it to the CodeReview subtask
+  grant the same way `/tai-work` enforces `workOn` — links it to the CodeReview subtask
   via a Jira remote issue link, then hands off to **Code Reviewer** — whose passing
   review unblocks the test tiers sequentially (D12; see `workflows/dependencies.md`,
   `workflows/story.md`'s PR-backed checkpoint chain, TAI-34 ADR).
