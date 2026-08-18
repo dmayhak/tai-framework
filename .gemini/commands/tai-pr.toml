@@ -12,8 +12,12 @@ Usage (same shape as running `cli.ts git-pr` directly — quote any argument con
 spaces, e.g. a PR title):
 
   /tai-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]
-  /tai-pr review <ISSUE-KEY> <REPO> <PR-ID> <approve|requestChanges> [COMMENT]
-  /tai-pr merge <ISSUE-KEY> <REPO> <PR-ID> [mergeCommit|squash|fastForward]
+  /tai-pr review <ISSUE-KEY> <REPO> [PR-ID] <approve|requestChanges> [COMMENT]
+  /tai-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]
+
+`[PR-ID]` is optional on `review`/`merge` — omit it and TAI resolves it against `REPO`'s
+sole currently-open PR. If more than one is open, the command fails with a list of
+candidates instead of guessing — pass one of those IDs explicitly and re-run.
 
 - `create` — Dev subtask done, opens the real PR (source = the Story's branch, brief §6;
   destination = the repo's default branch).
