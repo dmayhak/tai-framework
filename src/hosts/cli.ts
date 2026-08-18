@@ -172,7 +172,18 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
 
 async function main(): Promise<void> {
     loadDotEnv();
-    const [, , subcommand, arg, ...rest] = process.argv;
+
+    let rawArgs = process.argv.slice(2);
+    // Handle case where arguments are passed as a single quoted string containing spaces (Gemini CLI runner injection)
+    if (rawArgs.length === 2 && rawArgs[1].includes(" ")) {
+        const matches = rawArgs[1].match(/[^"\s']+|"[^"]*"|'[^']*'/g) || [];
+        const parsed = matches.map((m) => m.replace(/^["']|["']$/g, ""));
+        rawArgs = [rawArgs[0], ...parsed];
+    }
+
+    const subcommand = rawArgs[0];
+    const arg = rawArgs[1];
+    const rest = rawArgs.slice(2);
     const config = await resolveConfig();
 
     if (subcommand === "git-pr") {
