@@ -1,19 +1,42 @@
 description = "Create, review, or merge a real git PR for a Dev/CodeReview subtask (TAI-34 ADR)"
 
-prompt = """
-!{npx tsx src/hosts/cli.ts git-pr {{args}}}
+# Deliberately does NOT use `{{args}}` inside a `!{...}` shell-injection block, unlike
+# tai-work.toml/tai-ready.toml. Gemini CLI shell-escapes `{{args}}` as ONE unit before
+# substitution (its own docs, custom-commands.md, "Using arguments in shell commands") --
+# fine for tai-work/tai-ready, which only ever take a single space-free argument (an issue
+# key), but git-pr needs several space-separated positional args (action, issue key, repo,
+# branch names, a title that may itself contain spaces). `!{... {{args}}}` here would
+# collapse the whole typed command into one quoted argv token and fail every time -- found
+# live (2026-08-17) during TAI-87's own smoke test: `/tai-pr merge TAI-87
+# dmayhak/tai-framework` became `git-pr "merge TAI-87 dmayhak/tai-framework"`.
+#
+# Omitting `{{args}}` switches Gemini CLI to "default argument handling" instead (same
+# docs, §2): it appends the raw typed command as text rather than injecting it into a
+# shell command itself, and the model parses it and runs the command via its own shell
+# tool -- the docs' own recommended pattern for exactly this case (their `changelog.toml`
+# example).
 
-The output above is from TAI's own `GitHost` layer (TAI-73), invoked as whichever persona
-owns the issue key you passed — it resolves that persona's identity from the issue's own
+prompt = """
+# Task: run a TAI git-pr action
+
+Your raw typed command is appended below these instructions (Gemini CLI's default
+argument-handling behavior, since this prompt has no `{{args}}` placeholder). Parse out
+the action and its arguments yourself, then run the matching command **directly via your
+own shell tool** -- construct it as separate, correctly-quoted arguments (not one blob),
+so a multi-word title/description/comment survives intact:
+
+  npx tsx src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]
+  npx tsx src/hosts/cli.ts git-pr review <ISSUE-KEY> <REPO> [PR-ID] <approve|requestChanges> [COMMENT]
+  npx tsx src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]
+
+`[PR-ID]` is optional on `review`/`merge` — omit it and TAI resolves it against `REPO`'s
+sole currently-open PR. If more than one is open, the command fails with a list of
+candidates instead of guessing — pass one of those IDs explicitly and re-run.
+
+The output is from TAI's own `GitHost` layer (TAI-73), invoked as whichever persona owns
+the issue key you passed — it resolves that persona's identity from the issue's own
 `persona` field and enforces its `gitHost` permission grant, the same way `/tai-work`
 enforces `workOn`.
-
-Usage (same shape as running `cli.ts git-pr` directly — quote any argument containing
-spaces, e.g. a PR title):
-
-  /tai-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]
-  /tai-pr review <ISSUE-KEY> <REPO> <PR-ID> <approve|requestChanges> [COMMENT]
-  /tai-pr merge <ISSUE-KEY> <REPO> <PR-ID> [mergeCommit|squash|fastForward]
 
 - `create` — Dev subtask done, opens the real PR (source = the Story's branch, brief §6;
   destination = the repo's default branch).
@@ -23,7 +46,7 @@ spaces, e.g. a PR title):
 - `merge` — Developer merges their own already-approved work once CodeReview passes; not
   self-certification, since the approval already happened as a separate persona action.
 
-If the command above errored (unknown issue key, no persona assigned, or the persona isn't
+If the command errors (unknown issue key, no persona assigned, or the persona isn't
 permitted to perform this `gitHost` action), report the error to the human rather than
 guessing or proceeding anyway.
 """

@@ -29,11 +29,12 @@ import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import { findReadyWork } from "../core/commands/ready.js";
+import { resolvePullRequestId, parseReviewArgs, parseMergeArgs } from "../core/commands/git-pr.js";
 import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
-import { toRepoId, toPullRequestId, type GitMutationResult, type PullRequestRef } from "../core/git/interface.js";
+import { toRepoId, type GitMutationResult, type PullRequestRef } from "../core/git/interface.js";
 import type { Persona } from "../core/schema/story-schema.js";
 
 interface ResolvedConfig {
@@ -179,8 +180,10 @@ async function main(): Promise<void> {
         if (!action || !issueKey || !repoArg) {
             throw new Error(
                 "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
-                    "     | git-pr review <ISSUE-KEY> <REPO> <PR-ID> <approve|requestChanges> [COMMENT]\n" +
-                    "     | git-pr merge <ISSUE-KEY> <REPO> <PR-ID> [mergeCommit|squash|fastForward]"
+                    "     | git-pr review <ISSUE-KEY> <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
+                    "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
+                    "  [PR-ID] is optional on review/merge — omit it to resolve against REPO's sole open PR; " +
+                    "if more than one is open, the error lists them so you can pass one explicitly."
             );
         }
         const { gitHost, personaId } = await resolveGitHost(config, issueKey);
@@ -205,23 +208,17 @@ async function main(): Promise<void> {
         }
 
         if (action === "review") {
-            const [prId, decision, comment] = gitArgs;
-            if (!prId || (decision !== "approve" && decision !== "requestChanges")) {
-                throw new Error("Usage: git-pr review <ISSUE-KEY> <REPO> <PR-ID> <approve|requestChanges> [COMMENT]");
-            }
-            await gitHost.reviewPullRequest(repo, toPullRequestId(prId), decision, comment);
+            const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            await gitHost.reviewPullRequest(repo, prId, decision, comment);
             console.log(`# Review posted (as ${personaId})\n\n${decision} on PR ${prId}.`);
             return;
         }
 
         if (action === "merge") {
-            const [prId, strategyArg] = gitArgs;
-            if (!prId) {
-                throw new Error("Usage: git-pr merge <ISSUE-KEY> <REPO> <PR-ID> [mergeCommit|squash|fastForward]");
-            }
-            const strategy =
-                strategyArg === "squash" || strategyArg === "fastForward" ? strategyArg : "mergeCommit";
-            const result = await gitHost.mergePullRequest(repo, toPullRequestId(prId), strategy);
+            const { prIdArg, strategy } = parseMergeArgs(gitArgs);
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            const result = await gitHost.mergePullRequest(repo, prId, strategy);
             console.log(renderGitMutationResult(result, personaId));
             return;
         }

@@ -61,6 +61,10 @@ export interface RepoRef {
  */
 export type PullRequestState = "open" | "merged" | "declined";
 
+/** Named so callers (`git-pr.ts`'s CLI arg parsing, TAI-87) can validate against it without
+ *  duplicating the literal union `mergePullRequest` accepts inline below. */
+export type MergeStrategy = "mergeCommit" | "squash" | "fastForward";
+
 export interface PullRequestReviewer {
     readonly human: HumanRef;
     readonly status: "pending" | "approved" | "changesRequested";
@@ -141,11 +145,7 @@ export interface GitHost {
         comment?: string
     ): Promise<void>;
     addPullRequestComment(repo: RepoId, id: PullRequestId, body: string): Promise<Comment>;
-    mergePullRequest(
-        repo: RepoId,
-        id: PullRequestId,
-        strategy?: "mergeCommit" | "squash" | "fastForward"
-    ): Promise<GitMutationResult>;
+    mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy): Promise<GitMutationResult>;
 
     /**
      * Read-only by design — TAI-32 (this project's own Bitbucket Pipelines work) found no
