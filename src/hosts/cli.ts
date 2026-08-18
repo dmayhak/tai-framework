@@ -29,7 +29,7 @@ import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import { findReadyWork } from "../core/commands/ready.js";
-import { resolvePullRequestId } from "../core/commands/git-pr.js";
+import { resolvePullRequestId, parseReviewArgs, parseMergeArgs } from "../core/commands/git-pr.js";
 import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -122,13 +122,6 @@ async function resolveGitHost(
     return { gitHost: new PersonaScopedGitHost(backend.gitHost, personaConfig), personaId: personaConfig.id };
 }
 
-/** A PR-ID is always digits; `approve`/`requestChanges`/a merge strategy never is — so this
- *  cleanly distinguishes "PR-ID given" from "PR-ID omitted, this token is the next
- *  positional arg instead" without a separate flag. */
-function isNumericToken(s: string | undefined): s is string {
-    return s !== undefined && /^\d+$/.test(s);
-}
-
 function renderPullRequestRef(pr: PullRequestRef, personaId: string): string {
     return [
         `# PR ${pr.id} (as ${personaId})`,
@@ -215,13 +208,7 @@ async function main(): Promise<void> {
         }
 
         if (action === "review") {
-            const [first, ...restArgs] = gitArgs;
-            const [prIdArg, decision, comment] = isNumericToken(first) ? [first, ...restArgs] : [undefined, first, ...restArgs];
-            if (decision !== "approve" && decision !== "requestChanges") {
-                throw new Error(
-                    "Usage: git-pr review <ISSUE-KEY> <REPO> [PR-ID] <approve|requestChanges> [COMMENT]"
-                );
-            }
+            const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             await gitHost.reviewPullRequest(repo, prId, decision, comment);
             console.log(`# Review posted (as ${personaId})\n\n${decision} on PR ${prId}.`);
@@ -229,11 +216,8 @@ async function main(): Promise<void> {
         }
 
         if (action === "merge") {
-            const [first, second] = gitArgs;
-            const [prIdArg, strategyArg] = isNumericToken(first) ? [first, second] : [undefined, first];
+            const { prIdArg, strategy } = parseMergeArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
-            const strategy =
-                strategyArg === "squash" || strategyArg === "fastForward" ? strategyArg : "mergeCommit";
             const result = await gitHost.mergePullRequest(repo, prId, strategy);
             console.log(renderGitMutationResult(result, personaId));
             return;
