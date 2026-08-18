@@ -29,6 +29,7 @@ import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import { findReadyWork } from "../core/commands/ready.js";
+import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { resolvePullRequestId, parseReviewArgs, parseMergeArgs } from "../core/commands/git-pr.js";
 import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
@@ -170,6 +171,20 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     return lines.join("\n");
 }
 
+function renderPrecedenceLinkResults(results: Awaited<ReturnType<typeof materializePrecedenceLinks>>): string {
+    const lines: string[] = ["# Precedence links", ""];
+    if (results.length === 0) {
+        lines.push("No applicable precedence edges — either this story has fewer than two of the " +
+            "subtask types SUBTASK_PRECEDENCE gates against each other, or none are present yet.");
+    } else {
+        for (const r of results) {
+            const verb = r.created ? "created" : "already existed";
+            lines.push(`- ${r.afterKey} depends on ${r.beforeKey} (${r.after} after ${r.before}) — ${verb}`);
+        }
+    }
+    return lines.join("\n");
+}
+
 async function main(): Promise<void> {
     loadDotEnv();
     const [, , subcommand, arg, ...rest] = process.argv;
@@ -251,7 +266,16 @@ async function main(): Promise<void> {
         return;
     }
 
-    throw new Error(`Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | git-pr create|review|merge ...`);
+    if (subcommand === "link-precedence") {
+        if (!arg) throw new Error("Usage: link-precedence <STORY-KEY>");
+        const results = await materializePrecedenceLinks(config.backend.workTracker, toIssueKey(arg));
+        console.log(renderPrecedenceLinkResults(results));
+        return;
+    }
+
+    throw new Error(
+        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | link-precedence <STORY-KEY> | git-pr create|review|merge ...`
+    );
 }
 
 main().catch((err: unknown) => {

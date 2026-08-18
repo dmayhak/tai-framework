@@ -20,6 +20,8 @@ import {
     Status,
     StoryType,
     SubtaskType,
+    isStoryIssueType,
+    isSubtaskIssueType,
     isSubtaskReady,
     type Persona,
 } from "../schema/story-schema.js";
@@ -27,17 +29,6 @@ import { DEFAULT_SEARCH_LIMIT, type Issue, type IssueKey, type WorkTracker } fro
 import { rollupStatus, type RootStatusRollup } from "../workspace/status.js";
 
 const OPEN_STATUSES: readonly Status[] = [Status.ToDo, Status.InProgress, Status.InReview];
-
-const STORY_TYPE_VALUES: ReadonlySet<string> = new Set(Object.values(StoryType));
-const SUBTASK_TYPE_VALUES: ReadonlySet<string> = new Set(Object.values(SubtaskType));
-
-function isSubtaskIssueType(issueType: Issue["issueType"]): issueType is SubtaskType {
-    return SUBTASK_TYPE_VALUES.has(issueType);
-}
-
-function isStoryIssueType(issueType: Issue["issueType"]): issueType is StoryType {
-    return STORY_TYPE_VALUES.has(issueType);
-}
 
 export interface FindReadyWorkDeps {
     readonly workTracker: WorkTracker;

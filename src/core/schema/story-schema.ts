@@ -111,6 +111,23 @@ export enum SubtaskType {
     Triage = "triage",                       // Tester (default) — Bug entry point: confirm repro, assess severity, identify root cause
 }
 
+// Shared type guards over an Issue's issueType (StoryType | SubtaskType | "epic" —
+// spelled out here rather than importing that union from storage/interface.ts, which
+// itself imports FROM this module; interface.ts must stay downstream, not the other way
+// around). Used wherever code needs to tell a story-level ticket apart from a subtask
+// (e.g. commands/ready.ts, commands/link-precedence.ts) without duplicating the same two
+// Set-backed checks per call site.
+const STORY_TYPE_VALUES: ReadonlySet<string> = new Set(Object.values(StoryType));
+const SUBTASK_TYPE_VALUES: ReadonlySet<string> = new Set(Object.values(SubtaskType));
+
+export function isStoryIssueType(issueType: StoryType | SubtaskType | "epic"): issueType is StoryType {
+    return STORY_TYPE_VALUES.has(issueType);
+}
+
+export function isSubtaskIssueType(issueType: StoryType | SubtaskType | "epic"): issueType is SubtaskType {
+    return SUBTASK_TYPE_VALUES.has(issueType);
+}
+
 // Single source of truth: which persona owns which subtask type BY DEFAULT.
 // This is the DEFAULT VALUE for a real per-instance Jira custom field —
 // `persona` — that every subtask carries (brief §5.6, the two-axis owner
