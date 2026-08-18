@@ -132,7 +132,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
    Perry then creates each Story with its assessed initial subtask set already attached,
    including wiring any `StoryDependency` records Ada surfaced during discovery (see
    `workflows/dependencies.md` — including ones using `localId` for stories that don't
-   have Jira keys yet at discovery time).
+   have Jira keys yet at discovery time) — and, per the same doc's "real Jira links get
+   created as soon as known" rule, creates the actual `Blocks` links between sequential
+   subtasks in the attached set (e.g. `Dev` blocks `CodeReview` blocks `IntegrationTest`),
+   not just the ones `StoryDependency` covers at the Story level.
 5. **Epic decomposition (invoked directly on an existing Epic, brief §3.7 rev 43):**
    Unlike item 4's Kickoff-time bootstrap (downstream of Ada's initial proposal), this is
    the recurring, narrower-scope pass: given an Epic with no (or incomplete) Story

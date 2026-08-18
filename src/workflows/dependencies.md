@@ -7,8 +7,11 @@ Two distinct layers, handled differently:
 1. **Story-level dependencies** — discovered by a persona (usually the
    Analyst), can't be derived from rules. Must be captured as data at
    creation time.
-2. **Subtask-level dependencies** — structural, derivable from which
-   subtasks actually exist on a given ticket. Generated, not hand-entered.
+2. **Subtask-level dependencies** — the precedence *graph* is structural,
+   derivable from which subtasks actually exist on a given ticket
+   (computed, not hand-authored per-edge). The resulting **Jira links**
+   are still created explicitly, same as Layer 1 (see "Decided" below,
+   2026-08-17 direction) — computed doesn't mean invisible-to-Jira.
 
 ## Layer 1: Story-Level Dependencies
 
@@ -251,6 +254,28 @@ mutually exclusive:
   `Database` was recognized as needed): the system creates/adjusts the link
   **and flags it** — it doesn't silently link with no signal, but it also
   doesn't block or require active human intervention before proceeding.
+- **Real Jira links get created for known/reasonably-assumed relationships as
+  soon as they're known — not deferred to a later pass** (2026-08-17 direction,
+  surfaced while creating TAI-85's TAI-87→TAI-92→TAI-93 chain). Applies at both
+  layers:
+  - **Layer 2 (subtask precedence):** whoever creates the subtask set — eagerly
+    per TAI-83, or up front in PM's WBS-assembly pass — also creates the
+    corresponding `Blocks` link (`DEFAULT_JIRA_LINK_TYPE_NAME` mapping, same as
+    Layer 1) between sequential siblings actually present on this instance
+    (per `resolveApplicablePrecedence()`, not the full theoretical graph) —
+    e.g. `Dev` blocks `CodeReview` blocks `IntegrationTest`. `SUBTASK_PRECEDENCE`
+    stays the source of truth for what TAI's own orchestrator reads
+    (Enforcement section above is unchanged); the real link is for board
+    visibility to a human, materializing what the engine already computes.
+  - **Layer 1 (story-level):** unchanged in mechanism (`StoryDependency`/
+    `resolveStoryDependencies()` already do this) — restated here as the same
+    "as soon as known" bar, not a separate rule.
+  - **Direction matters and is easy to get backwards:** for `Blocks`, the
+    **inward** issue blocks the **outward** one (ground truth per §3.2's
+    MCP-wrapper hazard note) — `jira_create_issue_link(link_type="Blocks",
+    inward_issue_key=<blocker>, outward_issue_key=<blocked>)`. A link created
+    with the keys swapped reads backwards in the Jira UI and is worse than no
+    link — double-check direction, don't just fire-and-forget the call.
 
 ## Open Questions
 - **Resolved (D12):** test tiers are sequential by default
