@@ -38,6 +38,16 @@ permissions:
     - Story.testNotes
     - Bug.severity
     - Bug.reproSteps
+  gitHost:
+    - createPullRequest           # brief §5.4's canonical checkpoint chain (Dev->CodeReview->
+                                   # Merge/Deploy) never gave a Test-tier subtask any way to land
+                                   # its own code (IntegrationTest/SystemTest/E2ETest all sit
+                                   # OUTSIDE that chain) -- Tessa had zero gitHost grants and hit
+                                   # a real PersonaPermissionError landing TAI-100's own test code
+                                   # (2026-08-20, live). Decided: Tessa opens her own PR the same
+                                   # way Dario does for Dev; still goes through CodeReview before
+                                   # anyone merges -- NOT paired with mergePullRequest, which stays
+                                   # Developer/DevOps-only (no self-merge for Tester).
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 

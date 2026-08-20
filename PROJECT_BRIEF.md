@@ -4,7 +4,18 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-17 (rev 47 — **§3.8: command surface standardized on hyphens,
+> **Last updated:** 2026-08-20 (rev 48 — **§3.1/§5.4: Tester granted `createPullRequest`,
+> closing a real gap in the checkpoint chain.** TAI-100 (an IntegrationTest subtask, live):
+> Tessa hit a `PersonaPermissionError` trying to land her own test code — §5.4's canonical
+> checkpoint chain (`Dev subtask --opens PR--> CodeReview subtask --approves PR-->
+> Merge/Deploy subtask --merges PR-->`) only ever named Developer/Code Reviewer/DevOps, and
+> `IntegrationTest`/`SystemTest`/`E2ETest` sit entirely outside that chain in the
+> `SUBTASK_PRECEDENCE` graph — nothing gave a Test-tier subtask any way to open its own PR.
+> User direction: Tester should have PR-creation permission. `personas/tester.md` gained a
+> `gitHost: [createPullRequest]` grant — deliberately NOT paired with `mergePullRequest`
+> (no self-merge for Tester; a Tester-opened PR still goes through Code Reviewer like any
+> other). `config.test.ts`'s gitHost-grant-matrix test updated to match.
+> Prior: rev 47 — **§3.8: command surface standardized on hyphens,
 > `/tai-work`/`/tai-ready`, not `/tai_work`/`/tai_ready`.** TAI-89: the shipped wrapper
 > files used an underscore/`tai_` prefix while `git-pr` (a bare `cli.ts` subcommand about
 > to get its own wrapper via TAI-87) used a bare hyphen — an inconsistent command surface
@@ -1092,6 +1103,13 @@ operates on a real git PR, not Jira transitions alone —
   human acting directly on the git host (approve/request-changes/merge) is detected on
   next refresh and reflected, never fought — same stance as §4's Confluence-gate-
   reopening rule.
+
+**Test-tier subtasks (rev 48):** `IntegrationTest`/`SystemTest`/`E2ETest` sit outside this
+canonical chain in the `SUBTASK_PRECEDENCE` graph (they gate `Deploy`, not `Merge/Deploy`
+directly), but a Test tier can still carry its own real code (e.g. a live-backend
+integration test). When it does, Tester opens that PR herself (`gitHost: createPullRequest`,
+same mechanics as Developer's step above) and it goes through Code Reviewer like any other —
+Tester was NOT also granted `mergePullRequest`, so there's still no self-merge path for her.
 
 See TAI-33's ADR for the `GitHost` interface this depends on.
 
