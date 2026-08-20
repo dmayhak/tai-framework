@@ -1,17 +1,34 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { toHumanId } from "../storage/interface.js";
+import { DependencyRelation, StoryType, SubtaskType } from "../schema/story-schema.js";
+import {
+    toHumanId,
+    toIssueKey,
+    type Issue,
+    type IssueFilter,
+    type IssueKey,
+    type IssueLink,
+    type WorkTracker,
+} from "../storage/interface.js";
 import {
     toCommitSha,
     toPullRequestId,
     toRepoId,
+    type CommitStatus,
     type GitHost,
     type PullRequestRef,
     type PullRequestState,
     type RepoId,
 } from "../git/interface.js";
-import { resolvePullRequestId, parseReviewArgs, parseMergeArgs } from "./git-pr.js";
+import {
+    resolvePullRequestId,
+    parseReviewArgs,
+    parseMergeArgs,
+    isGreen,
+    findCodeReviewSiblingForLink,
+    validateBranchName,
+} from "./git-pr.js";
 
 function prFixture(overrides: Partial<PullRequestRef>): PullRequestRef {
     return {
@@ -131,5 +148,125 @@ describe("parseMergeArgs", () => {
 
     it("a typo'd strategy after a valid PR-ID throws rather than silently defaulting to mergeCommit", () => {
         assert.throws(() => parseMergeArgs(["14", "sqaush"]), /Invalid merge strategy "sqaush"/);
+    });
+});
+
+function statusFixture(state: CommitStatus["state"]): CommitStatus {
+    return { key: "build", name: "build", state };
+}
+
+describe("isGreen", () => {
+    it("false when there are no statuses at all (pipeline never ran, or wrong commit)", () => {
+        assert.equal(isGreen([]), false);
+    });
+
+    it("true when every status succeeded", () => {
+        assert.equal(isGreen([statusFixture("successful"), statusFixture("successful")]), true);
+    });
+
+    it("false when any status failed", () => {
+        assert.equal(isGreen([statusFixture("successful"), statusFixture("failed")]), false);
+    });
+
+    it("false when a status is still in progress", () => {
+        assert.equal(isGreen([statusFixture("inProgress")]), false);
+    });
+});
+
+function issueFixture(overrides: Partial<Issue> & Pick<Issue, "key" | "issueType">): Issue {
+    return {
+        projectKey: "TAI",
+        summary: "x",
+        status: undefined as never, // not read by findCodeReviewSiblingForLink
+        assignee: null,
+        persona: null,
+        labels: [],
+        createdAt: "x",
+        updatedAt: "x",
+        comments: [],
+        ...overrides,
+    };
+}
+
+/** A fake exposing only the two methods `findCodeReviewSiblingForLink` actually needs. */
+class FakeSearchLinksWorkTracker implements Pick<WorkTracker, "search" | "getLinkedIssues"> {
+    constructor(
+        private readonly issues: readonly Issue[],
+        private readonly links: ReadonlyMap<IssueKey, readonly IssueLink[]> = new Map()
+    ) {}
+
+    async search(filter: IssueFilter): Promise<readonly Issue[]> {
+        return this.issues.filter((i) => !filter.parentKey || i.parentKey === filter.parentKey);
+    }
+
+    async getLinkedIssues(key: IssueKey): Promise<readonly IssueLink[]> {
+        return this.links.get(key) ?? [];
+    }
+}
+
+describe("findCodeReviewSiblingForLink", () => {
+    const story = toIssueKey("TAI-96");
+    const dev = issueFixture({ key: toIssueKey("TAI-98"), issueType: SubtaskType.Dev, parentKey: story });
+
+    it("returns null when the issue has no parentKey", async () => {
+        const wt = new FakeSearchLinksWorkTracker([]);
+        const result = await findCodeReviewSiblingForLink(wt, issueFixture({ key: toIssueKey("TAI-1"), issueType: StoryType.Story }));
+        assert.equal(result, null);
+    });
+
+    it("returns null when no CodeReview sibling exists", async () => {
+        const wt = new FakeSearchLinksWorkTracker([dev]);
+        assert.equal(await findCodeReviewSiblingForLink(wt, dev), null);
+    });
+
+    it("returns the sole CodeReview sibling when exactly one exists (the common case)", async () => {
+        const codeReview = issueFixture({ key: toIssueKey("TAI-99"), issueType: SubtaskType.CodeReview, parentKey: story });
+        const wt = new FakeSearchLinksWorkTracker([dev, codeReview]);
+        assert.equal(await findCodeReviewSiblingForLink(wt, dev), codeReview.key);
+    });
+
+    it("disambiguates via the DependsOn precedence link when multiple CodeReview siblings exist (TAI-105's own case)", async () => {
+        const test = issueFixture({ key: toIssueKey("TAI-100"), issueType: SubtaskType.IntegrationTest, parentKey: story });
+        const crForDev = issueFixture({ key: toIssueKey("TAI-99"), issueType: SubtaskType.CodeReview, parentKey: story });
+        const crForTest = issueFixture({ key: toIssueKey("TAI-105"), issueType: SubtaskType.CodeReview, parentKey: story });
+        const wt = new FakeSearchLinksWorkTracker(
+            [dev, test, crForDev, crForTest],
+            new Map([
+                [crForDev.key, [{ relation: DependencyRelation.DependsOn, key: dev.key }]],
+                [crForTest.key, [{ relation: DependencyRelation.DependsOn, key: test.key }]],
+            ])
+        );
+        assert.equal(await findCodeReviewSiblingForLink(wt, test), crForTest.key);
+        assert.equal(await findCodeReviewSiblingForLink(wt, dev), crForDev.key);
+    });
+
+    it("returns null when multiple CodeReview siblings exist and none disambiguates via a precedence link", async () => {
+        const crA = issueFixture({ key: toIssueKey("TAI-99"), issueType: SubtaskType.CodeReview, parentKey: story });
+        const crB = issueFixture({ key: toIssueKey("TAI-105"), issueType: SubtaskType.CodeReview, parentKey: story });
+        const wt = new FakeSearchLinksWorkTracker([dev, crA, crB]);
+        assert.equal(await findCodeReviewSiblingForLink(wt, dev), null);
+    });
+});
+
+describe("validateBranchName", () => {
+    const story = toIssueKey("TAI-96");
+
+    it("passes when the branch is named after the parent Story key plus a slug", () => {
+        assert.doesNotThrow(() => validateBranchName("TAI-96-materialize-precedence-links", story));
+    });
+
+    it("passes when the branch IS the bare Story key", () => {
+        assert.doesNotThrow(() => validateBranchName("TAI-96", story));
+    });
+
+    it("throws when the branch is named after a subtask's own key instead (this session's own deviation)", () => {
+        assert.throws(
+            () => validateBranchName("TAI-98-materialize-precedence-links", story),
+            /should start with the parent Story\/Bug's key "TAI-96-"/
+        );
+    });
+
+    it("hyphen-anchors the prefix check — TAI-9 is not treated as a valid prefix of TAI-96's branch", () => {
+        assert.throws(() => validateBranchName("TAI-96-foo", toIssueKey("TAI-9")));
     });
 });

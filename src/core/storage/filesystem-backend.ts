@@ -32,6 +32,7 @@ import {
     type PagePatch,
     type IssueKey,
     type PageId,
+    type RemoteLink,
     toIssueKey,
     toPageId,
     StorageConnectivityError,
@@ -142,15 +143,19 @@ function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
 interface LinksIndex {
     issueLinks: { from: string; relation: DependencyRelation; to: string }[];
     issuePageLinks: { issueKey: string; pageId: string }[];
+    issueRemoteLinks: { issueKey: string; url: string; title: string }[];
 }
 
 async function readLinks(rootDir: string): Promise<LinksIndex> {
     try {
         const raw = await readFile(linksFile(rootDir), "utf8");
-        return JSON.parse(raw) as LinksIndex;
+        const parsed = JSON.parse(raw) as Partial<LinksIndex>;
+        // `issueRemoteLinks` postdates this file's original shape (TAI-108) — an
+        // existing links.json from before this change has no such key.
+        return { issueLinks: [], issuePageLinks: [], issueRemoteLinks: [], ...parsed };
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-            return { issueLinks: [], issuePageLinks: [] };
+            return { issueLinks: [], issuePageLinks: [], issueRemoteLinks: [] };
         }
         throw new StorageConnectivityError(`Failed to read links index: ${(err as Error).message}`);
     }
@@ -539,6 +544,24 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
         async getLinkedPages(key: IssueKey): Promise<readonly PageId[]> {
             const data = await readLinks(rootDir);
             return data.issuePageLinks.filter((l) => l.issueKey === key).map((l) => toPageId(l.pageId));
+        },
+
+        async createRemoteLink(key: IssueKey, url: string, title: string): Promise<void> {
+            const data = await readLinks(rootDir);
+            const idx = data.issueRemoteLinks.findIndex((l) => l.issueKey === key && l.url === url);
+            if (idx >= 0) {
+                data.issueRemoteLinks[idx] = { issueKey: key, url, title };
+            } else {
+                data.issueRemoteLinks.push({ issueKey: key, url, title });
+            }
+            await writeLinks(rootDir, data);
+        },
+
+        async getRemoteLinks(key: IssueKey): Promise<readonly RemoteLink[]> {
+            const data = await readLinks(rootDir);
+            return data.issueRemoteLinks
+                .filter((l) => l.issueKey === key)
+                .map((l) => ({ url: l.url, title: l.title }));
         },
 
         async listAttachments(key: IssueKey): Promise<readonly AttachmentRef[]> {

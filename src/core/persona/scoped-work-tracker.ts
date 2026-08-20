@@ -30,6 +30,7 @@ import type {
     IssuePatch,
     MutationResult,
     PageId,
+    RemoteLink,
     WorkTracker,
 } from "../storage/interface.js";
 import type { PersonaConfig } from "./config.js";
@@ -146,6 +147,14 @@ export class PersonaScopedWorkTracker implements WorkTracker {
 
     getLinkedPages(key: IssueKey): Promise<readonly PageId[]> {
         return this.inner.getLinkedPages(key);
+    }
+
+    createRemoteLink(key: IssueKey, url: string, title: string): Promise<void> {
+        return this.inner.createRemoteLink(key, url, title);
+    }
+
+    getRemoteLinks(key: IssueKey): Promise<readonly RemoteLink[]> {
+        return this.inner.getRemoteLinks(key);
     }
 
     listAttachments(key: IssueKey): Promise<readonly AttachmentRef[]> {

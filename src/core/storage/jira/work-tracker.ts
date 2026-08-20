@@ -28,6 +28,7 @@ import {
     type AttachmentRef,
     type IssueKey,
     type PageId,
+    type RemoteLink,
     toIssueKey,
     toPageId,
     DEFAULT_SEARCH_LIMIT,
@@ -447,6 +448,31 @@ export function createJiraWorkTracker(
                 .map((l) => l.globalId)
                 .filter((g): g is string => !!g && g.startsWith("tai-page-"))
                 .map((g) => toPageId(g.slice("tai-page-".length)));
+        },
+
+        /**
+         * Generic remote-URL link (TAI-107/TAI-108), same Jira remote-link API as
+         * `linkPage` above but its own `tai-remote-` `globalId` prefix — kept distinct from
+         * `tai-page-` so `getRemoteLinks` never returns a Confluence page link that
+         * `getLinkedPages` already owns reading back. `globalId` is derived deterministically
+         * from `url` (not a random id) so a second call for the same `url` UPSERTS — Jira's
+         * remote-link API creates-or-updates by `globalId` — rather than duplicating the link
+         * when a title changes (e.g. a PR gets renamed after the link was first created).
+         */
+        async createRemoteLink(key: IssueKey, url: string, title: string): Promise<void> {
+            await client.request("POST", `${API}/issue/${key}/remotelink`, {
+                globalId: `tai-remote-${encodeURIComponent(url)}`,
+                object: { url, title },
+            });
+        },
+
+        async getRemoteLinks(key: IssueKey): Promise<readonly RemoteLink[]> {
+            const links = await client.request<
+                { globalId?: string; object: { url: string; title: string } }[]
+            >("GET", `${API}/issue/${key}/remotelink`);
+            return links
+                .filter((l) => l.globalId?.startsWith("tai-remote-"))
+                .map((l) => ({ url: l.object.url, title: l.object.title }));
         },
 
         async listAttachments(key: IssueKey): Promise<readonly AttachmentRef[]> {

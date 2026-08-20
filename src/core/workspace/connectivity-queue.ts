@@ -48,6 +48,7 @@ import {
     type IssuePatch,
     type MutationResult,
     type PageId,
+    type RemoteLink,
     type WorkTracker,
 } from "../storage/interface.js";
 import { appendJournalEntry, parseJournalEntries, readJournal } from "./journal.js";
@@ -170,6 +171,12 @@ export class ConnectivityQueuedWorkTracker implements WorkTracker {
     }
     getLinkedPages(key: IssueKey): Promise<readonly PageId[]> {
         return this.inner.getLinkedPages(key);
+    }
+    createRemoteLink(key: IssueKey, url: string, title: string): Promise<void> {
+        return this.inner.createRemoteLink(key, url, title);
+    }
+    getRemoteLinks(key: IssueKey): Promise<readonly RemoteLink[]> {
+        return this.inner.getRemoteLinks(key);
     }
     listAttachments(key: IssueKey): Promise<readonly AttachmentRef[]> {
         return this.inner.listAttachments(key);

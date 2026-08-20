@@ -14,6 +14,7 @@ import {
     type IssuePatch,
     type MutationResult,
     type PageId,
+    type RemoteLink,
     type WorkTracker,
 } from "../storage/interface.js";
 import { emptyPersonaShell, type PersonaConfig } from "./config.js";
@@ -113,6 +114,15 @@ class RecordingWorkTracker implements WorkTracker {
 
     async getLinkedPages(): Promise<readonly PageId[]> {
         this.calls.push("getLinkedPages");
+        return [];
+    }
+
+    async createRemoteLink(): Promise<void> {
+        this.calls.push("createRemoteLink");
+    }
+
+    async getRemoteLinks(): Promise<readonly RemoteLink[]> {
+        this.calls.push("getRemoteLinks");
         return [];
     }
 

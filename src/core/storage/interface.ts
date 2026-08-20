@@ -152,6 +152,18 @@ export interface IssueLink {
     readonly key: IssueKey;
 }
 
+// A generic remote (non-Jira-issue) link — e.g. the PR a CodeReview subtask reviews
+// (brief §5.4: "links the PR to the CodeReview subtask via a Jira remote issue link").
+// Deliberately NOT git-hosting-specific in shape (no PullRequestId/RepoId here) — this
+// interface stays agnostic to what's on the other end of the URL, same as `linkPage`
+// stays agnostic to page content. Unlike `linkPage`/`getLinkedPages` (a single well-known
+// concept with its own dedicated pair of methods), this is the general-purpose primitive
+// underneath — any URL, not just a Confluence page's.
+export interface RemoteLink {
+    readonly url: string;
+    readonly title: string;
+}
+
 // Rejection vs. connectivity failure are DIFFERENT cases the brief treats
 // differently (§3.3's escalate-immediately-no-retry vs. §3.6's queue-and-retry on
 // reconnect) — collapsing them into one `ok: false` shape would force callers to
@@ -204,6 +216,17 @@ export interface WorkTracker {
     // unlike DependsOn/RelatesTo, link direction has no meaning for a doc reference.
     linkPage(key: IssueKey, page: PageId): Promise<void>;
     getLinkedPages(key: IssueKey): Promise<readonly PageId[]>;
+
+    // Generic remote-URL link (TAI-107/TAI-108) — e.g. `git-pr create` links the PR it
+    // opens to the CodeReview subtask that will review it, closing the manual step brief
+    // §5.4 previously left to a persona to do by hand. Idempotent by `url`: creating a
+    // second link with the same `url` on the same issue updates its `title` in place
+    // rather than duplicating the link (same upsert posture as `linkPage`'s dedup-before-
+    // push, just keyed on url instead of exact (key, page) equality since a title can
+    // legitimately change — e.g. a PR gets renamed — while the URL identifies the same
+    // real-world thing).
+    createRemoteLink(key: IssueKey, url: string, title: string): Promise<void>;
+    getRemoteLinks(key: IssueKey): Promise<readonly RemoteLink[]>;
 
     listAttachments(key: IssueKey): Promise<readonly AttachmentRef[]>;
     getAttachment(key: IssueKey, attachmentId: string): Promise<Buffer>;
