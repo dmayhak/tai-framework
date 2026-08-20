@@ -279,7 +279,12 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         );
         assert.deepEqual([...configs.get("code-reviewer")!.permissions.gitHost], ["reviewPullRequest"]);
         assert.deepEqual([...configs.get("devops")!.permissions.gitHost], ["mergePullRequest"]);
-        for (const id of ["analyst", "architect", "dba", "pm", "tester", "ux-designer"]) {
+        // Tester (2026-08-20): the canonical Dev->CodeReview->Merge/Deploy chain never gave
+        // Test-tier subtasks (IntegrationTest/SystemTest/E2ETest, all outside that chain) any
+        // way to land their own code — granted createPullRequest only, NOT mergePullRequest
+        // (no self-merge for Tester; still goes through CodeReview like everyone else).
+        assert.deepEqual([...configs.get("tester")!.permissions.gitHost], ["createPullRequest"]);
+        for (const id of ["analyst", "architect", "dba", "pm", "ux-designer"]) {
             assert.deepEqual(configs.get(id)!.permissions.gitHost, [], `${id} should have no gitHost grants`);
         }
     });
