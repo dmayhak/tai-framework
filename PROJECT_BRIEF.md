@@ -4,7 +4,16 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-20 (rev 48 — **§3.1/§5.4: Tester granted `createPullRequest`,
+> **Last updated:** 2026-08-20 (rev 49 — **§8 item 29: new open question — a human-
+> requested review override, raisable at any stage in the chain.** User direction while
+> TAI-111's review was in flight: at any point (Architect, Analyst, Dev, CodeReview,
+> DesignReview, ...), someone — most likely a human — should be able to flag a task/Story
+> as needing human review even when the AI review for that stage already passed. Genuinely
+> undecided how to track it yet (comment convention vs. label vs. field; how it blocks; who
+> clears it) — added as an open item, not designed on the spot, matching the new
+> "ask the human on genuinely open questions" posture (rev 48's own `personas/analyst.md`/
+> `architect.md` addition) rather than resolving it unilaterally.
+> Prior: rev 48 — **§3.1/§5.4: Tester granted `createPullRequest`,
 > closing a real gap in the checkpoint chain.** TAI-100 (an IntegrationTest subtask, live):
 > Tessa hit a `PersonaPermissionError` trying to land her own test code — §5.4's canonical
 > checkpoint chain (`Dev subtask --opens PR--> CodeReview subtask --approves PR-->
@@ -1657,6 +1666,23 @@ Carry these forward; resolve them in upcoming design sessions.
     reasoning) — no equivalent incident exists here yet. Per §8 item 1's "don't build
     ahead of an observed need," revisit only if a real "a ticket left `Backlog` before it
     should have" incident actually happens in practice.
+29. **Human-requested review override, at any stage in the chain (rev 49, 2026-08-20,
+    open).** At any point — Architect, Analyst, Dev, CodeReview, DesignReview, and so on —
+    someone (most likely a human, though possibly any persona noticing something worth a
+    second set of human eyes) should be able to flag a task/Story as needing human review
+    before it proceeds, even when the AI review(s) for that stage already passed. Distinct
+    from the existing `humanSignOffDefault`/checkpoint machinery (brief §3.4), which is
+    about whether a given gate autocompletes at all — this is an override layered on TOP
+    of a gate that would otherwise pass, raised at arbitrary points, not fixed to one
+    subtask type. Genuinely undecided, flagged live rather than designed on the spot — same
+    posture as rev 48's Analyst/Architect "ask the human" principle (`personas/analyst.md`/
+    `architect.md`): this is exactly the kind of open direction question that belongs to
+    the human, not a persona's unilateral call. Open: what marks it (a comment convention
+    alongside the existing `Q:`/`Approved:`/`Rejected:` set, §3.9; a label; a dedicated
+    field)? Does it block the same way a failed review does, or just add a required extra
+    step? Who can clear it once raised? Revisit
+    once a concrete case makes the shape obvious, same "don't build ahead of an observed
+    need" posture as item 1/28 above.
 
 ---
 
