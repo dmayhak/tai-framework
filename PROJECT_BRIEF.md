@@ -1674,12 +1674,13 @@ Carry these forward; resolve them in upcoming design sessions.
     from the existing `humanSignOffDefault`/checkpoint machinery (brief §3.4), which is
     about whether a given gate autocompletes at all — this is an override layered on TOP
     of a gate that would otherwise pass, raised at arbitrary points, not fixed to one
-    subtask type. Genuinely undecided, flagged live rather than designed on the spot (see
-    `[[feedback_analyst_architect_ask_human]]`'s own posture — this is exactly the kind of
-    open direction question that belongs to the human, not a persona's unilateral call):
-    what marks it (a comment convention alongside the existing `Q:`/`Approved:`/
-    `Rejected:` set, §3.9; a label; a dedicated field)? Does it block the same way a failed
-    review does, or just add a required extra step? Who can clear it once raised? Revisit
+    subtask type. Genuinely undecided, flagged live rather than designed on the spot — same
+    posture as rev 48's Analyst/Architect "ask the human" principle (`personas/analyst.md`/
+    `architect.md`): this is exactly the kind of open direction question that belongs to
+    the human, not a persona's unilateral call. Open: what marks it (a comment convention
+    alongside the existing `Q:`/`Approved:`/`Rejected:` set, §3.9; a label; a dedicated
+    field)? Does it block the same way a failed review does, or just add a required extra
+    step? Who can clear it once raised? Revisit
     once a concrete case makes the shape obvious, same "don't build ahead of an observed
     need" posture as item 1/28 above.
 
