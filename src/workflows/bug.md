@@ -102,15 +102,19 @@ the Story workflow doc for the full rationale.
 
 ## Expedited Path (Urgent/Emergency Bugs)
 
-**Decided:** a Bug with Jira **Priority = 1 (Urgent/Emergency)** gets an expedited
-subtask chain — this is the existing native Jira field being used as the severity
-signal, not a new custom field.
+**Decided:** a Bug with Jira **Priority = 1 (Urgent/Emergency, native Jira value
+`"Highest"`)** gets an expedited subtask chain — this is the existing native Jira field
+being used as the severity signal, not a new custom field.
 
 - **`CodeReview` always stays mandatory**, regardless of priority — code still gets
   reviewed under time pressure.
-- **Test tiers compress to just one** — `IntegrationTest`, if present on this Bug's
-  actual subtask set — instead of running all present tiers (`SystemTest`/`E2ETest`
-  are skipped). Whoever triages can override which single tier is kept if
+- **Test tiers compress to just one** — `IntegrationTest` — instead of running all
+  present tiers (`SystemTest`/`E2ETest` are skipped). **Implemented (TAI-119):**
+  `defaultTestTiersForBug(priority)` (`src/core/schema/story-schema.ts`) is the concrete
+  recommendation Triage consults when deciding which test-tier subtasks to create —
+  guidance at creation time, not a hard resolver-level gate (the precedence graph
+  already handles a skipped tier correctly once it's simply never created). Whoever
+  triages can override the recommendation and create `SystemTest`/`E2ETest` anyway if
   `IntegrationTest` genuinely isn't the right check for this specific fix.
 - `Deploy`/`PostDeploy` are unaffected — still run as normal.
 

@@ -19,6 +19,8 @@ import {
     resolveApplicablePrecedence,
     isSubtaskReady,
     getNewPrecedenceEdgesForInsertedSubtask,
+    defaultTestTiersForBug,
+    EXPEDITED_BUG_PRIORITY,
     ALWAYS_HUMAN_GATED_SUBTASKS,
     type SubtaskPrecedenceRule,
 } from "./story-schema.js";
@@ -302,5 +304,48 @@ describe("dynamic insertion of an optional gate mid-flight", () => {
         assert.ok(!hasEdge(newEdges, SubtaskType.SystemTest, SubtaskType.Uat));
         assert.ok(!hasEdge(newEdges, SubtaskType.E2ETest, SubtaskType.Uat));
         assert.equal(newEdges.length, 3);
+    });
+});
+
+describe("defaultTestTiersForBug (D5 expedited-path compression, TAI-119)", () => {
+    it("recommends only IntegrationTest for a Priority=Highest Bug", () => {
+        assert.deepEqual(defaultTestTiersForBug(EXPEDITED_BUG_PRIORITY), [SubtaskType.IntegrationTest]);
+    });
+
+    it("recommends all three tiers for any other priority", () => {
+        for (const priority of ["Medium", "High", "Low", "Lowest"]) {
+            assert.deepEqual(defaultTestTiersForBug(priority), [
+                SubtaskType.IntegrationTest,
+                SubtaskType.SystemTest,
+                SubtaskType.E2ETest,
+            ]);
+        }
+    });
+
+    it("recommends all three tiers when priority is unset (null/undefined)", () => {
+        assert.deepEqual(defaultTestTiersForBug(undefined), [
+            SubtaskType.IntegrationTest,
+            SubtaskType.SystemTest,
+            SubtaskType.E2ETest,
+        ]);
+        assert.deepEqual(defaultTestTiersForBug(null), [
+            SubtaskType.IntegrationTest,
+            SubtaskType.SystemTest,
+            SubtaskType.E2ETest,
+        ]);
+    });
+
+    it("is guidance only — SUBTASK_PRECEDENCE stays unaffected by priority", () => {
+        // Even for an expedited Bug, if SystemTest/E2ETest WERE created anyway (the
+        // recommendation was overridden), the precedence graph still gates them
+        // normally — this function never touches resolveApplicablePrecedence/
+        // isSubtaskReady, by design (see story-schema.ts's D5 design note).
+        const present = [
+            SubtaskType.CodeReview,
+            SubtaskType.IntegrationTest,
+            SubtaskType.SystemTest,
+            SubtaskType.Deploy,
+        ];
+        assert.ok(hasEdge(resolveApplicablePrecedence(StoryType.Bug, present), SubtaskType.IntegrationTest, SubtaskType.SystemTest));
     });
 });
