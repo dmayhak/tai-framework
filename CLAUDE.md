@@ -6,5 +6,10 @@ questions. Do not write code that contradicts it; if something needs to change, 
 the brief deliberately rather than working around it.
 
 ## Claude-specific
-- Atlassian MCP server (Jira + Confluence) will be configured in `~/.claude.json`
-  when we reach the Jira phase (see brief §9). Not active in Phase 0/1.
+- **No Atlassian MCP server required (TAI-126).** `src/hosts/cli.ts`'s `issue`/`page`
+  subcommands (`create`/`transition`/`comment`/`link`) wrap `WorkTracker`/`DocStore`
+  directly against real Jira/Confluence REST — the same direct-REST path `work`/`ready`/
+  `git-pr`/`link-precedence` already use (brief §3.2). Earlier sessions used the
+  Atlassian MCP server for ticket/page CRUD only because these subcommands didn't exist
+  yet, not because TAI's architecture needs it — don't reach for the MCP server for this
+  going forward.
