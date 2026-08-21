@@ -27,6 +27,8 @@ import {
 } from "../schema/story-schema.js";
 import { DEFAULT_SEARCH_LIMIT, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { rollupStatus, type RootStatusRollup } from "../workspace/status.js";
+import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
+import { isGreen } from "./git-pr.js";
 
 const OPEN_STATUSES: readonly Status[] = [Status.ToDo, Status.InProgress, Status.InReview];
 
@@ -34,10 +36,31 @@ export interface FindReadyWorkDeps {
     readonly workTracker: WorkTracker;
     readonly taiRoot: string;
     readonly projectKey: string;
+    // Both optional — git hosting is an independent configuration axis (brief §6/TAI-33
+    // ADR), and /tai-ready must keep working with zero GitHost awareness when no repo is
+    // configured (filesystem-only setups, or Bitbucket credentials simply not present —
+    // same "only demanded where actually needed" posture as cli.ts's resolveGitHost).
+    // Omit either (or pass an empty repos array) to skip the PR-awareness path entirely.
+    // Narrowed to exactly what's used (same `Pick<GitHost, ...>` pattern as `git-pr.ts`'s
+    // `resolvePullRequestId`) rather than the full `GitHost`, so a caller/test double
+    // doesn't need to implement PR-CRUD/review/merge just to supply this dependency.
+    readonly gitHost?: Pick<GitHost, "listPullRequests" | "getCommitStatuses">;
+    readonly repos?: readonly RepoId[];
+}
+
+export interface ReadyToMergeCandidate {
+    /** The Done CodeReview subtask this PR belongs to — a different action type (run
+     *  `git-pr merge`) than a Jira-side ready subtask (start work on it), so kept as its
+     *  own list rather than collapsed into `ready`. */
+    readonly codeReviewKey: IssueKey;
+    readonly pullRequest: PullRequestRef;
 }
 
 export interface ReadyWorkResult {
     readonly ready: readonly Issue[];
+    /** Approved (CodeReview Done) PRs with green CI, still open — TAI-106/107/108. Empty
+     *  whenever `gitHost`/`repos` aren't supplied, never a partial/best-effort guess. */
+    readonly readyToMerge: readonly ReadyToMergeCandidate[];
     /** Display context only — what's already in flight, per the root status rollup. */
     readonly inFlight: RootStatusRollup;
 }
@@ -69,6 +92,54 @@ async function loadParentPrecedenceContext(
             .map((s) => s.issueType as SubtaskType)
     );
     return { storyType: parent.issueType, presentSubtaskTypes, doneSubtaskTypes };
+}
+
+/**
+ * Finds Done CodeReview subtasks whose linked PR (`WorkTracker.getRemoteLinks` —
+ * TAI-107/108, the link `git-pr create` now makes in code) is still open on the git host
+ * and has green CI (`isGreen`, `git-pr.ts`). Live-queried every call, same "readiness is
+ * computed live, per brief §3.6's refresh-point rule" philosophy as the rest of this file
+ * — no persisted "awaiting merge" flag (TAI-107 ADR decision 5).
+ *
+ * KNOWN SCALING CAVEAT (documented, not silently accepted): this does one
+ * `getRemoteLinks` call per Done CodeReview subtask found (bounded by
+ * `DEFAULT_SEARCH_LIMIT`, same as every other unbounded search in this file) — fine at
+ * this project's current scale, but a project with a large volume of historical Done
+ * CodeReview subtasks would pay for that scan every `/tai-ready` call. Revisit if that
+ * ever becomes real (brief's own repeated "don't build ahead of an observed need" stance).
+ */
+async function findReadyToMergePRs(
+    workTracker: WorkTracker,
+    gitHost: Pick<GitHost, "listPullRequests" | "getCommitStatuses">,
+    projectKey: string,
+    repos: readonly RepoId[]
+): Promise<readonly ReadyToMergeCandidate[]> {
+    const doneCodeReviews = await workTracker.search({
+        projectKey,
+        issueTypes: [SubtaskType.CodeReview],
+        statuses: [Status.Done],
+    });
+    if (doneCodeReviews.length === 0) return [];
+
+    const openPRsByRepo = new Map<RepoId, readonly PullRequestRef[]>();
+    for (const repo of repos) {
+        openPRsByRepo.set(repo, await gitHost.listPullRequests(repo, "open"));
+    }
+
+    const candidates: ReadyToMergeCandidate[] = [];
+    for (const cr of doneCodeReviews) {
+        const links = await workTracker.getRemoteLinks(cr.key);
+        if (links.length === 0) continue;
+
+        for (const openPRs of openPRsByRepo.values()) {
+            const match = openPRs.find((pr) => links.some((l) => l.url === pr.url));
+            if (!match) continue;
+            const statuses = await gitHost.getCommitStatuses(match.repo, match.sourceCommit);
+            if (isGreen(statuses)) candidates.push({ codeReviewKey: cr.key, pullRequest: match });
+            break;
+        }
+    }
+    return candidates;
 }
 
 /**
@@ -107,6 +178,11 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         }
     }
 
+    const readyToMerge =
+        deps.gitHost && deps.repos && deps.repos.length > 0
+            ? await findReadyToMergePRs(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos)
+            : [];
+
     const inFlight = await rollupStatus(deps.taiRoot);
-    return { ready, inFlight };
+    return { ready, readyToMerge, inFlight };
 }

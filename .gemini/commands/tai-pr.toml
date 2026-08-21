@@ -39,12 +39,19 @@ the issue key you passed — it resolves that persona's identity from the issue'
 enforces `workOn`.
 
 - `create` — Dev subtask done, opens the real PR (source = the Story's branch, brief §6;
-  destination = the repo's default branch).
+  destination = the repo's default branch). `SOURCE_BRANCH` is validated against this
+  rule (TAI-107/108) — a branch named after a subtask's own key instead of the parent
+  Story/Bug's fails loudly rather than silently opening the PR anyway. Also
+  auto-links the new PR to whichever CodeReview subtask should review it (a Jira remote
+  issue link, brief §5.4) — no separate manual linking step needed anymore.
 - `review` — Code Reviewer subtask, approve or request changes on the real PR diff. This
   writes the PR only — also transition the Jira CodeReview subtask yourself as the second
   half of the review decision (`workflows/story.md`'s PR-backed checkpoint chain).
 - `merge` — Developer merges their own already-approved work once CodeReview passes; not
   self-certification, since the approval already happened as a separate persona action.
+  Gated on `GitHost.getCommitStatuses` being green first (brief §5.4, TAI-107/108) — a
+  red or missing CI status is reported as "Merge denied," the same shape as any other
+  merge rejection, without attempting the merge.
 
 If the command errors (unknown issue key, no persona assigned, or the persona isn't
 permitted to perform this `gitHost` action), report the error to the human rather than

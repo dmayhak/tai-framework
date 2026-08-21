@@ -703,6 +703,82 @@ export function defineStorageConformance(
                 }
             });
         });
+
+        // ---------- Issue <-> generic remote-URL linking (TAI-107/TAI-108) ----------
+
+        describe("WorkTracker.createRemoteLink / getRemoteLinks", () => {
+            it("creates a remote link and reads it back", async () => {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: remote link",
+                    })
+                );
+                await h.backend.workTracker.createRemoteLink(
+                    issue.key,
+                    "https://bitbucket.org/example/repo/pull-requests/1",
+                    "Example PR"
+                );
+                const links = await h.backend.workTracker.getRemoteLinks(issue.key);
+                assert.ok(
+                    links.some(
+                        (l) => l.url === "https://bitbucket.org/example/repo/pull-requests/1" && l.title === "Example PR"
+                    )
+                );
+            });
+
+            it("a second call for the same url updates the title in place rather than duplicating", async () => {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: remote link upsert",
+                    })
+                );
+                const url = "https://bitbucket.org/example/repo/pull-requests/2";
+                await h.backend.workTracker.createRemoteLink(issue.key, url, "Original title");
+                await h.backend.workTracker.createRemoteLink(issue.key, url, "Renamed title");
+
+                const links = await h.backend.workTracker.getRemoteLinks(issue.key);
+                const matching = links.filter((l) => l.url === url);
+                assert.equal(matching.length, 1, "the link must not be duplicated");
+                assert.equal(matching[0]?.title, "Renamed title");
+            });
+
+            it("getRemoteLinks on an issue with no remote links returns an empty array", async () => {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: no remote links",
+                    })
+                );
+                const links = await h.backend.workTracker.getRemoteLinks(issue.key);
+                assert.deepEqual([...links], []);
+            });
+
+            it("does not return a page link created via linkPage — different concepts, kept separate", async () => {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: remote link vs page link",
+                    })
+                );
+                const page = trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: `Conformance: unrelated linked doc ${Date.now()}`,
+                        content: "x",
+                    })
+                );
+                await h.backend.workTracker.linkPage(issue.key, page.id);
+
+                const links = await h.backend.workTracker.getRemoteLinks(issue.key);
+                assert.deepEqual([...links], []);
+            });
+        });
     });
 }
 

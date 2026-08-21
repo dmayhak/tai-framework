@@ -17,8 +17,10 @@
  * enough detail to act on, rather than picking one.
  */
 
-import type { GitHost, MergeStrategy, PullRequestId, RepoId } from "../git/interface.js";
+import type { CommitStatus, GitHost, MergeStrategy, PullRequestId, RepoId } from "../git/interface.js";
 import { toPullRequestId } from "../git/interface.js";
+import { DependencyRelation, SubtaskType } from "../schema/story-schema.js";
+import type { Issue, IssueKey, WorkTracker } from "../storage/interface.js";
 
 export async function resolvePullRequestId(
     gitHost: Pick<GitHost, "listPullRequests">,
@@ -38,6 +40,79 @@ export async function resolvePullRequestId(
         throw new Error(`Multiple open pull requests found for ${repo} — pass a PR-ID explicitly:\n${list}`);
     }
     return open[0]!.id;
+}
+
+// ---------- CI-status gating (TAI-107/TAI-108) ----------
+//
+// Brief §5.4: "Merge/Deploy -> GitHost.mergePullRequest, gated on GitHost.getCommitStatuses
+// being green first." Confirmed live (2026-08-20) that nothing in the codebase actually did
+// this — both this session's real merges (PR #16, #17) went through with zero CI check.
+
+/**
+ * "Green" per brief §5.4's merge gate: at least one status exists — a commit with zero
+ * statuses means the pipeline never ran (or this is the wrong commit), which must NOT read
+ * as "nothing to block on," same reasoning as `bitbucket-git-host.integration.test.ts`'s own
+ * live assertion that master's HEAD always has statuses once the pipeline exists — AND every
+ * one of them succeeded.
+ */
+export function isGreen(statuses: readonly CommitStatus[]): boolean {
+    return statuses.length > 0 && statuses.every((s) => s.state === "successful");
+}
+
+// ---------- PR <-> CodeReview subtask correlation (TAI-107/TAI-108) ----------
+
+/**
+ * Finds the CodeReview subtask that should review `issue`'s freshly-opened PR, so
+ * `WorkTracker.createRemoteLink` has something to link to — closes brief §5.4's "links the
+ * PR to the CodeReview subtask via a Jira remote issue link" step, previously a fully manual
+ * persona action every time (TAI-99, TAI-105 this session).
+ *
+ * Looks among `issue`'s siblings (same `parentKey`) for CodeReview subtasks. The common case
+ * (one CodeReview per Story, the static SUBTASK_PRECEDENCE default) resolves trivially. If
+ * more than one exists — an ad-hoc CodeReview added outside the template, exactly what
+ * TAI-105 was this session — disambiguates via the materialized `DependsOn` precedence link
+ * (a CodeReview subtask depends on the Dev/Test-tier subtask it reviews; `link-precedence`/
+ * TAI-98 already creates this edge for the templated case, and TAI-105's own ad-hoc edge was
+ * created the same way by hand).
+ *
+ * Returns `null` rather than throwing when no confident match exists — this correlation is a
+ * nice-to-have on top of PR creation, not a reason to fail the PR itself.
+ */
+export async function findCodeReviewSiblingForLink(
+    workTracker: Pick<WorkTracker, "search" | "getLinkedIssues">,
+    issue: Pick<Issue, "key" | "projectKey" | "parentKey">
+): Promise<IssueKey | null> {
+    if (!issue.parentKey) return null;
+    const siblings = await workTracker.search({ projectKey: issue.projectKey, parentKey: issue.parentKey });
+    const codeReviews = siblings.filter((s) => s.issueType === SubtaskType.CodeReview);
+    if (codeReviews.length === 0) return null;
+    if (codeReviews.length === 1) return codeReviews[0]!.key;
+
+    for (const cr of codeReviews) {
+        const deps = await workTracker.getLinkedIssues(cr.key, DependencyRelation.DependsOn, "outgoing");
+        if (deps.some((d) => d.key === issue.key)) return cr.key;
+    }
+    return null;
+}
+
+// ---------- Branch naming (TAI-107/TAI-108) ----------
+
+/**
+ * Validates brief §6's branching convention: a branch is named after the *parent* Story/Bug
+ * key, not a subtask's own key — "Subtasks accumulate onto their parent Story's branch."
+ * Found live (TAI-107): this session's own branches (`TAI-98-materialize-...`,
+ * `TAI-100-integration-test-...`) deviated from this, named after the subtask instead. The
+ * docs (`personas/developer.md`, `workflows/story.md`) already correctly reference §6 — this
+ * was an execution deviation, not a doc bug — so this check exists to catch a repeat, same
+ * "fail loudly, don't silently guess" posture as this file's argument parsing above.
+ */
+export function validateBranchName(sourceBranch: string, storyKey: IssueKey): void {
+    if (sourceBranch !== storyKey && !sourceBranch.startsWith(`${storyKey}-`)) {
+        throw new Error(
+            `Source branch "${sourceBranch}" should start with the parent Story/Bug's key "${storyKey}-" ` +
+                `per brief §6, not a subtask's own key — subtasks accumulate onto their parent Story's branch.`
+        );
+    }
 }
 
 // ---------- Argument parsing: `[PR-ID]` optional, but never guessed silently ----------

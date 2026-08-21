@@ -23,19 +23,26 @@
  * not a settled design; revisit if a real multi-project/multi-backend need shows up.
  */
 
-import { toHumanId, toIssueKey, type StorageBackend } from "../core/storage/interface.js";
+import { toHumanId, toIssueKey, type Issue, type StorageBackend } from "../core/storage/interface.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import { findReadyWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
-import { resolvePullRequestId, parseReviewArgs, parseMergeArgs } from "../core/commands/git-pr.js";
+import {
+    resolvePullRequestId,
+    parseReviewArgs,
+    parseMergeArgs,
+    isGreen,
+    findCodeReviewSiblingForLink,
+    validateBranchName,
+} from "../core/commands/git-pr.js";
 import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
-import { toRepoId, type GitMutationResult, type PullRequestRef } from "../core/git/interface.js";
+import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import type { Persona } from "../core/schema/story-schema.js";
 
 interface ResolvedConfig {
@@ -106,7 +113,7 @@ async function resolveConfig(): Promise<ResolvedConfig> {
 async function resolveGitHost(
     config: ResolvedConfig,
     issueKey: string
-): Promise<{ readonly gitHost: PersonaScopedGitHost; readonly personaId: string }> {
+): Promise<{ readonly gitHost: PersonaScopedGitHost; readonly personaId: string; readonly issue: Issue }> {
     const key = toIssueKey(issueKey);
     const issue = await config.backend.workTracker.getIssue(key);
     if (!issue) throw new Error(`${key}: no such issue.`);
@@ -120,17 +127,55 @@ async function resolveGitHost(
         auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")),
     });
 
-    return { gitHost: new PersonaScopedGitHost(backend.gitHost, personaConfig), personaId: personaConfig.id };
+    return { gitHost: new PersonaScopedGitHost(backend.gitHost, personaConfig), personaId: personaConfig.id, issue };
 }
 
-function renderPullRequestRef(pr: PullRequestRef, personaId: string): string {
-    return [
+/**
+ * Best-effort GitHost + repo list for `/tai-ready`'s PR-awareness path (TAI-107/108) —
+ * `undefined` (never a throw) when Bitbucket credentials or `TAI_GIT_REPOS` aren't
+ * configured, so `/tai-ready` keeps working with zero GitHost awareness exactly as it
+ * always has (same "only demanded where actually needed" posture as `resolveGitHost`).
+ *
+ * `TAI_GIT_REPOS` (comma-separated `workspace/repo` entries) rather than deriving repos
+ * from Jira's Component field: no Component->RepoId mapping exists anywhere in this
+ * codebase yet, and this project itself is single-repo — building that mapping is a
+ * separate need to solve if/when a real multi-repo project actually hits it (brief's own
+ * repeated "don't build ahead of an observed need" stance).
+ */
+function tryResolveReadyGitDeps(): { readonly gitHost: GitHost; readonly repos: readonly RepoId[] } | undefined {
+    const email = process.env["BITBUCKET_EMAIL"];
+    const token = process.env["BITBUCKET_API_TOKEN"];
+    const reposEnv = process.env["TAI_GIT_REPOS"];
+    if (!email || !token || !reposEnv) return undefined;
+
+    const repos = reposEnv
+        .split(",")
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0)
+        .map(toRepoId);
+    if (repos.length === 0) return undefined;
+
+    const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
+    return { gitHost: backend.gitHost, repos };
+}
+
+function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedCodeReviewKey?: string | null): string {
+    const lines = [
         `# PR ${pr.id} (as ${personaId})`,
         "",
         `**${pr.title}**`,
         `${pr.sourceBranch} → ${pr.destinationBranch} · ${pr.state}`,
         pr.url,
-    ].join("\n");
+    ];
+    if (linkedCodeReviewKey !== undefined) {
+        lines.push(
+            "",
+            linkedCodeReviewKey
+                ? `Linked to ${linkedCodeReviewKey} (CodeReview).`
+                : "Not linked to a CodeReview subtask — none could be confidently identified among this issue's siblings."
+        );
+    }
+    return lines.join("\n");
 }
 
 function renderGitMutationResult(result: GitMutationResult, personaId: string): string {
@@ -160,6 +205,12 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     } else {
         for (const issue of result.ready) {
             lines.push(`- **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`);
+        }
+    }
+    if (result.readyToMerge.length > 0) {
+        lines.push("", "## Approved PRs ready to merge", "");
+        for (const c of result.readyToMerge) {
+            lines.push(`- **${c.codeReviewKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`);
         }
     }
     if (result.inFlight.items.length > 0) {
@@ -201,7 +252,7 @@ async function main(): Promise<void> {
                     "if more than one is open, the error lists them so you can pass one explicitly."
             );
         }
-        const { gitHost, personaId } = await resolveGitHost(config, issueKey);
+        const { gitHost, personaId, issue } = await resolveGitHost(config, issueKey);
         const repo = toRepoId(repoArg);
 
         if (action === "create") {
@@ -211,6 +262,10 @@ async function main(): Promise<void> {
                     "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]"
                 );
             }
+            // Brief §6: a branch is named after the parent Story/Bug, not the subtask
+            // opening the PR — TAI-107 found this session's own branches had deviated.
+            validateBranchName(sourceBranch, issue.parentKey ?? issue.key);
+
             const pr = await gitHost.createPullRequest({
                 repo,
                 title,
@@ -218,7 +273,17 @@ async function main(): Promise<void> {
                 destinationBranch,
                 ...(description ? { description } : {}),
             });
-            console.log(renderPullRequestRef(pr, personaId));
+
+            // TAI-107/108: close brief §5.4's "links the PR to the CodeReview subtask via a
+            // Jira remote issue link" step in code — previously a fully manual persona
+            // action every time. Best-effort: a PR that can't be confidently correlated to
+            // one CodeReview subtask still gets created; only the link is skipped.
+            const codeReviewKey = await findCodeReviewSiblingForLink(config.backend.workTracker, issue);
+            if (codeReviewKey) {
+                await config.backend.workTracker.createRemoteLink(codeReviewKey, pr.url, pr.title);
+            }
+
+            console.log(renderPullRequestRef(pr, personaId, codeReviewKey));
             return;
         }
 
@@ -233,6 +298,26 @@ async function main(): Promise<void> {
         if (action === "merge") {
             const { prIdArg, strategy } = parseMergeArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+
+            // Brief §5.4: merge is "gated on GitHost.getCommitStatuses being green first" —
+            // confirmed live (TAI-107) this was never actually checked anywhere; both this
+            // session's real merges (PR #16, #17) went through with zero CI check.
+            const pr = await gitHost.getPullRequest(repo, prId);
+            if (!pr) throw new Error(`PR ${prId} not found on ${repo}.`);
+            const statuses = await gitHost.getCommitStatuses(repo, pr.sourceCommit);
+            if (!isGreen(statuses)) {
+                const result: GitMutationResult = {
+                    ok: false,
+                    reason: `CI status not green for ${pr.sourceCommit} — ${
+                        statuses.length === 0
+                            ? "no commit statuses found (pipeline never ran, or wrong commit)"
+                            : statuses.map((s) => `${s.key}: ${s.state}`).join(", ")
+                    }.`,
+                };
+                console.log(renderGitMutationResult(result, personaId));
+                return;
+            }
+
             const result = await gitHost.mergePullRequest(repo, prId, strategy);
             console.log(renderGitMutationResult(result, personaId));
             return;
@@ -258,8 +343,14 @@ async function main(): Promise<void> {
 
     if (subcommand === "ready") {
         const persona = arg as Persona | undefined;
+        const gitDeps = tryResolveReadyGitDeps();
         const result = await findReadyWork(
-            { workTracker: config.backend.workTracker, taiRoot: config.taiRoot, projectKey: config.projectKey },
+            {
+                workTracker: config.backend.workTracker,
+                taiRoot: config.taiRoot,
+                projectKey: config.projectKey,
+                ...(gitDeps ?? {}),
+            },
             persona
         );
         console.log(renderReadyWork(result, arg));
