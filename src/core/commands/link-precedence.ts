@@ -33,7 +33,7 @@ import {
     type StoryType,
     type SubtaskType,
 } from "../schema/story-schema.js";
-import { toIssueKey, type IssueKey, type WorkTracker } from "../storage/interface.js";
+import { toIssueKey, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 
 export interface PrecedenceLinkResult {
     readonly before: SubtaskType;
@@ -41,6 +41,65 @@ export interface PrecedenceLinkResult {
     readonly beforeKey: IssueKey;
     readonly afterKey: IssueKey;
     readonly created: boolean; // false = the Blocks link already existed, left untouched
+}
+
+export interface MaterializePrecedenceLinksResult {
+    readonly results: readonly PrecedenceLinkResult[];
+    /** Non-null when the subtask count returned by `search()` was still changing across
+     *  every retry attempt — see `ConsistencyRetryOptions` below. A persona seeing this
+     *  should re-run `link-precedence` rather than assume `results` reflects every
+     *  subtask that was actually created. */
+    readonly warning: string | null;
+}
+
+/**
+ * `attempts`/`delayMs` for the eventual-consistency retry below (TAI-118). Jira Cloud's
+ * search index is eventually consistent — a subtask created moments ago can be briefly
+ * invisible to `search()` (confirmed live, TAI-100: first poll empty, second poll ~5s
+ * later saw both). `link-precedence` is explicitly meant to be run once, immediately
+ * after front-loading a story's subtask set (TAI-96's own scope note) — exactly the
+ * window this lag hits. `attempts: 1` (the default) is today's original one-shot
+ * behavior, unchanged for any caller that doesn't opt in.
+ */
+export interface ConsistencyRetryOptions {
+    readonly attempts?: number;
+    readonly delayMs?: number;
+}
+
+const DEFAULT_RETRY: Required<ConsistencyRetryOptions> = { attempts: 1, delayMs: 0 };
+
+/**
+ * Polls `search()` for `storyKey`'s subtasks, retrying while the returned count keeps
+ * changing between consecutive polls (evidence the search index hasn't caught up yet) —
+ * mirrors `link-precedence.integration.test.ts`'s own `waitForSubtasks` wait pattern, but
+ * without that test's luxury of knowing an expected count up front: this stops as soon as
+ * two consecutive polls agree, rather than waiting for a specific target. If the count is
+ * still changing when `attempts` is exhausted, the last poll's result is used anyway
+ * (best effort) and a warning is returned instead of silently claiming completeness.
+ */
+async function searchSubtasksWithRetry(
+    workTracker: Pick<WorkTracker, "search">,
+    projectKey: string,
+    storyKey: IssueKey,
+    retryOptions?: ConsistencyRetryOptions
+): Promise<{ subtasks: readonly Issue[]; warning: string | null }> {
+    const { attempts, delayMs } = { ...DEFAULT_RETRY, ...retryOptions };
+
+    let previous = await workTracker.search({ projectKey, parentKey: storyKey });
+    for (let attempt = 1; attempt < attempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        const current = await workTracker.search({ projectKey, parentKey: storyKey });
+        if (current.length === previous.length) return { subtasks: current, warning: null };
+        previous = current;
+    }
+    const warning =
+        attempts > 1
+            ? `Subtask count under ${storyKey} was still changing across ${attempts} search() polls — Jira's ` +
+              `search index can be eventually consistent right after subtask creation (TAI-100/TAI-118). Some ` +
+              `precedence links may not have been materialized — re-run link-precedence for ${storyKey} to catch ` +
+              `any that were missed.`
+            : null;
+    return { subtasks: previous, warning };
 }
 
 /**
@@ -52,16 +111,21 @@ export interface PrecedenceLinkResult {
  */
 export async function materializePrecedenceLinks(
     workTracker: WorkTracker,
-    storyKey: IssueKey
-): Promise<readonly PrecedenceLinkResult[]> {
+    storyKey: IssueKey,
+    retryOptions?: ConsistencyRetryOptions
+): Promise<MaterializePrecedenceLinksResult> {
     const story = await workTracker.getIssue(storyKey);
     if (!story || !isStoryIssueType(story.issueType)) {
         throw new Error(`${storyKey} is not a Story-level ticket — no SUBTASK_PRECEDENCE graph applies.`);
     }
 
-    const subtasks = (
-        await workTracker.search({ projectKey: story.projectKey, parentKey: storyKey })
-    ).filter((s) => isSubtaskIssueType(s.issueType));
+    const { subtasks: found, warning } = await searchSubtasksWithRetry(
+        workTracker,
+        story.projectKey,
+        storyKey,
+        retryOptions
+    );
+    const subtasks = found.filter((s) => isSubtaskIssueType(s.issueType));
 
     // A story instance has at most one subtask of a given fixed-owner type present
     // (brief §5.3) — first-seen wins in the pathological case that's ever violated,
@@ -86,7 +150,7 @@ export async function materializePrecedenceLinks(
         }
         results.push({ before: edge.before, after: edge.after, beforeKey, afterKey, created });
     }
-    return results;
+    return { results, warning };
 }
 
 export interface ResolvedStoryDependency {

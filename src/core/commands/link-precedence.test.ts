@@ -50,8 +50,9 @@ describe("materializePrecedenceLinks", () => {
                 parentKey: story.key,
             });
 
-            const results = await materializePrecedenceLinks(backend.workTracker, story.key);
+            const { results, warning } = await materializePrecedenceLinks(backend.workTracker, story.key);
 
+            assert.equal(warning, null);
             assert.ok(results.every((r) => r.created));
             assert.ok(
                 results.some((r) => r.beforeKey === dev.key && r.afterKey === codeReview.key),
@@ -94,10 +95,10 @@ describe("materializePrecedenceLinks", () => {
             });
 
             const first = await materializePrecedenceLinks(backend.workTracker, story.key);
-            assert.ok(first.every((r) => r.created));
+            assert.ok(first.results.every((r) => r.created));
 
             const second = await materializePrecedenceLinks(backend.workTracker, story.key);
-            assert.ok(second.every((r) => !r.created));
+            assert.ok(second.results.every((r) => !r.created));
 
             const deps = await backend.workTracker.getLinkedIssues(codeReview.key, DependencyRelation.DependsOn, "outgoing");
             assert.deepEqual(
@@ -123,8 +124,9 @@ describe("materializePrecedenceLinks", () => {
                 parentKey: story.key,
             });
 
-            const results = await materializePrecedenceLinks(backend.workTracker, story.key);
+            const { results, warning } = await materializePrecedenceLinks(backend.workTracker, story.key);
             assert.deepEqual(results, []);
+            assert.equal(warning, null);
         });
     });
 
@@ -150,6 +152,94 @@ describe("materializePrecedenceLinks", () => {
     test("throws when the key doesn't exist", async () => {
         await withBackend(async (backend) => {
             await assert.rejects(() => materializePrecedenceLinks(backend.workTracker, toIssueKey("TAI-99999")));
+        });
+    });
+
+    test("retries when search() is still converging, and stops once two consecutive polls agree (TAI-118)", async () => {
+        await withBackend(async (backend) => {
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Story",
+            });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Dev",
+                persona: Persona.Developer,
+                parentKey: story.key,
+            });
+            const codeReview = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.CodeReview,
+                summary: "CodeReview",
+                persona: Persona.CodeReviewer,
+                parentKey: story.key,
+            });
+
+            // Simulates the real Jira lag: poll 1 only sees `dev` (undercounted), poll 2
+            // sees both (correct), poll 3 agrees with poll 2 — convergence is only
+            // *confirmed* once two consecutive polls agree, so this takes 3 calls: poll 2
+            // being different from poll 1 still counts as "unstable," poll 3 matching
+            // poll 2 is what actually stops the loop.
+            let call = 0;
+            const flaky = {
+                ...backend.workTracker,
+                search: async (filter: Parameters<typeof backend.workTracker.search>[0]) => {
+                    call++;
+                    const real = await backend.workTracker.search(filter);
+                    return call === 1 ? real.filter((i) => i.key === dev.key) : real;
+                },
+            };
+
+            const { results, warning } = await materializePrecedenceLinks(flaky, story.key, {
+                attempts: 4,
+                delayMs: 0,
+            });
+
+            assert.equal(warning, null, "should stop retrying once two consecutive polls agree, not exhaust attempts");
+            assert.equal(call, 3, "should have stopped once poll 3 confirmed poll 2's count, not exhausted all 4 attempts");
+            assert.ok(
+                results.some((r) => r.beforeKey === dev.key && r.afterKey === codeReview.key && r.created),
+                "the edge should still be created once the retry converges"
+            );
+        });
+    });
+
+    test("returns a warning when search() never stabilizes within the retry budget (TAI-118)", async () => {
+        await withBackend(async (backend) => {
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Story",
+            });
+            await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Dev",
+                persona: Persona.Developer,
+                parentKey: story.key,
+            });
+
+            // Every poll reports a different (ever-growing) count -- never converges.
+            let call = 0;
+            const neverStable = {
+                ...backend.workTracker,
+                search: async (filter: Parameters<typeof backend.workTracker.search>[0]) => {
+                    call++;
+                    const real = await backend.workTracker.search(filter);
+                    return call % 2 === 1 ? real : [];
+                },
+            };
+
+            const { warning } = await materializePrecedenceLinks(neverStable, story.key, {
+                attempts: 3,
+                delayMs: 0,
+            });
+
+            assert.match(warning ?? "", /still changing/);
+            assert.match(warning ?? "", /re-run link-precedence/);
+            assert.equal(call, 3, "should have exhausted the full retry budget before giving up");
         });
     });
 });
