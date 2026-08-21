@@ -128,6 +128,26 @@ export function validateBranchName(sourceBranch: string, storyKey: IssueKey): vo
     }
 }
 
+/**
+ * Validates that a PR title is tied to its parent Story/Bug first, subtask second (TAI-112) —
+ * required prefix `"<storyKey> - <subtaskKey> - "` when `git-pr create` was invoked against a
+ * subtask (`subtaskKey` non-null), or just `"<storyKey> - "` when invoked directly against a
+ * Story/Bug/Epic key with no subtask (e.g. PM/Architect's own governance-content PRs). Found
+ * live: the 10 merged PRs preceding this ticket used neither convention consistently — some
+ * titled by subtask key alone, some by Story key alone. Same validate-only, fail-loudly
+ * posture as `validateBranchName` above — the persona still writes the title, this only
+ * rejects a malformed one rather than silently constructing/correcting it.
+ */
+export function validatePrTitle(title: string, storyKey: IssueKey, subtaskKey: IssueKey | null): void {
+    const requiredPrefix = subtaskKey ? `${storyKey} - ${subtaskKey} - ` : `${storyKey} - `;
+    if (!title.startsWith(requiredPrefix)) {
+        throw new Error(
+            `PR title "${title}" should start with "${requiredPrefix}" — PRs are tied to their parent ` +
+                `Story/Bug first, subtask second, per brief §6.`
+        );
+    }
+}
+
 // ---------- Argument parsing: `[PR-ID]` optional, but never guessed silently ----------
 //
 // Gemini CLI review of this Story's own first pass (PR #15) found a real safety hazard:

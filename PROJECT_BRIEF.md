@@ -4,7 +4,26 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-20 (rev 49 — **§8 item 29: new open question — a human-
+> **Last updated:** 2026-08-20 (rev 50 — **§3.1/§6: PM/Architect granted
+> `createPullRequest`, plus a Story-first PR title convention.** TAI-112 (found live while
+> landing standalone documentation-only PRs, PR #18/#21): PM and Architect held zero
+> `gitHost` grants, so landing framework-governance content (persona docs, this file itself)
+> meant borrowing an unrelated Dev subtask's key purely to get `createPullRequest`
+> permission — which then made `git-pr create`'s auto-linker (rev 48/TAI-108) wrongly
+> attach the new PR to that subtask's real CodeReview sibling. **Decided, after the user
+> questioned the first proposed fix (a `--no-link` flag) as "hacky":** grant PM/Architect
+> their own narrow `gitHost: [createPullRequest]` instead — same asymmetry as Tester (rev
+> 48), never paired with `mergePullRequest`. Verified in code this also structurally
+> prevents the false-linking bug for free: `findCodeReviewSiblingForLink` already bails out
+> on any key without a `parentKey`, and a Story/Bug/Epic key never has one. **Also decided
+> in the same pass:** PR titles must be tied to the parent Story/Bug first, subtask second —
+> checked the 10 PRs preceding this ticket and found neither convention actually followed
+> consistently (some subtask-keyed, some Story-keyed). New `validatePrTitle` (mirroring
+> `validateBranchName`'s validate-only posture) requires `<StoryKey> - <SubtaskKey> - ` or,
+> with no subtask, `<StoryKey> - `. `personas/pm.md`/`architect.md` gained the grant;
+> `config.test.ts`'s gitHost-grant-matrix test and `.gemini/commands/tai-pr.toml` updated to
+> match.
+> Prior: rev 49 — **§8 item 29: new open question — a human-
 > requested review override, raisable at any stage in the chain.** User direction while
 > TAI-111's review was in flight: at any point (Architect, Analyst, Dev, CodeReview,
 > DesignReview, ...), someone — most likely a human — should be able to flag a task/Story
@@ -1273,6 +1292,13 @@ comment's content.
   (e.g. `PROJ-123-user-login`).
 - **Subtasks accumulate** onto their parent Story's branch; they do not get their own
   branches.
+- **PR title (rev 50, TAI-112): tied to the parent Story/Bug first, subtask second** —
+  `<StoryKey> - <SubtaskKey> - <description>` when `git-pr create` is invoked against a
+  subtask, or `<StoryKey> - <description>` when invoked directly against a Story/Bug/Epic
+  key with no subtask (e.g. a PM/Architect governance-content PR). Enforced by
+  `validatePrTitle` (`src/core/commands/git-pr.ts`), same validate-only/fail-loudly posture
+  as branch-name validation above — the persona still writes the title, the framework only
+  rejects a malformed one.
 - **Branching strategies** (from GSD): `none` (commit to current branch), per-unit branch,
   and a milestone-style long-lived branch — configurable.
 - **Git worktrees** for parallel isolation, so switching between tickets doesn't require

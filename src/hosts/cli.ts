@@ -37,6 +37,7 @@ import {
     isGreen,
     findCodeReviewSiblingForLink,
     validateBranchName,
+    validatePrTitle,
 } from "../core/commands/git-pr.js";
 import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
@@ -265,6 +266,9 @@ async function main(): Promise<void> {
             // Brief §6: a branch is named after the parent Story/Bug, not the subtask
             // opening the PR — TAI-107 found this session's own branches had deviated.
             validateBranchName(sourceBranch, issue.parentKey ?? issue.key);
+            // TAI-112: the PR title is tied to the parent Story/Bug first, subtask second —
+            // the 10 PRs preceding this ticket used neither convention consistently.
+            validatePrTitle(title, issue.parentKey ?? issue.key, issue.parentKey ? issue.key : null);
 
             const pr = await gitHost.createPullRequest({
                 repo,
