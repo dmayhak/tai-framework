@@ -9,13 +9,15 @@
  * session. This CLI's whole job is to print an assembled prompt (persona instructions +
  * briefing, or the ready-work list) to stdout; each host's own thin wrapper is what turns
  * that stdout into the session's next turn — no new invocation mechanism on top of that,
- * and no host-specific logic in this file itself:
- *   - Claude Code: `.claude/commands/tai_work.md`/`tai_ready.md` — markdown instructing
- *     the agent to run this script via its own `Bash` tool and read the output.
- *   - Gemini CLI: `.gemini/commands/tai_work.toml`/`tai_ready.toml` — `!{...}` shell
- *     injection, where the harness itself pre-executes this script and substitutes its
- *     stdout into the prompt before the model sees it (TAI-67 feasibility assessment,
- *     Confluence TA space page 18317313).
+ * and no host-specific logic in this file itself.
+ *
+ * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
+ * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`), installed
+ * once via `install-global` (below) rather than generated per-project as
+ * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
+ * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
+ * project the host happens to be running in — see `core/commands/install-global.ts`.
  *
  * Backend construction (which storage backend, from what credentials) is deliberately
  * minimal and env-var driven — nothing in the brief or either ADR (TAI-51/TAI-56/TAI-61)
@@ -38,6 +40,7 @@ import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import { findReadyWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
+import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
 import {
     resolvePullRequestId,
     parseReviewArgs,
@@ -283,7 +286,29 @@ function renderIssueRef(issue: Issue): string {
 async function main(): Promise<void> {
     loadDotEnv();
     const [, , subcommand, arg, ...rest] = process.argv;
-    const config = await resolveConfig();
+
+    // TAI-126: install-global runs before resolveConfig() -- it's a bootstrap step for
+    // TAI itself (writing global skill files), not a project-scoped operation, so it must
+    // not require TAI_PROJECT_KEY/.env to already exist. Every other subcommand below
+    // does need real project config, per resolveConfig()'s own required env vars.
+    if (subcommand === "install-global") {
+        const taiHome = arg ?? defaultTaiHome();
+        const result = await installGlobal(taiHome);
+        console.log(
+            `# Global skills installed\n\ntaiHome: ${result.taiHome}\n\n` +
+                result.written.map((p) => `- ${p}`).join("\n")
+        );
+        return;
+    }
+
+    // TAI-126: any missing required env var here means this project hasn't been
+    // initialized for TAI yet (or init didn't finish) -- surface that plainly rather than
+    // a bare "Missing required environment variable X", so a persona/human hitting this
+    // knows to run /tai-init rather than guessing which env var to hand-add.
+    const config = await resolveConfig().catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`${message}\n\nThis project doesn't look initialized for TAI yet -- run /tai-init first.`);
+    });
 
     if (subcommand === "git-pr") {
         const [action, issueKey, repoArg, ...gitArgs] = [arg, ...rest];
@@ -523,7 +548,7 @@ async function main(): Promise<void> {
 
     throw new Error(
         `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link ... | page create|link ...`
+            `| issue create|transition|comment|link ... | page create|link ... | install-global [TAI-HOME]`
     );
 }
 
