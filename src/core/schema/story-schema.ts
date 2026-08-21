@@ -434,6 +434,36 @@ export function isSubtaskReady(
     return applicable.every((rule) => doneSubtaskTypes.has(rule.before));
 }
 
+// ---------- D5: Bug expedited-path test-tier compression (TAI-119) ----------
+
+/** Native Jira Priority value treated as "Priority=1 (Urgent/Emergency)" for D5's
+ *  purposes — the highest of Jira Cloud's default 5-level scheme (Highest/High/Medium/
+ *  Low/Lowest), confirmed live against this site (`priority = Highest` is a valid JQL
+ *  value here); not a new custom field. */
+export const EXPEDITED_BUG_PRIORITY = "Highest";
+
+/**
+ * D5's Bug expedited-path recommendation (`workflows/bug.md` "Expedited Path"): a
+ * `Priority=1` (Urgent/Emergency) Bug compresses its test tiers down to just
+ * `IntegrationTest`, skipping `SystemTest`/`E2ETest`. This is *guidance* consulted at
+ * subtask-creation time (Triage) — brief's own "overridable by whoever triages" phrasing
+ * only makes sense as a creation-time recommendation, not a hard resolver-level gate.
+ * `SUBTASK_PRECEDENCE`/`resolveApplicablePrecedence`/`isSubtaskReady` are deliberately
+ * NOT made priority-aware: "whether a given tier applies at all remains a per-instance
+ * judgment call by whoever adds it" (this file's own design notes above) already handles
+ * compression correctly once `SystemTest`/`E2ETest` simply aren't created — the resolver
+ * doesn't need to know why a subtask type is absent.
+ *
+ * `CodeReview` and `Deploy`/`PostDeploy` are unaffected — they stay mandatory regardless
+ * of priority and aren't test tiers at all.
+ */
+export function defaultTestTiersForBug(priority: string | null | undefined): readonly SubtaskType[] {
+    if (priority === EXPEDITED_BUG_PRIORITY) {
+        return [SubtaskType.IntegrationTest];
+    }
+    return [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest];
+}
+
 // ---------- Dynamic Subtask Insertion ----------
 
 // Stories don't always ship with their full subtask set upfront. e.g.
@@ -533,11 +563,12 @@ export const REVIEW_GATES: ReviewGate[] = [
  *   (Urgent/Emergency) compresses its test tiers down to just IntegrationTest
  *   (SystemTest/E2ETest skipped, overridable by whoever triages) — CodeReview
  *   and Deploy/PostDeploy stay mandatory regardless of priority. Uses the
- *   existing Priority field, not a new custom severity field. NOT YET
- *   IMPLEMENTED in the resolver functions below, which are still
- *   priority-unaware — the D12 sequential ordering below means "skip
- *   SystemTest/E2ETest" now just means not creating those subtasks at all,
- *   rather than needing a separate conditionality mechanism.
+ *   existing Priority field, not a new custom severity field. **Implemented
+ *   (TAI-119):** `defaultTestTiersForBug()` below — guidance consulted at
+ *   subtask-creation time (Triage), not a resolver-level gate; the D12
+ *   sequential ordering means "skip SystemTest/E2ETest" already just means
+ *   not creating those subtasks, so `SUBTASK_PRECEDENCE`/
+ *   `resolveApplicablePrecedence`/`isSubtaskReady` needed no changes.
  * - Test tiers (D12): IntegrationTest -> SystemTest -> E2ETest run
  *   SEQUENTIALLY by default, cheapest/fastest tier first, not in parallel off
  *   CodeReview as originally modeled. Whether a given tier applies to a
@@ -573,11 +604,6 @@ export const REVIEW_GATES: ReviewGate[] = [
  *    automated test failures. A rejected UAT CAN reopen a Requirements task, not
  *    only Dev; the trigger/authority mechanism falls out of the persona-capability
  *    design (what each persona may do or cause) and is settled there.
- * 2. D5's priority-based compression (skip SystemTest/E2ETest on Priority=1
- *    Bugs) still needs actual implementation in the resolver functions, which
- *    are priority-unaware today — the D12 sequencing decision above doesn't
- *    implement this by itself, just makes it simpler (no separate
- *    conditionality mechanism needed once tiers are already ordered).
  *
  * RESOLVED (D9, added to history above): output taxonomy — what each
  * story/subtask type produces — is intentionally NOT formalized as a schema

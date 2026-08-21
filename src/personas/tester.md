@@ -102,7 +102,11 @@ owns.
 2. **Bug entry point:** Given a reported issue, owns `Triage` — confirms reproduction,
    assesses severity, identifies likely root cause — before the ticket proceeds to Dev.
    If root cause isn't clear from Triage alone, a `SpikeTask` subtask can be added for
-   deeper investigation (see `workflows/bug.md`).
+   deeper investigation (see `workflows/bug.md`). When deciding which test-tier subtasks
+   to create, consult `defaultTestTiersForBug(priority)` (`story-schema.ts`, TAI-119) —
+   for a Priority=Highest Bug it recommends `IntegrationTest` only, per the Expedited
+   Path (`workflows/bug.md`); Tessa can still override and add `SystemTest`/`E2ETest` if
+   the recommendation genuinely doesn't fit this fix.
 3. **UAT (human-gated):** When a Story/Bug carries an optional `UAT` subtask, Tessa
    authors the acceptance scenarios and drives the session, but **a human stakeholder
    signs off** — `UAT` is inherently human-gated (brief §3.3) and never autocompletes.
