@@ -225,6 +225,21 @@ describe("findCodeReviewSiblingForLink", () => {
         assert.equal(await findCodeReviewSiblingForLink(wt, dev), codeReview.key);
     });
 
+    it("REGRESSION (live bug, TAI-110): a sole CodeReview sibling already claimed by a DIFFERENT subtask must not be returned as a false match", async () => {
+        const test = issueFixture({ key: toIssueKey("TAI-100"), issueType: SubtaskType.IntegrationTest, parentKey: story });
+        // TAI-109's real shape: the only CodeReview subtask under the Story, but its
+        // DependsOn link points at TAI-108 (Dev), not `test` (an IntegrationTest sibling
+        // with no CodeReview subtask of its own) — asking on behalf of `test` must get
+        // null, not TAI-109's key, even though it's the sole CodeReview candidate present.
+        const claimedByDev = issueFixture({ key: toIssueKey("TAI-109"), issueType: SubtaskType.CodeReview, parentKey: story });
+        const wt = new FakeSearchLinksWorkTracker(
+            [dev, test, claimedByDev],
+            new Map([[claimedByDev.key, [{ relation: DependencyRelation.DependsOn, key: dev.key }]]])
+        );
+        assert.equal(await findCodeReviewSiblingForLink(wt, test), null);
+        assert.equal(await findCodeReviewSiblingForLink(wt, dev), claimedByDev.key);
+    });
+
     it("disambiguates via the DependsOn precedence link when multiple CodeReview siblings exist (TAI-105's own case)", async () => {
         const test = issueFixture({ key: toIssueKey("TAI-100"), issueType: SubtaskType.IntegrationTest, parentKey: story });
         const crForDev = issueFixture({ key: toIssueKey("TAI-99"), issueType: SubtaskType.CodeReview, parentKey: story });
