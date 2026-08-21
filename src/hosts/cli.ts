@@ -223,7 +223,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     return lines.join("\n");
 }
 
-function renderPrecedenceLinkResults(results: Awaited<ReturnType<typeof materializePrecedenceLinks>>): string {
+function renderPrecedenceLinkResults({ results, warning }: Awaited<ReturnType<typeof materializePrecedenceLinks>>): string {
     const lines: string[] = ["# Precedence links", ""];
     if (results.length === 0) {
         lines.push("No applicable precedence edges — either this story has fewer than two of the " +
@@ -233,6 +233,9 @@ function renderPrecedenceLinkResults(results: Awaited<ReturnType<typeof material
             const verb = r.created ? "created" : "already existed";
             lines.push(`- ${r.afterKey} depends on ${r.beforeKey} (${r.after} after ${r.before}) — ${verb}`);
         }
+    }
+    if (warning) {
+        lines.push("", `**Warning:** ${warning}`);
     }
     return lines.join("\n");
 }
@@ -363,8 +366,16 @@ async function main(): Promise<void> {
 
     if (subcommand === "link-precedence") {
         if (!arg) throw new Error("Usage: link-precedence <STORY-KEY>");
-        const results = await materializePrecedenceLinks(config.backend.workTracker, toIssueKey(arg));
-        console.log(renderPrecedenceLinkResults(results));
+        // TAI-118: link-precedence is explicitly meant to be run immediately after
+        // front-loading a story's subtask set — exactly the window where Jira Cloud's
+        // eventually-consistent search index can still be missing a just-created subtask.
+        // Opt into the retry here (unit tests exercising materializePrecedenceLinks
+        // directly still default to the original one-shot behavior).
+        const result = await materializePrecedenceLinks(config.backend.workTracker, toIssueKey(arg), {
+            attempts: 4,
+            delayMs: 3000,
+        });
+        console.log(renderPrecedenceLinkResults(result));
         return;
     }
 
