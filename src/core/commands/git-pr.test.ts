@@ -28,6 +28,7 @@ import {
     isGreen,
     findCodeReviewSiblingForLink,
     validateBranchName,
+    validatePrTitle,
 } from "./git-pr.js";
 
 function prFixture(overrides: Partial<PullRequestRef>): PullRequestRef {
@@ -283,5 +284,39 @@ describe("validateBranchName", () => {
 
     it("hyphen-anchors the prefix check — TAI-9 is not treated as a valid prefix of TAI-96's branch", () => {
         assert.throws(() => validateBranchName("TAI-96-foo", toIssueKey("TAI-9")));
+    });
+});
+
+describe("validatePrTitle", () => {
+    const story = toIssueKey("TAI-112");
+    const subtask = toIssueKey("TAI-113");
+
+    it("passes when the title starts with 'Story - Subtask - description'", () => {
+        assert.doesNotThrow(() => validatePrTitle("TAI-112 - TAI-113 - some description", story, subtask));
+    });
+
+    it("passes when the title starts with 'Story - description' and there's no subtask", () => {
+        assert.doesNotThrow(() => validatePrTitle("TAI-112 - some description", story, null));
+    });
+
+    it("throws when titled by subtask key alone (this ticket's own motivating pattern)", () => {
+        assert.throws(
+            () => validatePrTitle("TAI-113: some description", story, subtask),
+            /should start with "TAI-112 - TAI-113 - "/
+        );
+    });
+
+    it("throws when titled by Story key alone but a subtask was actually passed", () => {
+        assert.throws(
+            () => validatePrTitle("TAI-112: some description", story, subtask),
+            /should start with "TAI-112 - TAI-113 - "/
+        );
+    });
+
+    it("passes for a bare-Story-key PR even if the description happens to mention another key", () => {
+        // Prefix-only check, by design (same posture as validateBranchName) — this isn't
+        // testing for a false positive, just documenting that only the required prefix is
+        // enforced, not the rest of the title's content.
+        assert.doesNotThrow(() => validatePrTitle("TAI-112 - TAI-113 - some description", story, null));
     });
 });

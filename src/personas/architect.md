@@ -29,6 +29,15 @@ permissions:
     - Story.technicalNotes
     - Epic.technicalRisk
     - Story.designReviewNotes
+  gitHost:
+    - createPullRequest           # TAI-112 — same grant/reasoning as personas/pm.md: framework-
+                                   # governance content is real repo content Aria/Perry are the
+                                   # natural owners of, and the prior zero-grant state meant
+                                   # borrowing an unrelated Dev subtask's key just for permission,
+                                   # which then caused git-pr create's auto-linker to wrongly
+                                   # attach the new PR to that subtask's real CodeReview sibling
+                                   # (live, PR #18/#21). NOT paired with mergePullRequest -- no
+                                   # self-merge for Architect either.
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 

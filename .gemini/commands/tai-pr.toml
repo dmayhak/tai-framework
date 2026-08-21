@@ -41,7 +41,11 @@ enforces `workOn`.
 - `create` — Dev subtask done, opens the real PR (source = the Story's branch, brief §6;
   destination = the repo's default branch). `SOURCE_BRANCH` is validated against this
   rule (TAI-107/108) — a branch named after a subtask's own key instead of the parent
-  Story/Bug's fails loudly rather than silently opening the PR anyway. Also
+  Story/Bug's fails loudly rather than silently opening the PR anyway. `TITLE` is
+  validated too (TAI-112): it must start with `<StoryKey> - <SubtaskKey> - ` when
+  `<ISSUE-KEY>` is a subtask, or just `<StoryKey> - ` when `<ISSUE-KEY>` is itself a
+  Story/Bug (e.g. a PM/Architect governance-content PR with no owning subtask) — write
+  the title yourself with that prefix, it is not constructed for you. Also
   auto-links the new PR to whichever CodeReview subtask should review it (a Jira remote
   issue link, brief §5.4) — no separate manual linking step needed anymore.
 - `review` — Code Reviewer subtask, approve or request changes on the real PR diff. This

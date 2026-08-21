@@ -47,6 +47,17 @@ permissions:
     - Epic.priority
   approve:
     - KickoffReviewGate          # joint sign-off with UX Designer — neither approves alone
+  gitHost:
+    - createPullRequest           # TAI-112 — framework-governance content (persona docs,
+                                   # PROJECT_BRIEF.md itself) is real repo content Perry/Aria
+                                   # are the natural owners of, but neither held any gitHost
+                                   # grant at all, so landing it meant borrowing an unrelated
+                                   # Dev subtask's key purely for permission -- which then
+                                   # caused git-pr create's auto-linker to wrongly attach the
+                                   # new PR to that subtask's real CodeReview sibling (live,
+                                   # PR #18/#21). Decided: grant it directly, same asymmetry
+                                   # as Tester/Developer -- NOT paired with mergePullRequest,
+                                   # no self-merge for PM either.
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 

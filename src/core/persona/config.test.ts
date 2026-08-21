@@ -284,7 +284,12 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         // way to land their own code — granted createPullRequest only, NOT mergePullRequest
         // (no self-merge for Tester; still goes through CodeReview like everyone else).
         assert.deepEqual([...configs.get("tester")!.permissions.gitHost], ["createPullRequest"]);
-        for (const id of ["analyst", "architect", "dba", "pm", "ux-designer"]) {
+        // PM/Architect (TAI-112): framework-governance content (persona docs, PROJECT_BRIEF.md
+        // itself) is real repo content they're the natural owners of — granted createPullRequest
+        // only, NOT mergePullRequest (no self-merge for either, same asymmetry as Tester).
+        assert.deepEqual([...configs.get("pm")!.permissions.gitHost], ["createPullRequest"]);
+        assert.deepEqual([...configs.get("architect")!.permissions.gitHost], ["createPullRequest"]);
+        for (const id of ["analyst", "dba", "ux-designer"]) {
             assert.deepEqual(configs.get(id)!.permissions.gitHost, [], `${id} should have no gitHost grants`);
         }
     });
