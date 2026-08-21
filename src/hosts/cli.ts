@@ -23,7 +23,15 @@
  * not a settled design; revisit if a real multi-project/multi-backend need shows up.
  */
 
-import { toHumanId, toIssueKey, type Issue, type StorageBackend } from "../core/storage/interface.js";
+import {
+    toHumanId,
+    toIssueKey,
+    toPageId,
+    type CreateIssueInput,
+    type CreatePageInput,
+    type Issue,
+    type StorageBackend,
+} from "../core/storage/interface.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
@@ -44,7 +52,7 @@ import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
-import type { Persona } from "../core/schema/story-schema.js";
+import { DependencyRelation, type Persona, type Status, type StoryType, type SubtaskType } from "../core/schema/story-schema.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -240,6 +248,38 @@ function renderPrecedenceLinkResults({ results, warning }: Awaited<ReturnType<ty
     return lines.join("\n");
 }
 
+// ---------- issue/page subcommands (TAI-126, piece 0) ----------
+//
+// Thin wrappers around WorkTracker/DocStore methods that already exist, are already
+// implemented against direct REST for both backends, and are already covered by the
+// conformance suite — cli.ts simply never exposed them as subcommands before this,
+// which meant creating/transitioning/commenting/linking tickets and Confluence pages
+// required going through a separate MCP server. These wrappers close that gap so no
+// MCP server is required for TAI to work end-to-end (brief §3.2's own "direct REST,
+// not through mcp-atlassian" decision, extended to cover ticket/page CRUD too).
+
+/** Parses trailing `key=value` arguments (e.g. `parent=TAI-116 persona=developer`) into a
+ *  plain object — used by `issue create`/`page create` for their many optional fields,
+ *  rather than a long fixed positional list. */
+function parseKeyValueArgs(args: readonly string[]): Record<string, string> {
+    const fields: Record<string, string> = {};
+    for (const raw of args) {
+        const eq = raw.indexOf("=");
+        if (eq === -1) throw new Error(`Expected key=value, got "${raw}".`);
+        fields[raw.slice(0, eq)] = raw.slice(eq + 1);
+    }
+    return fields;
+}
+
+function renderIssueRef(issue: Issue): string {
+    return [
+        `# Issue ${issue.key}`,
+        "",
+        `**${issue.summary}**`,
+        `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}`,
+    ].join("\n");
+}
+
 async function main(): Promise<void> {
     loadDotEnv();
     const [, , subcommand, arg, ...rest] = process.argv;
@@ -379,8 +419,111 @@ async function main(): Promise<void> {
         return;
     }
 
+    if (subcommand === "issue") {
+        const [action, ...issueArgs] = [arg, ...rest];
+
+        if (action === "create") {
+            const [projectKey, issueType, summary, ...kv] = issueArgs;
+            if (!projectKey || !issueType || !summary) {
+                throw new Error(
+                    "Usage: issue create <PROJECT-KEY> <ISSUE-TYPE> <SUMMARY> " +
+                        "[parent=<KEY>] [persona=<PERSONA>] [description=<TEXT>] [priority=<PRIORITY>] [labels=<a,b,c>]\n" +
+                        '  <ISSUE-TYPE> is TAI\'s own internal value (e.g. "bug", "dev", "code-review", ' +
+                        '"integration-test") -- see StoryType/SubtaskType in story-schema.ts -- NOT the raw Jira ' +
+                        'display name ("Bug", "Dev", "CodeReview").'
+                );
+            }
+            const fields = parseKeyValueArgs(kv);
+            const input: CreateIssueInput = {
+                projectKey,
+                issueType: issueType as StoryType | SubtaskType | "epic",
+                summary,
+                ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+                ...(fields["persona"] !== undefined ? { persona: fields["persona"] as Persona } : {}),
+                ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
+                ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
+                ...(fields["labels"] !== undefined ? { labels: fields["labels"].split(",") } : {}),
+            };
+            const issue = await config.backend.workTracker.createIssue(input);
+            console.log(renderIssueRef(issue));
+            return;
+        }
+
+        if (action === "transition") {
+            const [issueKey, status] = issueArgs;
+            if (!issueKey || !status) throw new Error("Usage: issue transition <ISSUE-KEY> <STATUS>");
+            const result = await config.backend.workTracker.transition(toIssueKey(issueKey), status as Status);
+            console.log(
+                result.ok
+                    ? renderIssueRef(result.issue)
+                    : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}`
+            );
+            return;
+        }
+
+        if (action === "comment") {
+            const [issueKey, body] = issueArgs;
+            if (!issueKey || !body) throw new Error("Usage: issue comment <ISSUE-KEY> <BODY>");
+            const comment = await config.backend.workTracker.addComment(toIssueKey(issueKey), body);
+            console.log(`# Comment added to ${issueKey}\n\n${comment.body}`);
+            return;
+        }
+
+        if (action === "link") {
+            const [relation, fromKey, toKey] = issueArgs;
+            if (!relation || !fromKey || !toKey) {
+                throw new Error(
+                    "Usage: issue link <depends-on|relates-to> <FROM-KEY> <TO-KEY>\n" +
+                        '  Means "FROM-KEY <relation> TO-KEY" -- for depends-on, TO-KEY is the BLOCKER ' +
+                        "(TO-KEY blocks FROM-KEY). Getting this backwards silently inverts the edge."
+                );
+            }
+            if (relation !== DependencyRelation.DependsOn && relation !== DependencyRelation.RelatesTo) {
+                throw new Error(`Unknown relation "${relation}" -- expected "depends-on" or "relates-to".`);
+            }
+            await config.backend.workTracker.createLink(toIssueKey(fromKey), relation, toIssueKey(toKey));
+            const note = relation === DependencyRelation.DependsOn ? ` (${toKey} blocks ${fromKey})` : "";
+            console.log(`# Link created\n\n${fromKey} ${relation} ${toKey}${note}.`);
+            return;
+        }
+
+        throw new Error(`Unknown issue action "${action}" -- expected "create", "transition", "comment", or "link".`);
+    }
+
+    if (subcommand === "page") {
+        const [action, ...pageArgs] = [arg, ...rest];
+
+        if (action === "create") {
+            const [spaceKey, title, content, ...kv] = pageArgs;
+            if (!spaceKey || !title || !content) {
+                throw new Error("Usage: page create <SPACE-KEY> <TITLE> <CONTENT> [parent=<PAGE-ID>]");
+            }
+            const fields = parseKeyValueArgs(kv);
+            const input: CreatePageInput = {
+                spaceKey,
+                title,
+                content,
+                ...(fields["parent"] !== undefined ? { parentId: toPageId(fields["parent"]) } : {}),
+            };
+            const page = await config.backend.docStore.createPage(input);
+            console.log(`# Page created\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}`);
+            return;
+        }
+
+        if (action === "link") {
+            const [issueKey, pageId] = pageArgs;
+            if (!issueKey || !pageId) throw new Error("Usage: page link <ISSUE-KEY> <PAGE-ID>");
+            await config.backend.workTracker.linkPage(toIssueKey(issueKey), toPageId(pageId));
+            console.log(`# Page linked\n\n${pageId} linked to ${issueKey}.`);
+            return;
+        }
+
+        throw new Error(`Unknown page action "${action}" -- expected "create" or "link".`);
+    }
+
     throw new Error(
-        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | link-precedence <STORY-KEY> | git-pr create|review|merge ...`
+        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+            `| issue create|transition|comment|link ... | page create|link ...`
     );
 }
 
