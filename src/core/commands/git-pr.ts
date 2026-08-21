@@ -86,13 +86,26 @@ export async function findCodeReviewSiblingForLink(
     const siblings = await workTracker.search({ projectKey: issue.projectKey, parentKey: issue.parentKey });
     const codeReviews = siblings.filter((s) => s.issueType === SubtaskType.CodeReview);
     if (codeReviews.length === 0) return null;
-    if (codeReviews.length === 1) return codeReviews[0]!.key;
 
+    // Always check the materialized DependsOn precedence link FIRST, even when there's
+    // only one CodeReview sibling — live bug found TAI-110 (2026-08-20): a lone CodeReview
+    // sibling that already depends on a DIFFERENT subtask (TAI-109 already belonged to
+    // TAI-108's review) must not be mistaken for "the" match just because it's the only
+    // CodeReview subtask present under the Story. An earlier version of this function
+    // returned the sole candidate unconditionally, which wrote a real, wrong Jira remote
+    // link before this fix (cleaned up manually, see TAI-110's own writeup).
+    const unclaimed: IssueKey[] = [];
     for (const cr of codeReviews) {
         const deps = await workTracker.getLinkedIssues(cr.key, DependencyRelation.DependsOn, "outgoing");
         if (deps.some((d) => d.key === issue.key)) return cr.key;
+        if (deps.length === 0) unclaimed.push(cr.key);
     }
-    return null;
+
+    // No CodeReview subtask's own DependsOn link points at `issue` — fall back to a
+    // genuinely unclaimed one (no DependsOn link of its own at all, i.e. link-precedence
+    // hasn't run yet or this is an ad-hoc CodeReview with no edge) only when exactly one
+    // such candidate exists; more than one is real ambiguity, not a guess to make.
+    return unclaimed.length === 1 ? unclaimed[0]! : null;
 }
 
 // ---------- Branch naming (TAI-107/TAI-108) ----------
