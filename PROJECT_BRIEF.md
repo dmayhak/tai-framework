@@ -4,7 +4,22 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-20 (rev 50 — **§3.1/§6: PM/Architect granted
+> **Last updated:** 2026-08-21 (rev 51 — **§3.8/§9: TAI's own command surface moved to
+> global skills, no MCP server required.** TAI-116/126, following TAI-90's ADR (Confluence
+> TA space page 26902529): `tai-work`/`tai-ready`/`tai-pr`/`tai-init` now ship as global
+> skills — `~/.claude/skills/tai-<name>/SKILL.md` and `~/.gemini/skills/tai-<name>/SKILL.md`
+> (both hosts use the identical Markdown format for their global mechanism, confirmed by
+> inspecting the already-installed `sess-resume`/`sess-handoff` skills) — installed once via
+> `install-global` (`src/hosts/cli.ts`), referencing a fixed install path (`~/.tai-framework/`
+> by default) rather than a path relative to whatever project the host happens to be running
+> in. `tai-framework`'s own project-local wrapper files (`.claude/commands/tai-work.md`/
+> `tai-ready.md`/`tai-pr.md`, `.gemini/commands/tai-work.toml`/`tai-ready.toml`/`tai-pr.toml`)
+> retired in favor of the same global installs. **Also (TAI-126):** `cli.ts` gained
+> `issue create|transition|comment|link`/`page create|link` subcommands, wrapping
+> `WorkTracker`/`DocStore` methods that already existed against direct REST (brief §3.2) —
+> no Atlassian MCP server is required for TAI to work end-to-end anymore; earlier sessions
+> used one only because these subcommands didn't exist yet.
+> Prior: rev 50 — **§3.1/§6: PM/Architect granted
 > `createPullRequest`, plus a Story-first PR title convention.** TAI-112 (found live while
 > landing standalone documentation-only PRs, PR #18/#21): PM and Architect held zero
 > `gitHost` grants, so landing framework-governance content (persona docs, this file itself)
