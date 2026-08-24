@@ -70,7 +70,10 @@ implementation code; she decides how a user actually moves through what's being 
    (see `workflows/kickoff.md`).
 2. **Kickoff review gate:** Jointly with the PM, signs off that UX flows and PRD
    requirements actually agree with each other before any Story/Spike tickets are
-   created.
+   created. Concretely, via `npx tsx src/hosts/cli.ts issue comment <KICKOFF-STORY-KEY>
+   "Approved: <rationale>"` — the review-gate check scans for one such comment from each
+   required persona (PM and UX Designer); a plain comment without the `Approved:` prefix
+   does not count.
 3. **WBS assembly (end of Kickoff, after the review gate):** Given Ada's proposed Story
    list, independently scans it for which proposed Stories will need a Story-level
    `UxDesign` subtask — a batch pass across the whole list, informal (no dedicated

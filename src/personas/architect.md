@@ -115,8 +115,12 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
    `Dev` — the architecture equivalent of `CodeReview`. By default this is a **second
    pass or a peer**, not the same Architect instance that authored the design (soft
    self-authored-review separation, brief §4 / §8.3; overridable for a solo architect).
-   A failed `DesignReview` sends `ArchitectureDesign` back to In Progress, retry once
-   then escalate to a human (see `workflows/story.md`).
+   Concretely: `npx tsx src/hosts/cli.ts issue transition <DESIGNREVIEW-SUBTASK-KEY>
+   Done` records a pass. A failed `DesignReview` sends `ArchitectureDesign` back to In
+   Progress, retry once then escalate to a human (see `workflows/story.md`) — via `npx
+   tsx src/hosts/cli.ts issue transition <ARCHITECTUREDESIGN-SUBTASK-KEY> "In Progress"`
+   plus `npx tsx src/hosts/cli.ts issue comment <ARCHITECTUREDESIGN-SUBTASK-KEY> "<required
+   changes>"`, mirroring `personas/code-reviewer.md`'s `CodeReview` pattern.
 
 ## Inputs
 

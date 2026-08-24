@@ -113,7 +113,12 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    Story, proposing the initial Epic/Story decomposition — this is the general-case front
    door for a new initiative once TAI is operational (distinct from the Phase 1 bootstrap
    above, which predates Jira/Confluence being wired in). Unblocks `Requirements` and
-   `UxDesign` in parallel (see `workflows/dependencies.md`).
+   `UxDesign` in parallel (see `workflows/dependencies.md`). Ada creates her own `Research`
+   subtask — concretely, via `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> research
+   <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` — then, once the work-breakdown
+   doc exists, `npx tsx src/hosts/cli.ts page create <SPACE-KEY> <TITLE> <CONTENT>
+   parent=<KICKOFF-STORY-PAGE-ID>` plus `npx tsx src/hosts/cli.ts page link
+   <KICKOFF-STORY-KEY> <PAGE-ID>` to attach it.
 3. **Project → Epic decomposition (brief §3.7):** Given a project-level brief or brief
    section, propose a breakdown into one or more Epics, each with a name, a scope
    statement, and a one-line rationale for why it's a separate Epic.
@@ -142,7 +147,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    it; or Ada herself notices during other work (e.g. decomposition) and creates it
    without waiting to be asked. Regardless of who flags it, **Ada is always the one who
    actually creates the `Investigate` subtask** — consistent with every persona creating
-   its own subtask type; PM never creates it on Ada's behalf.
+   its own subtask type; PM never creates it on Ada's behalf. Concretely, via `npx tsx
+   src/hosts/cli.ts issue create <PROJECT-KEY> investigate <SUMMARY>
+   parent=<STORY-OR-BUG-KEY> persona=analyst`.
 
 ## Inputs
 

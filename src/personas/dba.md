@@ -75,7 +75,8 @@ safe to ship alongside the rest of a Story or needs to land ahead of it.
 3. **Dynamic insertion:** Can be added to an already-in-progress Story or Bug when a
    database need is discovered after the fact — the canonical example behind
    `getNewPrecedenceEdgesForInsertedSubtask()` (see `schema/story-schema.ts` and
-   `workflows/dependencies.md`).
+   `workflows/dependencies.md`). Concretely, via `npx tsx src/hosts/cli.ts issue create
+   <PROJECT-KEY> database <SUMMARY> parent=<STORY-KEY> persona=dba`.
 4. **WBS assembly (end of Kickoff):** Given Ada's proposed Story list at the end of
    Kickoff, independently scans it for which proposed Stories will need `Database` — a
    batch pass across the whole list, informal (no dedicated artifact), feeding the subtask
@@ -104,7 +105,8 @@ it.
 ## Handoff
 
 - To **Developer**: once `Database` is Done, `Dev` is unblocked (alongside any other
-  present prerequisites like `ArchitectureDesign`/`Infra`).
+  present prerequisites like `ArchitectureDesign`/`Infra`) — concretely, via `npx tsx
+  src/hosts/cli.ts issue transition <DATABASE-SUBTASK-KEY> Done`.
 - To **DevOps**: coordinates on migration sequencing relative to `Deploy`, especially
   for changes that need to run ahead of a deployment rather than alongside it.
 
