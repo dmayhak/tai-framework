@@ -4,7 +4,24 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-21 (rev 51 — **§3.8/§9: TAI's own command surface moved to
+> **Last updated:** 2026-08-24 (rev 52 — **§5.4/§6: `CodeReview` subtask retired in favor
+> of git-host-driven review readiness, superseding TAI-34's design.** TAI-157/158/159: a
+> real, near-term company requirement for N-of-M PR approvals surfaced a structural gap
+> TAI-34 didn't anticipate — a Jira subtask needs exactly one `Assignee` (§5.5's hard
+> assignment gate), and there's no honest single assignee for "the" review under a
+> multi-approver policy. Resolved via TAI-159's ADR (Confluence TA space page 28704769,
+> supersedes TAI-34's page 13860867 — that page's out-of-band-human-action principle is
+> kept and extended, not replaced): the `CodeReview` subtask stops being created going
+> forward (though it stays in the schema permanently — `fromJiraIssueType` deliberately
+> throws on unrecognized types, and historical Done `CodeReview` tickets exist forever);
+> `Dev` stays `In Progress` until its PR actually merges, not until the PR opens; and
+> `tai-ready` gains three live git-host-queried lists (`readyToReview`/`readyToTest`/
+> `readyToMerge`) replacing the CodeReview-anchored precedence edges, extending TAI-107/
+> 108's existing `readyToMerge` pattern rather than inventing a new one. See §5.4 and §6
+> for the revised chain, and the TAI-159 ADR for full detail (required-approval-threshold
+> handling, the new "PR Reviewers" roster, `git-pr create`/`merge` changes). Not yet
+> built — TAI-159 is architecture design only; implementation tracked under TAI-157.
+> Prior: rev 51 — **§3.8/§9: TAI's own command surface moved to
 > global skills, no MCP server required.** TAI-116/126, following TAI-90's ADR (Confluence
 > TA space page 26902529): `tai-work`/`tai-ready`/`tai-pr`/`tai-init` now ship as global
 > skills — `~/.claude/skills/tai-<name>/SKILL.md` and `~/.gemini/skills/tai-<name>/SKILL.md`
@@ -954,7 +971,7 @@ test tiers).
 | Database | DBA | Implementation input (schema / migration / performance) |
 | Infra | DevOps | Implementation input |
 | Dev | Developer | Implementation (unit tests folded in) |
-| CodeReview | Code Reviewer | Implementation gate |
+| CodeReview | Code Reviewer | Implementation gate — **retired going forward, rev 52 (TAI-159 ADR, §5.4)**; kept in the schema only to parse historical tickets |
 | IntegrationTest / SystemTest / E2ETest | Tester | Verification |
 | UAT | Tester + a human stakeholder | Verification — inherently human-gated (§3.3); gates `Deploy` (workflows/story.md, workflows/bug.md) |
 | Triage | Tester | Bug entry point |
@@ -1147,6 +1164,40 @@ operates on a real git PR, not Jira transitions alone —
   next refresh and reflected, never fought — same stance as §4's Confluence-gate-
   reopening rule.
 
+**Revised (rev 52 design, TAI-159 ADR — supersedes the CodeReview-subtask flow above;
+not yet built):** a real, near-term requirement for N-of-M PR approvals surfaced a
+structural gap the design above didn't anticipate — a Jira subtask needs exactly one
+`Assignee` (§5.5's hard gate), and there's no honest single assignee for "the" review
+under a multi-approver policy. Revised chain —
+```
+[Dev subtask, stays In Progress] --opens PR--> [reviewed live on the git host] --merges PR--> [Dev subtask -> Done]
+```
+- **No `CodeReview` subtask is created going forward.** Bitbucket's own PR
+  reviewer/approval state is the sole source of truth for review status, queried live —
+  never mirrored into a Jira subtask. (`CodeReview` stays in the schema permanently for
+  parsing historical tickets — see the ADR; it just isn't minted for new work.)
+- **`Dev` stays `In Progress` until its PR actually merges, not until the PR opens** — a
+  unit of work isn't really done until it's merged. Verified this doesn't create a cycle
+  with `Deploy`, which is gated only by the test tiers, never directly by `Dev`.
+- **Test-tier readiness moves off the static precedence graph onto three new
+  live-computed `/tai-ready` lists** — `readyToReview` (open PRs where the current human
+  is an eligible reviewer, per a new "PR Reviewers" roster), `readyToTest` (In-Progress
+  `Dev` subtasks whose PR has met its required-approval count), `readyToMerge` (same,
+  additionally CI-green) — extending TAI-107/108's existing `readyToMerge` pattern
+  (§5.4's own live-git-host-query idiom) rather than inventing a new one.
+- **`Dev` → Done has two triggers:** `git-pr merge` transitions the linked `Dev` subtask
+  as part of the same call that performs the merge (self-closing, not a separate
+  cross-persona action); a refresh-based fallback catches a PR merged out-of-band (a
+  human on Bitbucket, or any non-TAI process) — same detected-and-reflected stance as
+  this section's own out-of-band-review handling.
+- **`git-pr create` links the PR directly to the `Dev` subtask** that opened it, not a
+  `CodeReview` sibling — simpler than the flow above, not more complex.
+
+Full detail (required-approval-threshold handling, the new roster, exact refresh
+mechanics): TAI-159 ADR (Confluence, TA space page 28704769). TAI-34's ADR (page
+13860867) is marked superseded but left in place for history — its out-of-band-human-
+action principle is kept and extended above, not replaced.
+
 **Test-tier subtasks (rev 48):** `IntegrationTest`/`SystemTest`/`E2ETest` sit outside this
 canonical chain in the `SUBTASK_PRECEDENCE` graph (they gate `Deploy`, not `Merge/Deploy`
 directly), but a Test tier can still carry its own real code (e.g. a live-backend
@@ -1303,6 +1354,10 @@ comment's content.
   is treated as authoritative, not fought — same principle as this section's own
   human-authority stance and §4's Confluence-gate-reopening rule. See the TAI-34 ADR.
   **Implemented (rev 25, TAI-38/39/40)**, verified against the live TAIT scratch repo.
+  **Superseded (rev 52, TAI-159 ADR, not yet built):** the `CodeReview` subtask is
+  retired going forward in favor of querying Bitbucket's own PR approval state live —
+  see §5.4's "Revised (rev 52 design)" block. The one-way-sync and human-authority
+  principles stated above are kept and extended, not replaced.
 - **Branch unit:** parent Story/Bug. Name = parent issue key + very short slug
   (e.g. `PROJ-123-user-login`).
 - **Subtasks accumulate** onto their parent Story's branch; they do not get their own
@@ -1614,6 +1669,9 @@ Carry these forward; resolve them in upcoming design sessions.
     §5.4 and the TAI-34 ADR (Confluence, TA space). **Implemented (rev 25, TAI-38/39/40):**
     Develop opens a real PR, CodeReview acts on it, Merge/Deploy merges it gated on commit
     status; verified against the live TAIT scratch repo (TAI-40 integration test).
+    **Further revised (rev 52, TAI-159 ADR, not yet built):** the `CodeReview` subtask
+    itself is retired in favor of querying the git host's PR approval state live — see
+    §5.4's "Revised (rev 52 design)" block.
 21. ~~**Explicit uncertainty markers in generated artifacts**~~ (rev 22, inspired by
     GitHub Spec Kit's `NEEDS CLARIFICATION` convention) — **RESOLVED (rev 23), narrow:**
     adopted, but scoped to **Kickoff-stage docs only** (PRD/UX flows, `workflows/kickoff.md`)
