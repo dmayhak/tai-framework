@@ -133,8 +133,22 @@ function initSkillBody(taiHome: string): string {
         "This (re)writes all four skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`) for both " +
         "Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after `tai-framework` " +
         "itself has been updated at its fixed location.\n\n" +
-        "**Target-project setup:** the guided Jira/Confluence/Bitbucket checklist for pointing " +
-        "TAI at a real project is scoped separately (TAI-116) — not yet part of this skill."
+        "**Target-project setup (TAI-116 piece 3, TAI-130):** once the bootstrap above is done, " +
+        "check whether the CURRENT project (cwd) still needs onboarding:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts init status\n` +
+        "```\n\n" +
+        'If it reports "Fully initialized," nothing further is needed. Otherwise — including a ' +
+        "fresh project with no state file at all — read the full checklist yourself " +
+        `(\`${taiHome}/docs/target-project-setup-checklist.md\`) and walk the human through it ` +
+        "step by step, in this order: Jira setup (issue types, the `Persona` field, workflow " +
+        "statuses) → `init jira` → Confluence space → `init confluence` → Bitbucket repo (only " +
+        "if this project needs `git-pr`) → `init bitbucket <workspace/repo>` → `init env` → " +
+        "`init claude-md`. Each `init <step>` call both performs and verifies its own step " +
+        "against the real API, and records completion for next time — safe to stop and resume " +
+        "later; re-run `init status` to see what's left rather than guessing. The credentials " +
+        "each step needs are plain env vars the human exports into this shell first — the exact " +
+        "checklist doc lists which ones, matching `.env.example`'s own names."
     );
 }
 

@@ -42,6 +42,20 @@ import { findReadyWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
 import {
+    INIT_STEPS,
+    readInitState,
+    markStepDone,
+    isInitComplete,
+    checkInitCompletion,
+    verifyJiraSetup,
+    setupConfluence,
+    verifyBitbucketSetup,
+    writeEnvFile,
+    writeClaudeMdPointer,
+    type InitState,
+    type InitStep,
+} from "../core/commands/target-init.js";
+import {
     resolvePullRequestId,
     parseReviewArgs,
     parseMergeArgs,
@@ -283,6 +297,22 @@ function renderIssueRef(issue: Issue): string {
     ].join("\n");
 }
 
+// ---------- init subcommand (TAI-116 piece 3, TAI-130) ----------
+
+function renderInitStepResult(step: InitStep, ok: boolean, detail: string): string {
+    return `# init ${step}\n\n${ok ? "Done." : "Not done."} ${detail}`;
+}
+
+function renderInitStatus(state: InitState): string {
+    const lines = ["# /tai-init status", ""];
+    for (const step of INIT_STEPS) {
+        const s = state.steps[step];
+        lines.push(s ? `- [x] ${step} — ${s.detail}` : `- [ ] ${step}`);
+    }
+    lines.push("", isInitComplete(state) ? "**Fully initialized.**" : "**Not yet fully initialized.**");
+    return lines.join("\n");
+}
+
 async function main(): Promise<void> {
     loadDotEnv();
     const [, , subcommand, arg, ...rest] = process.argv;
@@ -301,6 +331,89 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-130: like install-global, `init` is a bootstrap step for a NEW target project --
+    // resolveConfig() below would fail (or, worse, half-succeed against an unprovisioned
+    // Jira project) before .env even exists. Each action reads the same TAI_*/BITBUCKET_*
+    // env var names .env will eventually hold, exported temporarily by the human running
+    // /tai-init, and records its own completion in <taiRoot>/init-state.json for resumability.
+    if (subcommand === "init") {
+        const [action, ...initArgs] = [arg, ...rest];
+        const taiRoot = process.env["TAI_ROOT"] ?? ".tai";
+
+        if (action === "status") {
+            console.log(renderInitStatus(await readInitState(taiRoot)));
+            return;
+        }
+
+        if (action === "jira") {
+            const result = await verifyJiraSetup({
+                siteUrl: requireEnv("TAI_JIRA_SITE_URL"),
+                email: requireEnv("TAI_JIRA_EMAIL"),
+                apiToken: requireEnv("TAI_JIRA_API_TOKEN"),
+                projectKey: requireEnv("TAI_PROJECT_KEY"),
+            });
+            if (result.ok) await markStepDone(taiRoot, "jira", result.detail);
+            console.log(renderInitStepResult("jira", result.ok, result.detail));
+            return;
+        }
+
+        if (action === "confluence") {
+            const result = await setupConfluence({
+                siteUrl: requireEnv("TAI_JIRA_SITE_URL"),
+                email: requireEnv("TAI_JIRA_EMAIL"),
+                apiToken: requireEnv("TAI_JIRA_API_TOKEN"),
+                spaceKey: requireEnv("TAI_SPACE_KEY"),
+            });
+            if (result.ok) await markStepDone(taiRoot, "confluence", result.detail);
+            console.log(renderInitStepResult("confluence", result.ok, result.detail));
+            return;
+        }
+
+        if (action === "bitbucket") {
+            const repo = initArgs[0];
+            if (!repo) throw new Error("Usage: init bitbucket <WORKSPACE/REPO>");
+            const result = await verifyBitbucketSetup({
+                email: requireEnv("BITBUCKET_EMAIL"),
+                apiToken: requireEnv("BITBUCKET_API_TOKEN"),
+                repo,
+            });
+            if (result.ok) await markStepDone(taiRoot, "bitbucket", result.detail);
+            console.log(renderInitStepResult("bitbucket", result.ok, result.detail));
+            return;
+        }
+
+        if (action === "env") {
+            const bitbucketEmail = process.env["BITBUCKET_EMAIL"];
+            const bitbucketApiToken = process.env["BITBUCKET_API_TOKEN"];
+            const gitRepos = process.env["TAI_GIT_REPOS"];
+            const filePath = await writeEnvFile(process.cwd(), taiRoot, {
+                projectKey: requireEnv("TAI_PROJECT_KEY"),
+                spaceKey: requireEnv("TAI_SPACE_KEY"),
+                siteUrl: requireEnv("TAI_JIRA_SITE_URL"),
+                email: requireEnv("TAI_JIRA_EMAIL"),
+                apiToken: requireEnv("TAI_JIRA_API_TOKEN"),
+                ...(bitbucketEmail ? { bitbucketEmail } : {}),
+                ...(bitbucketApiToken ? { bitbucketApiToken } : {}),
+                ...(gitRepos ? { gitRepos } : {}),
+            });
+            await markStepDone(taiRoot, "env", `Wrote ${filePath}.`);
+            console.log(renderInitStepResult("env", true, `Wrote ${filePath}.`));
+            return;
+        }
+
+        if (action === "claude-md") {
+            const taiHome = initArgs[0] ?? defaultTaiHome();
+            const filePath = await writeClaudeMdPointer(process.cwd(), taiRoot, taiHome);
+            await markStepDone(taiRoot, "claude-md", `Wrote ${filePath}.`);
+            console.log(renderInitStepResult("claude-md", true, `Wrote ${filePath}.`));
+            return;
+        }
+
+        throw new Error(
+            `Unknown init action "${action}" -- expected "status", "jira", "confluence", "bitbucket", "env", or "claude-md".`
+        );
+    }
+
     // TAI-126: any missing required env var here means this project hasn't been
     // initialized for TAI yet (or init didn't finish) -- surface that plainly rather than
     // a bare "Missing required environment variable X", so a persona/human hitting this
@@ -309,6 +422,13 @@ async function main(): Promise<void> {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(`${message}\n\nThis project doesn't look initialized for TAI yet -- run /tai-init first.`);
     });
+
+    // TAI-130: a state file that EXISTS but is incomplete means a prior /tai-init run was
+    // interrupted -- warn (stderr, non-fatal) rather than block, since work may still
+    // function fine depending on which step was skipped. No state file at all is NOT
+    // flagged (grandfather case -- see target-init.ts's header comment).
+    const initWarning = await checkInitCompletion(config.taiRoot);
+    if (initWarning) console.error(initWarning);
 
     if (subcommand === "git-pr") {
         const [action, issueKey, repoArg, ...gitArgs] = [arg, ...rest];
@@ -548,7 +668,8 @@ async function main(): Promise<void> {
 
     throw new Error(
         `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link ... | page create|link ... | install-global [TAI-HOME]`
+            `| issue create|transition|comment|link ... | page create|link ... | install-global [TAI-HOME] ` +
+            `| init status|jira|confluence|bitbucket|env|claude-md`
     );
 }
 
