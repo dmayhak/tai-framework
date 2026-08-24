@@ -151,8 +151,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
    `workflows/dependencies.md` — including ones using `localId` for stories that don't
    have Jira keys yet at discovery time) — and, per the same doc's "real Jira links get
    created as soon as known" rule, creates the actual `Blocks` links between sequential
-   subtasks in the attached set (e.g. `Dev` blocks `CodeReview` blocks `IntegrationTest`),
-   not just the ones `StoryDependency` covers at the Story level. Concretely: `npx tsx
+   subtasks in the attached set (e.g. `ArchitectureDesign` blocks `Dev`; `Dev` no longer
+   blocks a `CodeReview` subtask, retired going forward as of rev 52/TAI-159 ADR — review
+   readiness is now Bitbucket's own live PR state, not a Jira subtask), not just the ones
+   `StoryDependency` covers at the Story level. Concretely: `npx tsx
    src/hosts/cli.ts issue create <PROJECT-KEY> story <SUMMARY> parent=<EPIC-KEY>` for the
    Story itself, then `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> <SUBTASK-TYPE>
    <SUMMARY> parent=<STORY-KEY> persona=<OWNING-PERSONA>` per subtask in the attached set

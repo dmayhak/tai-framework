@@ -31,6 +31,7 @@ import {
     toPageId,
     type CreateIssueInput,
     type CreatePageInput,
+    type HumanRef,
     type Issue,
     type StorageBackend,
 } from "../core/storage/interface.js";
@@ -60,7 +61,7 @@ import {
     parseReviewArgs,
     parseMergeArgs,
     isGreen,
-    findCodeReviewSiblingForLink,
+    findLinkedDevSubtask,
     validateBranchName,
     validatePrTitle,
 } from "../core/commands/git-pr.js";
@@ -69,7 +70,8 @@ import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
-import { DependencyRelation, type Persona, type Status, type StoryType, type SubtaskType } from "../core/schema/story-schema.js";
+import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
+import { DependencyRelation, Status, type Persona, type StoryType, type SubtaskType } from "../core/schema/story-schema.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -157,18 +159,68 @@ async function resolveGitHost(
 }
 
 /**
- * Best-effort GitHost + repo list for `/tai-ready`'s PR-awareness path (TAI-107/108) —
- * `undefined` (never a throw) when Bitbucket credentials or `TAI_GIT_REPOS` aren't
- * configured, so `/tai-ready` keeps working with zero GitHost awareness exactly as it
- * always has (same "only demanded where actually needed" posture as `resolveGitHost`).
+ * Resolves who's allowed to run `git-pr review` (rev 52, TAI-159 ADR — see the AskUserQuestion-
+ * confirmed decision this implements): authorization is no longer "does this issue's persona
+ * hold reviewPullRequest" (there's no CodeReview subtask left to carry that persona context)
+ * — it's "is the current human (BITBUCKET_EMAIL) on the PR Reviewers roster." Throws the same
+ * fail-loudly way `resolveGitHost`/`PersonaPermissionError` do elsewhere on a real rejection,
+ * rather than silently letting an ineligible human review. Returns a plain, unscoped `GitHost`
+ * — no `PersonaScopedGitHost` wrapper, since the roster check above already IS the
+ * authorization gate for this action.
+ */
+async function resolveReviewerGitHost(
+    config: ResolvedConfig
+): Promise<{ readonly gitHost: GitHost; readonly currentHuman: HumanRef }> {
+    const email = requireEnv("BITBUCKET_EMAIL");
+    const token = requireEnv("BITBUCKET_API_TOKEN");
+
+    const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
+    const currentHuman: HumanRef = { id: toHumanId(email), displayName: email, email };
+
+    const reviewers = await loadPrReviewers(config.backend.docStore, { spaceKey: config.spaceKey, projectKey: config.projectKey });
+    if (!isEligibleReviewer(reviewers, currentHuman)) {
+        throw new Error(
+            `${email} is not on the "PR Reviewers" roster — only listed humans may run git-pr review (rev 52, TAI-159 ADR). ` +
+                `Add them to the roster page, or have an already-eligible reviewer perform this review instead.`
+        );
+    }
+
+    return { gitHost: backend.gitHost, currentHuman };
+}
+
+/**
+ * Best-effort GitHost + repo list (+ rev 52's readyToReview/readyToMerge inputs) for
+ * `/tai-ready`'s PR-awareness path (TAI-107/108) — `undefined` (never a throw) when
+ * Bitbucket credentials or `TAI_GIT_REPOS` aren't configured, so `/tai-ready` keeps
+ * working with zero GitHost awareness exactly as it always has (same "only demanded
+ * where actually needed" posture as `resolveGitHost`).
  *
  * `TAI_GIT_REPOS` (comma-separated `workspace/repo` entries) rather than deriving repos
  * from Jira's Component field: no Component->RepoId mapping exists anywhere in this
  * codebase yet, and this project itself is single-repo — building that mapping is a
  * separate need to solve if/when a real multi-repo project actually hits it (brief's own
  * repeated "don't build ahead of an observed need" stance).
+ *
+ * rev 52 (TAI-159 ADR): `currentHuman` reuses `BITBUCKET_EMAIL` directly — no new
+ * "current user" concept needed (brief §3.2's "acts with exactly the authority of the
+ * human driving it"). `requiredApprovals` is an optional TAI-side setting
+ * (`TAI_PR_REQUIRED_APPROVALS`), not a live Bitbucket branch-restrictions query — see the
+ * ADR for why. `prReviewers` degrades to `undefined` (readyToReview simply stays empty)
+ * rather than throwing when the "PR Reviewers" Confluence page doesn't exist yet — unlike
+ * the Persona Roster, an absent PR Reviewers page shouldn't break `/tai-ready` entirely.
  */
-function tryResolveReadyGitDeps(): { readonly gitHost: GitHost; readonly repos: readonly RepoId[] } | undefined {
+async function tryResolveReadyGitDeps(
+    config: ResolvedConfig
+): Promise<
+    | {
+          readonly gitHost: GitHost;
+          readonly repos: readonly RepoId[];
+          readonly requiredApprovals?: number;
+          readonly currentHuman?: HumanRef;
+          readonly prReviewers?: readonly HumanRef[];
+      }
+    | undefined
+> {
     const email = process.env["BITBUCKET_EMAIL"];
     const token = process.env["BITBUCKET_API_TOKEN"];
     const reposEnv = process.env["TAI_GIT_REPOS"];
@@ -182,10 +234,31 @@ function tryResolveReadyGitDeps(): { readonly gitHost: GitHost; readonly repos: 
     if (repos.length === 0) return undefined;
 
     const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
-    return { gitHost: backend.gitHost, repos };
+    const currentHuman: HumanRef = { id: toHumanId(email), displayName: email, email };
+
+    const requiredApprovalsEnv = process.env["TAI_PR_REQUIRED_APPROVALS"];
+    const requiredApprovals = requiredApprovalsEnv ? Number(requiredApprovalsEnv) : undefined;
+
+    let prReviewers: readonly HumanRef[] | undefined;
+    try {
+        prReviewers = await loadPrReviewers(config.backend.docStore, {
+            spaceKey: config.spaceKey,
+            projectKey: config.projectKey,
+        });
+    } catch {
+        prReviewers = undefined;
+    }
+
+    return {
+        gitHost: backend.gitHost,
+        repos,
+        ...(requiredApprovals !== undefined ? { requiredApprovals } : {}),
+        currentHuman,
+        ...(prReviewers ? { prReviewers } : {}),
+    };
 }
 
-function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedCodeReviewKey?: string | null): string {
+function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedIssueKey?: string): string {
     const lines = [
         `# PR ${pr.id} (as ${personaId})`,
         "",
@@ -193,19 +266,22 @@ function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedCodeR
         `${pr.sourceBranch} → ${pr.destinationBranch} · ${pr.state}`,
         pr.url,
     ];
-    if (linkedCodeReviewKey !== undefined) {
-        lines.push(
-            "",
-            linkedCodeReviewKey
-                ? `Linked to ${linkedCodeReviewKey} (CodeReview).`
-                : "Not linked to a CodeReview subtask — none could be confidently identified among this issue's siblings."
-        );
+    if (linkedIssueKey) {
+        lines.push("", `Linked to ${linkedIssueKey}.`);
     }
     return lines.join("\n");
 }
 
-function renderGitMutationResult(result: GitMutationResult, personaId: string): string {
-    if (result.ok) return renderPullRequestRef(result.pullRequest, personaId);
+function renderGitMutationResult(result: GitMutationResult, personaId: string, devSubtaskClosed?: string): string {
+    if (result.ok) {
+        const lines = [renderPullRequestRef(result.pullRequest, personaId)];
+        // rev 52 (TAI-159 ADR §4): a Dev subtask stays In Progress until its PR merges —
+        // this is the self-closing trigger, a second write in the same command (same
+        // shape `git-pr create`'s PR+link already has). `undefined` (no line at all) when
+        // no linked Dev subtask was found (best-effort — see `findLinkedDevSubtask`).
+        if (devSubtaskClosed) lines.push("", `${devSubtaskClosed} transitioned to Done (its PR just merged).`);
+        return lines.join("\n");
+    }
     return `# Merge denied (as ${personaId})\n\n${result.reason}`;
 }
 
@@ -233,10 +309,22 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             lines.push(`- **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`);
         }
     }
+    if (result.readyToReview.length > 0) {
+        lines.push("", "## PRs ready for your review", "");
+        for (const c of result.readyToReview) {
+            lines.push(`- ${c.pullRequest.url} (\`git-pr review <ISSUE-KEY> <REPO> approve|requestChanges\` to record it)`);
+        }
+    }
+    if (result.readyToTest.length > 0) {
+        lines.push("", "## Approved PRs ready to test", "");
+        for (const c of result.readyToTest) {
+            lines.push(`- **${c.devSubtaskKey}** — ${c.pullRequest.url}`);
+        }
+    }
     if (result.readyToMerge.length > 0) {
         lines.push("", "## Approved PRs ready to merge", "");
         for (const c of result.readyToMerge) {
-            lines.push(`- **${c.codeReviewKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`);
+            lines.push(`- **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`);
         }
     }
     if (result.inFlight.items.length > 0) {
@@ -431,16 +519,33 @@ async function main(): Promise<void> {
     if (initWarning) console.error(initWarning);
 
     if (subcommand === "git-pr") {
-        const [action, issueKey, repoArg, ...gitArgs] = [arg, ...rest];
-        if (!action || !issueKey || !repoArg) {
-            throw new Error(
-                "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
-                    "     | git-pr review <ISSUE-KEY> <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
-                    "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
-                    "  [PR-ID] is optional on review/merge — omit it to resolve against REPO's sole open PR; " +
-                    "if more than one is open, the error lists them so you can pass one explicitly."
-            );
+        const [action, ...actionArgs] = [arg, ...rest];
+        const usage =
+            "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
+            "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
+            "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
+            "  [PR-ID] is optional on review/merge — omit it to resolve against REPO's sole open PR; " +
+            "if more than one is open, the error lists them so you can pass one explicitly.";
+
+        // rev 52 (TAI-159 ADR): review is roster-gated, not persona-gated — no <ISSUE-KEY>
+        // at all (there's no CodeReview subtask left to resolve permission through; see
+        // resolveReviewerGitHost's own comment). Handled separately from create/merge,
+        // which still resolve permission from an <ISSUE-KEY>'s persona field as before.
+        if (action === "review") {
+            const [repoArg, ...gitArgs] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
+            const repo = toRepoId(repoArg);
+
+            const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            await gitHost.reviewPullRequest(repo, prId, decision, comment);
+            console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
+            return;
         }
+
+        const [issueKey, repoArg, ...gitArgs] = actionArgs;
+        if (!action || !issueKey || !repoArg) throw new Error(usage);
         const { gitHost, personaId, issue } = await resolveGitHost(config, issueKey);
         const repo = toRepoId(repoArg);
 
@@ -466,24 +571,14 @@ async function main(): Promise<void> {
                 ...(description ? { description } : {}),
             });
 
-            // TAI-107/108: close brief §5.4's "links the PR to the CodeReview subtask via a
-            // Jira remote issue link" step in code — previously a fully manual persona
-            // action every time. Best-effort: a PR that can't be confidently correlated to
-            // one CodeReview subtask still gets created; only the link is skipped.
-            const codeReviewKey = await findCodeReviewSiblingForLink(config.backend.workTracker, issue);
-            if (codeReviewKey) {
-                await config.backend.workTracker.createRemoteLink(codeReviewKey, pr.url, pr.title);
-            }
+            // rev 52 (TAI-159 ADR §4): links directly to the issue the PR was created
+            // against — no CodeReview-sibling search needed anymore (that indirection
+            // existed only because the PR conceptually belonged to a separate CodeReview
+            // subtask; CodeReview is retired going forward). Unconditional, not
+            // best-effort — `issue.key` is always a real key.
+            await config.backend.workTracker.createRemoteLink(issue.key, pr.url, pr.title);
 
-            console.log(renderPullRequestRef(pr, personaId, codeReviewKey));
-            return;
-        }
-
-        if (action === "review") {
-            const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
-            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
-            await gitHost.reviewPullRequest(repo, prId, decision, comment);
-            console.log(`# Review posted (as ${personaId})\n\n${decision} on PR ${prId}.`);
+            console.log(renderPullRequestRef(pr, personaId, issue.key));
             return;
         }
 
@@ -511,7 +606,24 @@ async function main(): Promise<void> {
             }
 
             const result = await gitHost.mergePullRequest(repo, prId, strategy);
-            console.log(renderGitMutationResult(result, personaId));
+
+            // rev 52 (TAI-159 ADR §4): self-closing Dev-Done trigger — a second write in
+            // this same command, same shape `git-pr create`'s PR+link already has. The
+            // <ISSUE-KEY> this merge was invoked with isn't assumed to BE the linked Dev
+            // subtask (it's sometimes borrowed purely for permission resolution) —
+            // `findLinkedDevSubtask` searches for whichever In-Progress Dev subtask's own
+            // remote link actually points at this PR. Best-effort: a merge that can't be
+            // correlated to a Dev subtask still succeeds, only the side effect is skipped.
+            let devSubtaskClosed: string | undefined;
+            if (result.ok) {
+                const devKey = await findLinkedDevSubtask(config.backend.workTracker, config.projectKey, result.pullRequest.url);
+                if (devKey) {
+                    await config.backend.workTracker.transition(devKey, Status.Done);
+                    devSubtaskClosed = devKey;
+                }
+            }
+
+            console.log(renderGitMutationResult(result, personaId, devSubtaskClosed));
             return;
         }
 
@@ -535,7 +647,7 @@ async function main(): Promise<void> {
 
     if (subcommand === "ready") {
         const persona = arg as Persona | undefined;
-        const gitDeps = tryResolveReadyGitDeps();
+        const gitDeps = await tryResolveReadyGitDeps(config);
         const result = await findReadyWork(
             {
                 workTracker: config.backend.workTracker,

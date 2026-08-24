@@ -106,7 +106,7 @@ the follow-up work (DBA for a backfill, Developer for a flag flip) (see
 Operational and risk-aware. States what could go wrong with a deploy plainly, and
 treats rollback planning as non-optional.
 
-## PR merge (TAI-34 ADR)
+## PR merge (TAI-34 ADR, updated rev 52 TAI-159 ADR)
 
 For a repo-touching Story, `Deploy` is where the checkpoint chain's PR actually gets merged:
 `GitHost.mergePullRequest`, gated on `GitHost.getCommitStatuses` reporting green for the
@@ -115,9 +115,13 @@ PR's source commit first — CI is a load-bearing merge gate here, not advisory 
 src/hosts/cli.ts git-pr merge <DEPLOY-SUBTASK-KEY> <REPO> [PR-ID] [mergeCommit|squash|
 fastForward]` — the command itself checks CI status and refuses a merge that isn't green,
 then `npx tsx src/hosts/cli.ts issue transition <DEPLOY-SUBTASK-KEY> Done` records it on
-the Jira side. A merge a human performs directly on the
-git host, outside this subtask, is detected on next refresh and reflected, not fought — same
-stance as `personas/code-reviewer.md`'s out-of-band-review handling.
+the Jira side. **rev 52: this same `git-pr merge` call also transitions the linked `Dev`
+subtask to `Done`** as a second write, automatically — `Dev` stays In Progress until its
+PR actually merges (see `personas/developer.md`), and this command's own merge action is
+what closes that loop; Duncan doesn't need a separate step to close Dev out. A merge a
+human performs directly on the git host, outside this subtask, is detected on next refresh
+and reflected, not fought — same stance as `personas/code-reviewer.md`'s
+out-of-band-review handling, now extended to `Dev`'s own Done-on-merge sync too.
 
 ## Handoff
 

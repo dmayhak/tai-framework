@@ -153,7 +153,14 @@ describe("findReadyWork", () => {
     });
 });
 
-// ---------- readyToMerge (TAI-106/107/108) ----------
+// ---------- readyToTest / readyToMerge / readyToReview (rev 52, TAI-159 ADR) ----------
+//
+// CodeReview is retired going forward — the anchor is now an In-Progress `Dev` subtask
+// (stays open until its PR merges, story-schema.ts) correlated against the PR's own live
+// approval/CI state, not a Done CodeReview subtask's Jira status.
+
+const REVIEWER_A: HumanRef = { id: toHumanId("a@x.test"), displayName: "A", email: "a@x.test" };
+const REVIEWER_B: HumanRef = { id: toHumanId("b@x.test"), displayName: "B", email: "b@x.test" };
 
 function prFixture(overrides: Partial<PullRequestRef>): PullRequestRef {
     return {
@@ -190,48 +197,39 @@ class FakeGitHost implements Pick<GitHost, "listPullRequests" | "getCommitStatus
     }
 }
 
-describe("findReadyWork readyToMerge", () => {
+async function inProgressDev(backend: StorageBackend, summary: string): Promise<{ key: import("../storage/interface.js").IssueKey }> {
+    const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+    const dev = await backend.workTracker.createIssue({
+        projectKey: "TAI",
+        issueType: SubtaskType.Dev,
+        summary,
+        persona: Persona.Developer,
+        parentKey: story.key,
+        assignee: CURRENT_USER,
+    });
+    await backend.workTracker.transition(dev.key, Status.InProgress);
+    return dev;
+}
+
+describe("findReadyWork readyToTest / readyToMerge", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 
     test("empty when gitHost/repos aren't supplied — never a partial guess", async () => {
         await withBackend(async (backend, taiRoot) => {
-            const story = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: StoryType.Story,
-                summary: "Story",
-            });
-            const codeReview = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "Review",
-                persona: Persona.CodeReviewer,
-                parentKey: story.key,
-            });
-            await backend.workTracker.transition(codeReview.key, Status.Done);
-            await backend.workTracker.createRemoteLink(codeReview.key, prFixture({}).url, "PR");
+            const dev = await inProgressDev(backend, "Dev");
+            await backend.workTracker.createRemoteLink(dev.key, prFixture({}).url, "PR");
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.readyToTest, []);
             assert.deepEqual(result.readyToMerge, []);
         });
     });
 
-    test("a Done CodeReview subtask with a linked, open, green PR is surfaced", async () => {
+    test("an In-Progress Dev subtask with a linked, approved, green PR is surfaced in both lists", async () => {
         await withBackend(async (backend, taiRoot) => {
-            const story = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: StoryType.Story,
-                summary: "Story",
-            });
-            const codeReview = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "Review",
-                persona: Persona.CodeReviewer,
-                parentKey: story.key,
-            });
-            await backend.workTracker.transition(codeReview.key, Status.Done);
-            const pr = prFixture({});
-            await backend.workTracker.createRemoteLink(codeReview.key, pr.url, "PR");
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
 
             const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
             const result = await findReadyWork({
@@ -242,29 +240,85 @@ describe("findReadyWork readyToMerge", () => {
                 repos: [repo],
             });
 
+            assert.equal(result.readyToTest.length, 1);
+            assert.equal(result.readyToTest[0]?.devSubtaskKey, dev.key);
             assert.equal(result.readyToMerge.length, 1);
-            assert.equal(result.readyToMerge[0]?.codeReviewKey, codeReview.key);
-            assert.equal(result.readyToMerge[0]?.pullRequest.url, pr.url);
+            assert.equal(result.readyToMerge[0]?.devSubtaskKey, dev.key);
         });
     });
 
-    test("red CI excludes the PR even though CodeReview passed", async () => {
+    test("readyToTest has NO approval requirement — testing runs in parallel with review, not gated behind it (human-confirmed, TAI-160)", async () => {
         await withBackend(async (backend, taiRoot) => {
-            const story = await backend.workTracker.createIssue({
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [] }); // no reviews cast at all yet
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
                 projectKey: "TAI",
-                issueType: StoryType.Story,
-                summary: "Story",
+                gitHost,
+                repos: [repo],
+                requiredApprovals: 1,
             });
-            const codeReview = await backend.workTracker.createIssue({
+
+            assert.equal(result.readyToTest.length, 1, "an unreviewed PR is still ready to test");
+            assert.deepEqual(result.readyToMerge, [], "but not ready to merge without approval");
+        });
+    });
+
+    test("requiredApprovals > 1: one approval doesn't meet the readyToMerge threshold for two (readyToTest is unaffected either way)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
                 projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "Review",
-                persona: Persona.CodeReviewer,
-                parentKey: story.key,
+                gitHost,
+                repos: [repo],
+                requiredApprovals: 2,
             });
-            await backend.workTracker.transition(codeReview.key, Status.Done);
-            const pr = prFixture({});
-            await backend.workTracker.createRemoteLink(codeReview.key, pr.url, "PR");
+
+            assert.equal(result.readyToTest.length, 1);
+            assert.deepEqual(result.readyToMerge, [], "one approval doesn't meet a required count of 2");
+        });
+    });
+
+    test("requiredApprovals > 1: two approvals meet the readyToMerge threshold", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({
+                reviewers: [
+                    { human: REVIEWER_A, status: "approved" },
+                    { human: REVIEWER_B, status: "approved" },
+                ],
+            });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+                requiredApprovals: 2,
+            });
+
+            assert.equal(result.readyToMerge.length, 1);
+        });
+    });
+
+    test("red CI excludes the PR from readyToMerge even though it's approved (readyToTest is unaffected — never checked CI, pre- or post-rev-52)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
 
             const gitHost = new FakeGitHost(new Map([[repo, [pr]]]), [
                 { key: "build", name: "build", state: "failed" },
@@ -277,25 +331,14 @@ describe("findReadyWork readyToMerge", () => {
                 repos: [repo],
             });
 
+            assert.equal(result.readyToTest.length, 1);
             assert.deepEqual(result.readyToMerge, []);
         });
     });
 
-    test("a Done CodeReview subtask with no remote link is not surfaced", async () => {
+    test("an In-Progress Dev subtask with no remote link is not surfaced", async () => {
         await withBackend(async (backend, taiRoot) => {
-            const story = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: StoryType.Story,
-                summary: "Story",
-            });
-            const codeReview = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "Review, never linked to a PR",
-                persona: Persona.CodeReviewer,
-                parentKey: story.key,
-            });
-            await backend.workTracker.transition(codeReview.key, Status.Done);
+            await inProgressDev(backend, "Dev, never linked to a PR");
 
             const gitHost = new FakeGitHost(new Map([[repo, [prFixture({})]]]));
             const result = await findReadyWork({
@@ -306,27 +349,15 @@ describe("findReadyWork readyToMerge", () => {
                 repos: [repo],
             });
 
-            assert.deepEqual(result.readyToMerge, []);
+            assert.deepEqual(result.readyToTest, []);
         });
     });
 
     test("a linked PR that's already merged (no longer open) is not surfaced", async () => {
         await withBackend(async (backend, taiRoot) => {
-            const story = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: StoryType.Story,
-                summary: "Story",
-            });
-            const codeReview = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "Review",
-                persona: Persona.CodeReviewer,
-                parentKey: story.key,
-            });
-            await backend.workTracker.transition(codeReview.key, Status.Done);
+            const dev = await inProgressDev(backend, "Dev");
             const pr = prFixture({});
-            await backend.workTracker.createRemoteLink(codeReview.key, pr.url, "PR");
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
 
             // The PR is merged now — listPullRequests(repo, "open") no longer returns it.
             const gitHost = new FakeGitHost(new Map([[repo, []]]));
@@ -338,7 +369,198 @@ describe("findReadyWork readyToMerge", () => {
                 repos: [repo],
             });
 
+            assert.deepEqual(result.readyToTest, []);
+        });
+    });
+
+    test("a Dev subtask that's Done (already merged, rev 52) is not surfaced even with an approved linked PR", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+            await backend.workTracker.transition(dev.key, Status.Done);
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.deepEqual(result.readyToTest, [], "only In-Progress Dev subtasks are candidates");
+        });
+    });
+});
+
+describe("findReadyWork readyToReview", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+
+    test("empty when gitHost/repos/currentHuman/prReviewers aren't all supplied", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const pr = prFixture({});
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+                // currentHuman/prReviewers omitted
+            });
+            assert.deepEqual(result.readyToReview, []);
+        });
+    });
+
+    test("an open PR is surfaced when the current human is an eligible reviewer with no decision yet", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const pr = prFixture({});
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+                currentHuman: REVIEWER_A,
+                prReviewers: [REVIEWER_A],
+            });
+            assert.equal(result.readyToReview.length, 1);
+            assert.equal(result.readyToReview[0]?.pullRequest.url, pr.url);
+        });
+    });
+
+    test("not surfaced when the current human isn't on the PR Reviewers roster", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const pr = prFixture({});
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+                currentHuman: REVIEWER_A,
+                prReviewers: [REVIEWER_B], // A is not on the roster
+            });
+            assert.deepEqual(result.readyToReview, []);
+        });
+    });
+
+    test("a PR the current human already approved is not surfaced again", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+                currentHuman: REVIEWER_A,
+                prReviewers: [REVIEWER_A],
+            });
+            assert.deepEqual(result.readyToReview, []);
+        });
+    });
+
+    test("a PR the current human is assigned as reviewer on but hasn't voted (pending) IS surfaced", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "pending" }] });
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+                currentHuman: REVIEWER_A,
+                prReviewers: [REVIEWER_A],
+            });
+            assert.equal(result.readyToReview.length, 1);
+        });
+    });
+});
+
+describe("findReadyWork out-of-band merge sync (rev 52, TAI-159 ADR)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+
+    test("an In-Progress Dev subtask whose linked PR is now merged (not via git-pr merge) is synced to Done", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ state: "merged" });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            const synced = await backend.workTracker.getIssue(dev.key);
+            assert.equal(synced?.status, Status.Done);
+        });
+    });
+
+    test("a just-synced Dev subtask doesn't spuriously appear in readyToTest/readyToMerge from the same refresh", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ state: "merged", reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.deepEqual(result.readyToTest, []);
             assert.deepEqual(result.readyToMerge, []);
+        });
+    });
+
+    test("an In-Progress Dev subtask with no remote link is left untouched", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev, never linked");
+            const gitHost = new FakeGitHost(new Map([[repo, []]]));
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            const untouched = await backend.workTracker.getIssue(dev.key);
+            assert.equal(untouched?.status, Status.InProgress);
+        });
+    });
+
+    test("an In-Progress Dev subtask whose linked PR is still open is left untouched", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ state: "open" });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            const untouched = await backend.workTracker.getIssue(dev.key);
+            assert.equal(untouched?.status, Status.InProgress);
+        });
+    });
+
+    test("skipped entirely when gitHost/repos aren't supplied", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ state: "merged" });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+
+            const untouched = await backend.workTracker.getIssue(dev.key);
+            assert.equal(untouched?.status, Status.InProgress);
         });
     });
 });

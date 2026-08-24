@@ -1,11 +1,15 @@
 /**
- * TAI-110 IntegrationTest: exercises TAI-106/107/108's approved-PR-merge surfacing/trigger
- * against REAL backends — Jira TAIT (`WorkTracker`: Story/CodeReview subtask creation,
- * transition, `createRemoteLink`/`getRemoteLinks`, `getLinkedIssues`) and Bitbucket TAIT
- * (`GitHost`: real branch, real PR, real `listPullRequests`/`getCommitStatuses`) — the
- * ready.test.ts/git-pr.test.ts unit suites already cover this logic against fakes; this is
- * the real acceptance bar, same discipline as `link-precedence.integration.test.ts` (TAI-100)
- * and `jira-backend.conformance.test.ts`. Skips cleanly when either credential set is absent.
+ * TAI-110 IntegrationTest, updated for rev 52 (TAI-159/TAI-160): exercises the approved-PR-
+ * merge surfacing/trigger against REAL backends — Jira TAIT (`WorkTracker`: Story/Dev
+ * subtask creation, transition, `createRemoteLink`/`getRemoteLinks`) and Bitbucket TAIT
+ * (`GitHost`: real branch, real PR, real `reviewPullRequest`/`listPullRequests`/
+ * `getCommitStatuses`) — the ready.test.ts unit suite already covers this logic against
+ * fakes; this is the real acceptance bar, same discipline as
+ * `link-precedence.integration.test.ts` (TAI-100) and `jira-backend.conformance.test.ts`.
+ * Skips cleanly when either credential set is absent. CodeReview retired going forward
+ * (rev 52) — the anchor is now an In-Progress Dev subtask, not a Done CodeReview subtask;
+ * `findCodeReviewSiblingForLink`'s own coverage was removed along with the function itself
+ * (git-pr create links directly to the Dev subtask now, no sibling lookup).
  *
  * CI-STATUS COVERAGE, SCOPED HONESTLY: TAIT has no `bitbucket-pipelines.yml` — confirmed by
  * `bitbucket-git-host.integration.test.ts`'s own "getCommitStatuses returns an empty array
@@ -40,7 +44,7 @@ import {
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../git/bitbucket/bitbucket-backend.js";
 import { RestClient } from "../git/bitbucket/rest-client.js";
 import { findReadyWork } from "./ready.js";
-import { isGreen, findCodeReviewSiblingForLink } from "./git-pr.js";
+import { isGreen } from "./git-pr.js";
 
 const JIRA_SITE_URL = process.env["TAI_TEST_JIRA_SITE_URL"];
 const JIRA_EMAIL = process.env["TAI_TEST_JIRA_EMAIL"];
@@ -134,72 +138,38 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
         return key;
     }
 
-    async function waitForSubtask(storyKey: IssueKey, expectedCount: number): Promise<void> {
-        for (let attempt = 0; attempt < 6; attempt++) {
-            const found = await workTracker.search({ projectKey: PROJECT_KEY, parentKey: storyKey });
-            if (found.length >= expectedCount) return;
-            await new Promise((resolve) => setTimeout(resolve, 5000));
-        }
-        throw new Error(`search() never converged to ${expectedCount} subtasks under ${storyKey}`);
-    }
-
-    test("findCodeReviewSiblingForLink resolves the real CodeReview sibling via a real Jira search", async () => {
+    test("end-to-end (rev 52): an In-Progress Dev subtask with a real approved+linked PR but no CI info is not surfaced as ready to merge", async () => {
         const story = await workTracker.createIssue({
             projectKey: PROJECT_KEY,
             issueType: StoryType.Story,
-            summary: "TAI-110 fixture: findCodeReviewSiblingForLink",
+            summary: "TAI-110/TAI-160 fixture: readyToMerge negative case",
         });
         track(story.key);
         const dev = await workTracker.createIssue({
             projectKey: PROJECT_KEY,
             issueType: SubtaskType.Dev,
-            summary: "TAI-110 fixture: Dev",
+            summary: "TAI-110/TAI-160 fixture: Dev, no CI on TAIT",
             persona: Persona.Developer,
             parentKey: story.key,
         });
         track(dev.key);
-        const codeReview = await workTracker.createIssue({
-            projectKey: PROJECT_KEY,
-            issueType: SubtaskType.CodeReview,
-            summary: "TAI-110 fixture: CodeReview",
-            persona: Persona.CodeReviewer,
-            parentKey: story.key,
-        });
-        track(codeReview.key);
-
-        await waitForSubtask(story.key, 2);
-        const resolved = await findCodeReviewSiblingForLink(workTracker, dev);
-        assert.equal(resolved, codeReview.key);
-    });
-
-    test("end-to-end: a Done CodeReview subtask with a real linked PR but no CI info is not surfaced as ready to merge", async () => {
-        const story = await workTracker.createIssue({
-            projectKey: PROJECT_KEY,
-            issueType: StoryType.Story,
-            summary: "TAI-110 fixture: readyToMerge negative case",
-        });
-        track(story.key);
-        const codeReview = await workTracker.createIssue({
-            projectKey: PROJECT_KEY,
-            issueType: SubtaskType.CodeReview,
-            summary: "TAI-110 fixture: CodeReview, no CI on TAIT",
-            persona: Persona.CodeReviewer,
-            parentKey: story.key,
-        });
-        track(codeReview.key);
-        await workTracker.transition(codeReview.key, Status.Done);
+        await workTracker.transition(dev.key, Status.InProgress);
 
         const branch = `tai-110-readytomerge-${Date.now()}`;
         createdBranches.push(branch);
-        await seedBranch(REPO_SLUG, branch, "TAI-110 integration test fixture");
+        await seedBranch(REPO_SLUG, branch, "TAI-110/TAI-160 integration test fixture");
         const pr = await gitHost.createPullRequest({
             repo,
-            title: "TAI-110 fixture PR (no CI on TAIT)",
+            title: "TAI-110/TAI-160 fixture PR (no CI on TAIT)",
             sourceBranch: branch,
             destinationBranch: "master",
         });
 
-        await workTracker.createRemoteLink(codeReview.key, pr.url, pr.title);
+        await workTracker.createRemoteLink(dev.key, pr.url, pr.title);
+        // Approve it for real, so this test isolates the CI-only exclusion (rev 52:
+        // readyToTest/readyToMerge both also require the approval threshold — met here —
+        // separately from the CI check this test is actually about).
+        await gitHost.reviewPullRequest(repo, pr.id, "approve");
 
         // Confirms real getCommitStatuses genuinely returns nothing for this PR's real
         // commit — same live fact bitbucket-git-host.integration.test.ts's own "no pipeline
@@ -216,8 +186,12 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
             repos: [repo],
         });
         assert.ok(
-            !result.readyToMerge.some((c) => c.codeReviewKey === codeReview.key),
-            "no CI info must exclude the PR, not silently treat it as ready"
+            result.readyToTest.some((c) => c.devSubtaskKey === dev.key),
+            "readyToTest never checked CI, pre- or post-rev-52 — the approved PR belongs here"
+        );
+        assert.ok(
+            !result.readyToMerge.some((c) => c.devSubtaskKey === dev.key),
+            "no CI info must exclude the PR from readyToMerge, not silently treat it as ready"
         );
 
         // Cleanup: decline the real PR (not part of GitHost's own scope, same as
@@ -227,33 +201,33 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
             .catch(() => {});
     });
 
-    test("once the linked PR is no longer open, it drops out of readyToMerge even with a matching remote link", async () => {
+    test("once the linked PR is no longer open, it drops out of readyToTest/readyToMerge even with a matching remote link", async () => {
         const story = await workTracker.createIssue({
             projectKey: PROJECT_KEY,
             issueType: StoryType.Story,
-            summary: "TAI-110 fixture: readyToMerge after decline",
+            summary: "TAI-110/TAI-160 fixture: readyToMerge after decline",
         });
         track(story.key);
-        const codeReview = await workTracker.createIssue({
+        const dev = await workTracker.createIssue({
             projectKey: PROJECT_KEY,
-            issueType: SubtaskType.CodeReview,
-            summary: "TAI-110 fixture: CodeReview, PR gets declined",
-            persona: Persona.CodeReviewer,
+            issueType: SubtaskType.Dev,
+            summary: "TAI-110/TAI-160 fixture: Dev, PR gets declined",
+            persona: Persona.Developer,
             parentKey: story.key,
         });
-        track(codeReview.key);
-        await workTracker.transition(codeReview.key, Status.Done);
+        track(dev.key);
+        await workTracker.transition(dev.key, Status.InProgress);
 
         const branch = `tai-110-declined-${Date.now()}`;
         createdBranches.push(branch);
-        await seedBranch(REPO_SLUG, branch, "TAI-110 integration test fixture — will be declined");
+        await seedBranch(REPO_SLUG, branch, "TAI-110/TAI-160 integration test fixture — will be declined");
         const pr = await gitHost.createPullRequest({
             repo,
-            title: "TAI-110 fixture PR (will be declined)",
+            title: "TAI-110/TAI-160 fixture PR (will be declined)",
             sourceBranch: branch,
             destinationBranch: "master",
         });
-        await workTracker.createRemoteLink(codeReview.key, pr.url, pr.title);
+        await workTracker.createRemoteLink(dev.key, pr.url, pr.title);
 
         await rawBitbucketClient().request(
             "POST",
@@ -267,7 +241,8 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
             gitHost,
             repos: [repo],
         });
-        assert.ok(!result.readyToMerge.some((c) => c.codeReviewKey === codeReview.key));
+        assert.ok(!result.readyToTest.some((c) => c.devSubtaskKey === dev.key));
+        assert.ok(!result.readyToMerge.some((c) => c.devSubtaskKey === dev.key));
     });
 });
 

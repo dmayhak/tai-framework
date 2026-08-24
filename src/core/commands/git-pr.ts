@@ -17,10 +17,11 @@
  * enough detail to act on, rather than picking one.
  */
 
-import type { CommitStatus, GitHost, MergeStrategy, PullRequestId, RepoId } from "../git/interface.js";
+import type { CommitStatus, MergeStrategy, PullRequestId, RepoId } from "../git/interface.js";
+import type { GitHost } from "../git/interface.js";
 import { toPullRequestId } from "../git/interface.js";
-import { DependencyRelation, SubtaskType } from "../schema/story-schema.js";
-import type { Issue, IssueKey, WorkTracker } from "../storage/interface.js";
+import { Status, SubtaskType } from "../schema/story-schema.js";
+import type { IssueKey, WorkTracker } from "../storage/interface.js";
 
 export async function resolvePullRequestId(
     gitHost: Pick<GitHost, "listPullRequests">,
@@ -59,53 +60,51 @@ export function isGreen(statuses: readonly CommitStatus[]): boolean {
     return statuses.length > 0 && statuses.every((s) => s.state === "successful");
 }
 
-// ---------- PR <-> CodeReview subtask correlation (TAI-107/TAI-108) ----------
+// ---------- PR <-> Dev subtask correlation (rev 52, TAI-159 ADR §4) ----------
+//
+// Pre-rev-52 this file had `findCodeReviewSiblingForLink` — a sibling-search-plus-
+// DependsOn-disambiguation function needed because the PR conceptually belonged to a
+// SEPARATE CodeReview subtask, not the Dev subtask that opened it. `CodeReview` is retired
+// going forward (never created for new work — see story-schema.ts), so that indirection is
+// gone: `git-pr create <DEV-SUBTASK-KEY> ...` already has the Dev subtask's own key as its
+// first argument, and the PR links directly to it, no search/disambiguation needed at all.
+// A net simplification, not a replacement function.
+
+// ---------- Dev subtask self-closing on merge (rev 52, TAI-159 ADR §4) ----------
 
 /**
- * Finds the CodeReview subtask that should review `issue`'s freshly-opened PR, so
- * `WorkTracker.createRemoteLink` has something to link to — closes brief §5.4's "links the
- * PR to the CodeReview subtask via a Jira remote issue link" step, previously a fully manual
- * persona action every time (TAI-99, TAI-105 this session).
+ * Finds the `In Progress` `Dev` subtask linked to a just-merged PR, so `git-pr merge` can
+ * transition it to `Done` as a second write in the same call — the same "one command, two
+ * writes" shape `git-pr create` already has (PR create + remote link).
  *
- * Looks among `issue`'s siblings (same `parentKey`) for CodeReview subtasks. The common case
- * (one CodeReview per Story, the static SUBTASK_PRECEDENCE default) resolves trivially. If
- * more than one exists — an ad-hoc CodeReview added outside the template, exactly what
- * TAI-105 was this session — disambiguates via the materialized `DependsOn` precedence link
- * (a CodeReview subtask depends on the Dev/Test-tier subtask it reviews; `link-precedence`/
- * TAI-98 already creates this edge for the templated case, and TAI-105's own ad-hoc edge was
- * created the same way by hand).
+ * Doesn't assume the `<ISSUE-KEY>` the merge was invoked with IS the linked Dev subtask —
+ * that key is sometimes borrowed purely to resolve a different persona's `gitHost`
+ * permission grant (an established pattern: merging a PM/Architect governance-content PR
+ * via a Dev subtask's `mergePullRequest` grant), so it isn't reliable as the correlation
+ * key. Instead searches the project's `In Progress` `Dev` subtasks for whichever one's own
+ * remote link points at this PR's URL — same correlation idiom `ready.ts`'s
+ * `findDevLinkedOpenPRs` and (pre-rev-52) `findCodeReviewSiblingForLink` both used.
  *
- * Returns `null` rather than throwing when no confident match exists — this correlation is a
- * nice-to-have on top of PR creation, not a reason to fail the PR itself.
+ * Returns `null` rather than throwing when no match exists — same "best-effort, don't fail
+ * the action itself over this" posture as the pre-rev-52 sibling-correlation function. A
+ * merge that can't be correlated to a Dev subtask (e.g. a governance-content PR with no
+ * Dev subtask at all) still succeeds; only the self-closing side effect is skipped.
  */
-export async function findCodeReviewSiblingForLink(
-    workTracker: Pick<WorkTracker, "search" | "getLinkedIssues">,
-    issue: Pick<Issue, "key" | "projectKey" | "parentKey">
+export async function findLinkedDevSubtask(
+    workTracker: Pick<WorkTracker, "search" | "getRemoteLinks">,
+    projectKey: string,
+    prUrl: string
 ): Promise<IssueKey | null> {
-    if (!issue.parentKey) return null;
-    const siblings = await workTracker.search({ projectKey: issue.projectKey, parentKey: issue.parentKey });
-    const codeReviews = siblings.filter((s) => s.issueType === SubtaskType.CodeReview);
-    if (codeReviews.length === 0) return null;
-
-    // Always check the materialized DependsOn precedence link FIRST, even when there's
-    // only one CodeReview sibling — live bug found TAI-110 (2026-08-20): a lone CodeReview
-    // sibling that already depends on a DIFFERENT subtask (TAI-109 already belonged to
-    // TAI-108's review) must not be mistaken for "the" match just because it's the only
-    // CodeReview subtask present under the Story. An earlier version of this function
-    // returned the sole candidate unconditionally, which wrote a real, wrong Jira remote
-    // link before this fix (cleaned up manually, see TAI-110's own writeup).
-    const unclaimed: IssueKey[] = [];
-    for (const cr of codeReviews) {
-        const deps = await workTracker.getLinkedIssues(cr.key, DependencyRelation.DependsOn, "outgoing");
-        if (deps.some((d) => d.key === issue.key)) return cr.key;
-        if (deps.length === 0) unclaimed.push(cr.key);
+    const inProgressDevs = await workTracker.search({
+        projectKey,
+        issueTypes: [SubtaskType.Dev],
+        statuses: [Status.InProgress],
+    });
+    for (const dev of inProgressDevs) {
+        const links = await workTracker.getRemoteLinks(dev.key);
+        if (links.some((l) => l.url === prUrl)) return dev.key;
     }
-
-    // No CodeReview subtask's own DependsOn link points at `issue` — fall back to a
-    // genuinely unclaimed one (no DependsOn link of its own at all, i.e. link-precedence
-    // hasn't run yet or this is an ad-hoc CodeReview with no edge) only when exactly one
-    // such candidate exists; more than one is real ambiguity, not a guess to make.
-    return unclaimed.length === 1 ? unclaimed[0]! : null;
+    return null;
 }
 
 // ---------- Branch naming (TAI-107/TAI-108) ----------
@@ -184,7 +183,7 @@ export function parseReviewArgs(gitArgs: readonly string[]): ParsedReviewArgs {
     const [prIdArg, decision, comment] =
         first === "approve" || first === "requestChanges" ? [undefined, first, second] : [first, second, third];
     if (decision !== "approve" && decision !== "requestChanges") {
-        throw new Error("Usage: git-pr review <ISSUE-KEY> <REPO> [PR-ID] <approve|requestChanges> [COMMENT]");
+        throw new Error("Usage: git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]");
     }
     return { prIdArg, decision, comment };
 }

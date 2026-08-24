@@ -19,8 +19,16 @@
 > `readyToMerge`) replacing the CodeReview-anchored precedence edges, extending TAI-107/
 > 108's existing `readyToMerge` pattern rather than inventing a new one. See §5.4 and §6
 > for the revised chain, and the TAI-159 ADR for full detail (required-approval-threshold
-> handling, the new "PR Reviewers" roster, `git-pr create`/`merge` changes). Not yet
-> built — TAI-159 is architecture design only; implementation tracked under TAI-157.
+> handling, the new "PR Reviewers" roster, `git-pr create`/`merge` changes). **Built
+> (TAI-160):** two refinements found live during implementation, both human-confirmed
+> 2026-08-24 — (1) testing runs **in parallel** with review, not gated behind it
+> (`readyToTest` has no approval-count check at all; only `readyToMerge` does) — protects
+> `master` without inverting `Deploy`'s existing merge-then-nothing-after ordering; (2)
+> `git-pr review` is now **roster-gated, not persona-gated** — `git-pr review <REPO>
+> [PR-ID] <approve|requestChanges> [COMMENT]`, no `<ISSUE-KEY>` at all, since there's no
+> ticket left whose `persona` field would resolve to Code Reviewer. See §8 item 30 for a
+> known limitation surfaced along the way (a Story can't host more than one Dev/Test/
+> Deploy cycle — a follow-up always needs a new Story/Bug).
 > Prior: rev 51 — **§3.8/§9: TAI's own command surface moved to
 > global skills, no MCP server required.** TAI-116/126, following TAI-90's ADR (Confluence
 > TA space page 26902529): `tai-work`/`tai-ready`/`tai-pr`/`tai-init` now ship as global
@@ -1782,6 +1790,21 @@ Carry these forward; resolve them in upcoming design sessions.
     step? Who can clear it once raised? Revisit
     once a concrete case makes the shape obvious, same "don't build ahead of an observed
     need" posture as item 1/28 above.
+30. **A Story doesn't support multiple Dev/Test/Deploy cycles (rev 52, 2026-08-24, known
+    limitation, not planned).** `STORY_SUBTASK_MAP`/`SUBTASK_PRECEDENCE` model subtask
+    *types* per Story, not *instances* — `doneSubtaskTypes` is a `Set<SubtaskType>`, one
+    "is Dev done at all" flag per Story, not per Dev subtask. Nothing stops creating a
+    second `Dev` subtask under an already-merged Story, but the precedence graph wouldn't
+    track it correctly (once any `Dev` instance goes Done, anything gated on "Dev done"
+    reads as satisfied for the whole Story). **Consequence:** any follow-up work — a small
+    tweak discovered after merge, even something as small as a label rename — needs its
+    own Story or Bug, not a second Dev cycle bolted onto the original one. This isn't
+    ceremony for its own sake: it's the only unit the precedence graph actually tracks
+    cleanly today, and the *process* around a tiny follow-up still scales down (Ada's
+    "a bug-fix Story needs a paragraph, not a PRD" principle, §3.7) even though the
+    *artifact* doesn't go away. Revisit only if this friction is actually felt on a real
+    project — would need the precedence graph to become instance-aware, not type-aware, a
+    bigger change than anything rev 52 did.
 
 ---
 

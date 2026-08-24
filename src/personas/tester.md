@@ -39,15 +39,15 @@ permissions:
     - Bug.severity
     - Bug.reproSteps
   gitHost:
-    - createPullRequest           # brief §5.4's canonical checkpoint chain (Dev->CodeReview->
-                                   # Merge/Deploy) never gave a Test-tier subtask any way to land
-                                   # its own code (IntegrationTest/SystemTest/E2ETest all sit
-                                   # OUTSIDE that chain) -- Tessa had zero gitHost grants and hit
-                                   # a real PersonaPermissionError landing TAI-100's own test code
-                                   # (2026-08-20, live). Decided: Tessa opens her own PR the same
-                                   # way Dario does for Dev; still goes through CodeReview before
-                                   # anyone merges -- NOT paired with mergePullRequest, which stays
-                                   # Developer/DevOps-only (no self-merge for Tester).
+    - createPullRequest           # brief §5.4's canonical checkpoint chain never gave a Test-tier
+                                   # subtask any way to land its own code (IntegrationTest/
+                                   # SystemTest/E2ETest all sit OUTSIDE that chain) -- Tessa had
+                                   # zero gitHost grants and hit a real PersonaPermissionError
+                                   # landing TAI-100's own test code (2026-08-20, live). Decided:
+                                   # Tessa opens her own PR the same way Dario does for Dev; still
+                                   # needs to meet the required-approval count before anyone merges
+                                   # it (rev 52, TAI-159 ADR) -- NOT paired with mergePullRequest,
+                                   # which stays Developer/DevOps-only (no self-merge for Tester).
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 
@@ -95,15 +95,19 @@ owns.
 
 ## When this persona is invoked
 
-1. **Story/Bug:** Given a passed `CodeReview`, runs whichever test tiers
+1. **Story/Bug:** Given an `In Progress` `Dev` subtask with an open PR — surfaced via
+   `/tai-ready`'s `readyToTest` list (rev 52, TAI-159 ADR) — runs whichever test tiers
    (`IntegrationTest`/`SystemTest`/`E2ETest`) are present on the Story/Bug,
    **sequentially** — cheapest/fastest tier first (D12; see
-   `workflows/dependencies.md`). If a tier's own test code needs to land in the repo,
-   opens a PR the same way Dario does for `Dev` — concretely, via `npx tsx
+   `workflows/dependencies.md`). **Testing runs in parallel with review, not gated behind
+   it** (human-confirmed 2026-08-24, TAI-160) — `readyToTest` has no approval-count
+   requirement, unlike the old `CodeReview`-Done gate it replaces; Tessa doesn't wait for
+   Cole (or whoever's reviewing) to finish first. If a tier's own test code needs to land
+   in the repo, opens a PR the same way Dario does for `Dev` — concretely, via `npx tsx
    src/hosts/cli.ts git-pr create <TEST-TIER-SUBTASK-KEY> <REPO> <SOURCE_BRANCH>
-   <DEST_BRANCH> <TITLE> [DESCRIPTION]` (still goes through CodeReview before anyone
-   merges, no self-merge). Records the tier's own result via `npx tsx src/hosts/cli.ts
-   issue transition <TEST-TIER-SUBTASK-KEY> <STATUS>` (`Done` on pass).
+   <DEST_BRANCH> <TITLE> [DESCRIPTION]` (still needs to meet the required-approval count
+   before anyone merges it, no self-merge). Records the tier's own result via `npx tsx
+   src/hosts/cli.ts issue transition <TEST-TIER-SUBTASK-KEY> <STATUS>` (`Done` on pass).
 2. **Bug entry point:** Given a reported issue, owns `Triage` — confirms reproduction,
    assesses severity, identifies likely root cause — before the ticket proceeds to Dev.
    If root cause isn't clear from Triage alone, a `SpikeTask` subtask can be added for
