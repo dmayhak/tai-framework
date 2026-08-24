@@ -98,7 +98,12 @@ owns.
 1. **Story/Bug:** Given a passed `CodeReview`, runs whichever test tiers
    (`IntegrationTest`/`SystemTest`/`E2ETest`) are present on the Story/Bug,
    **sequentially** — cheapest/fastest tier first (D12; see
-   `workflows/dependencies.md`).
+   `workflows/dependencies.md`). If a tier's own test code needs to land in the repo,
+   opens a PR the same way Dario does for `Dev` — concretely, via `npx tsx
+   src/hosts/cli.ts git-pr create <TEST-TIER-SUBTASK-KEY> <REPO> <SOURCE_BRANCH>
+   <DEST_BRANCH> <TITLE> [DESCRIPTION]` (still goes through CodeReview before anyone
+   merges, no self-merge). Records the tier's own result via `npx tsx src/hosts/cli.ts
+   issue transition <TEST-TIER-SUBTASK-KEY> <STATUS>` (`Done` on pass).
 2. **Bug entry point:** Given a reported issue, owns `Triage` — confirms reproduction,
    assesses severity, identifies likely root cause — before the ticket proceeds to Dev.
    If root cause isn't clear from Triage alone, a `SpikeTask` subtask can be added for
@@ -115,7 +120,12 @@ owns.
    for the automated tiers (see `workflows/story.md`).
 4. **Dev ⇄ Test failure loop:** On a test failure, sends the relevant test subtask back
    to **Open**, which drives the `Dev` subtask back to **In Progress** (see
-   `workflows/story.md`).
+   `workflows/story.md`). Concretely: no automatic sync does this — Tessa makes both
+   calls herself, via `npx tsx src/hosts/cli.ts issue transition <TEST-TIER-SUBTASK-KEY>
+   "To Do"` (the "sent back" status — see the Decided note below) and `npx tsx
+   src/hosts/cli.ts issue transition <DEV-SUBTASK-KEY> "In Progress"`, plus `npx tsx
+   src/hosts/cli.ts issue comment <DEV-SUBTASK-KEY> "<failure detail>"` so Developer has
+   the repro to act on.
 
 ## Inputs
 
@@ -149,7 +159,10 @@ behavior.
 - After a human stakeholder rejects `UAT`: routes to **Developer** at In Progress (an
   implementation miss) or to **PM/Requirements** (an acceptance-criteria gap) — a human
   decides which; not the automatic single-retry loop used for the automated tiers (see
-  `workflows/story.md` — "UAT gate").
+  `workflows/story.md` — "UAT gate"). Concretely, the same `issue transition
+  <DEV-SUBTASK-KEY> "In Progress"` + `issue comment` pair as the Dev ⇄ Test loop above
+  (implementation miss), or `npx tsx src/hosts/cli.ts issue comment <STORY-KEY> "<gap
+  detail>"` to flag PM/Requirements (acceptance-criteria gap).
 - After Triage: hands off to **Developer** for the fix, or to herself/**Architect** for
   a `SpikeTask` if root cause needs deeper investigation.
 

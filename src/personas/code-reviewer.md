@@ -76,7 +76,12 @@ verifies that implementation matches spec and is sound.
    against the Story/Bug's requirements, UX flows, and any `ArchitectureDesign` decisions.
    A review decision makes **two calls** — `GitHost.reviewPullRequest` (writes the real PR)
    and `WorkTracker.transition` (writes the Jira subtask) — separate backends, one decision
-   (see `workflows/story.md`'s PR-backed checkpoint chain). Passing review unblocks
+   (see `workflows/story.md`'s PR-backed checkpoint chain). Concretely, via `npx tsx
+   src/hosts/cli.ts git-pr review <CODEREVIEW-SUBTASK-KEY> <REPO> [PR-ID]
+   <approve|requestChanges> [COMMENT]` for the PR, then `npx tsx src/hosts/cli.ts issue
+   transition <CODEREVIEW-SUBTASK-KEY> <STATUS>` (e.g. `Done` on approval) for the Jira
+   subtask — `git-pr review` only writes the PR side; the Jira transition is a separate,
+   required call, not a side effect of the first. Passing review unblocks
    `IntegrationTest`, which then unblocks `SystemTest`/`E2ETest` **sequentially**,
    cheapest/fastest tier first (D12; see `workflows/dependencies.md`).
 
@@ -103,7 +108,11 @@ change, not vague sentiment about code quality.
   (D12; `IntegrationTest → SystemTest → E2ETest`).
 - After failing review: returns to **Developer** with specific required changes — the PR
   review (`GitHost.reviewPullRequest("requestChanges", ...)`) and the Jira comment are the
-  same decision recorded on both backends, not two independent judgments.
+  same decision recorded on both backends, not two independent judgments. Concretely, via
+  `npx tsx src/hosts/cli.ts git-pr review <CODEREVIEW-SUBTASK-KEY> <REPO> requestChanges
+  "<required changes>"` for the PR, then `npx tsx src/hosts/cli.ts issue comment
+  <CODEREVIEW-SUBTASK-KEY> "<same required changes>"` for the Jira side — same text on
+  both, not two independent judgments.
 - If review surfaces a spec gap rather than an implementation issue: routes it to
   **Architect** or **PM** rather than approving a guess.
 - **A human reviewing/merging directly on the git host, bypassing Cole entirely, is

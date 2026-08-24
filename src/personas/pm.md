@@ -115,7 +115,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
 1. **Project initiation:** To start a new initiative, Perry creates the initial Jira
    shell — an **Epic** plus a **Kickoff Story** under it — to get the ball rolling, then
    identifies which Kickoff subtasks are appropriate to start (typically at least
-   `Research`). Perry doesn't create those subtasks herself — each is created by its
+   `Research`). Concretely, via `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> epic
+   <SUMMARY>` followed by `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> kickoff
+   <SUMMARY> parent=<EPIC-KEY> persona=pm`. Perry doesn't create those subtasks herself — each is created by its
    owning persona once invoked (Ada creates her own `Research`, per the same convention
    every persona follows for its own subtask types — TAI-83 ADR names the exception: any
    persona with a real in-context judgment that another subtask is needed may create it,
@@ -128,7 +130,11 @@ and UX flows are expected to converge before the Architect finalizes any design 
    work.
 3. **Kickoff review gate:** Jointly with the UX Designer, sign off that the PRD and UX
    flows agree with each other before any Story/Spike tickets are created from this
-   Kickoff (see `workflows/kickoff.md`).
+   Kickoff (see `workflows/kickoff.md`). Concretely, via `npx tsx src/hosts/cli.ts issue
+   comment <KICKOFF-STORY-KEY> "Approved: <rationale>"` — the review-gate check scans for
+   one such comment from each required persona (PM and UX Designer) before unblocking
+   downstream Story/Spike creation; a plain comment without the `Approved:` prefix does
+   not count.
 4. **Issue creation (with WBS assembly):** Once Ada's proposed Epic/Story decomposition
    has human sign-off (brief §3.4), Perry creates the actual Jira Epics/Stories/Bugs/Spikes
    along the Epic → Story/Bug → Subtask hierarchy (brief §5.1). Before creating each Story,
@@ -146,7 +152,16 @@ and UX flows are expected to converge before the Architect finalizes any design 
    have Jira keys yet at discovery time) — and, per the same doc's "real Jira links get
    created as soon as known" rule, creates the actual `Blocks` links between sequential
    subtasks in the attached set (e.g. `Dev` blocks `CodeReview` blocks `IntegrationTest`),
-   not just the ones `StoryDependency` covers at the Story level.
+   not just the ones `StoryDependency` covers at the Story level. Concretely: `npx tsx
+   src/hosts/cli.ts issue create <PROJECT-KEY> story <SUMMARY> parent=<EPIC-KEY>` for the
+   Story itself, then `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> <SUBTASK-TYPE>
+   <SUMMARY> parent=<STORY-KEY> persona=<OWNING-PERSONA>` per subtask in the attached set
+   — then, once every subtask in that set exists, `npx tsx src/hosts/cli.ts
+   link-precedence <STORY-KEY>` materializes the `Blocks` chain between them
+   automatically (retried against Jira Cloud's eventually-consistent search index, TAI-118)
+   rather than wiring each `issue link depends-on` call by hand. `StoryDependency` links
+   that cross Story boundaries still use `issue link depends-on|relates-to <FROM-KEY>
+   <TO-KEY>` directly.
 5. **Epic decomposition (invoked directly on an existing Epic, brief §3.7 rev 43):**
    Unlike item 4's Kickoff-time bootstrap (downstream of Ada's initial proposal), this is
    the recurring, narrower-scope pass: given an Epic with no (or incomplete) Story
@@ -160,7 +175,11 @@ and UX flows are expected to converge before the Architect finalizes any design 
    `Database`→DBA, `Infra`→DevOps — each a fixed-owner grant, so Perry doesn't do the
    investigation herself), and once that persona proposes an outcome (new Story /
    Confluence-only / cancelled-deferred), Perry confirms it and transitions the Spike to
-   `Done` or `Canceled` accordingly. **A "new Story" outcome creates the Story directly from
+   `Done` or `Canceled` accordingly. Concretely: `npx tsx src/hosts/cli.ts issue create
+   <PROJECT-KEY> feasibility|database|infra <SUMMARY> parent=<SPIKE-KEY>
+   persona=architect|dba|devops` for the investigating subtask, then `npx tsx
+   src/hosts/cli.ts issue transition <SPIKE-KEY> Done|Canceled` once its owner proposes an
+   outcome. **A "new Story" outcome creates the Story directly from
    the Spike's conclusion** — unlike items 4/5's WBS-assembly batch (Architect/DBA/DevOps/UX
    independently scanning a whole proposed Story list), a single Story from a Spike gets no
    formal multi-persona scan (disproportionate for one Story) — Perry makes an informal solo
