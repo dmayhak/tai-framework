@@ -1,14 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { DependencyRelation, StoryType, SubtaskType } from "../schema/story-schema.js";
+import { Status, SubtaskType } from "../schema/story-schema.js";
 import {
     toHumanId,
     toIssueKey,
     type Issue,
     type IssueFilter,
     type IssueKey,
-    type IssueLink,
+    type RemoteLink,
     type WorkTracker,
 } from "../storage/interface.js";
 import {
@@ -26,7 +26,7 @@ import {
     parseReviewArgs,
     parseMergeArgs,
     isGreen,
-    findCodeReviewSiblingForLink,
+    findLinkedDevSubtask,
     validateBranchName,
     validatePrTitle,
 } from "./git-pr.js";
@@ -178,7 +178,7 @@ function issueFixture(overrides: Partial<Issue> & Pick<Issue, "key" | "issueType
     return {
         projectKey: "TAI",
         summary: "x",
-        status: undefined as never, // not read by findCodeReviewSiblingForLink
+        status: Status.InProgress,
         assignee: null,
         persona: null,
         labels: [],
@@ -189,78 +189,68 @@ function issueFixture(overrides: Partial<Issue> & Pick<Issue, "key" | "issueType
     };
 }
 
-/** A fake exposing only the two methods `findCodeReviewSiblingForLink` actually needs. */
-class FakeSearchLinksWorkTracker implements Pick<WorkTracker, "search" | "getLinkedIssues"> {
+/** A fake exposing only the two methods `findLinkedDevSubtask` actually needs. */
+class FakeSearchLinksWorkTracker implements Pick<WorkTracker, "search" | "getRemoteLinks"> {
     constructor(
         private readonly issues: readonly Issue[],
-        private readonly links: ReadonlyMap<IssueKey, readonly IssueLink[]> = new Map()
+        private readonly links: ReadonlyMap<IssueKey, readonly RemoteLink[]> = new Map()
     ) {}
 
     async search(filter: IssueFilter): Promise<readonly Issue[]> {
-        return this.issues.filter((i) => !filter.parentKey || i.parentKey === filter.parentKey);
+        return this.issues.filter(
+            (i) =>
+                (!filter.issueTypes || filter.issueTypes.includes(i.issueType)) &&
+                (!filter.statuses || filter.statuses.includes(i.status))
+        );
     }
 
-    async getLinkedIssues(key: IssueKey): Promise<readonly IssueLink[]> {
+    async getRemoteLinks(key: IssueKey): Promise<readonly RemoteLink[]> {
         return this.links.get(key) ?? [];
     }
 }
 
-describe("findCodeReviewSiblingForLink", () => {
-    const story = toIssueKey("TAI-96");
-    const dev = issueFixture({ key: toIssueKey("TAI-98"), issueType: SubtaskType.Dev, parentKey: story });
+describe("findLinkedDevSubtask (rev 52, TAI-159 ADR §4)", () => {
+    const prUrl = "https://bitbucket.org/dmayhak/tai-framework/pull-requests/1";
 
-    it("returns null when the issue has no parentKey", async () => {
+    it("returns null when no In-Progress Dev subtask exists", async () => {
         const wt = new FakeSearchLinksWorkTracker([]);
-        const result = await findCodeReviewSiblingForLink(wt, issueFixture({ key: toIssueKey("TAI-1"), issueType: StoryType.Story }));
-        assert.equal(result, null);
+        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), null);
     });
 
-    it("returns null when no CodeReview sibling exists", async () => {
-        const wt = new FakeSearchLinksWorkTracker([dev]);
-        assert.equal(await findCodeReviewSiblingForLink(wt, dev), null);
+    it("finds the In-Progress Dev subtask whose remote link matches the PR URL", async () => {
+        const dev = issueFixture({ key: toIssueKey("TAI-160"), issueType: SubtaskType.Dev, status: Status.InProgress });
+        const wt = new FakeSearchLinksWorkTracker([dev], new Map([[dev.key, [{ url: prUrl, title: "PR" }]]]));
+        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), dev.key);
     });
 
-    it("returns the sole CodeReview sibling when exactly one exists (the common case)", async () => {
-        const codeReview = issueFixture({ key: toIssueKey("TAI-99"), issueType: SubtaskType.CodeReview, parentKey: story });
-        const wt = new FakeSearchLinksWorkTracker([dev, codeReview]);
-        assert.equal(await findCodeReviewSiblingForLink(wt, dev), codeReview.key);
-    });
-
-    it("REGRESSION (live bug, TAI-110): a sole CodeReview sibling already claimed by a DIFFERENT subtask must not be returned as a false match", async () => {
-        const test = issueFixture({ key: toIssueKey("TAI-100"), issueType: SubtaskType.IntegrationTest, parentKey: story });
-        // TAI-109's real shape: the only CodeReview subtask under the Story, but its
-        // DependsOn link points at TAI-108 (Dev), not `test` (an IntegrationTest sibling
-        // with no CodeReview subtask of its own) — asking on behalf of `test` must get
-        // null, not TAI-109's key, even though it's the sole CodeReview candidate present.
-        const claimedByDev = issueFixture({ key: toIssueKey("TAI-109"), issueType: SubtaskType.CodeReview, parentKey: story });
+    it("returns null when a Dev subtask exists but its link doesn't match this PR", async () => {
+        const dev = issueFixture({ key: toIssueKey("TAI-160"), issueType: SubtaskType.Dev, status: Status.InProgress });
         const wt = new FakeSearchLinksWorkTracker(
-            [dev, test, claimedByDev],
-            new Map([[claimedByDev.key, [{ relation: DependencyRelation.DependsOn, key: dev.key }]]])
+            [dev],
+            new Map([[dev.key, [{ url: "https://bitbucket.org/x/y/pull-requests/99", title: "Other PR" }]]])
         );
-        assert.equal(await findCodeReviewSiblingForLink(wt, test), null);
-        assert.equal(await findCodeReviewSiblingForLink(wt, dev), claimedByDev.key);
+        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), null);
     });
 
-    it("disambiguates via the DependsOn precedence link when multiple CodeReview siblings exist (TAI-105's own case)", async () => {
-        const test = issueFixture({ key: toIssueKey("TAI-100"), issueType: SubtaskType.IntegrationTest, parentKey: story });
-        const crForDev = issueFixture({ key: toIssueKey("TAI-99"), issueType: SubtaskType.CodeReview, parentKey: story });
-        const crForTest = issueFixture({ key: toIssueKey("TAI-105"), issueType: SubtaskType.CodeReview, parentKey: story });
+    it("doesn't match a Dev subtask that's already Done — only In Progress is a candidate", async () => {
+        const dev = issueFixture({ key: toIssueKey("TAI-160"), issueType: SubtaskType.Dev, status: Status.Done });
+        // The fake's search() filters by status same as a real backend would — a Done Dev
+        // subtask wouldn't even be returned by the InProgress-scoped search.
+        const wt = new FakeSearchLinksWorkTracker([dev], new Map([[dev.key, [{ url: prUrl, title: "PR" }]]]));
+        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), null);
+    });
+
+    it("picks the correct Dev subtask among several In-Progress ones", async () => {
+        const devA = issueFixture({ key: toIssueKey("TAI-160"), issueType: SubtaskType.Dev, status: Status.InProgress });
+        const devB = issueFixture({ key: toIssueKey("TAI-161"), issueType: SubtaskType.Dev, status: Status.InProgress });
         const wt = new FakeSearchLinksWorkTracker(
-            [dev, test, crForDev, crForTest],
+            [devA, devB],
             new Map([
-                [crForDev.key, [{ relation: DependencyRelation.DependsOn, key: dev.key }]],
-                [crForTest.key, [{ relation: DependencyRelation.DependsOn, key: test.key }]],
+                [devA.key, [{ url: "https://bitbucket.org/x/y/pull-requests/1", title: "A" }]],
+                [devB.key, [{ url: prUrl, title: "B" }]],
             ])
         );
-        assert.equal(await findCodeReviewSiblingForLink(wt, test), crForTest.key);
-        assert.equal(await findCodeReviewSiblingForLink(wt, dev), crForDev.key);
-    });
-
-    it("returns null when multiple CodeReview siblings exist and none disambiguates via a precedence link", async () => {
-        const crA = issueFixture({ key: toIssueKey("TAI-99"), issueType: SubtaskType.CodeReview, parentKey: story });
-        const crB = issueFixture({ key: toIssueKey("TAI-105"), issueType: SubtaskType.CodeReview, parentKey: story });
-        const wt = new FakeSearchLinksWorkTracker([dev, crA, crB]);
-        assert.equal(await findCodeReviewSiblingForLink(wt, dev), null);
+        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), devB.key);
     });
 });
 

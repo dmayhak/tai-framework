@@ -22,6 +22,10 @@ async function withBackend(fn: (backend: StorageBackend) => Promise<void>): Prom
 
 describe("materializePrecedenceLinks", () => {
     test("creates a Blocks link for each applicable precedence edge", async () => {
+        // rev 52 (TAI-159 ADR): CodeReview retired going forward — Dev gates the test
+        // tiers directly now (never fires statically in real use, since Dev stays In
+        // Progress until merge; readiness comes from ready.ts's live readyToTest — but
+        // the static edge/link still materializes here regardless of Dev's status).
         await withBackend(async (backend) => {
             const story = await backend.workTracker.createIssue({
                 projectKey: "TAI",
@@ -35,17 +39,17 @@ describe("materializePrecedenceLinks", () => {
                 persona: Persona.Developer,
                 parentKey: story.key,
             });
-            const codeReview = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "CodeReview",
-                persona: Persona.CodeReviewer,
-                parentKey: story.key,
-            });
             const integrationTest = await backend.workTracker.createIssue({
                 projectKey: "TAI",
                 issueType: SubtaskType.IntegrationTest,
                 summary: "IntegrationTest",
+                persona: Persona.Tester,
+                parentKey: story.key,
+            });
+            const systemTest = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.SystemTest,
+                summary: "SystemTest",
                 persona: Persona.Tester,
                 parentKey: story.key,
             });
@@ -55,20 +59,20 @@ describe("materializePrecedenceLinks", () => {
             assert.equal(warning, null);
             assert.ok(results.every((r) => r.created));
             assert.ok(
-                results.some((r) => r.beforeKey === dev.key && r.afterKey === codeReview.key),
-                "CodeReview should depend on Dev"
+                results.some((r) => r.beforeKey === dev.key && r.afterKey === integrationTest.key),
+                "IntegrationTest should depend on Dev"
             );
             assert.ok(
-                results.some((r) => r.beforeKey === codeReview.key && r.afterKey === integrationTest.key),
-                "IntegrationTest should depend on CodeReview"
+                results.some((r) => r.beforeKey === integrationTest.key && r.afterKey === systemTest.key),
+                "SystemTest should depend on IntegrationTest"
             );
 
-            const codeReviewDeps = await backend.workTracker.getLinkedIssues(
-                codeReview.key,
+            const integrationTestDeps = await backend.workTracker.getLinkedIssues(
+                integrationTest.key,
                 DependencyRelation.DependsOn,
                 "outgoing"
             );
-            assert.ok(codeReviewDeps.some((l) => l.key === dev.key));
+            assert.ok(integrationTestDeps.some((l) => l.key === dev.key));
         });
     });
 
@@ -86,11 +90,11 @@ describe("materializePrecedenceLinks", () => {
                 persona: Persona.Developer,
                 parentKey: story.key,
             });
-            const codeReview = await backend.workTracker.createIssue({
+            const integrationTest = await backend.workTracker.createIssue({
                 projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "CodeReview",
-                persona: Persona.CodeReviewer,
+                issueType: SubtaskType.IntegrationTest,
+                summary: "IntegrationTest",
+                persona: Persona.Tester,
                 parentKey: story.key,
             });
 
@@ -100,7 +104,7 @@ describe("materializePrecedenceLinks", () => {
             const second = await materializePrecedenceLinks(backend.workTracker, story.key);
             assert.ok(second.results.every((r) => !r.created));
 
-            const deps = await backend.workTracker.getLinkedIssues(codeReview.key, DependencyRelation.DependsOn, "outgoing");
+            const deps = await backend.workTracker.getLinkedIssues(integrationTest.key, DependencyRelation.DependsOn, "outgoing");
             assert.deepEqual(
                 deps.filter((l) => l.key === dev.key).length,
                 1,
@@ -169,11 +173,11 @@ describe("materializePrecedenceLinks", () => {
                 persona: Persona.Developer,
                 parentKey: story.key,
             });
-            const codeReview = await backend.workTracker.createIssue({
+            const integrationTest = await backend.workTracker.createIssue({
                 projectKey: "TAI",
-                issueType: SubtaskType.CodeReview,
-                summary: "CodeReview",
-                persona: Persona.CodeReviewer,
+                issueType: SubtaskType.IntegrationTest,
+                summary: "IntegrationTest",
+                persona: Persona.Tester,
                 parentKey: story.key,
             });
 
@@ -200,7 +204,7 @@ describe("materializePrecedenceLinks", () => {
             assert.equal(warning, null, "should stop retrying once two consecutive polls agree, not exhaust attempts");
             assert.equal(call, 3, "should have stopped once poll 3 confirmed poll 2's count, not exhausted all 4 attempts");
             assert.ok(
-                results.some((r) => r.beforeKey === dev.key && r.afterKey === codeReview.key && r.created),
+                results.some((r) => r.beforeKey === dev.key && r.afterKey === integrationTest.key && r.created),
                 "the edge should still be created once the retry converges"
             );
         });

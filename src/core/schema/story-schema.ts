@@ -193,7 +193,12 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.ArchitectureDesign, // feature-level design before Dev starts, when needed
         SubtaskType.DesignReview, // optional gate on ArchitectureDesign (mirrors CodeReview); present-when-added
         SubtaskType.Dev,
-        SubtaskType.CodeReview,
+        // CodeReview retired going forward (rev 52, TAI-159 ADR) — deliberately absent
+        // from this "expected going forward" list. Still a legal SubtaskType/Jira issue
+        // type (never removed from the enum — historical tickets like TAI-137 must stay
+        // parseable), just never created for new work. See story-schema.ts's
+        // SUBTASK_PRECEDENCE comment for why review readiness now lives in
+        // ready.ts's readyToReview/readyToTest instead.
         SubtaskType.IntegrationTest,
         SubtaskType.SystemTest,
         SubtaskType.E2ETest,
@@ -208,7 +213,8 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
         SubtaskType.Triage, // entry point — replaces Research/Requirements/UxDesign for reported issues
         SubtaskType.Investigate, // refinement — rarer on a Bug (Triage usually covers it), but available
         SubtaskType.Dev,
-        SubtaskType.CodeReview,
+        // CodeReview retired going forward (rev 52, TAI-159 ADR) — see the Story entry
+        // above for the full rationale.
         SubtaskType.IntegrationTest,
         SubtaskType.SystemTest,
         SubtaskType.E2ETest,
@@ -325,7 +331,7 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
     ],
     [StoryType.Story]: [
         // ArchitectureDesign is gated by an optional DesignReview before it
-        // reaches Dev (mirrors Dev -> CodeReview). The direct
+        // reaches Dev (mirrors the old Dev -> CodeReview shape, rev 52). The direct
         // ArchitectureDesign -> Dev edge is kept for the no-DesignReview case;
         // the resolver drops whichever end is absent, so both coexist safely.
         { before: SubtaskType.ArchitectureDesign, after: SubtaskType.DesignReview },
@@ -334,27 +340,44 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.UxDesign, after: SubtaskType.Dev }, // Story-level detailing gates Dev, same as its sibling prerequisites
         { before: SubtaskType.Database, after: SubtaskType.Dev },
         { before: SubtaskType.Infra, after: SubtaskType.Dev },
-        { before: SubtaskType.Dev, after: SubtaskType.CodeReview },
+        // rev 52 (TAI-159 ADR): CodeReview is retired going forward — no
+        // `{before: Dev, after: CodeReview}` edge, since CodeReview is never
+        // created for new work (kept in the schema only to parse historical
+        // tickets, e.g. TAI-137). The 4 edges below used to read
+        // `{before: CodeReview, after: <tier>}`; they now read `{before: Dev,
+        // after: <tier>}` INSTEAD, not in addition — and that's deliberate,
+        // not a placeholder. `Dev` stays In Progress until its PR merges (rev
+        // 52), so this edge never actually fires via this static graph — a
+        // test tier/UAT with only this edge applicable has NO real static
+        // path to "ready" anymore. That's intentional: readiness for these
+        // types now comes exclusively from `ready.ts`'s live-computed
+        // `readyToTest` list (checks the linked PR's real approval state),
+        // not from a Jira-status fact. Deleting the edge outright instead of
+        // replacing it would leave these types with ZERO applicable rules,
+        // which `isSubtaskReady` treats as a root — "always ready" — the
+        // moment the subtask is created, silently bypassing review entirely.
+        // Keeping a never-satisfied edge here is what prevents that.
+        //
         // Test tiers run SEQUENTIALLY by default (D12): Integration -> System -> E2E,
-        // cheapest/fastest tier first. Each tier also keeps a direct CodeReview edge
+        // cheapest/fastest tier first. Each tier also keeps a direct Dev edge
         // for the case where an earlier tier in the sequence isn't present on this
         // story instance (same coexistence pattern as DesignReview/UAT below) — e.g.
-        // if IntegrationTest is skipped, SystemTest falls back to being gated by
-        // CodeReview directly rather than being permanently blocked.
-        { before: SubtaskType.CodeReview, after: SubtaskType.IntegrationTest },
-        { before: SubtaskType.CodeReview, after: SubtaskType.SystemTest },
-        { before: SubtaskType.CodeReview, after: SubtaskType.E2ETest },
+        // if IntegrationTest is skipped, SystemTest falls back to the same
+        // never-fires-statically Dev edge rather than being trivially ready.
+        { before: SubtaskType.Dev, after: SubtaskType.IntegrationTest },
+        { before: SubtaskType.Dev, after: SubtaskType.SystemTest },
+        { before: SubtaskType.Dev, after: SubtaskType.E2ETest },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.SystemTest },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.E2ETest },
         { before: SubtaskType.SystemTest, after: SubtaskType.E2ETest },
         // Whether a given tier applies to a story at all is a per-instance judgment
         // call (same as DesignReview/UAT/Database/Infra) — present-when-added, no
         // formal rule engine deciding which tiers a Story/Bug needs (D12).
-        // UAT (optional, inherently human-gated) sits after CodeReview and
-        // whichever automated tiers are present, and gates Deploy. Deploy also
-        // keeps its direct tier edges for the no-UAT case (same coexistence
-        // pattern as DesignReview above).
-        { before: SubtaskType.CodeReview, after: SubtaskType.Uat },
+        // UAT (optional, inherently human-gated) sits after the automated
+        // tiers (or, absent those, the same never-fires-statically Dev edge,
+        // rev 52) and gates Deploy. Deploy also keeps its direct tier edges
+        // for the no-UAT case (same coexistence pattern as DesignReview above).
+        { before: SubtaskType.Dev, after: SubtaskType.Uat },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.Uat },
         { before: SubtaskType.SystemTest, after: SubtaskType.Uat },
         { before: SubtaskType.E2ETest, after: SubtaskType.Uat },
@@ -368,17 +391,20 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         { before: SubtaskType.Triage, after: SubtaskType.Dev },
         { before: SubtaskType.Database, after: SubtaskType.Dev },
         { before: SubtaskType.Infra, after: SubtaskType.Dev },
-        { before: SubtaskType.Dev, after: SubtaskType.CodeReview },
-        // Sequential by default (D12), same shape as Story — see the comment there.
-        { before: SubtaskType.CodeReview, after: SubtaskType.IntegrationTest },
-        { before: SubtaskType.CodeReview, after: SubtaskType.SystemTest },
-        { before: SubtaskType.CodeReview, after: SubtaskType.E2ETest },
+        // rev 52 (TAI-159 ADR): see the Story entry above for the full
+        // rationale — these 4 edges read `{before: Dev, after: <tier>}`
+        // instead of the old `{before: CodeReview, after: <tier>}`, and are
+        // deliberately never satisfied via this static graph; readiness for
+        // these types comes from `ready.ts`'s live `readyToTest` list.
+        { before: SubtaskType.Dev, after: SubtaskType.IntegrationTest },
+        { before: SubtaskType.Dev, after: SubtaskType.SystemTest },
+        { before: SubtaskType.Dev, after: SubtaskType.E2ETest },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.SystemTest },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.E2ETest },
         { before: SubtaskType.SystemTest, after: SubtaskType.E2ETest },
         // Optional human-gated UAT for user-facing fixes (see workflows/bug.md
         // open question on product/UX-impact bugs). Present-when-added.
-        { before: SubtaskType.CodeReview, after: SubtaskType.Uat },
+        { before: SubtaskType.Dev, after: SubtaskType.Uat },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.Uat },
         { before: SubtaskType.SystemTest, after: SubtaskType.Uat },
         { before: SubtaskType.E2ETest, after: SubtaskType.Uat },

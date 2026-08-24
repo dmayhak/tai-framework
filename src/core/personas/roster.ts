@@ -86,7 +86,11 @@ export class Roster {
     }
 }
 
-function sameHuman(a: HumanRef, b: Pick<HumanRef, "id"> & Partial<HumanRef>): boolean {
+/** Exported for reuse by other DocStore-backed human rosters (e.g. `git/pr-reviewers.ts`,
+ *  rev 52/TAI-159 ADR) that need the same id/email/display-name matching, without
+ *  duplicating it — matching a human by whichever identifying field is actually shared
+ *  between two differently-sourced `HumanRef`s is the same problem in both places. */
+export function sameHuman(a: HumanRef, b: Pick<HumanRef, "id"> & Partial<HumanRef>): boolean {
     if (b.id && a.id === b.id) return true;
     if (b.email && a.email && a.email.toLowerCase() === b.email.toLowerCase()) return true;
     if (b.displayName && a.displayName.toLowerCase() === b.displayName.toLowerCase()) return true;
@@ -196,8 +200,10 @@ export function parseRoster(markdown: string): Roster {
     return Roster.from(byPersona);
 }
 
-/** Split a `| a | b |` row into trimmed cells, or null if the line isn't a table row. */
-function tableCells(line: string): string[] | null {
+/** Split a `| a | b |` row into trimmed cells, or null if the line isn't a table row.
+ *  Exported for reuse by other DocStore-backed table-parsing rosters (rev 52/TAI-159 ADR
+ *  — `git/pr-reviewers.ts`). */
+export function tableCells(line: string): string[] | null {
     if (!/^\s*\|.*\|\s*$/.test(line)) return null;
     return line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 }

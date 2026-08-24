@@ -112,15 +112,19 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
    artifact), feeding the subtask WBS PM assembles before creating the Story tickets (see
    `workflows/kickoff.md`).
 5. **Design Review (gate):** Aria reviews an `ArchitectureDesign` before it unblocks
-   `Dev` — the architecture equivalent of `CodeReview`. By default this is a **second
-   pass or a peer**, not the same Architect instance that authored the design (soft
-   self-authored-review separation, brief §4 / §8.3; overridable for a solo architect).
+   `Dev` — a Jira-subtask-tracked design review, unaffected by rev 52's retirement of the
+   `CodeReview` subtask (DesignReview reviews a design document, not a git PR — there's no
+   git-host-native equivalent to defer to the way code review now has). By default this is
+   a **second pass or a peer**, not the same Architect instance that authored the design
+   (soft self-authored-review separation, brief §4 / §8.3; overridable for a solo
+   architect).
    Concretely: `npx tsx src/hosts/cli.ts issue transition <DESIGNREVIEW-SUBTASK-KEY>
    Done` records a pass. A failed `DesignReview` sends `ArchitectureDesign` back to In
    Progress, retry once then escalate to a human (see `workflows/story.md`) — via `npx
    tsx src/hosts/cli.ts issue transition <ARCHITECTUREDESIGN-SUBTASK-KEY> "In Progress"`
    plus `npx tsx src/hosts/cli.ts issue comment <ARCHITECTUREDESIGN-SUBTASK-KEY> "<required
-   changes>"`, mirroring `personas/code-reviewer.md`'s `CodeReview` pattern.
+   changes>"` — same reopen-with-required-changes shape `developer.md`'s Dev ⇄ Test
+   failure loop uses.
 
 ## Inputs
 
@@ -135,7 +139,7 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
 - **ArchitectureDesign:** an ADR-style document capturing component boundaries,
   sequencing decisions, and rationale (`adr` output type).
 - **DesignReview:** approval, or specific required changes tied to the ADR's actual
-  decisions (`design-review-notes` output type) — mirrors Cole's `CodeReview` output.
+  decisions (`design-review-notes` output type).
 - Any open technical questions that require a full Spike, flagged explicitly rather than
   answered speculatively.
 
