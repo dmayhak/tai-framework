@@ -316,7 +316,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
         }
     }
     if (result.readyToTest.length > 0) {
-        lines.push("", "## Approved PRs ready to test", "");
+        lines.push("", "## Open PRs ready to test", "");
         for (const c of result.readyToTest) {
             lines.push(`- **${c.devSubtaskKey}** — ${c.pullRequest.url}`);
         }
@@ -563,12 +563,25 @@ async function main(): Promise<void> {
             // the 10 PRs preceding this ticket used neither convention consistently.
             validatePrTitle(title, issue.parentKey ?? issue.key, issue.parentKey ? issue.key : null);
 
+            // rev 52 (TAI-159 ADR §3.3): loads PR Reviewers roster from Confluence and
+            // passes them as reviewers so they are auto-assigned on PR creation.
+            let prReviewers: readonly HumanRef[] | undefined;
+            try {
+                prReviewers = await loadPrReviewers(config.backend.docStore, {
+                    spaceKey: config.spaceKey,
+                    projectKey: config.projectKey,
+                });
+            } catch {
+                prReviewers = undefined;
+            }
+
             const pr = await gitHost.createPullRequest({
                 repo,
                 title,
                 sourceBranch,
                 destinationBranch,
                 ...(description ? { description } : {}),
+                ...(prReviewers ? { reviewers: prReviewers } : {}),
             });
 
             // rev 52 (TAI-159 ADR §4): links directly to the issue the PR was created
