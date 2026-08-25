@@ -476,3 +476,29 @@ describe("linkPage", () => {
         assert.equal(body?.relationship, "Wiki Page");
     });
 });
+
+describe("resolveHuman (TAI-165/167 ADR)", () => {
+    it("resolves a real Atlassian Account ID for a matching email, not the email itself", async () => {
+        const wt = trackerWith(
+            stubFetch((url) => {
+                assert.ok(url.includes("/user/search?query=del%40mayhak.com"));
+                return json([
+                    {
+                        accountId: "712020:00000000-0000-0000-0000-000000000001",
+                        displayName: "del",
+                        emailAddress: "del@mayhak.com",
+                    },
+                ]);
+            })
+        );
+        const human = await wt.resolveHuman("del@mayhak.com");
+        assert.equal(human?.id, "712020:00000000-0000-0000-0000-000000000001");
+        assert.equal(human?.email, "del@mayhak.com");
+    });
+
+    it("returns null, not a throw, when no user matches", async () => {
+        const wt = trackerWith(stubFetch(() => json([])));
+        const human = await wt.resolveHuman("nobody@example.com");
+        assert.equal(human, null);
+    });
+});

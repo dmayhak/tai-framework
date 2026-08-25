@@ -87,6 +87,10 @@ class ScriptedWorkTracker implements WorkTracker {
         this.calls.push("getAvailableTransitions");
         return [];
     }
+    async resolveHuman(): Promise<HumanRef | null> {
+        this.calls.push("resolveHuman");
+        return null;
+    }
     async editComment(): Promise<Comment> {
         this.calls.push("editComment");
         throw new Error("not used in these tests");
@@ -208,9 +212,10 @@ describe("ConnectivityQueuedWorkTracker — queueing", () => {
             const key = toIssueKey("TAI-1");
             await queued.getIssue(key);
             await queued.getAvailableTransitions(key);
+            await queued.resolveHuman("x@example.com");
             await queued.addLabel(key, "x");
             await queued.search({ projectKey: "TAI" });
-            assert.deepEqual(inner.calls, ["getIssue", "getAvailableTransitions", "addLabel", "search"]);
+            assert.deepEqual(inner.calls, ["getIssue", "getAvailableTransitions", "resolveHuman", "addLabel", "search"]);
         });
     });
 });

@@ -7,6 +7,7 @@ import {
     type AttachmentRef,
     type Comment,
     type CreateIssueInput,
+    type HumanRef,
     type Issue,
     type IssueFilter,
     type IssueKey,
@@ -79,6 +80,11 @@ class RecordingWorkTracker implements WorkTracker {
     async assignIssue(): Promise<MutationResult> {
         this.calls.push("assignIssue");
         throw new Error("not used in these tests");
+    }
+
+    async resolveHuman(): Promise<HumanRef | null> {
+        this.calls.push("resolveHuman");
+        return null;
     }
 
     async addComment(): Promise<Comment> {
@@ -275,6 +281,7 @@ describe("PersonaScopedWorkTracker pass-through methods", () => {
         const key = toIssueKey("TAI-1");
 
         await scoped.getAvailableTransitions(key);
+        await scoped.resolveHuman("x@example.com");
         await scoped.addLabel(key, "x");
         await scoped.removeLabel(key, "x");
         await scoped.createLink(key, DependencyRelation.RelatesTo, toIssueKey("TAI-2"));
@@ -286,6 +293,7 @@ describe("PersonaScopedWorkTracker pass-through methods", () => {
 
         assert.deepEqual(inner.calls, [
             "getAvailableTransitions",
+            "resolveHuman",
             "addLabel",
             "removeLabel",
             "createLink",

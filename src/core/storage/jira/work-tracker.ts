@@ -50,6 +50,8 @@ import {
     fromJiraStatus,
     toJql,
     issueFields,
+    toHumanRef,
+    type RawUser,
 } from "./mappers.js";
 
 const API = "/rest/api/2";
@@ -315,6 +317,21 @@ export function createJiraWorkTracker(
                 });
                 return fetchIssue(key);
             });
+        },
+
+        /**
+         * TAI-165/167 ADR: resolves the REAL Atlassian Account ID for `email` via Jira's
+         * user-search endpoint — the same id Bitbucket expects for `account_id`
+         * (Atlassian's cloud products share one unified account id per login, verified
+         * live). `null` on no match, not a throw — an unresolvable roster entry is
+         * expected, not exceptional.
+         */
+        async resolveHuman(email: string): Promise<HumanRef | null> {
+            const users = await client.request<RawUser[]>(
+                "GET",
+                `${API}/user/search?query=${encodeURIComponent(email)}`
+            );
+            return toHumanRef(users[0] ?? null);
         },
 
         async addComment(key: IssueKey, body: string): Promise<Comment> {

@@ -113,6 +113,10 @@ export class PersonaScopedWorkTracker implements WorkTracker {
         return this.inner.assignIssue(key, human);
     }
 
+    resolveHuman(email: string): Promise<HumanRef | null> {
+        return this.inner.resolveHuman(email);
+    }
+
     addComment(key: IssueKey, body: string): Promise<Comment> {
         return this.inner.addComment(key, body);
     }

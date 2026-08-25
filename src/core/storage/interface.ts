@@ -195,6 +195,19 @@ export interface WorkTracker {
     // checkpoint already defined for transitions — no new mechanism needed").
     assignIssue(key: IssueKey, human: HumanRef | null): Promise<MutationResult>;
 
+    /**
+     * Resolves a real human identity from an email — specifically, a `HumanRef` whose
+     * `id` is the backend's REAL account id, not any synthetic/derived one (TAI-165/167
+     * ADR). Needed wherever a roster-sourced `HumanRef` (`personas/roster.ts`,
+     * `git/pr-reviewers.ts` — both id-less-by-design, matched by email/name only) must be
+     * turned into something a raw API call can actually use as an identity (e.g.
+     * `GitHost.createPullRequest`'s `reviewers`, which needs a real Bitbucket account_id —
+     * verified to be the SAME id Atlassian's unified cross-product identity already gives
+     * Jira). Returns `null` on no match rather than throwing — an unresolvable roster
+     * entry is a real, non-exceptional case, not a fault.
+     */
+    resolveHuman(email: string): Promise<HumanRef | null>;
+
     addComment(key: IssueKey, body: string): Promise<Comment>;
     editComment(key: IssueKey, commentId: string, body: string): Promise<Comment>;
     addLabel(key: IssueKey, label: string): Promise<void>;

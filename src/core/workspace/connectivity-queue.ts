@@ -147,6 +147,9 @@ export class ConnectivityQueuedWorkTracker implements WorkTracker {
     getAvailableTransitions(key: IssueKey): Promise<readonly Status[]> {
         return this.inner.getAvailableTransitions(key);
     }
+    resolveHuman(email: string): Promise<HumanRef | null> {
+        return this.inner.resolveHuman(email);
+    }
     editComment(key: IssueKey, commentId: string, body: string): Promise<Comment> {
         return this.inner.editComment(key, commentId, body);
     }

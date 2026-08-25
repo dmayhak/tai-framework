@@ -306,6 +306,22 @@ describe("the review gate", () => {
     });
 });
 
+describe("resolveHuman", () => {
+    test("matches currentUser's own email", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const human = await workTracker.resolveHuman("del@example.com");
+            assert.deepEqual(human, CURRENT_USER);
+        });
+    });
+
+    test("returns null for any other email", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const human = await workTracker.resolveHuman("someone-else@example.com");
+            assert.equal(human, null);
+        });
+    });
+});
+
 describe("comments and labels", () => {
     test("addComment attributes to currentUser and appends", async () => {
         await withBackend(async ({ workTracker }) => {

@@ -449,6 +449,12 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             return { ok: true, issue: updated };
         },
 
+        // TAI-165/167 ADR: no real external identity system here (unlike Jira's
+        // user-search) — matches against the one human this backend actually knows about.
+        async resolveHuman(email: string): Promise<HumanRef | null> {
+            return currentUser.email === email ? currentUser : null;
+        },
+
         async addComment(key: IssueKey, body: string): Promise<Comment> {
             const existing = await mustGetIssue(rootDir, key);
             const now = new Date().toISOString();

@@ -588,12 +588,30 @@ async function main(): Promise<void> {
 
             // rev 52 (TAI-159 ADR §3.3): loads PR Reviewers roster from Confluence and
             // passes them as reviewers so they are auto-assigned on PR creation.
+            //
+            // TAI-165/167 ADR: the roster's HumanRefs are email-keyed only (matched by
+            // email/name for readyToReview's purposes, no real account_id) -- Bitbucket's
+            // reviewers field needs a real Atlassian Account ID, so each entry is resolved
+            // through WorkTracker.resolveHuman first. The PR's own author (this call's
+            // authenticated BITBUCKET_EMAIL) is excluded up front rather than relying on
+            // Bitbucket's self-review rejection semantics. Best-effort throughout, same as
+            // before: any failure here still lets the PR itself get created.
             let prReviewers: readonly HumanRef[] | undefined;
+            let droppedReviewers: readonly string[] = [];
             try {
-                prReviewers = await loadPrReviewers(config.backend.docStore, {
+                const roster = await loadPrReviewers(config.backend.docStore, {
                     spaceKey: config.spaceKey,
                     projectKey: config.projectKey,
                 });
+                const authorEmail = process.env["BITBUCKET_EMAIL"];
+                const candidates = roster.filter((r) => r.email !== authorEmail);
+                const resolved = await Promise.all(
+                    candidates.map((r) => (r.email ? config.backend.workTracker.resolveHuman(r.email) : Promise.resolve(null)))
+                );
+                prReviewers = resolved.filter((h): h is HumanRef => h !== null);
+                droppedReviewers = candidates
+                    .filter((_, i) => resolved[i] === null)
+                    .map((r) => r.email ?? r.displayName);
             } catch {
                 prReviewers = undefined;
             }
@@ -615,6 +633,11 @@ async function main(): Promise<void> {
             await config.backend.workTracker.createRemoteLink(issue.key, pr.url, pr.title);
 
             console.log(renderPullRequestRef(pr, personaId, issue.key));
+            if (droppedReviewers.length > 0) {
+                console.log(
+                    `\nNote: ${droppedReviewers.join(", ")} on the PR Reviewers roster could not be resolved to a real account id and was not added as a reviewer.`
+                );
+            }
             return;
         }
 
