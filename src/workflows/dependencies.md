@@ -77,38 +77,55 @@ a root and is always ready.
 ```
 ArchitectureDesign ─> DesignReview ─┐
 UxDesign ────────────────────────────┤
-Database ────────────────────────────┼─> Dev ─> CodeReview ─> IntegrationTest ─> SystemTest ─> E2ETest ─> UAT ─> Deploy ─> PostDeploy
+Database ────────────────────────────┼─> Dev ─> IntegrationTest ─> SystemTest ─> E2ETest ─> UAT ─> Deploy ─> PostDeploy
 Infra ────────────────────────────────┘
 ```
 `UxDesign` under Story is Story-level detailing/tweaking beyond Kickoff's
 higher-level flows (not on Bug) — it gates `Dev` the same way as its sibling
 prerequisites.
 
+**rev 52 (TAI-159 ADR): the `Dev ─>` edges into the test tiers/`UAT` shown above are
+DELIBERATELY never satisfied through this static graph alone.** `CodeReview` used to sit
+between `Dev` and the test tiers; it's retired going forward (still a legal `SubtaskType`
+for parsing historical tickets, never created for new work). Deleting its edges outright
+would have left the test tiers with zero applicable precedence rules, which
+`isSubtaskReady()` treats as "no rules apply — always ready" the moment the subtask is
+created, silently bypassing review entirely. The `Dev`-anchored edges exist specifically
+to prevent that: `Dev` now stays **In Progress** until its PR actually merges (not until
+review passes), so a rule requiring `Dev` to be **Done** never actually fires while the
+PR-backed flow is what's really gating anything. **Real readiness for these types comes
+exclusively from `ready.ts`'s live-computed lists** (`readyToTest` — an open PR on the
+linked `Dev` subtask, no approval check; `readyToMerge` — same candidates, additionally
+approved-per-the-configured-count and CI-green), checked against Bitbucket's actual PR
+state on every `/tai-ready` call, not from a Jira-status fact. See
+`personas/developer.md`'s Handoff section and `workflows/story.md`'s PR-backed section for
+the mechanics.
+
 **Test tiers run SEQUENTIALLY by default (D12), not in parallel:**
 `IntegrationTest → SystemTest → E2ETest`, cheapest/fastest tier first — each
-gates the next, rather than all three racing off `CodeReview` simultaneously.
-This catches a regression at the cheapest tier before spending time on a more
-expensive one that would have failed for the same reason. Each tier also keeps
-a direct `CodeReview` edge for when an earlier tier in the sequence isn't
-present on this story instance (same coexistence pattern as `DesignReview`/
-`UAT` below) — e.g. if `IntegrationTest` is skipped, `SystemTest` falls back to
-being gated directly by `CodeReview` instead of being permanently blocked.
-**Whether a given tier applies to a Story/Bug at all remains a per-instance
-judgment call** by whoever adds the subtask set (Tester, typically) — the same
-present-when-added pattern already used for `DesignReview`/`UAT`/`Database`/
-`Infra`, not a formal rule engine.
+gates the next, rather than all three racing off the same never-fires-statically `Dev`
+edge simultaneously. This catches a regression at the cheapest tier before spending time
+on a more expensive one that would have failed for the same reason. Each tier also keeps
+a direct `Dev` edge for when an earlier tier in the sequence isn't present on this story
+instance (same coexistence pattern as `DesignReview`/`UAT` below) — e.g. if
+`IntegrationTest` is skipped, `SystemTest` falls back to the same never-fires-statically
+`Dev` edge rather than being trivially ready. **Whether a given tier applies to a
+Story/Bug at all remains a per-instance judgment call** by whoever adds the subtask set
+(Tester, typically) — the same present-when-added pattern already used for
+`DesignReview`/`UAT`/`Database`/`Infra`, not a formal rule engine.
 
 **`DesignReview` and `UAT` are optional gates** (present-when-added), and both
 are **purely additive** to the static graph — when either is absent the graph
 collapses to the prior shape, because the resolver only keeps edges where
 **both** ends are present:
-- **`DesignReview`** gates `ArchitectureDesign → Dev`, the same way `CodeReview`
-  gates `Dev → tests`. When it's absent, the direct `ArchitectureDesign → Dev`
-  edge applies instead (both edges are kept in the graph; the filter drops
-  whichever end is missing).
-- **`UAT`** sits after `CodeReview` and whichever automated tiers are present,
-  and gates `Deploy`. When it's absent, the tiers gate `Deploy` directly, as
-  before. `UAT` is **inherently human-gated** (brief §3.3) — it never
+- **`DesignReview`** gates `ArchitectureDesign → Dev` — unaffected by `CodeReview`'s
+  retirement, since it reviews a design document, not a git PR (there's no git-host-native
+  equivalent to defer to the way code review now has). When it's absent, the direct
+  `ArchitectureDesign → Dev` edge applies instead (both edges are kept in the graph; the
+  filter drops whichever end is missing).
+- **`UAT`** sits after the same never-fires-statically `Dev` edge and whichever automated
+  tiers are present, and gates `Deploy`. When it's absent, the tiers gate `Deploy`
+  directly, as before. `UAT` is **inherently human-gated** (brief §3.3) — it never
   autocompletes, even where autocompletion is otherwise enabled.
 
 ### What the `SpikeTask` subtask deliberately has no rule for
@@ -173,8 +190,7 @@ and all three are required together:
 **Where a broadened `create` grant is worth adding** (evidence, not an enforced
 whitelist — under the model above every persona *can* create any type; this is where it's
 actually plausible in practice): Developer often knows, from writing the code itself,
-whether `CodeReview` (certain the moment `Dev` exists — the one unconditional
-`SUBTASK_PRECEDENCE` edge), the relevant test tiers, a `Database`/`Infra` need (the exact
+which of the relevant test tiers, a `Database`/`Infra` need (the exact
 mid-implementation-discovery case above), or `Deploy`/`PostDeploy` timing apply — see
 `personas/developer.md`'s `create` grant. Architect/PM similarly often recognize
 `Database`/`Infra`/`ArchitectureDesign` needs during design or requirements work. A
@@ -274,7 +290,7 @@ mutually exclusive:
     corresponding `Blocks` link (`DEFAULT_JIRA_LINK_TYPE_NAME` mapping, same as
     Layer 1) between sequential siblings actually present on this instance
     (per `resolveApplicablePrecedence()`, not the full theoretical graph) —
-    e.g. `Dev` blocks `CodeReview` blocks `IntegrationTest`. `SUBTASK_PRECEDENCE`
+    e.g. `ArchitectureDesign` blocks `DesignReview` blocks `Dev`. `SUBTASK_PRECEDENCE`
     stays the source of truth for what TAI's own orchestrator reads
     (Enforcement section above is unchanged); the real link is for board
     visibility to a human, materializing what the engine already computes.

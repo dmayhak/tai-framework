@@ -11,7 +11,7 @@ because TAI overlays anything extra onto Jira's definition).
 
 **PM is the default owner/driver of the Story ticket itself**, same as Kickoff (§2e) —
 consistent Orchestrator role throughout the Story's lifecycle, even as individual
-subtasks route to their own owners (Developer for `Dev`, Code Reviewer for `CodeReview`,
+subtasks route to their own owners (Developer for `Dev`, Tester for the test tiers,
 etc.). The Story's `persona` field stays PM regardless of which subtask is currently
 active (brief §5.6, the two-axis owner model) — the native Jira **Assignee** is a
 separate field, a real human holding the PM Project Role.
@@ -23,9 +23,8 @@ separate field, a real human holding the PM Project Role.
 | `Investigate` | Analyst | Optional refinement — adds detail before implementation subtasks are (separately) created; no automatic unblock effect, no formal review gate (brief §3.7, §8.13/§8.17). A reactively-spawned `Investigate` can block its originating subtask via the ad-hoc-dependency escape hatch (`workflows/dependencies.md`) |
 | `UxDesign` | UX Designer | Optional — Story-level detailing/tweaking beyond Kickoff's higher-level flows; lets a smaller design doc attach at Story level when Epic-level isn't the right granularity. Gates `Dev`, same as `ArchitectureDesign`/`Database`/`Infra` |
 | `ArchitectureDesign` | Architect | Optional — feature-level design before Dev starts, when needed |
-| `DesignReview` | Architect (2nd pass or peer) | Optional gate on `ArchitectureDesign` — mirrors `CodeReview`; blocks `Dev` when present |
-| `Dev` | Developer | Unit tests are folded into this subtask, not tracked separately |
-| `CodeReview` | Code Reviewer | |
+| `DesignReview` | Architect (2nd pass or peer) | Optional gate on `ArchitectureDesign`; blocks `Dev` when present — the one Jira-subtask-tracked review gate left after rev 52 (reviews a design doc, not a git PR; no git-host-native equivalent) |
+| `Dev` | Developer | Unit tests are folded into this subtask, not tracked separately. Stays **In Progress** until its PR merges (rev 52) — a unit of work isn't done until then |
 | `IntegrationTest` | Tester | |
 | `SystemTest` | Tester | |
 | `E2ETest` | Tester | |
@@ -44,7 +43,9 @@ of whichever subtasks are actually present:
 - **The shipped code change** (from `Dev`, including unit tests).
 - Any **ADR** (`ArchitectureDesign`), **schema notes/migration plan** (`Database`),
   **infra notes** (`Infra`), or **Story-level UX doc** (`UxDesign`) that were needed.
-- **Review notes** (`CodeReview`, and `DesignReview` if present).
+- **Review notes** — rev 52: real PR comments/approval on the git host, not a Jira
+  subtask (`DesignReview`'s output, if present, stays a Confluence/Jira artifact — it
+  reviews a design doc, not code).
 - **Test plans and results** for whichever tiers were present, plus a **UAT plan** and
   human sign-off if present.
 - A **deploy runbook** (`Deploy`) and any **PostDeploy** follow-up notes.
@@ -55,16 +56,22 @@ artifact the way Kickoff's PRD/UX-flows/WBS batch is.
 
 ## Dev → Test Dependency & Failure Loop
 
-Dev marking its subtask **Done** is what unblocks the dependent Test
-subtask (Integration/System/E2E) to start.
+**rev 52 (TAI-159 ADR):** an open PR on the `Dev` subtask — not `Dev` reaching Done — is
+what unblocks the dependent Test subtask (Integration/System/E2E) to start. `Dev` stays
+**In Progress** through the whole review/test span (it doesn't reach Done until its PR
+actually merges, see the PR-backed section below), so there's no Dev-Done trigger to wait
+on: Tester picks the tier up directly from `/tai-ready`'s `readyToTest` list the moment a
+qualifying open PR exists, in parallel with review, not gated behind it.
 
 | Trigger | Test Subtask | Dev Subtask |
 |---|---|---|
-| Dev marks Done | — | Done → Test subtask unblocked, moves to In Progress |
-| Test fails | In Progress → **Open** | Done → **In Progress** |
+| `Dev` has an open PR | — | Stays In Progress → Test subtask becomes ready (`readyToTest`), moves to In Progress |
+| Test fails | In Progress → **To Do** (the "sent back" status, see Decided below) | Stays **In Progress** — it never left |
 
-Dev goes back to **In Progress**, not Open — the work already exists and
-needs revision, so "Open" would misleadingly suggest nothing's been done.
+There's no "Dev goes back to In Progress" step the way there was under the old
+`CodeReview`-gated model — `Dev` never left. A test failure is Developer continuing work
+on the same still-open PR, not a fresh investigation; the fix lands as more commits on
+that PR, and Tester re-runs the tier once it's ready again.
 
 This loop can repeat any number of times before Test passes.
 
@@ -85,46 +92,72 @@ of a hardcoded default. Out of scope for v1 — documented here so the
 current hardcoded behavior is understood as a placeholder, not a
 permanent decision.
 
-## PR-backed checkpoint chain (TAI-34 ADR, brief §5.4 rev 21)
+## PR-backed checkpoint chain (rev 52, TAI-159 ADR — supersedes the TAI-34 ADR's original
+`CodeReview`-subtask design, brief §5.4)
 
-For a repo-touching Story, the `Dev → CodeReview → Merge/Deploy` chain above operates on a
-real git PR (`src/core/git/interface.ts`'s `GitHost`), not Jira transitions alone:
+For a repo-touching Story, the review/test/merge chain operates on a real git PR
+(`src/core/git/interface.ts`'s `GitHost`), not a Jira `CodeReview` subtask — that subtask
+type is retired going forward (still legal in the schema for parsing historical tickets,
+never created for new work):
 
 ```
-[Dev subtask] --opens PR--> [CodeReview subtask] --approves PR--> [Merge/Deploy subtask] --merges PR-->
+[Dev subtask, opens PR] --stays In Progress--> [review (readyToReview) + test tiers (readyToTest), IN PARALLEL] --approved + CI green (readyToMerge)--> [Dev merges own PR, self-closes to Done]
 ```
 
-- **Dev completes** → Developer calls `GitHost.createPullRequest` (source = the Story's
-  branch, brief §6; destination = the repo's default branch), then links the PR to the
-  CodeReview subtask via a Jira remote issue link — same mechanism already used to link an
-  issue to its Confluence ADR, no new linking primitive. CodeReview becomes actionable, same
-  as today.
-- **CodeReview actionable** → Code Reviewer reviews the real PR diff (`GitHost`'s PR
-  operations), not just Jira ticket content. A decision makes **two calls**: `GitHost.
-  reviewPullRequest` (writes the real PR) and `WorkTracker.transition` (writes the Jira
-  subtask) — separate backends, one reviewer decision.
-- **Review fails** (persona- or human-authored directly on the git host) → unchanged from
-  the Dev ⇄ Test loop above: reopen Dev, Jira comment with reviewer notes, retry-once-then-
-  escalate.
-- **Review passes** → CodeReview done, unblocking Merge/Deploy.
-- **Merge/Deploy** → `GitHost.mergePullRequest`, gated on `GitHost.getCommitStatuses` being
-  green first — CI is a load-bearing merge gate, not advisory.
-- **PR state syncs one-way into the Jira subtask**, at existing refresh points (brief §3.6),
-  never the reverse — the Jira subtask stays what TAI's own precedence engine reads. A human
-  acting directly on the git host (approve/request-changes/merge) is detected on next
-  refresh and reflected, never fought — same stance as brief §4's Confluence-gate-reopening
-  rule.
+- **Dev has code ready (including unit tests)** → Developer calls
+  `GitHost.createPullRequest` (source = the Story's branch, brief §6; destination = the
+  repo's default branch) — concretely `git-pr create <DEV-SUBTASK-KEY> ...`. The PR links
+  **directly to the `Dev` subtask itself** (no `CodeReview` sibling to link to anymore).
+  `Dev` **stays In Progress** — it does not go Done here. A unit of work isn't finished
+  until it's merged; `Dev`'s own transition to Done is what records that, further down
+  this chain.
+- **Review and testing now proceed in parallel against this PR, both required before
+  merge — testing does not wait on review passing first** (human-confirmed 2026-08-24,
+  TAI-160). Two independent live-computed lists, no Jira subtask for either:
+  - **`readyToReview`** — any human on the "PR Reviewers" Confluence roster (rev 52,
+    separate from the Persona Roster) sees this PR via `/tai-ready` and decides via
+    `git-pr review <REPO> [PR-ID] approve|requestChanges [COMMENT]` — roster-gated, not
+    persona-gated (no `CodeReview` subtask left to resolve permission through). A
+    decision makes one call: `GitHost.reviewPullRequest`, writing the real PR directly —
+    there's no parallel Jira subtask write to make alongside it.
+  - **`readyToTest`** — Tester picks up the tier via `/tai-ready` the moment `Dev` has a
+    qualifying open PR, no approval-count check at all (see the Dev → Test section
+    above).
+- **Review request-changes** (persona- or human-authored directly on the git host) →
+  Developer keeps working the same still-open PR; there's no separate reopen step the way
+  there was under the old `CodeReview` model, since `Dev` never left In Progress.
+- **Once approved (per the project's configured required-approval count) and CI is
+  green** — surfaced as **`readyToMerge`**, a strict subset of `readyToTest`'s candidates
+  — **Dev merges his own already-approved work**: `git-pr merge <DEV-SUBTASK-KEY> <REPO>
+  ...`, gated on `GitHost.getCommitStatuses` being green first (CI is load-bearing, not
+  advisory). Real practice, not self-certification (`cannotApprove: own-output` is
+  untouched) — the approval already happened as a separate, independent review action.
+  **This same command also transitions the `Dev` subtask itself to Done**, as a second
+  write in the same call — the actual completion signal for the unit of work.
+- **Out-of-band actions are detected and reflected, never fought** — same stance as brief
+  §4's Confluence-gate-reopening rule, now covering the git host too. A human approving/
+  requesting-changes directly on Bitbucket is picked up at the next `readyToReview`
+  refresh. A human merging the PR directly on Bitbucket (bypassing `git-pr merge`) is
+  detected on the next `/tai-ready` refresh and syncs `Dev` to Done the same way —
+  extending TAI-34's original "out-of-band review is authoritative" principle from
+  reviews to merges of a different subtask type.
 
-See the TAI-33/TAI-34 ADRs (Confluence, TA space) for the full design. **Bootstrapping
-note:** TAI-37/TAI-38 — the Story that builds this mechanism — cannot use it for its own
-CodeReview, since it doesn't exist yet until that Story ships; that review goes through the
-old Jira-only process.
+See the TAI-159 ADR (Confluence, TA space, ADRs folder) for the full design and the
+Context section's account of what prompted the change (a Jira subtask needs exactly one
+assignee; a real N-of-M reviewer-approval policy had no honest single assignee for "the"
+`CodeReview` subtask). The original TAI-33/TAI-34 ADRs are marked superseded, not
+deleted — TAI-34's own out-of-band-human-action principle is kept and extended above, not
+replaced. **Historical note:** TAI-37/TAI-38 (this mechanism's own first Story) and every
+Story between then and rev 52 shipped through the original `Dev → CodeReview → Merge`
+model this section used to describe — real history, not reconstructed, just no longer how
+new work goes through this chain.
 
 ## Design Review gate (optional)
 
-When present, `DesignReview` sits between `ArchitectureDesign` and `Dev` — the
-architecture equivalent of `CodeReview` sitting between `Dev` and the test
-tiers. It is **optional and present-when-added**: when no `DesignReview`
+When present, `DesignReview` sits between `ArchitectureDesign` and `Dev` — the one
+Jira-subtask-tracked review gate left after rev 52's `CodeReview` retirement (it reviews
+a design document, not a git PR, so there's no git-host-native equivalent to defer to the
+way code review now has). It is **optional and present-when-added**: when no `DesignReview`
 subtask exists, `ArchitectureDesign` unblocks `Dev` directly (see
 `workflows/dependencies.md` — both edges are kept; the resolver drops whichever
 end is absent).
@@ -141,9 +174,10 @@ end is absent).
 
 ## UAT gate (optional, human-gated)
 
-When present, `UAT` sits after `CodeReview` and whichever automated test tiers
-exist on the story, and **gates `Deploy`**. It is **optional and
-present-when-added**; when absent, the automated tiers gate `Deploy` directly.
+When present, `UAT` sits after whichever automated test tiers exist on the story (rev 52:
+not after `CodeReview`, which no test tier is gated behind anymore — see the Dev → Test
+section above), and **gates `Deploy`**. It is **optional and present-when-added**; when
+absent, the automated tiers gate `Deploy` directly.
 
 - **Owner:** the Tester persona drives the run, but a **human stakeholder must
   sign off** — `UAT` is **inherently human-gated** (brief §3.3) and **never
@@ -193,16 +227,17 @@ new `Rollback` subtask/action type:
 even though that status exists on the issue type (rev 15: Jira's shared default workflow
 includes it on every type; TAI's own logic simply never drives a Story into it, per §3.3's
 "TAI's plugin layer decides what's meaningful" pattern), since Story has no single
-whole-story gate (`CodeReview`/`DesignReview`/`UAT` are all subtask-level sign-offs, not a
+whole-story gate (review, `DesignReview`, `UAT` are all subtask/PR-level sign-offs, not a
 story-level one). `Canceled` is also available, as an alternate terminal state from
 `To Do` or `In Progress` (brief §5.3 rev 16) — for a Story decided against before
 completion (deprioritized, superseded, or otherwise not worth finishing).
 
 - **To Do:** created, no present subtask has started.
 - **In Progress:** at least one present subtask has started — covers the entire
-  `Dev → CodeReview → Test tiers → UAT → Deploy → PostDeploy` chain, including any
-  Dev ⇄ Test or ArchitectureDesign ⇄ DesignReview failure loops. The Story stays
-  In Progress through all of that; loops don't regress the story-level status.
+  `Dev (opens PR, stays In Progress through parallel review+test) → UAT → Deploy →
+  PostDeploy` chain, including any Dev ⇄ Test or ArchitectureDesign ⇄ DesignReview
+  failure loops. The Story stays In Progress through all of that; loops don't regress the
+  story-level status.
 - **Done:** every present subtask is Done (or Canceled, brief §5.3 rev 16 — a cancelled
   subtask doesn't block the Story from completing), including `UAT` being signed off if
   present.

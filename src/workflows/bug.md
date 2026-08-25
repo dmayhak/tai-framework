@@ -39,8 +39,7 @@ routine dev/test rework loops that happened before anything ever shipped.
 |---|---|---|
 | `Triage` | Tester | Entry point — confirms reproduction, assesses severity, identifies root cause. Replaces Research/Requirements/UxDesign as the front door into the ticket. |
 | `Investigate` | Analyst | Optional refinement — rarer on a Bug (Triage usually covers it), but available if more detail is needed before Dev |
-| `Dev` | Developer | The fix itself. Unit tests folded in, same as Story. |
-| `CodeReview` | Code Reviewer | |
+| `Dev` | Developer | The fix itself. Unit tests folded in, same as Story. Stays **In Progress** until its PR merges (rev 52) — a unit of work isn't done until then |
 | `IntegrationTest` / `SystemTest` / `E2ETest` | Tester | Regression coverage — same test tiers as Story, no separate "regression test" type needed |
 | `UAT` | Tester + human stakeholder | Optional, **inherently human-gated** — for user-facing fixes where a stakeholder should confirm the fix before it ships (see Open Questions) |
 | `Database` | DBA | If the bug is data-related |
@@ -59,7 +58,8 @@ single artifact:
 - **The fix itself** (from `Dev`, including unit tests).
 - Any **schema notes/migration plan** (`Database`) or **infra notes** (`Infra`) the fix
   needed.
-- **Review notes** (`CodeReview`).
+- **Review notes** — rev 52: real PR comments/approval on the git host, not a Jira
+  subtask (see `workflows/story.md`'s PR-backed section).
 - **Test/regression results** for whichever tiers were present, plus a **UAT plan** and
   human sign-off if present.
 - A **deploy runbook** (`Deploy`) and any **PostDeploy** follow-up notes.
@@ -96,9 +96,11 @@ alternate terminal state (brief §5.3 rev 16) — e.g. a reported Bug that turns
   won't-fix — typically straight from Triage.
 
 ## Dev → Test Failure Loop
-Identical to the Story workflow: Dev marks Done to unblock Test; a failed
-test sends Test back to Open and Dev back to In Progress (not Open). See
-the Story workflow doc for the full rationale.
+Identical to the Story workflow (rev 52): an open PR on `Dev` — not `Dev` reaching
+Done — is what unblocks Test; `Dev` stays In Progress through the whole review/test span,
+so a failed test just sends the test-tier subtask back to **To Do** while `Dev` keeps
+working the same still-open PR (it never left In Progress to begin with). See the Story
+workflow doc's "Dev → Test Dependency & Failure Loop" section for the full rationale.
 
 ## Expedited Path (Urgent/Emergency Bugs)
 
@@ -106,8 +108,10 @@ the Story workflow doc for the full rationale.
 `"Highest"`)** gets an expedited subtask chain — this is the existing native Jira field
 being used as the severity signal, not a new custom field.
 
-- **`CodeReview` always stays mandatory**, regardless of priority — code still gets
-  reviewed under time pressure.
+- **Review always stays mandatory**, regardless of priority — code still gets reviewed
+  under time pressure. rev 52: this isn't a subtask to skip, it's structural — `git-pr
+  merge`/`readyToMerge` gate on the project's configured required-approval count
+  unconditionally, with no priority-based bypass anywhere in that check.
 - **Test tiers compress to just one** — `IntegrationTest` — instead of running all
   present tiers (`SystemTest`/`E2ETest` are skipped). **Implemented (TAI-119):**
   `defaultTestTiersForBug(priority)` (`src/core/schema/story-schema.ts`) is the concrete
