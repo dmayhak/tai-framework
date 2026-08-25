@@ -31,6 +31,11 @@ class RecordingGitHost implements GitHost {
         return null;
     }
 
+    async listRepositories(_workspace: string): Promise<readonly RepoRef[]> {
+        this.calls.push("listRepositories");
+        return [];
+    }
+
     async listBranches(_repo: RepoId): Promise<readonly string[]> {
         this.calls.push("listBranches");
         return [];
@@ -179,6 +184,7 @@ describe("PersonaScopedGitHost pass-through methods", () => {
         const scoped = new PersonaScopedGitHost(inner, noGrantsConfig());
 
         await scoped.getRepository(repo);
+        await scoped.listRepositories("dmayhak");
         await scoped.listBranches(repo);
         await scoped.getPullRequest(repo, pr);
         await scoped.listPullRequests(repo);
@@ -187,6 +193,7 @@ describe("PersonaScopedGitHost pass-through methods", () => {
 
         assert.deepEqual(inner.calls, [
             "getRepository",
+            "listRepositories",
             "listBranches",
             "getPullRequest",
             "listPullRequests",

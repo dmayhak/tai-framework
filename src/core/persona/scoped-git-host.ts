@@ -5,7 +5,7 @@
  * Wraps a real backend's `GitHost`, binding ONE persona for its lifetime. Checks
  * `canPerformGitAction` (`permission-gate.ts`) before delegating `createPullRequest`/
  * `reviewPullRequest`/`mergePullRequest`; every other method (all read-only —
- * `getRepository`/`listBranches`/`getPullRequest`/`listPullRequests`/
+ * `getRepository`/`listRepositories`/`listBranches`/`getPullRequest`/`listPullRequests`/
  * `addPullRequestComment`/`getCommitStatuses`) passes through unchanged, same restraint
  * as `GitHost` itself (`git/interface.ts`'s own doc comment: scoped to exactly what the
  * TAI-34 checkpoint chain gates, not the full breadth of either host's API).
@@ -43,6 +43,10 @@ export class PersonaScopedGitHost implements GitHost {
 
     getRepository(id: RepoId): Promise<RepoRef | null> {
         return this.inner.getRepository(id);
+    }
+
+    listRepositories(workspace: string): Promise<readonly RepoRef[]> {
+        return this.inner.listRepositories(workspace);
     }
 
     listBranches(repo: RepoId, limit?: number): Promise<readonly string[]> {

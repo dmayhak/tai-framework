@@ -64,6 +64,26 @@ describe("getRepository", () => {
     });
 });
 
+describe("listRepositories", () => {
+    it("walks Bitbucket's `next`-URL pagination and maps every repo in the workspace", async () => {
+        const host = hostWith(
+            stubFetch((_method, url) => {
+                if (url.includes("page2")) return json({ values: [{ ...REPO_JSON, name: "second-repo" }] });
+                assert.ok(url.endsWith("/repositories/dmayhak"));
+                return json({
+                    values: [REPO_JSON],
+                    next: "https://api.bitbucket.org/2.0/repositories/dmayhak?page2",
+                });
+            })
+        );
+        const repos = await host.listRepositories("dmayhak");
+        assert.deepEqual(
+            repos.map((r) => r.name),
+            ["tai-framework", "second-repo"]
+        );
+    });
+});
+
 describe("listBranches", () => {
     it("walks Bitbucket's `next`-URL pagination", async () => {
         const host = hostWith(

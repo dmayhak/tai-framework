@@ -76,6 +76,11 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
             return repo ? toRepoRef(repo) : null;
         },
 
+        async listRepositories(workspace: string): Promise<readonly RepoRef[]> {
+            const repos = await client.paginate<BitbucketRepositoryJson>(`/repositories/${workspace}`);
+            return repos.map(toRepoRef);
+        },
+
         async listBranches(repo: RepoId, limit?: number): Promise<readonly string[]> {
             const { workspace, slug } = splitRepoId(repo);
             const branches = await client.paginate<{ name: string }>(

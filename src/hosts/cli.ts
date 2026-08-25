@@ -201,6 +201,14 @@ async function resolveReviewerGitHost(
  * separate need to solve if/when a real multi-repo project actually hits it (brief's own
  * repeated "don't build ahead of an observed need" stance).
  *
+ * `TAI_GIT_WORKSPACE` (TAI-162/TAI-163 ADR): an optional companion env var that discovers
+ * every repo in the named Bitbucket workspace via `GitHost.listRepositories`, coexisting
+ * ADDITIVELY with `TAI_GIT_REPOS` rather than replacing it — set alone, it scans the whole
+ * workspace; set together with `TAI_GIT_REPOS`, the discovered list is narrowed to that
+ * explicit subset; `TAI_GIT_REPOS` alone is unchanged from before this ADR (no discovery
+ * call at all). Discovered fresh on every call, same "no persisted cache" posture as the
+ * rest of this function.
+ *
  * rev 52 (TAI-159 ADR): `currentHuman` reuses `BITBUCKET_EMAIL` directly — no new
  * "current user" concept needed (brief §3.2's "acts with exactly the authority of the
  * human driving it"). `requiredApprovals` is an optional TAI-side setting
@@ -224,16 +232,31 @@ async function tryResolveReadyGitDeps(
     const email = process.env["BITBUCKET_EMAIL"];
     const token = process.env["BITBUCKET_API_TOKEN"];
     const reposEnv = process.env["TAI_GIT_REPOS"];
-    if (!email || !token || !reposEnv) return undefined;
+    const workspaceEnv = process.env["TAI_GIT_WORKSPACE"];
+    if (!email || !token || (!reposEnv && !workspaceEnv)) return undefined;
 
-    const repos = reposEnv
-        .split(",")
-        .map((r) => r.trim())
-        .filter((r) => r.length > 0)
-        .map(toRepoId);
-    if (repos.length === 0) return undefined;
+    const explicitRepos = reposEnv
+        ? reposEnv
+              .split(",")
+              .map((r) => r.trim())
+              .filter((r) => r.length > 0)
+              .map(toRepoId)
+        : undefined;
 
     const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
+
+    // TAI-163 ADR: TAI_GIT_WORKSPACE discovers every repo in the workspace by default;
+    // TAI_GIT_REPOS, if also set, narrows that discovered list down to a subset rather than
+    // being replaced by it (a restriction, not an addition).
+    let repos: readonly RepoId[];
+    if (workspaceEnv) {
+        const discovered = (await backend.gitHost.listRepositories(workspaceEnv)).map((r) => r.id);
+        repos = explicitRepos ? discovered.filter((id) => explicitRepos.includes(id)) : discovered;
+    } else {
+        repos = explicitRepos ?? [];
+    }
+    if (repos.length === 0) return undefined;
+
     const currentHuman: HumanRef = { id: toHumanId(email), displayName: email, email };
 
     const requiredApprovalsEnv = process.env["TAI_PR_REQUIRED_APPROVALS"];

@@ -132,6 +132,10 @@ export type GitMutationResult =
 
 export interface GitHost {
     getRepository(id: RepoId): Promise<RepoRef | null>;
+    /** TAI-162/TAI-163 ADR: enumerates every repo in a workspace (Bitbucket's
+     *  `GET /2.0/repositories/{workspace}`) — what lets `/tai-ready` discover PRs across a
+     *  whole workspace instead of relying solely on an explicit `RepoId` allowlist. */
+    listRepositories(workspace: string): Promise<readonly RepoRef[]>;
     listBranches(repo: RepoId, limit?: number): Promise<readonly string[]>;
 
     createPullRequest(input: CreatePullRequestInput): Promise<PullRequestRef>;
