@@ -323,31 +323,56 @@ function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): stri
     return lines.join("\n");
 }
 
+/**
+ * TAI-182: one continuous counter across every ACTIONABLE section below (never
+ * "Already in flight" — display-only, brief §7) so a human/persona can reply with a bare
+ * number as shorthand for that line's key/action instead of retyping a full issue key or
+ * PR URL. `next()` is called in section/list order, so numbering is stable for a given
+ * result — not sorted or deduped independently of render order.
+ */
+function numberedLines(): { next: () => number } {
+    let n = 0;
+    return { next: () => ++n };
+}
+
 function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, persona?: string): string {
     const lines: string[] = [`# Ready work${persona ? ` for ${persona}` : ""}`, ""];
+    const counter = numberedLines();
+    let actionableCount = 0;
+
     if (result.ready.length === 0) {
         lines.push("Nothing is currently ready.");
     } else {
         for (const issue of result.ready) {
-            lines.push(`- **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`);
+            lines.push(
+                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`
+            );
+            actionableCount++;
         }
     }
     if (result.readyToReview.length > 0) {
         lines.push("", "## PRs ready for your review", "");
         for (const c of result.readyToReview) {
-            lines.push(`- ${c.pullRequest.url} (\`git-pr review <ISSUE-KEY> <REPO> approve|requestChanges\` to record it)`);
+            lines.push(
+                `${counter.next()}. ${c.pullRequest.url} (\`git-pr review <ISSUE-KEY> <REPO> approve|requestChanges\` to record it)`
+            );
+            actionableCount++;
         }
     }
     if (result.readyToTest.length > 0) {
         lines.push("", "## Open PRs ready to test", "");
         for (const c of result.readyToTest) {
-            lines.push(`- **${c.devSubtaskKey}** — ${c.pullRequest.url}`);
+            lines.push(`${counter.next()}. **${c.devSubtaskKey}** — ${c.pullRequest.url}`);
+            actionableCount++;
         }
     }
     if (result.readyToMerge.length > 0) {
         lines.push("", "## Approved PRs ready to merge", "");
         for (const c of result.readyToMerge) {
-            lines.push(`- **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`);
+            lines.push(
+                `${counter.next()}. **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
+            );
+            actionableCount++;
         }
     }
     if (result.inFlight.items.length > 0) {
@@ -355,6 +380,12 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
         for (const item of result.inFlight.items) {
             lines.push(`- ${item.subtaskKey}: ${item.currentStep} (${item.state})`);
         }
+    }
+    if (actionableCount > 0) {
+        lines.push(
+            "",
+            "Reply with a number above, or the issue key/PR directly — either works."
+        );
     }
     return lines.join("\n");
 }

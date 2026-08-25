@@ -85,9 +85,15 @@ function readySkillBody(taiHome: string): string {
         "Done, whose linked PR is still open, with green CI. This is a DIFFERENT action type than " +
         "the ready-to-start list above: run `git-pr merge <ISSUE-KEY> <REPO>` to land it, not " +
         "`/tai-work`.\n\n" +
-        "Present this list to the human. If they pick a ready-to-start issue, follow up with " +
-        "`/tai-work <KEY>` for that issue — same underlying flow, `/tai-ready` is only for when " +
-        "there's no specific key in mind yet (brief §3.8)."
+        "Present this list to the human AS-IS — every actionable line (across Ready Work, PRs " +
+        "ready for your review, Open PRs ready to test, and Approved PRs ready to merge) is " +
+        "already numbered with ONE shared counter (TAI-182), so don't renumber or reformat it " +
+        "yourself. \"Already in flight\" is deliberately NOT numbered — it's display-only context, " +
+        "never a valid reply. If the human replies with a bare number, map it back to that exact " +
+        "line (by its position in this shared numbering) and take the ACTION that section " +
+        "describes — `/tai-work <KEY>` for a Ready Work line, `git-pr review`/`git-pr merge` for a " +
+        "PR line — the same as if they'd typed the key/URL directly. A number with no corresponding " +
+        "line, or any ambiguity about which line it means, is a re-ask, not a guess."
     );
 }
 
