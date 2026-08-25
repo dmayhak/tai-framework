@@ -43,7 +43,16 @@ function skillFrontmatter(name: string, description: string): string {
 
 function workSkillBody(taiHome: string): string {
     return (
-        `Run this and read its full output, substituting <ISSUE-KEY> with whatever key was ` +
+        `Before doing anything else, make sure <ISSUE-KEY> is assigned and already ` +
+        `\`In Progress\` — transition it first if it isn't:\n\n` +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue transition <ISSUE-KEY> "In Progress"\n` +
+        "```\n\n" +
+        "Verify from that command's own output that the transition actually succeeded before " +
+        "doing any work — never after. A rejection (no assignee, an unmet precedence gate, etc.) " +
+        "is a hard stop: report it to the human rather than retrying or proceeding with the work " +
+        "anyway.\n\n" +
+        `Then run this and read its full output, substituting <ISSUE-KEY> with whatever key was ` +
         `given for this invocation:\n\n` +
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts work <ISSUE-KEY>\n` +

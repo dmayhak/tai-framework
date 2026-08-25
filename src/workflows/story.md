@@ -68,6 +68,17 @@ needs revision, so "Open" would misleadingly suggest nothing's been done.
 
 This loop can repeat any number of times before Test passes.
 
+**When a test tier's own code needs to land, it belongs in the same branch/PR as the
+`Dev` work it's testing, landed before that PR is asked for review/merge — not opened as
+a follow-on PR after Dev has already merged.** Dev and its test-tier siblings accumulate
+onto the same Story branch (brief §6), so this is the natural default, not an extra step:
+if a tier's real scope surfaces while Dev's PR is still open, add the test commits to
+that same branch before it merges. Discovering the need only after merge is the
+exception, not the plan — a small test-only addition can still go straight to `master`
+at that point (same risk class as a docs-only commit, no production behavior change)
+rather than opening a second full review cycle, but catching it before the PR is even
+asked for review is the target.
+
 **Planned (not yet built):** a configurable status-transition mapping, so
 a failed test can drive the Dev subtask to a user-specified status instead
 of a hardcoded default. Out of scope for v1 — documented here so the

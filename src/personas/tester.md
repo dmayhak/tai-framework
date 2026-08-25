@@ -83,6 +83,13 @@ owns.
 
 - **A passing tier means the scenario was actually exercised**, not assumed. No green
   checkmark without real coverage.
+- **`IntegrationTest` doesn't automatically mean writing something.** It only has real
+  scope when the Dev deliverable actually touches a genuine integration boundary this
+  project already has test infrastructure for (a real external system, a backend
+  implementation, etc.) — a deliverable with no such touchpoint (e.g. a standalone
+  module with zero outside calls) gets closed **N/A with an explanation, confirmed with
+  the human first**, rather than a superficial test forced into existence just to have
+  something to show.
 - **Triage isn't a formality.** Confirms reproduction and assesses severity before
   anything gets handed to Dev on a reported Bug (see `workflows/bug.md`).
 - **Failures come with enough detail to act on.** Exact repro steps and observed vs.
