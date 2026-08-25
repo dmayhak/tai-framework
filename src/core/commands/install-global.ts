@@ -98,28 +98,37 @@ function prSkillBody(taiHome: string): string {
         "blob), so a multi-word title/description/comment survives intact:\n\n" +
         "```\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n` +
-        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <ISSUE-KEY> <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n` +
         "```\n\n" +
+        "**`review` takes NO `<ISSUE-KEY>`** — unlike `create`/`merge`, it isn't scoped to one " +
+        "issue at all (rev 52, TAI-159 ADR): it resolves the acting human from " +
+        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and checks them against the \"PR Reviewers\" " +
+        "roster, rejecting if they aren't listed. Passing an issue key as `review`'s first " +
+        "argument fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
         "`[PR-ID]` is optional on `review`/`merge` — omit it and TAI resolves it against `REPO`'s " +
         "sole currently-open PR. If more than one is open, the command fails with a list of " +
         "candidates instead of guessing — pass one of those IDs explicitly and re-run.\n\n" +
-        "The output is from TAI's own `GitHost` layer, invoked as whichever persona owns the " +
-        "issue key you passed — it resolves that persona's identity from the issue's own " +
-        "`persona` field and enforces its `gitHost` permission grant, the same way `/tai-work` " +
-        "enforces `workOn`.\n\n" +
-        "- `create` — Dev subtask done, opens the real PR (source = the Story's branch, brief §6; " +
-        "destination = the repo's default branch). `SOURCE_BRANCH` and `TITLE` are both validated " +
-        "(brief §6/§112) — a branch or title that doesn't follow the parent-Story-first convention " +
-        "fails loudly rather than silently opening the PR anyway. Also auto-links the new PR to " +
-        "whichever CodeReview subtask should review it (a Jira remote issue link) — no separate " +
-        "manual linking step needed.\n" +
-        "- `review` — Code Reviewer subtask, approve or request changes on the real PR diff. This " +
-        "writes the PR only — also transition the Jira CodeReview subtask yourself as the second " +
-        "half of the review decision.\n" +
-        "- `merge` — Developer merges their own already-approved work once CodeReview passes. " +
-        "Gated on CI status being green first — a red or missing status is reported as \"Merge " +
-        "denied\" without attempting the merge.\n\n" +
+        "`create`/`merge` are invoked as whichever persona owns `<ISSUE-KEY>` — resolved from the " +
+        "issue's own `persona` field, with its `gitHost` permission grant enforced, the same way " +
+        "`/tai-work` enforces `workOn`. `review` is not persona-scoped at all (see above).\n\n" +
+        "- `create` — Dev subtask's code is ready, opens the real PR (source = the Story's branch, " +
+        "brief §6; destination = the repo's default branch). `SOURCE_BRANCH` and `TITLE` are both " +
+        "validated (brief §6/§112) — a branch or title that doesn't follow the parent-Story-first " +
+        "convention fails loudly rather than silently opening the PR anyway. Auto-assigns the " +
+        "\"PR Reviewers\" roster (minus the author) as Bitbucket reviewers on creation (rev 52) — " +
+        "best-effort, a resolution failure for one reviewer still lets the PR itself get created. " +
+        "There is no CodeReview subtask to link to anymore (retired rev 52) — nothing further to " +
+        "wire up manually.\n" +
+        "- `review` — records a real approve/request-changes decision on the PR itself. This is " +
+        "the roster-gated review action `readyToReview` surfaces (no Jira subtask involved at " +
+        "all) — nothing else to transition afterward.\n" +
+        "- `merge` — the Dev subtask's own owner merges their already-reviewed work. Gated on CI " +
+        "status being green — a red or missing status is reported as \"Merge denied\" without " +
+        "attempting the merge (approval-count gating happens upstream, in whether `readyToMerge` " +
+        "surfaced this PR at all — `merge` itself doesn't re-check approvals). On success, also " +
+        "transitions the linked Dev subtask to Done as a second write (rev 52) — the actual " +
+        "completion signal; Dev was never moved to Done earlier just because code was ready.\n\n" +
         "If the command errors, report the error to the human rather than guessing or proceeding " +
         "anyway."
     );
