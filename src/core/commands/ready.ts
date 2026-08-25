@@ -125,6 +125,10 @@ interface ParentPrecedenceContext {
     readonly storyType: StoryType;
     readonly presentSubtaskTypes: SubtaskType[];
     readonly doneSubtaskTypes: Set<SubtaskType>;
+    /** TAI-195: a subtask rarely carries its own `Priority` (set at Triage on the Bug/Story
+     *  itself, brief's Expedited Path) — the parent's value is what a subtask inherits for
+     *  Ready Work sort/display purposes (human-confirmed 2026-08-25). */
+    readonly priority: string | undefined;
 }
 
 async function loadParentPrecedenceContext(
@@ -147,7 +151,27 @@ async function loadParentPrecedenceContext(
             .filter((s) => isSubtaskIssueType(s.issueType) && (s.status === Status.Done || s.status === Status.Canceled))
             .map((s) => s.issueType as SubtaskType)
     );
-    return { storyType: parent.issueType, presentSubtaskTypes, doneSubtaskTypes };
+    return { storyType: parent.issueType, presentSubtaskTypes, doneSubtaskTypes, priority: parent.priority };
+}
+
+/**
+ * TAI-195: total order for Ready Work sorting — the standard Jira default 5-level scheme
+ * (brief's own Bug Expedited Path already keys off "Highest" by name). A priority string
+ * outside this set (a project running a custom scheme) sorts alongside "unset" rather than
+ * guessing where it belongs — same safe-narrows-not-guesses direction as `fromJiraLinkType`
+ * elsewhere in this codebase.
+ */
+const PRIORITY_RANK: Readonly<Record<string, number>> = {
+    Highest: 0,
+    High: 1,
+    Medium: 2,
+    Low: 3,
+    Lowest: 4,
+};
+const UNRANKED_PRIORITY = 5;
+
+function priorityRank(priority: string | undefined): number {
+    return priority !== undefined ? (PRIORITY_RANK[priority] ?? UNRANKED_PRIORITY) : UNRANKED_PRIORITY;
 }
 
 function approvalCount(pr: PullRequestRef): number {
@@ -290,9 +314,17 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         if (!ctx) continue;
 
         if (isSubtaskReady(issue.issueType, ctx.storyType, ctx.presentSubtaskTypes, ctx.doneSubtaskTypes)) {
-            ready.push(issue);
+            // TAI-195: a subtask inherits its parent's Priority for sort/display purposes
+            // when it has none of its own — a synthesized view (a copy; the original fetched
+            // Issue elsewhere is untouched), not a claim about what Jira's raw field says.
+            ready.push(issue.priority !== undefined ? issue : { ...issue, priority: ctx.priority });
         }
     }
+
+    // TAI-195: P1s (and other priorities) sort to the top — no auto-interrupt of in-flight
+    // work (human-decided 2026-08-25), purely a display/ordering change. Stable sort: equal
+    // priority (including "both unset") preserves the search's own key-ascending order.
+    ready.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
 
     let readyToTest: readonly ReadyToTestCandidate[] = [];
     let readyToMerge: readonly ReadyToMergeCandidate[] = [];

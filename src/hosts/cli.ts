@@ -346,7 +346,8 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     } else {
         for (const issue of result.ready) {
             lines.push(
-                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`
+                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
+                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"})`
             );
             actionableCount++;
         }
