@@ -159,23 +159,39 @@ function prSkillBody(taiHome: string): string {
         `2. Read \`${taiHome}/src/personas/code-reviewer.md\` and apply Cole's Core Principles to ` +
         "what the diff actually changed — the same standard a human reviewer on the \"PR " +
         "Reviewers\" roster would apply.\n" +
-        "3. Present your findings to the human directly (not silently, not just via a PR comment) " +
-        "— what you'd flag, and whether you'd approve, request changes, or lean neither.\n" +
-        "4. Ask, as two SEPARATE questions, waiting for a real answer to each — never assume, " +
-        "never auto-decide either one, regardless of how clean the diff looked:\n" +
-        "   - **\"Post these findings as a PR comment?\"** — if yes, run `git-pr comment` with " +
-        "your findings as `<BODY>`.\n" +
-        "   - **\"Approve, request changes, or neither?\"** — only run `git-pr review` if the " +
-        "human explicitly answers approve or requestChanges here; \"neither\" means stop, no " +
-        "`review` call at all.\n\n" +
+        "3. **Present your findings, then STOP — this is the complete output of \"review this " +
+        "PR,\" full stop.** What you'd flag (or \"no issues found\"), and your own leaning " +
+        "(approve, request changes, or neither) as one input for the human's decision. Do NOT, " +
+        "in this same turn: run `git-pr comment`, run `git-pr review`, or ask a question via any " +
+        "interactive tool. End your turn right here and wait for the human's own next message — " +
+        "do not try to keep going.\n\n" +
+        "TAI-202/TAI-203 (found live, 2026-08-25 — two same-turn wordings tried and failed the " +
+        "same way before landing on this design): a session that skips straight to a question " +
+        "with no findings shown leaves the human unable to answer it; a session that shows " +
+        "findings and then tries to immediately ask a question in the same turn reliably just " +
+        "stops after stating its own recommendation — a polished \"Findings... I'd lean " +
+        "approve\" write-up reads as a complete, satisfying answer, and no amount of \"don't " +
+        "stop\" wording in this file fixed that. **Don't try to word around it a third time** — " +
+        "stopping after step 3 is correct behavior, not a bug to prompt-engineer away.\n\n" +
+        "4. **When the human's own next message tells you what to do, that ordinary reply is " +
+        "the trigger — not a same-turn continuation, not a special tool.** They'll say it in " +
+        "plain language: \"post it and approve,\" \"don't post, request changes,\" \"neither,\" " +
+        "\"just approve, no comment needed,\" etc. — interpret it and act:\n" +
+        "   - If they want the findings posted: run `git-pr comment` with your findings as " +
+        "`<BODY>`.\n" +
+        "   - If they want a decision recorded: run `git-pr review` with `approve` or " +
+        "`requestChanges` — only ever because they said so explicitly; \"neither\"/no clear " +
+        "decision means no `review` call at all.\n" +
+        "   - If their reply is genuinely ambiguous about either the posting or the decision, " +
+        "ask a clarifying question rather than guessing which they meant.\n\n" +
         "This applies even when you already know the diff well (e.g. you wrote it earlier this " +
         "session) — reviewing and recording a decision are still two separate steps, and the " +
         "human still decides the outcome of each, every time. Never chain straight from reading a " +
         "diff into `review`/`merge` on your own initiative — only run either because the human " +
-        "explicitly, separately asked for that specific action. No condition here ever " +
+        "explicitly asked for that specific action, in their own message. No condition here ever " +
         "auto-approves (brief §3.4: human sign-off is the default) — running `review`/`comment` " +
-        "without both questions above being asked, and answered, in this same turn is always " +
-        "wrong, however clean the diff looked.\n\n" +
+        "without the human having actually said to, in their own words, is always wrong, however " +
+        "clean the diff looked.\n\n" +
         "If the command errors, report the error to the human rather than guessing or proceeding " +
         "anyway."
     );
