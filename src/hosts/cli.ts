@@ -60,6 +60,7 @@ import {
     resolvePullRequestId,
     parseReviewArgs,
     parseMergeArgs,
+    parseCommentArgs,
     isGreen,
     findLinkedDevSubtask,
     validateBranchName,
@@ -354,7 +355,8 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
         lines.push("", "## PRs ready for your review", "");
         for (const c of result.readyToReview) {
             lines.push(
-                `${counter.next()}. ${c.pullRequest.url} (\`git-pr review <ISSUE-KEY> <REPO> approve|requestChanges\` to record it)`
+                `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
+                    `${c.pullRequest.destinationBranch}) — \`git-pr review <REPO> approve|requestChanges\` to record it`
             );
             actionableCount++;
         }
@@ -583,14 +585,16 @@ async function main(): Promise<void> {
         const usage =
             "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
             "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
+            "     | git-pr comment <REPO> [PR-ID] <BODY>\n" +
             "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
-            "  [PR-ID] is optional on review/merge — omit it to resolve against REPO's sole open PR; " +
-            "if more than one is open, the error lists them so you can pass one explicitly.";
+            "  [PR-ID] is optional on review/comment/merge — omit it to resolve against REPO's sole " +
+            "open PR; if more than one is open, the error lists them so you can pass one explicitly.";
 
-        // rev 52 (TAI-159 ADR): review is roster-gated, not persona-gated — no <ISSUE-KEY>
-        // at all (there's no CodeReview subtask left to resolve permission through; see
-        // resolveReviewerGitHost's own comment). Handled separately from create/merge,
-        // which still resolve permission from an <ISSUE-KEY>'s persona field as before.
+        // rev 52 (TAI-159 ADR): review/comment are roster-gated, not persona-gated — no
+        // <ISSUE-KEY> at all (there's no CodeReview subtask left to resolve permission
+        // through; see resolveReviewerGitHost's own comment). Handled separately from
+        // create/merge, which still resolve permission from an <ISSUE-KEY>'s persona field
+        // as before.
         if (action === "review") {
             const [repoArg, ...gitArgs] = actionArgs;
             if (!repoArg) throw new Error(usage);
@@ -601,6 +605,22 @@ async function main(): Promise<void> {
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             await gitHost.reviewPullRequest(repo, prId, decision, comment);
             console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
+            return;
+        }
+
+        // TAI-187: posting review findings as a real PR comment — same roster gate as
+        // `review` (the human posting findings is the same one about to decide approve/
+        // requestChanges next), same optional-[PR-ID] resolution.
+        if (action === "comment") {
+            const [repoArg, ...gitArgs] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
+            const repo = toRepoId(repoArg);
+
+            const { prIdArg, body } = parseCommentArgs(gitArgs);
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            const comment = await gitHost.addPullRequestComment(repo, prId, body);
+            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
             return;
         }
 
