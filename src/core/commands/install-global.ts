@@ -78,22 +78,29 @@ function readySkillBody(taiHome: string): string {
         "```\n\n" +
         "The output lists issues that are actually ready to start (open, and — for a subtask — " +
         "with every precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`), " +
-        "plus an \"Already in flight\" section for context (the root status rollup — display only, " +
+        "plus — when `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured — " +
+        "up to three PR-related sections, all live signals read directly from Bitbucket rather " +
+        "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +
+        "- **PRs ready for your review** — open PRs where the current human (`BITBUCKET_EMAIL`) is " +
+        "on the \"PR Reviewers\" roster and hasn't yet decided. Run `git-pr review <REPO> [PR-ID] " +
+        "approve|requestChanges` to record it — no `<ISSUE-KEY>`, this action isn't scoped to one " +
+        "issue.\n" +
+        "- **Open PRs ready to test** — `Dev` subtasks with a linked, open PR, full stop. Testing " +
+        "runs in parallel with review, not gated behind it.\n" +
+        "- **Approved PRs ready to merge** — the same `Dev`-subtask/PR pairs as above, additionally " +
+        "at the required approval count AND CI-green. Run `git-pr merge <ISSUE-KEY> <REPO>` to " +
+        "land it, not `/tai-work`.\n\n" +
+        "Plus an \"Already in flight\" section for context (the root status rollup — display only, " +
         "never the readiness source itself, brief §7).\n\n" +
-        "When `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured, an " +
-        "\"Approved PRs ready to merge\" section may also appear — a CodeReview subtask that's " +
-        "Done, whose linked PR is still open, with green CI. This is a DIFFERENT action type than " +
-        "the ready-to-start list above: run `git-pr merge <ISSUE-KEY> <REPO>` to land it, not " +
-        "`/tai-work`.\n\n" +
-        "Present this list to the human AS-IS — every actionable line (across Ready Work, PRs " +
-        "ready for your review, Open PRs ready to test, and Approved PRs ready to merge) is " +
-        "already numbered with ONE shared counter (TAI-182), so don't renumber or reformat it " +
-        "yourself. \"Already in flight\" is deliberately NOT numbered — it's display-only context, " +
-        "never a valid reply. If the human replies with a bare number, map it back to that exact " +
-        "line (by its position in this shared numbering) and take the ACTION that section " +
-        "describes — `/tai-work <KEY>` for a Ready Work line, `git-pr review`/`git-pr merge` for a " +
-        "PR line — the same as if they'd typed the key/URL directly. A number with no corresponding " +
-        "line, or any ambiguity about which line it means, is a re-ask, not a guess."
+        "Present this list to the human AS-IS — every actionable line above (Ready Work and all " +
+        "three PR sections) is already numbered with ONE shared counter (TAI-182), so don't " +
+        "renumber or reformat it yourself. \"Already in flight\" is deliberately NOT numbered — " +
+        "it's display-only context, never a valid reply. If the human replies with a bare number, " +
+        "map it back to that exact line (by its position in this shared numbering) and take the " +
+        "ACTION that section describes — `/tai-work <KEY>` for a Ready Work line, `git-pr " +
+        "review`/`git-pr merge` for a PR line — the same as if they'd typed the key/URL directly. " +
+        "A number with no corresponding line, or any ambiguity about which line it means, is a " +
+        "re-ask, not a guess."
     );
 }
 
