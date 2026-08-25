@@ -18,6 +18,7 @@ import {
     verifyBitbucketSetup,
     type InitState,
 } from "./target-init.js";
+import { markdownToStorage } from "../storage/jira/storage-format.js";
 
 function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -189,6 +190,50 @@ describe("verifyJiraSetup", () => {
         });
         assert.equal(result.ok, false);
         assert.match(result.detail, /not found/);
+    });
+
+    it("treats an aliased native issue-type name as satisfying provisioning (TAI-116 piece 4, TAI-178 ADR)", async () => {
+        const fetchImpl = stubFetch({
+            "GET /rest/api/2/issue/createmeta?projectKeys=PROJ&expand=projects.issuetypes": () =>
+                json({ projects: [{ issuetypes: [{ name: "Story" }, { name: "Sub-task" }] }] }),
+            "GET /rest/api/2/field": () => json([{ id: "customfield_10105", name: "Persona", custom: true }]),
+            "GET /wiki/api/v2/spaces?keys=TA": () => json({ results: [{ id: "111", key: "TA" }] }),
+            "GET /wiki/api/v2/spaces/111/pages?title=Type%20Aliases&limit=250": () =>
+                json({ results: [{ id: "999", title: "Type Aliases" }] }),
+            "GET /wiki/api/v2/pages/999?body-format=storage": () =>
+                json({
+                    id: "999",
+                    title: "Type Aliases",
+                    spaceId: "111",
+                    version: { number: 1, createdAt: "now" },
+                    body: { storage: { value: markdownToStorage("```yaml\nSub-task: dev\n```\n") } },
+                }),
+        });
+        const result = await verifyJiraSetup({
+            siteUrl: "https://example.atlassian.net",
+            email: "a@b.c",
+            apiToken: "tok",
+            projectKey: "PROJ",
+            spaceKey: "TA",
+            fetchImpl,
+        });
+        assert.ok(!result.missingIssueTypes.includes("Dev"), "Dev should be satisfied via the Sub-task alias");
+    });
+
+    it("without spaceKey, does not attempt to load aliases and behaves exactly as before", async () => {
+        const fetchImpl = stubFetch({
+            "GET /rest/api/2/issue/createmeta?projectKeys=PROJ&expand=projects.issuetypes": () =>
+                json({ projects: [{ issuetypes: [{ name: "Story" }] }] }),
+            "GET /rest/api/2/field": () => json([{ id: "customfield_10105", name: "Persona", custom: true }]),
+        });
+        const result = await verifyJiraSetup({
+            siteUrl: "https://example.atlassian.net",
+            email: "a@b.c",
+            apiToken: "tok",
+            projectKey: "PROJ",
+            fetchImpl,
+        });
+        assert.ok(result.missingIssueTypes.includes("Dev"));
     });
 });
 

@@ -30,9 +30,7 @@ export TAI_GIT_REPOS=<workspace/repo>
 
 TAI needs every `StoryType`/`SubtaskType` provisioned as its own **native Jira issue
 type** with an **exact name match** (brief §5.2 rev 11 — one custom sub-task issue type
-per `SubtaskType`; Kickoff/Spike aren't native types either). There's no type-alias layer
-yet (that's TAI-116 piece 4, a separate future ticket) — until it lands, the names must
-match exactly.
+per `SubtaskType`; Kickoff/Spike aren't native types either).
 
 **Team-managed project:** Project settings → Issue types → add each missing type
 directly; no separate scheme to manage.
@@ -40,6 +38,26 @@ directly; no separate scheme to manage.
 **Company-managed project:** Site admin → Issue types → create each missing type
 site-wide, then Issue type scheme → associate them with this project. Heavier, but the
 same end state.
+
+**Escape hatch for a pre-existing project (TAI-116 piece 4, TAI-178 ADR):** if this
+project already has its own native issue types (a generic `Sub-task`, a locally-named
+`Defect`, …) that you'd rather reuse than re-provision to match exactly, add a `Type
+Aliases` page (Confluence, `Config` folder, sibling to `Persona Roster`) mapping each
+native name to TAI's internal type value:
+
+````
+```yaml
+Sub-task: dev
+Defect: bug
+```
+````
+
+`issue create`'s `<ISSUE-TYPE>` argument (`dev`, `code-review`, `bug`, …) is the exact
+vocabulary the right-hand side accepts — see `SubtaskType`/`StoryType` in
+`story-schema.ts` for the full list. `init jira` (below) honors this page once
+`TAI_SPACE_KEY` is set — on a fresh project it may not exist yet on the very first run;
+re-run `init jira` after creating/editing it to re-verify. This reduces, not eliminates,
+provisioning: still add any type that's neither a native match nor aliased.
 
 Either way, also provision:
 

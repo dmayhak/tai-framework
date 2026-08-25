@@ -9,6 +9,7 @@ import type { StorageBackend } from "../interface.js";
 import { RestClient, apiTokenAuth, type AtlassianAuth } from "./rest-client.js";
 import { createJiraWorkTracker, discoverPersonaFieldId } from "./work-tracker.js";
 import { createConfluenceDocStore } from "./doc-store.js";
+import { loadTypeAliasMap } from "./type-alias-config.js";
 import type { MermaidConfig } from "./storage-format.js";
 
 export interface JiraBackendConfig {
@@ -43,10 +44,14 @@ export async function createJiraBackend(config: JiraBackendConfig): Promise<Stor
         spaceKey: config.spaceKey,
         ...(config.mermaid ? { mermaid: config.mermaid } : {}),
     });
+    // TAI-116 piece 4: resolved once at startup, same "discovered, not hardcoded" posture
+    // as personaFieldId above -- a "Type Aliases" page edited mid-run won't take effect
+    // until the next invocation, an accepted trade-off (TAI-178 ADR).
+    const aliases = await loadTypeAliasMap(docStore, config.spaceKey);
 
     return {
         kind: "jira",
-        workTracker: createJiraWorkTracker(client, { personaFieldId, docStore, spaceKey: config.spaceKey }),
+        workTracker: createJiraWorkTracker(client, { personaFieldId, docStore, spaceKey: config.spaceKey, aliases }),
         docStore,
     };
 }

@@ -72,18 +72,40 @@ const JIRA_ISSUE_TYPE_REVERSE: ReadonlyMap<string, IssueType> = new Map(
     Object.entries(JIRA_ISSUE_TYPE).map(([k, v]) => [v, k as IssueType])
 );
 
-export function toJiraIssueType(t: IssueType): string {
-    return JIRA_ISSUE_TYPE[t];
+/**
+ * A target project's own per-project override on top of `JIRA_ISSUE_TYPE`/
+ * `JIRA_ISSUE_TYPE_REVERSE` (TAI-116 piece 4, TAI-178 ADR) — lets a pre-existing Jira
+ * project's native issue-type names (e.g. a generic "Sub-task") stand in for one of TAI's
+ * own bundled display names, without TAI's custom issue-type scheme being re-provisioned
+ * to match exactly. Sourced from an optional "Type Aliases" Confluence page
+ * (`type-alias-config.ts`, which owns the parsing/loading — this module stays free of any
+ * `DocStore`/network dependency, per its own "pure functions, no I/O" header).
+ */
+export interface TypeAliasMap {
+    /** Project's native Jira issue-type display name -> IssueType. */
+    readonly fromJira: ReadonlyMap<string, IssueType>;
+    /** IssueType -> the native Jira issue-type display name to use when CREATING an issue
+     *  of this type. Only present for a type the project has explicitly aliased. */
+    readonly toJira: ReadonlyMap<IssueType, string>;
 }
 
-export function fromJiraIssueType(name: string): IssueType {
+export const EMPTY_TYPE_ALIAS_MAP: TypeAliasMap = { fromJira: new Map(), toJira: new Map() };
+
+export function toJiraIssueType(t: IssueType, aliases: TypeAliasMap = EMPTY_TYPE_ALIAS_MAP): string {
+    return aliases.toJira.get(t) ?? JIRA_ISSUE_TYPE[t];
+}
+
+export function fromJiraIssueType(name: string, aliases: TypeAliasMap = EMPTY_TYPE_ALIAS_MAP): IssueType {
+    const aliased = aliases.fromJira.get(name);
+    if (aliased !== undefined) return aliased;
     const t = JIRA_ISSUE_TYPE_REVERSE.get(name);
     // Deliberately throws rather than defaulting. An unrecognised issue type means the Jira
     // project is provisioned differently than the schema believes — guessing would produce
     // a wrong-but-plausible Issue and corrupt everything downstream that routes on type.
     if (t === undefined) {
         throw new Error(
-            `Unknown Jira issue type "${name}". Provision it in Jira, or add it to SubtaskType/StoryType.`
+            `Unknown Jira issue type "${name}". Provision it in Jira, add it to SubtaskType/StoryType, ` +
+                `or map it on the "Type Aliases" Confluence page (TAI-116 piece 4).`
         );
     }
     return t;
@@ -227,14 +249,14 @@ export function toAttachmentRef(raw: { id: string; filename: string; size?: numb
     };
 }
 
-export function toIssue(raw: RawIssue, personaFieldId: string): Issue {
+export function toIssue(raw: RawIssue, personaFieldId: string, aliases: TypeAliasMap = EMPTY_TYPE_ALIAS_MAP): Issue {
     const f = raw.fields;
     const personaRaw = f[personaFieldId] as { value?: string } | null | undefined;
 
     return {
         key: toIssueKey(raw.key),
         projectKey: f.project.key,
-        issueType: fromJiraIssueType(f.issuetype.name),
+        issueType: fromJiraIssueType(f.issuetype.name, aliases),
         summary: f.summary,
         // Explicit presence check, not truthy — a falsy check would collapse an
         // intentionally-cleared description ("") to the same undefined as a missing one,
@@ -276,11 +298,11 @@ function jqlString(s: string): string {
  * issue types look like they existed. Real Jira returns a 400 here, but the rule stands on
  * its own: an empty result must only ever mean "no matches."
  */
-export function toJql(filter: IssueFilter): string {
+export function toJql(filter: IssueFilter, aliases: TypeAliasMap = EMPTY_TYPE_ALIAS_MAP): string {
     const clauses: string[] = [`project = ${jqlString(filter.projectKey)}`];
 
     if (filter.issueTypes?.length) {
-        const names = filter.issueTypes.map((t) => jqlString(toJiraIssueType(t)));
+        const names = filter.issueTypes.map((t) => jqlString(toJiraIssueType(t, aliases)));
         clauses.push(`issuetype IN (${names.join(", ")})`);
     }
     if (filter.statuses?.length) {

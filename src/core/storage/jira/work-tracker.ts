@@ -52,6 +52,7 @@ import {
     issueFields,
     toHumanRef,
     type RawUser,
+    type TypeAliasMap,
 } from "./mappers.js";
 
 const API = "/rest/api/2";
@@ -78,6 +79,9 @@ export interface JiraWorkTrackerConfig {
     /** Confluence space key the Persona Roster page lives in (brief §4 rev 18 — independent
      *  of the Jira project key, never derived from it). */
     readonly spaceKey: string;
+    /** TAI-116 piece 4 (TAI-178 ADR): the project's "Type Aliases" override, resolved once
+     *  at backend-construction time (`jira-backend.ts`), same as `personaFieldId`. */
+    readonly aliases: TypeAliasMap;
 }
 
 /** Resolve the `Persona` custom field's site-specific id by its name. */
@@ -119,7 +123,7 @@ export function createJiraWorkTracker(
     client: RestClient,
     config: JiraWorkTrackerConfig
 ): WorkTracker {
-    const { personaFieldId, docStore, spaceKey } = config;
+    const { personaFieldId, docStore, spaceKey, aliases } = config;
     const fields = issueFields(personaFieldId);
 
     // Lazy + memoized: only fetched the first time a review-gated transition is actually
@@ -136,7 +140,7 @@ export function createJiraWorkTracker(
 
     async function fetchIssue(key: IssueKey): Promise<Issue> {
         const raw = await client.request<RawIssue>("GET", `${API}/issue/${key}?fields=${fields}`);
-        return toIssue(raw, personaFieldId);
+        return toIssue(raw, personaFieldId, aliases);
     }
 
     /**
@@ -165,7 +169,7 @@ export function createJiraWorkTracker(
 
         if (create) {
             f["project"] = { key: create.projectKey };
-            f["issuetype"] = { name: toJiraIssueType(create.issueType) };
+            f["issuetype"] = { name: toJiraIssueType(create.issueType, aliases) };
             if (create.parentKey) f["parent"] = { key: create.parentKey };
             if (create.labels) f["labels"] = create.labels;
         }
@@ -206,7 +210,7 @@ export function createJiraWorkTracker(
 
         async getIssue(key: IssueKey): Promise<Issue | null> {
             const raw = await client.getOrNull<RawIssue>(`${API}/issue/${key}?fields=${fields}`);
-            return raw ? toIssue(raw, personaFieldId) : null;
+            return raw ? toIssue(raw, personaFieldId, aliases) : null;
         },
 
         async updateIssue(key: IssueKey, patch: IssuePatch): Promise<Issue> {
@@ -508,7 +512,7 @@ export function createJiraWorkTracker(
         async search(filter: IssueFilter): Promise<readonly Issue[]> {
             // toJql() validates and THROWS on anything unmappable — an empty result must only
             // ever mean "no matches," never "the query was malformed." See mappers.ts.
-            const jql = toJql(filter);
+            const jql = toJql(filter, aliases);
 
             // `/search` (no suffix) was REMOVED by Atlassian and now returns 410 Gone —
             // caught the first time this ran against the live site. `/search/jql` is its
@@ -523,7 +527,7 @@ export function createJiraWorkTracker(
             // deliberately deferred (interface.ts: `limit` bounds the result; no real project is
             // near needing it) — but a single page is all we ask for, so results are bounded,
             // never silently truncated mid-iteration.
-            return res.issues.map((r) => toIssue(r, personaFieldId));
+            return res.issues.map((r) => toIssue(r, personaFieldId, aliases));
         },
     };
 }
