@@ -215,3 +215,20 @@ export function parseMergeArgs(gitArgs: readonly string[]): ParsedMergeArgs {
     }
     return { prIdArg: first, strategy: second ?? "mergeCommit" };
 }
+
+export interface ParsedCommentArgs {
+    readonly prIdArg: string | undefined;
+    readonly body: string;
+}
+
+/** Parses `git-pr comment`'s trailing args: `[PR-ID] <BODY>` (TAI-187). Unlike merge's two
+ *  optional args, this has no heuristic-detection ambiguity: `BODY` is required and always
+ *  the LAST argument (callers pass it as one already-quoted string, same convention as
+ *  every other free-text arg in this CLI — `issue comment`'s own `<BODY>`, `page create`'s
+ *  `<CONTENT>`) — so argument COUNT alone disambiguates. */
+export function parseCommentArgs(gitArgs: readonly string[]): ParsedCommentArgs {
+    const [first, second] = gitArgs;
+    if (second !== undefined) return { prIdArg: first, body: second };
+    if (first !== undefined) return { prIdArg: undefined, body: first };
+    throw new Error("Usage: git-pr comment <REPO> [PR-ID] <BODY>");
+}

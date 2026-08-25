@@ -82,9 +82,10 @@ function readySkillBody(taiHome: string): string {
         "up to three PR-related sections, all live signals read directly from Bitbucket rather " +
         "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +
         "- **PRs ready for your review** — open PRs where the current human (`BITBUCKET_EMAIL`) is " +
-        "on the \"PR Reviewers\" roster and hasn't yet decided. Run `git-pr review <REPO> [PR-ID] " +
-        "approve|requestChanges` to record it — no `<ISSUE-KEY>`, this action isn't scoped to one " +
-        "issue.\n" +
+        "on the \"PR Reviewers\" roster and hasn't yet decided. Picking this line's number means " +
+        "doing a REAL review (TAI-187) — see `tai-pr`'s own skill for the full flow (fetch the " +
+        "diff, apply Cole's rules, present findings, then ask separately whether to post and " +
+        "whether to approve) — never just running `git-pr review` straight off the number.\n" +
         "- **Open PRs ready to test** — `Dev` subtasks with a linked, open PR, full stop. Testing " +
         "runs in parallel with review, not gated behind it.\n" +
         "- **Approved PRs ready to merge** — the same `Dev`-subtask/PR pairs as above, additionally " +
@@ -97,10 +98,10 @@ function readySkillBody(taiHome: string): string {
         "renumber or reformat it yourself. \"Already in flight\" is deliberately NOT numbered — " +
         "it's display-only context, never a valid reply. If the human replies with a bare number, " +
         "map it back to that exact line (by its position in this shared numbering) and take the " +
-        "ACTION that section describes — `/tai-work <KEY>` for a Ready Work line, `git-pr " +
-        "review`/`git-pr merge` for a PR line — the same as if they'd typed the key/URL directly. " +
-        "A number with no corresponding line, or any ambiguity about which line it means, is a " +
-        "re-ask, not a guess."
+        "ACTION that section describes — `/tai-work <KEY>` for a Ready Work line, the real review " +
+        "flow above for a \"PRs ready for your review\" line, `git-pr merge` for a \"ready to " +
+        "merge\" line. A number with no corresponding line, or any ambiguity about which line it " +
+        "means, is a re-ask, not a guess."
     );
 }
 
@@ -112,19 +113,21 @@ function prSkillBody(taiHome: string): string {
         "```\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment <REPO> [PR-ID] <BODY>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n` +
         "```\n\n" +
-        "**`review` takes NO `<ISSUE-KEY>`** — unlike `create`/`merge`, it isn't scoped to one " +
-        "issue at all (rev 52, TAI-159 ADR): it resolves the acting human from " +
-        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and checks them against the \"PR Reviewers\" " +
-        "roster, rejecting if they aren't listed. Passing an issue key as `review`'s first " +
-        "argument fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
-        "`[PR-ID]` is optional on `review`/`merge` — omit it and TAI resolves it against `REPO`'s " +
-        "sole currently-open PR. If more than one is open, the command fails with a list of " +
-        "candidates instead of guessing — pass one of those IDs explicitly and re-run.\n\n" +
+        "**`review`/`comment` take NO `<ISSUE-KEY>`** — unlike `create`/`merge`, neither is scoped " +
+        "to one issue at all (rev 52, TAI-159 ADR): both resolve the acting human from " +
+        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and check them against the \"PR Reviewers\" " +
+        "roster, rejecting if they aren't listed. Passing an issue key as the first argument to " +
+        "either fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
+        "`[PR-ID]` is optional on `review`/`comment`/`merge` — omit it and TAI resolves it against " +
+        "`REPO`'s sole currently-open PR. If more than one is open, the command fails with a list " +
+        "of candidates instead of guessing — pass one of those IDs explicitly and re-run.\n\n" +
         "`create`/`merge` are invoked as whichever persona owns `<ISSUE-KEY>` — resolved from the " +
         "issue's own `persona` field, with its `gitHost` permission grant enforced, the same way " +
-        "`/tai-work` enforces `workOn`. `review` is not persona-scoped at all (see above).\n\n" +
+        "`/tai-work` enforces `workOn`. `review`/`comment` are not persona-scoped at all (see " +
+        "above).\n\n" +
         "- `create` — Dev subtask's code is ready, opens the real PR (source = the Story's branch, " +
         "brief §6; destination = the repo's default branch). `SOURCE_BRANCH` and `TITLE` are both " +
         "validated (brief §6/§112) — a branch or title that doesn't follow the parent-Story-first " +
@@ -136,12 +139,43 @@ function prSkillBody(taiHome: string): string {
         "- `review` — records a real approve/request-changes decision on the PR itself. This is " +
         "the roster-gated review action `readyToReview` surfaces (no Jira subtask involved at " +
         "all) — nothing else to transition afterward.\n" +
+        "- `comment` — posts a real general PR comment (not tied to an approve/request-changes " +
+        "decision). This is how review findings actually get posted — see the review-flow section " +
+        "below.\n" +
         "- `merge` — the Dev subtask's own owner merges their already-reviewed work. Gated on CI " +
         "status being green — a red or missing status is reported as \"Merge denied\" without " +
         "attempting the merge (approval-count gating happens upstream, in whether `readyToMerge` " +
         "surfaced this PR at all — `merge` itself doesn't re-check approvals). On success, also " +
         "transitions the linked Dev subtask to Done as a second write (rev 52) — the actual " +
         "completion signal; Dev was never moved to Done earlier just because code was ready.\n\n" +
+        "**Doing an actual review (TAI-187), not just recording a decision:** when the human asks " +
+        "to review a PR — including picking a numbered \"PRs ready for your review\" line from " +
+        "`/tai-ready`'s output — do the real review yourself, inline, in this same session, " +
+        "before touching `review`/`comment` at all:\n\n" +
+        "1. Fetch and diff the PR's actual branches (`/tai-ready`'s line shows `sourceBranch → " +
+        "destinationBranch`; `git-pr create`'s own confirmation and the Bitbucket PR page also " +
+        "show them): `git fetch origin <sourceBranch>` then `git diff " +
+        "origin/<destinationBranch>...origin/<sourceBranch>`.\n" +
+        `2. Read \`${taiHome}/src/personas/code-reviewer.md\` and apply Cole's Core Principles to ` +
+        "what the diff actually changed — the same standard a human reviewer on the \"PR " +
+        "Reviewers\" roster would apply.\n" +
+        "3. Present your findings to the human directly (not silently, not just via a PR comment) " +
+        "— what you'd flag, and whether you'd approve, request changes, or lean neither.\n" +
+        "4. Ask, as two SEPARATE questions, waiting for a real answer to each — never assume, " +
+        "never auto-decide either one, regardless of how clean the diff looked:\n" +
+        "   - **\"Post these findings as a PR comment?\"** — if yes, run `git-pr comment` with " +
+        "your findings as `<BODY>`.\n" +
+        "   - **\"Approve, request changes, or neither?\"** — only run `git-pr review` if the " +
+        "human explicitly answers approve or requestChanges here; \"neither\" means stop, no " +
+        "`review` call at all.\n\n" +
+        "This applies even when you already know the diff well (e.g. you wrote it earlier this " +
+        "session) — reviewing and recording a decision are still two separate steps, and the " +
+        "human still decides the outcome of each, every time. Never chain straight from reading a " +
+        "diff into `review`/`merge` on your own initiative — only run either because the human " +
+        "explicitly, separately asked for that specific action. No condition here ever " +
+        "auto-approves (brief §3.4: human sign-off is the default) — running `review`/`comment` " +
+        "without both questions above being asked, and answered, in this same turn is always " +
+        "wrong, however clean the diff looked.\n\n" +
         "If the command errors, report the error to the human rather than guessing or proceeding " +
         "anyway."
     );

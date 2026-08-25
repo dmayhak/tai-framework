@@ -25,6 +25,7 @@ import {
     resolvePullRequestId,
     parseReviewArgs,
     parseMergeArgs,
+    parseCommentArgs,
     isGreen,
     findLinkedDevSubtask,
     validateBranchName,
@@ -149,6 +150,23 @@ describe("parseMergeArgs", () => {
 
     it("a typo'd strategy after a valid PR-ID throws rather than silently defaulting to mergeCommit", () => {
         assert.throws(() => parseMergeArgs(["14", "sqaush"]), /Invalid merge strategy "sqaush"/);
+    });
+});
+
+describe("parseCommentArgs (TAI-187)", () => {
+    it("PR-ID omitted: one trailing arg is the body", () => {
+        assert.deepEqual(parseCommentArgs(["looks good overall"]), { prIdArg: undefined, body: "looks good overall" });
+    });
+
+    it("PR-ID given: two trailing args are PR-ID then body", () => {
+        assert.deepEqual(parseCommentArgs(["42", "one nit in mappers.ts"]), {
+            prIdArg: "42",
+            body: "one nit in mappers.ts",
+        });
+    });
+
+    it("throws on no args at all rather than defaulting to an empty body", () => {
+        assert.throws(() => parseCommentArgs([]), /Usage: git-pr comment/);
     });
 });
 
