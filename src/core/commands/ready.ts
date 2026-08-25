@@ -254,6 +254,49 @@ async function syncMergedDevSubtasks(
     return synced;
 }
 
+const TEST_TIER_TYPES: ReadonlySet<SubtaskType> = new Set([
+    SubtaskType.IntegrationTest,
+    SubtaskType.SystemTest,
+    SubtaskType.E2ETest,
+]);
+
+/**
+ * TAI-194: gives the Jira board itself a visible "ready to pick up" signal for Test-tier
+ * subtasks, the moment their `Dev` sibling has a qualifying open PR — today that's a
+ * purely live-computed fact (`readyToTest` below), invisible to anyone just glancing at
+ * the board without running `/tai-ready`. Mirrors `syncMergedDevSubtasks`'s own
+ * "opportunistic sync as a side effect of ready" pattern exactly: `readyToTest`'s live
+ * computation stays the real readiness source (brief §3.6/TAI-171 — this never becomes a
+ * second source of truth), this only makes that live state ALSO visible on the board.
+ * Only transitions a sibling still sitting in `Backlog` — never disturbs one already
+ * further along (`To Do` already, In Progress, or done with).
+ */
+async function syncTestTiersToToDo(
+    workTracker: WorkTracker,
+    gitHost: Pick<GitHost, "listPullRequests">,
+    projectKey: string,
+    repos: readonly RepoId[]
+): Promise<readonly IssueKey[]> {
+    const devLinked = await findDevLinkedOpenPRs(workTracker, gitHost, projectKey, repos);
+    if (devLinked.length === 0) return [];
+
+    const synced: IssueKey[] = [];
+    const checkedParents = new Set<IssueKey>();
+    for (const { devSubtaskKey } of devLinked) {
+        const dev = await workTracker.getIssue(devSubtaskKey);
+        if (!dev?.parentKey || checkedParents.has(dev.parentKey)) continue;
+        checkedParents.add(dev.parentKey);
+
+        const siblings = await workTracker.search({ projectKey, parentKey: dev.parentKey, limit: DEFAULT_SEARCH_LIMIT });
+        for (const sibling of siblings) {
+            if (!TEST_TIER_TYPES.has(sibling.issueType as SubtaskType) || sibling.status !== Status.Backlog) continue;
+            const result = await workTracker.transition(sibling.key, Status.ToDo);
+            if (result.ok) synced.push(sibling.key);
+        }
+    }
+    return synced;
+}
+
 /**
  * Finds work that's actually ready to start, optionally scoped to one persona. `persona`
  * omitted means "ready for anyone."
@@ -261,6 +304,7 @@ async function syncMergedDevSubtasks(
 export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona): Promise<ReadyWorkResult> {
     if (deps.gitHost && deps.repos && deps.repos.length > 0) {
         await syncMergedDevSubtasks(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
+        await syncTestTiersToToDo(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
     }
 
     const candidates = await deps.workTracker.search({
