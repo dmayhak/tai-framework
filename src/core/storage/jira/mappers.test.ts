@@ -22,7 +22,9 @@ import {
     toHumanRef,
     toComment,
     toJql,
+    EMPTY_TYPE_ALIAS_MAP,
     type RawIssue,
+    type TypeAliasMap,
 } from "./mappers.js";
 
 // A realistic /rest/api/2 payload, shaped from a live TAI issue rather than invented —
@@ -82,6 +84,49 @@ describe("issue-type mapping", () => {
 
     it("throws on an unknown Jira type rather than guessing", () => {
         assert.throws(() => fromJiraIssueType("Epic Story Thing"), /Unknown Jira issue type/);
+    });
+});
+
+describe("issue-type mapping — TypeAliasMap (TAI-116 piece 4, TAI-178 ADR)", () => {
+    it("defaults to the bundled JIRA_ISSUE_TYPE names when no aliases are given", () => {
+        assert.equal(toJiraIssueType(SubtaskType.Dev), "Dev");
+        assert.equal(fromJiraIssueType("Dev"), SubtaskType.Dev);
+    });
+
+    it("resolves a native project name to the aliased IssueType", () => {
+        const aliases: TypeAliasMap = {
+            fromJira: new Map([["Sub-task", SubtaskType.Dev]]),
+            toJira: new Map([[SubtaskType.Dev, "Sub-task"]]),
+        };
+        assert.equal(fromJiraIssueType("Sub-task", aliases), SubtaskType.Dev);
+        assert.equal(toJiraIssueType(SubtaskType.Dev, aliases), "Sub-task");
+    });
+
+    it("still resolves TAI's own bundled name when only a DIFFERENT type is aliased", () => {
+        const aliases: TypeAliasMap = {
+            fromJira: new Map([["Sub-task", SubtaskType.Dev]]),
+            toJira: new Map([[SubtaskType.Dev, "Sub-task"]]),
+        };
+        assert.equal(toJiraIssueType(SubtaskType.CodeReview, aliases), "CodeReview");
+        assert.equal(fromJiraIssueType("CodeReview", aliases), SubtaskType.CodeReview);
+    });
+
+    it("lets a project override wins over a colliding builtin name", () => {
+        const aliases: TypeAliasMap = {
+            fromJira: new Map([["Dev", SubtaskType.CodeReview]]),
+            toJira: new Map(),
+        };
+        assert.equal(fromJiraIssueType("Dev", aliases), SubtaskType.CodeReview);
+    });
+
+    it("EMPTY_TYPE_ALIAS_MAP behaves identically to omitting the parameter", () => {
+        assert.equal(toJiraIssueType(SubtaskType.Dev, EMPTY_TYPE_ALIAS_MAP), toJiraIssueType(SubtaskType.Dev));
+        assert.equal(fromJiraIssueType("Dev", EMPTY_TYPE_ALIAS_MAP), fromJiraIssueType("Dev"));
+    });
+
+    it("still throws on a name neither the builtin map nor the aliases recognise", () => {
+        const aliases: TypeAliasMap = { fromJira: new Map([["Sub-task", SubtaskType.Dev]]), toJira: new Map() };
+        assert.throws(() => fromJiraIssueType("Some Other Type", aliases), /Unknown Jira issue type/);
     });
 });
 
@@ -247,6 +292,15 @@ describe("toIssue", () => {
         assert.equal(toHumanRef(null), null);
         assert.equal(toHumanRef(undefined), null);
     });
+
+    it("resolves issueType through an aliased native Jira issue-type name (TAI-116 piece 4)", () => {
+        const aliases: TypeAliasMap = {
+            fromJira: new Map([["Sub-task", SubtaskType.Dev]]),
+            toJira: new Map([[SubtaskType.Dev, "Sub-task"]]),
+        };
+        const issue = toIssue(rawIssue({ issuetype: { name: "Sub-task" } }), PERSONA_FIELD, aliases);
+        assert.equal(issue.issueType, SubtaskType.Dev);
+    });
 });
 
 describe("toJql", () => {
@@ -283,5 +337,14 @@ describe("toJql", () => {
             () => toJql({ projectKey: "TAI", statuses: ["Blocked" as Status] }),
             /Unknown Jira status/
         );
+    });
+
+    it("resolves issueTypes through the given aliases (TAI-116 piece 4)", () => {
+        const aliases: TypeAliasMap = {
+            fromJira: new Map([["Sub-task", SubtaskType.Dev]]),
+            toJira: new Map([[SubtaskType.Dev, "Sub-task"]]),
+        };
+        const jql = toJql({ projectKey: "TAI", issueTypes: [SubtaskType.Dev] }, aliases);
+        assert.match(jql, /issuetype IN \("Sub-task"\)/);
     });
 });

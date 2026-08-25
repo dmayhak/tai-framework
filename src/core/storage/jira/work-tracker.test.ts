@@ -13,6 +13,7 @@ import {
 } from "../interface.js";
 import { RestClient, apiTokenAuth } from "./rest-client.js";
 import { createJiraWorkTracker } from "./work-tracker.js";
+import { EMPTY_TYPE_ALIAS_MAP } from "./mappers.js";
 
 const PERSONA_FIELD = "customfield_10105";
 const SPACE_KEY = "TA";
@@ -63,7 +64,12 @@ function trackerWith(fetchImpl: typeof fetch, docStore: DocStore = fakeDocStore(
         auth: apiTokenAuth("a@b.c", "token"),
         fetchImpl,
     });
-    return createJiraWorkTracker(client, { personaFieldId: PERSONA_FIELD, docStore, spaceKey: SPACE_KEY });
+    return createJiraWorkTracker(client, {
+        personaFieldId: PERSONA_FIELD,
+        docStore,
+        spaceKey: SPACE_KEY,
+        aliases: EMPTY_TYPE_ALIAS_MAP,
+    });
 }
 
 describe("error model — the §3.3 / §3.6 split", () => {

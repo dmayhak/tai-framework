@@ -40,8 +40,9 @@ import path from "node:path";
 
 import { RestClient as JiraRestClient, apiTokenAuth as jiraApiTokenAuth } from "../storage/jira/rest-client.js";
 import { discoverPersonaFieldId } from "../storage/jira/work-tracker.js";
-import { JIRA_ISSUE_TYPE } from "../storage/jira/mappers.js";
+import { JIRA_ISSUE_TYPE, toJiraIssueType, EMPTY_TYPE_ALIAS_MAP, type IssueType } from "../storage/jira/mappers.js";
 import { createConfluenceDocStore } from "../storage/jira/doc-store.js";
+import { loadTypeAliasMap } from "../storage/jira/type-alias-config.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../git/bitbucket/bitbucket-backend.js";
 import { toRepoId } from "../git/interface.js";
 import { PERSONA_ROLE_LABEL } from "../schema/story-schema.js";
@@ -110,6 +111,16 @@ export interface JiraVerifyInput {
     readonly email: string;
     readonly apiToken: string;
     readonly projectKey: string;
+    /**
+     * Optional (TAI-116 piece 4, TAI-178 ADR): when given, also loads the "Type Aliases"
+     * Confluence page from this space and treats a project's aliased native issue-type
+     * name as satisfying the corresponding `IssueType`'s provisioning requirement below,
+     * instead of demanding TAI's own bundled display name verbatim. Absent on a fresh
+     * target project's first `init jira` run, before `init confluence` has anywhere to put
+     * the page -- re-run `init jira` once the page exists (or `TAI_SPACE_KEY` is set) to
+     * re-verify with aliases applied.
+     */
+    readonly spaceKey?: string;
     readonly fetchImpl?: typeof fetch;
 }
 
@@ -130,7 +141,9 @@ interface CreateMetaResponse {
  * type scheme for company-managed, or project-level issue types for team-managed; both
  * surface identically here). `JIRA_ISSUE_TYPE`'s values are the single source of truth for
  * which display names TAI actually needs, so this can't silently drift from what
- * `fromJiraIssueType` accepts at runtime.
+ * `fromJiraIssueType` accepts at runtime. When `input.spaceKey` is given, a required name
+ * may instead be satisfied by an aliased native name from the "Type Aliases" Confluence
+ * page (TAI-116 piece 4, TAI-178 ADR).
  */
 export async function verifyJiraSetup(input: JiraVerifyInput): Promise<JiraVerifyResult> {
     const client = new JiraRestClient({
@@ -152,8 +165,15 @@ export async function verifyJiraSetup(input: JiraVerifyInput): Promise<JiraVerif
         };
     }
 
+    const aliases = input.spaceKey
+        ? await loadTypeAliasMap(createConfluenceDocStore(client, { spaceKey: input.spaceKey }), input.spaceKey)
+        : EMPTY_TYPE_ALIAS_MAP;
+
     const provisioned = new Set(project.issuetypes.map((t) => t.name));
-    const required = Object.values(JIRA_ISSUE_TYPE);
+    // Resolved through the alias map: an aliased native name satisfies the requirement in
+    // place of TAI's own bundled display name (TAI-178 ADR) -- still the same full
+    // IssueType coverage JIRA_ISSUE_TYPE's keys already guarantee at compile time.
+    const required = (Object.keys(JIRA_ISSUE_TYPE) as IssueType[]).map((t) => toJiraIssueType(t, aliases));
     const missingIssueTypes = required.filter((name) => !provisioned.has(name));
 
     let personaFieldFound = true;

@@ -457,11 +457,17 @@ async function main(): Promise<void> {
         }
 
         if (action === "jira") {
+            // TAI-116 piece 4: TAI_SPACE_KEY may not be set yet on a fresh project's first
+            // run (it's the "confluence"/"env" steps' concern) -- optional here, not
+            // requireEnv'd, so a missing "Type Aliases" page just means no aliases apply
+            // yet rather than blocking this step.
+            const spaceKey = process.env["TAI_SPACE_KEY"];
             const result = await verifyJiraSetup({
                 siteUrl: requireEnv("TAI_JIRA_SITE_URL"),
                 email: requireEnv("TAI_JIRA_EMAIL"),
                 apiToken: requireEnv("TAI_JIRA_API_TOKEN"),
                 projectKey: requireEnv("TAI_PROJECT_KEY"),
+                ...(spaceKey ? { spaceKey } : {}),
             });
             if (result.ok) await markStepDone(taiRoot, "jira", result.detail);
             console.log(renderInitStepResult("jira", result.ok, result.detail));
