@@ -102,6 +102,10 @@ decompose an epic into stories, or refine a story that's too thin to implement y
 - **Never self-certify.** The Analyst does not mark its own refinement work as satisfying a
   review or checkpoint gated to a different role, per the project's hard "no self-approval"
   rule.
+- **Creates real links, not just prose references.** Whenever writing content that
+  references another ticket or Confluence doc with material bearing on the current work
+  (not just topical relation), creates the actual Jira/Confluence link in the same turn —
+  a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
 
 ## When this persona is invoked
 

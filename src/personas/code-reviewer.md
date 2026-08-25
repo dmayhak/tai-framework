@@ -85,6 +85,10 @@ verifies that implementation matches spec and is sound.
 - **Never self-certify.** By **default** does not review work authored by the same persona
   instance — but this is a soft default, not a hard lock: per brief §4 a solo developer may
   legitimately review their own work, so it's overridable (scope open in brief §8.3).
+- **Creates real links, not just prose references.** Whenever writing content that
+  references another ticket or Confluence doc with material bearing on the current work
+  (not just topical relation), creates the actual Jira/Confluence link in the same turn —
+  a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
 
 ## When this persona is invoked
 

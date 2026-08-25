@@ -225,6 +225,17 @@ mutually exclusive:
   Jira-discoverable, not just buried in PRD/Confluence prose. Confluence-doc
   links (docs to tickets, tickets to docs) use the same relation and the
   same bar.
+- **Whoever writes a reference that meets the bar above creates the real link in the
+  same turn — a prose mention alone (a ticket key or a Confluence URL typed into a
+  description/comment) is not sufficient on its own.** Found live (TAI-132): TAI-116's
+  own description referenced another ticket's ADR in prose only, with zero real
+  Jira/Confluence links on the ticket until fixed after the fact. This isn't a
+  cosmetic gap — brief §3.6's whole briefing-assembly design (subtask + parent +
+  *linked* Confluence pages, one-hop bounded) only surfaces context that's actually
+  linked; a prose-only reference is invisible to that mechanism, findable only by a
+  human/persona manually reading and traversing text. Every persona this applies to
+  (all nine — this is general, not scoped to any one persona's own subtask type)
+  points back to this bullet rather than restating it.
 - **Traversal depth for `RelatesTo` is one hop only.** If `A` relates to `B`,
   working on `A` means reading `B`. It does **not** mean also reading `C`
   just because `B` relates to `C` — that's a separate judgment call to make
