@@ -777,6 +777,24 @@ async function main(): Promise<void> {
             return;
         }
 
+        if (action === "assign") {
+            const [issueKey, email] = issueArgs;
+            if (!issueKey || !email) throw new Error("Usage: issue assign <ISSUE-KEY> <EMAIL>");
+            // Resolves the real Atlassian Account ID (TAI-165/167 ADR) rather than
+            // constructing a synthetic HumanRef from the email directly -- assignIssue
+            // sends `human.id` straight to Jira's assignee endpoint, which needs the real
+            // account id, not an email.
+            const human = await config.backend.workTracker.resolveHuman(email);
+            if (!human) throw new Error(`No Jira user found for "${email}" -- cannot assign.`);
+            const result = await config.backend.workTracker.assignIssue(toIssueKey(issueKey), human);
+            console.log(
+                result.ok
+                    ? renderIssueRef(result.issue)
+                    : `# Assignment denied\n\n${issueKey} -> ${email}: ${result.reason}`
+            );
+            return;
+        }
+
         if (action === "comment") {
             const [issueKey, body] = issueArgs;
             if (!issueKey || !body) throw new Error("Usage: issue comment <ISSUE-KEY> <BODY>");
@@ -803,7 +821,7 @@ async function main(): Promise<void> {
             return;
         }
 
-        throw new Error(`Unknown issue action "${action}" -- expected "create", "transition", "comment", or "link".`);
+        throw new Error(`Unknown issue action "${action}" -- expected "create", "transition", "assign", "comment", or "link".`);
     }
 
     if (subcommand === "page") {
