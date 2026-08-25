@@ -45,6 +45,40 @@ describe("findReadyWork", () => {
         });
     });
 
+    test("TAI-192: a genuinely undecomposed Epic (zero children) is surfaced", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: "epic",
+                summary: "Fresh epic, nothing under it yet",
+                persona: Persona.Pm,
+            });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.ready.some((i) => i.key === epic.key));
+        });
+    });
+
+    test("TAI-192: an Epic that's already been decomposed (has at least one child) is NOT surfaced", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: "epic",
+                summary: "Already-decomposed epic",
+                persona: Persona.Pm,
+            });
+            await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "One of its stories",
+                parentKey: epic.key,
+            });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.ready.some((i) => i.key === epic.key), "already-decomposed Epic should be dropped from Ready Work");
+        });
+    });
+
     test("a subtask blocked by an unfinished precedence sibling is excluded, then included once the blocker is Done", async () => {
         await withBackend(async (backend, taiRoot) => {
             const story = await backend.workTracker.createIssue({
