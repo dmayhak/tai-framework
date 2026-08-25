@@ -159,23 +159,27 @@ function prSkillBody(taiHome: string): string {
         `2. Read \`${taiHome}/src/personas/code-reviewer.md\` and apply Cole's Core Principles to ` +
         "what the diff actually changed — the same standard a human reviewer on the \"PR " +
         "Reviewers\" roster would apply.\n" +
-        "3. **Send your findings as their own ordinary, visible chat message, and let that message " +
-        "finish being shown to the human, BEFORE doing anything else.** Not a summary buried " +
-        "inside a question prompt, not silent, not just a PR comment — a real message the human " +
-        "reads: what you'd flag (or \"no issues found\"), and whether you'd approve, request " +
-        "changes, or lean neither. This is its own complete turn — do not reach for a question/" +
-        "confirmation/choice tool yet, even if your host offers one right there. TAI-202 (found " +
-        "live, 2026-08-25): a session that jumps straight to a question prompt without this step " +
-        "leaves the human unable to answer either question below, since they haven't seen what " +
-        "the review actually concluded.\n" +
-        "4. Only now, in a separate step AFTER the findings message above has already been sent, " +
-        "ask two SEPARATE questions, waiting for a real answer to each — never assume, never " +
-        "auto-decide either one, regardless of how clean the diff looked:\n" +
+        "3. **Send your findings as their own ordinary, visible chat message first.** Not a " +
+        "summary buried inside a question prompt, not silent, not just a PR comment — a real " +
+        "message the human reads: what you'd flag (or \"no issues found\"), and your own leaning " +
+        "(approve, request changes, or neither). Frame this explicitly as a PROGRESS UPDATE, not " +
+        "a conclusion — your own leaning here is input for the human's decision, not a decision " +
+        "itself, and stating it is not the end of this task.\n" +
+        "4. **In the SAME turn, immediately after — do not stop, do not end your response after " +
+        "step 3** — actually ask the human two SEPARATE questions via your host's real question/" +
+        "confirmation tool, and wait for a real answer to each. Stating your own recommendation " +
+        "in step 3 is never a substitute for actually asking:\n" +
         "   - **\"Post these findings as a PR comment?\"** — if yes, run `git-pr comment` with " +
         "your findings as `<BODY>`.\n" +
         "   - **\"Approve, request changes, or neither?\"** — only run `git-pr review` if the " +
         "human explicitly answers approve or requestChanges here; \"neither\" means stop, no " +
         "`review` call at all.\n\n" +
+        "TAI-202/TAI-203 (found live, 2026-08-25, in two parts): a session that skips straight to " +
+        "the questions with no findings shown leaves the human unable to answer either one; a " +
+        "session that shows findings (including its own \"I would approve this\"-style " +
+        "conclusion) and then simply stops, never actually invoking the question tool, is the " +
+        "same failure in the other direction — the task is not done until BOTH steps 3 and 4 " +
+        "have actually happened, every time.\n\n" +
         "This applies even when you already know the diff well (e.g. you wrote it earlier this " +
         "session) — reviewing and recording a decision are still two separate steps, and the " +
         "human still decides the outcome of each, every time. Never chain straight from reading a " +
