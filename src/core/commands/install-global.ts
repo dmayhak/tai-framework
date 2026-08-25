@@ -159,10 +159,18 @@ function prSkillBody(taiHome: string): string {
         `2. Read \`${taiHome}/src/personas/code-reviewer.md\` and apply Cole's Core Principles to ` +
         "what the diff actually changed — the same standard a human reviewer on the \"PR " +
         "Reviewers\" roster would apply.\n" +
-        "3. Present your findings to the human directly (not silently, not just via a PR comment) " +
-        "— what you'd flag, and whether you'd approve, request changes, or lean neither.\n" +
-        "4. Ask, as two SEPARATE questions, waiting for a real answer to each — never assume, " +
-        "never auto-decide either one, regardless of how clean the diff looked:\n" +
+        "3. **Send your findings as their own ordinary, visible chat message, and let that message " +
+        "finish being shown to the human, BEFORE doing anything else.** Not a summary buried " +
+        "inside a question prompt, not silent, not just a PR comment — a real message the human " +
+        "reads: what you'd flag (or \"no issues found\"), and whether you'd approve, request " +
+        "changes, or lean neither. This is its own complete turn — do not reach for a question/" +
+        "confirmation/choice tool yet, even if your host offers one right there. TAI-202 (found " +
+        "live, 2026-08-25): a session that jumps straight to a question prompt without this step " +
+        "leaves the human unable to answer either question below, since they haven't seen what " +
+        "the review actually concluded.\n" +
+        "4. Only now, in a separate step AFTER the findings message above has already been sent, " +
+        "ask two SEPARATE questions, waiting for a real answer to each — never assume, never " +
+        "auto-decide either one, regardless of how clean the diff looked:\n" +
         "   - **\"Post these findings as a PR comment?\"** — if yes, run `git-pr comment` with " +
         "your findings as `<BODY>`.\n" +
         "   - **\"Approve, request changes, or neither?\"** — only run `git-pr review` if the " +
