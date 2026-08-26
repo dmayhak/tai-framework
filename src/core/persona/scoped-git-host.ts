@@ -5,10 +5,10 @@
  * Wraps a real backend's `GitHost`, binding ONE persona for its lifetime. Checks
  * `canPerformGitAction` (`permission-gate.ts`) before delegating `createPullRequest`/
  * `reviewPullRequest`/`mergePullRequest`; every other method (all read-only —
- * `getRepository`/`listRepositories`/`listBranches`/`getPullRequest`/`listPullRequests`/
- * `addPullRequestComment`/`getCommitStatuses`) passes through unchanged, same restraint
- * as `GitHost` itself (`git/interface.ts`'s own doc comment: scoped to exactly what the
- * TAI-34 checkpoint chain gates, not the full breadth of either host's API).
+ * `getCurrentUser`/`getRepository`/`listRepositories`/`listBranches`/`getPullRequest`/
+ * `listPullRequests`/`addPullRequestComment`/`getCommitStatuses`) passes through unchanged,
+ * same restraint as `GitHost` itself (`git/interface.ts`'s own doc comment: scoped to
+ * exactly what the TAI-34 checkpoint chain gates, not the full breadth of either host's API).
  *
  * Same per-method rejection shape discipline as `PersonaScopedWorkTracker`: a denial on a
  * method with no rejection shape in its own signature (`createPullRequest` ->
@@ -30,7 +30,7 @@ import type {
     RepoId,
     RepoRef,
 } from "../git/interface.js";
-import type { Comment } from "../storage/interface.js";
+import type { Comment, HumanRef } from "../storage/interface.js";
 import type { PersonaConfig } from "./config.js";
 import { canPerformGitAction } from "./permission-gate.js";
 import { PersonaPermissionError } from "./scoped-work-tracker.js";
@@ -40,6 +40,10 @@ export class PersonaScopedGitHost implements GitHost {
         private readonly inner: GitHost,
         private readonly persona: PersonaConfig
     ) {}
+
+    getCurrentUser(): Promise<HumanRef> {
+        return this.inner.getCurrentUser();
+    }
 
     getRepository(id: RepoId): Promise<RepoRef | null> {
         return this.inner.getRepository(id);
