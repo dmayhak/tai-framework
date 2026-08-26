@@ -389,9 +389,10 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
                 ? "local session history here"
                 : "no local history — started elsewhere, read fresh";
             const rebaseFlag = hasUnresolvedRebaseMarker(c.issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
+            const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}) — ${historyNote}${rebaseFlag}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote}) — ${historyNote}${rebaseFlag}`
             );
             actionableCount++;
         }
@@ -403,9 +404,10 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
         lines.push("Nothing is currently ready to start.");
     } else {
         for (const issue of result.ready) {
+            const parentNote = issue.parentKey ? `, parent: ${issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
-                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"})`
+                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote})`
             );
             actionableCount++;
         }
