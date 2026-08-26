@@ -458,6 +458,133 @@ export function defineStorageConformance(
             });
         });
 
+        // ---------- Parent-status cascade gate (TAI-220/221/222/223) ----------
+
+        describe("WorkTracker: transition() and the parent-status cascade gate", () => {
+            it("cascades Subtask -> Story -> Epic in one transition call", async () => {
+                const epic = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: "epic",
+                        summary: "Conformance: cascade epic",
+                    })
+                );
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        parentKey: epic.key,
+                        summary: "Conformance: cascade story",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: cascade dev",
+                    })
+                );
+                // The cascade recurses through the FULL transition() -- including the
+                // assignment gate -- for each ancestor, so each one needs its own assignee.
+                await h.backend.workTracker.assignIssue(epic.key, h.validAssignee);
+                await h.backend.workTracker.assignIssue(story.key, h.validAssignee);
+                await h.backend.workTracker.assignIssue(dev.key, h.validAssignee);
+
+                const result = await h.backend.workTracker.transition(dev.key, Status.InProgress);
+                assert.equal(result.ok, true, "the child's own transition must still succeed");
+
+                const fetchedStory = await h.backend.workTracker.getIssue(story.key);
+                assert.equal(fetchedStory?.status, Status.InProgress, "the parent Story must cascade");
+                const fetchedEpic = await h.backend.workTracker.getIssue(epic.key);
+                assert.equal(fetchedEpic?.status, Status.InProgress, "the Epic must cascade one level further up");
+            });
+
+            // Jira allows a Story to have no Epic (a legitimate, common shape) -- the cascade
+            // must stop cleanly at the Story, not assume a further ancestor always exists.
+            it("cascades Subtask -> Story and stops cleanly when the Story has no Epic", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: cascade top-level story, no epic",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: cascade dev, no epic",
+                    })
+                );
+                await h.backend.workTracker.assignIssue(story.key, h.validAssignee);
+                await h.backend.workTracker.assignIssue(dev.key, h.validAssignee);
+
+                const result = await h.backend.workTracker.transition(dev.key, Status.InProgress);
+                assert.equal(result.ok, true);
+
+                const fetchedStory = await h.backend.workTracker.getIssue(story.key);
+                assert.equal(fetchedStory?.status, Status.InProgress, "the Story must still cascade");
+                assert.equal(fetchedStory?.parentKey, undefined, "confirms this Story genuinely has no Epic");
+            });
+
+            it("never regresses a Done parent backward to In Progress", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: already-finished story",
+                    })
+                );
+                await h.backend.workTracker.transition(story.key, Status.Done);
+
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: unrelated follow-up work",
+                    })
+                );
+                await h.backend.workTracker.assignIssue(dev.key, h.validAssignee);
+
+                const result = await h.backend.workTracker.transition(dev.key, Status.InProgress);
+                assert.equal(result.ok, true, "the child's own transition must still succeed");
+
+                const fetchedStory = await h.backend.workTracker.getIssue(story.key);
+                assert.equal(fetchedStory?.status, Status.Done, "a Done parent must never be moved backward");
+            });
+
+            it("a rejected parent-cascade transition is best-effort -- the child's own transition still succeeds", async () => {
+                // The parent Story has no assignee -- its own cascade transition to In
+                // Progress will be rejected by the assignment gate. The child is assigned,
+                // so ITS transition must still succeed regardless.
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: unassigned parent story",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: cascade rejection",
+                    })
+                );
+                await h.backend.workTracker.assignIssue(dev.key, h.validAssignee);
+
+                const result = await h.backend.workTracker.transition(dev.key, Status.InProgress);
+                assert.equal(result.ok, true, "a rejected cascade must never block the child's own transition");
+
+                const fetchedStory = await h.backend.workTracker.getIssue(story.key);
+                assert.equal(fetchedStory?.status, Status.ToDo, "the rejected parent cascade must not have applied");
+            });
+        });
+
         // ---------- Review gate (TAI-41 ADR, TAI-42) ----------
 
         describe("WorkTracker: transition() and the review gate", () => {
