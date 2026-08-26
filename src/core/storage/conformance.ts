@@ -540,6 +540,53 @@ export function defineStorageConformance(
                     "search must not return the non-matching issue"
                 );
             });
+
+            // TAI-192/225: findReadyWork's "only surface an undecomposed Epic" fix (ready.ts)
+            // relies on `search({ parentKey: epicKey })` reflecting Epic->Story/Kickoff/Bug/
+            // Spike parenting the same way it already does for Subtask->Story — a genuinely
+            // different Jira relationship (classic/company-managed Jira projects traditionally
+            // answer "which Stories are under this Epic" via a separate "Epic Link" field, not
+            // `parent`), so this is asserted directly rather than assumed from the
+            // Subtask->Story case above. Live-confirmed against the real TAI project (TAI-5
+            // through TAI-9) before writing this: `parent = <epicKey>` JQL does return the
+            // Epic's Story-level children on this Jira site's project configuration.
+            it("search by parentKey reflects Epic->Story parenting, not just Subtask->Story", async () => {
+                const epic = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: "epic",
+                        summary: "Conformance: undecomposed epic",
+                    })
+                );
+
+                const beforeDecomposition = await h.backend.workTracker.search({
+                    projectKey: h.projectKey,
+                    parentKey: epic.key,
+                });
+                assert.equal(
+                    beforeDecomposition.length,
+                    0,
+                    "a freshly created Epic with no children yet must search as empty"
+                );
+
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        parentKey: epic.key,
+                        summary: "Conformance: epic's first Story",
+                    })
+                );
+
+                const afterDecomposition = await h.backend.workTracker.search({
+                    projectKey: h.projectKey,
+                    parentKey: epic.key,
+                });
+                assert.ok(
+                    afterDecomposition.some((i) => i.key === story.key),
+                    "once a Story exists under the Epic, parentKey search must find it"
+                );
+            });
         });
 
         // ---------- DocStore ----------
