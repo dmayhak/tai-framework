@@ -60,6 +60,18 @@ export function isGreen(statuses: readonly CommitStatus[]): boolean {
     return statuses.length > 0 && statuses.every((s) => s.state === "successful");
 }
 
+/**
+ * True if a `mergePullRequest` denial reason (`GitMutationResult`'s `reason`, Bitbucket's own
+ * raw rejection text — `rest-client.ts`'s `extractReason`) means a merge conflict specifically,
+ * as opposed to any other denial (branch restriction, insufficient approvals, ...). Bitbucket's
+ * own conflict message is "You can't merge until you resolve all merge conflicts." (TAI-217/219,
+ * confirmed live) — a simple case-insensitive substring check, same pragmatism as `isGreen`'s
+ * own state check, rather than parsing a structured error code Bitbucket doesn't expose here.
+ */
+export function isMergeConflict(reason: string): boolean {
+    return reason.toLowerCase().includes("conflict");
+}
+
 // ---------- PR <-> Dev subtask correlation (rev 52, TAI-159 ADR §4) ----------
 //
 // Pre-rev-52 this file had `findCodeReviewSiblingForLink` — a sibling-search-plus-

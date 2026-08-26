@@ -236,6 +236,22 @@ describe("reviewPullRequest", () => {
     });
 });
 
+describe("unapprovePullRequest (TAI-217/219)", () => {
+    it("issues a DELETE to the /approve endpoint", async () => {
+        const calls: { method: string; url: string }[] = [];
+        const host = hostWith(
+            stubFetch((method, url) => {
+                calls.push({ method, url });
+                return json(undefined);
+            })
+        );
+        await host.unapprovePullRequest(REPO, toPullRequestId("7"));
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0]?.method, "DELETE");
+        assert.ok(calls[0]?.url.endsWith("/pullrequests/7/approve"));
+    });
+});
+
 describe("mergePullRequest — the §3.3 rejection-vs-connectivity split", () => {
     it("returns ok:true with the merged PR on success", async () => {
         const host = hostWith(stubFetch(() => json({ ...PR_JSON, state: "MERGED" })));

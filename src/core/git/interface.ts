@@ -161,6 +161,14 @@ export interface GitHost {
         decision: "approve" | "requestChanges",
         comment?: string
     ): Promise<void>;
+    /**
+     * Withdraws a previously-cast approval (TAI-217/219) — the mutation counterpart to
+     * `reviewPullRequest(..., "approve")`. No equivalent for withdrawing a `requestChanges`
+     * decision — Bitbucket's own approve/unapprove pair has no "un-request-changes" sibling,
+     * and nothing in this flow needs one. A no-op, not an error, if the current human never
+     * approved in the first place — matches the underlying DELETE's own idempotent semantics.
+     */
+    unapprovePullRequest(repo: RepoId, id: PullRequestId): Promise<void>;
     addPullRequestComment(repo: RepoId, id: PullRequestId, body: string): Promise<Comment>;
     mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy): Promise<GitMutationResult>;
 

@@ -77,7 +77,10 @@ function readySkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts ready [PERSONA]\n` +
         "```\n\n" +
         "The output lists issues that are actually ready to start (open, and — for a subtask — " +
-        "with every precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`), " +
+        "with every precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`) — " +
+        "a `Dev` subtask carrying a \"⚠️ needs rebase (merge conflicts)\" flag (TAI-217/219) means " +
+        "a `git-pr merge` attempt hit a conflict and posted a `Rebase needed:` comment on it; the " +
+        "flag clears itself once that PR actually merges (no separate action needed to clear it) — " +
         "plus — when `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured — " +
         "up to three PR-related sections, all live signals read directly from Bitbucket rather " +
         "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +
@@ -154,14 +157,15 @@ function prSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment <REPO> [PR-ID] <BODY>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr unapprove <REPO> [PR-ID]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n` +
         "```\n\n" +
-        "**`review`/`comment` take NO `<ISSUE-KEY>`** — unlike `create`/`merge`, neither is scoped " +
-        "to one issue at all (rev 52, TAI-159 ADR): both resolve the acting human from " +
-        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and check them against the \"PR Reviewers\" " +
+        "**`review`/`comment`/`unapprove` take NO `<ISSUE-KEY>`** — unlike `create`/`merge`, none " +
+        "is scoped to one issue at all (rev 52, TAI-159 ADR): each resolves the acting human from " +
+        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and checks them against the \"PR Reviewers\" " +
         "roster, rejecting if they aren't listed. Passing an issue key as the first argument to " +
-        "either fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
-        "`[PR-ID]` is optional on `review`/`comment`/`merge` — omit it and TAI resolves it against " +
+        "any of them fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
+        "`[PR-ID]` is optional on `review`/`comment`/`unapprove`/`merge` — omit it and TAI resolves it against " +
         "`REPO`'s sole currently-open PR. If more than one is open, the command fails with a list " +
         "of candidates instead of guessing — pass one of those IDs explicitly and re-run.\n\n" +
         "`create`/`merge` are invoked as whichever persona owns `<ISSUE-KEY>` — resolved from the " +
@@ -182,12 +186,22 @@ function prSkillBody(taiHome: string): string {
         "- `comment` — posts a real general PR comment (not tied to an approve/request-changes " +
         "decision). This is how review findings actually get posted — see the review-flow section " +
         "below.\n" +
+        "- `unapprove` (TAI-217/219) — withdraws a previously-cast approval. Only ever run because " +
+        "the human explicitly asked for it, in their own words — never automatically, not even " +
+        "when `merge` itself suggests it (see below). The main real use: Bitbucket's free tier has " +
+        "no \"reset approvals on change\" (Premium-only), so a stale approval survives new commits " +
+        "on its own; this is how a human clears one before a rebased PR gets re-reviewed.\n" +
         "- `merge` — the Dev subtask's own owner merges their already-reviewed work. Gated on CI " +
         "status being green — a red or missing status is reported as \"Merge denied\" without " +
         "attempting the merge (approval-count gating happens upstream, in whether `readyToMerge` " +
         "surfaced this PR at all — `merge` itself doesn't re-check approvals). On success, also " +
         "transitions the linked Dev subtask to Done as a second write (rev 52) — the actual " +
-        "completion signal; Dev was never moved to Done earlier just because code was ready.\n\n" +
+        "completion signal; Dev was never moved to Done earlier just because code was ready. **On " +
+        "a merge-conflict denial specifically** (TAI-217/219): automatically posts a `Rebase " +
+        "needed:` comment on the linked Dev subtask — durable, visible whenever that ticket is " +
+        "next opened via `/tai-work` or `/tai-ready`, not just in whichever terminal ran this " +
+        "merge attempt — and the denial message suggests `git-pr unapprove` as the next step " +
+        "(suggest only; run it because the human says to, same as everywhere else in this file).\n\n" +
         "**Doing an actual review (TAI-187), not just recording a decision:** when the human asks " +
         "to review a PR — including picking a numbered \"PRs ready for your review\" line from " +
         "`/tai-ready`'s output — do the real review yourself, inline, in this same session, " +

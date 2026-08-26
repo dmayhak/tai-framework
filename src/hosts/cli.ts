@@ -62,6 +62,7 @@ import {
     parseMergeArgs,
     parseCommentArgs,
     isGreen,
+    isMergeConflict,
     findLinkedDevSubtask,
     validateBranchName,
     validatePrTitle,
@@ -73,6 +74,7 @@ import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from ".
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { DependencyRelation, Status, type Persona, type StoryType, type SubtaskType } from "../core/schema/story-schema.js";
+import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -312,7 +314,12 @@ function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedIssue
     return lines.join("\n");
 }
 
-function renderGitMutationResult(result: GitMutationResult, personaId: string, devSubtaskClosed?: string): string {
+function renderGitMutationResult(
+    result: GitMutationResult,
+    personaId: string,
+    devSubtaskClosed?: string,
+    rebaseCommentPostedOn?: string
+): string {
     if (result.ok) {
         const lines = [renderPullRequestRef(result.pullRequest, personaId)];
         // rev 52 (TAI-159 ADR §4): a Dev subtask stays In Progress until its PR merges —
@@ -322,7 +329,20 @@ function renderGitMutationResult(result: GitMutationResult, personaId: string, d
         if (devSubtaskClosed) lines.push("", `${devSubtaskClosed} transitioned to Done (its PR just merged).`);
         return lines.join("\n");
     }
-    return `# Merge denied (as ${personaId})\n\n${result.reason}`;
+    const lines = [`# Merge denied (as ${personaId})`, "", result.reason];
+    // TAI-217/219: a merge-conflict denial specifically — posted a "Rebase needed:" comment
+    // on the linked Dev subtask (best-effort, same correlation as the success path above),
+    // and surfaces `git-pr unapprove` as a SUGGESTION only — never run automatically, a
+    // mutation needs the human's own explicit next instruction like every other one here.
+    if (rebaseCommentPostedOn) {
+        lines.push(
+            "",
+            `Posted a "Rebase needed:" comment on ${rebaseCommentPostedOn}. If this PR was already ` +
+                "approved, that approval predates the conflict — consider `git-pr unapprove` before " +
+                "it's re-reviewed and re-approved."
+        );
+    }
+    return lines.join("\n");
 }
 
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
@@ -361,8 +381,14 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
         lines.push("Nothing is currently ready.");
     } else {
         for (const issue of result.ready) {
+            // TAI-217/219: a Dev subtask stays In Progress (and so keeps appearing here)
+            // until its PR actually merges — flag it distinctly when a merge attempt found
+            // conflicts, so the need to rebase surfaces on the ticket itself, not just in
+            // whichever terminal happened to run `git-pr merge`. Free to check — comments
+            // are already part of every Issue this list was built from (brief §7).
+            const rebaseFlag = hasUnresolvedRebaseMarker(issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
             lines.push(
-                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`
+                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})${rebaseFlag}`
             );
             actionableCount++;
         }
@@ -637,9 +663,11 @@ async function main(): Promise<void> {
             "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
             "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
             "     | git-pr comment <REPO> [PR-ID] <BODY>\n" +
+            "     | git-pr unapprove <REPO> [PR-ID]\n" +
             "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
-            "  [PR-ID] is optional on review/comment/merge — omit it to resolve against REPO's sole " +
-            "open PR; if more than one is open, the error lists them so you can pass one explicitly.";
+            "  [PR-ID] is optional on review/comment/unapprove/merge — omit it to resolve against " +
+            "REPO's sole open PR; if more than one is open, the error lists them so you can pass " +
+            "one explicitly.";
 
         // rev 52 (TAI-159 ADR): review/comment are roster-gated, not persona-gated — no
         // <ISSUE-KEY> at all (there's no CodeReview subtask left to resolve permission
@@ -672,6 +700,22 @@ async function main(): Promise<void> {
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             const comment = await gitHost.addPullRequestComment(repo, prId, body);
             console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
+            return;
+        }
+
+        // TAI-217/219: withdraws a stale approval — e.g. after a merge conflict is found,
+        // where Bitbucket's free tier has no "reset approvals on change" (Premium-only) to
+        // do this automatically. Same roster gate as review/comment; suggested (never run
+        // automatically) by the merge action's own conflict-denial message below.
+        if (action === "unapprove") {
+            const [repoArg, prIdArg] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
+            const repo = toRepoId(repoArg);
+
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            await gitHost.unapprovePullRequest(repo, prId);
+            console.log(`# Approval withdrawn (as ${currentHuman.email ?? currentHuman.displayName})\n\nPR ${prId} is no longer approved by ${currentHuman.email ?? currentHuman.displayName}.`);
             return;
         }
 
@@ -782,19 +826,32 @@ async function main(): Promise<void> {
             // remote link actually points at this PR. Best-effort: a merge that can't be
             // correlated to a Dev subtask still succeeds, only the side effect is skipped.
             let devSubtaskClosed: string | undefined;
+            let rebaseCommentPostedOn: string | undefined;
             if (result.ok) {
                 const devKey = await findLinkedDevSubtask(config.backend.workTracker, config.projectKey, result.pullRequest.url);
                 if (devKey) {
                     await config.backend.workTracker.transition(devKey, Status.Done);
                     devSubtaskClosed = devKey;
                 }
+            } else if (isMergeConflict(result.reason)) {
+                // TAI-217/219: Bitbucket doesn't invalidate an existing approval when new
+                // commits land (no "reset approvals on change" on the free tier) — so a
+                // merge conflict is exactly the moment a prior approval may have gone stale.
+                // Posting this comment is purely informational (not a decision with
+                // consequences), so it runs automatically as part of reporting the failure —
+                // unlike `git-pr unapprove`, which stays suggested-only, never automatic.
+                const devKey = await findLinkedDevSubtask(config.backend.workTracker, config.projectKey, pr.url);
+                if (devKey) {
+                    await config.backend.workTracker.addComment(devKey, rebaseNeededCommentBody(pr.url));
+                    rebaseCommentPostedOn = devKey;
+                }
             }
 
-            console.log(renderGitMutationResult(result, personaId, devSubtaskClosed));
+            console.log(renderGitMutationResult(result, personaId, devSubtaskClosed, rebaseCommentPostedOn));
             return;
         }
 
-        throw new Error(`Unknown git-pr action "${action}" — expected "create", "review", or "merge".`);
+        throw new Error(`Unknown git-pr action "${action}" — expected "create", "review", "comment", "unapprove", or "merge".`);
     }
 
     if (subcommand === "work") {
