@@ -76,12 +76,21 @@ function readySkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts ready [PERSONA]\n` +
         "```\n\n" +
-        "The output lists issues that are actually ready to start (open, and — for a subtask — " +
-        "with every precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`) — " +
-        "a `Dev` subtask carrying a \"⚠️ needs rebase (merge conflicts)\" flag (TAI-217/219) means " +
-        "a `git-pr merge` attempt hit a conflict and posted a `Rebase needed:` comment on it; the " +
-        "flag clears itself once that PR actually merges (no separate action needed to clear it) — " +
-        "plus — when `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured — " +
+        "The output has two Jira-sourced sections, both live (TAI-196/200, 2026-08-26 — replaces " +
+        "the old, purely-local \"Already in flight\" section, which couldn't show work paused on " +
+        "a different machine/session):\n\n" +
+        "- **In Progress — resume this** — issues already at `Status.InProgress`/`InReview`, no " +
+        "precedence re-check (already started once; precedence gates OFFERING new work, not " +
+        "resuming it). Each line notes whether THIS machine has local session history for it " +
+        "(\"local session history here\") or not (\"no local history — started elsewhere, read " +
+        "fresh\") — a flag only; full detail (currentStep etc.) surfaces via `/tai-work`'s own " +
+        "briefing once picked, not inline here. A `Dev` subtask carrying a \"⚠️ needs rebase " +
+        "(merge conflicts)\" flag (TAI-217/219) means a `git-pr merge` attempt hit a conflict and " +
+        "posted a `Rebase needed:` comment on it — self-clears once that PR actually merges, no " +
+        "separate action needed.\n" +
+        "- **Ready Work** — genuinely not-yet-started (open, and — for a subtask — with every " +
+        "precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`).\n\n" +
+        "Plus — when `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured — " +
         "up to three PR-related sections, all live signals read directly from Bitbucket rather " +
         "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +
         "- **PRs ready for your review** — open PRs where the current human (`BITBUCKET_EMAIL`) is " +
@@ -94,12 +103,9 @@ function readySkillBody(taiHome: string): string {
         "- **Approved PRs ready to merge** — the same `Dev`-subtask/PR pairs as above, additionally " +
         "at the required approval count AND CI-green. Run `git-pr merge <ISSUE-KEY> <REPO>` to " +
         "land it, not `/tai-work`.\n\n" +
-        "Plus an \"Already in flight\" section for context (the root status rollup — display only, " +
-        "never the readiness source itself, brief §7).\n\n" +
-        "Present this list to the human AS-IS — every actionable line above (Ready Work and all " +
-        "three PR sections) is already numbered with ONE shared counter (TAI-182), so don't " +
-        "renumber or reformat it yourself. \"Already in flight\" is deliberately NOT numbered — " +
-        "it's display-only context, never a valid reply.\n\n" +
+        "Present this list to the human AS-IS — every actionable line above (In Progress, Ready " +
+        "Work, and all three PR sections) is already numbered with ONE shared counter (TAI-182), " +
+        "so don't renumber or reformat it yourself.\n\n" +
         "**Presenting this list is the entire, complete output of a `tai-ready` invocation — " +
         "TAI-215 (found live, 2026-08-26, in `tai-pr`'s own equivalent listing step — same " +
         "underlying gap, never triggered here yet but structurally identical): do NOT, in this " +
@@ -112,9 +118,11 @@ function readySkillBody(taiHome: string): string {
         "recommendation does).\n\n" +
         "Once the human's own next message picks a line: map it back to that exact line (by its " +
         "position in this shared numbering) and take the ACTION that section describes — " +
-        "`/tai-work <KEY>` for a Ready Work line, the real review flow above for a \"PRs ready " +
-        "for your review\" line, `git-pr merge` for a \"ready to merge\" line. A number with no " +
-        "corresponding line, or any ambiguity about which line it means, is a re-ask, not a guess."
+        "`/tai-work <KEY>` for an In Progress OR a Ready Work line (same action either way — " +
+        "resume vs. start is `/tai-work`'s own concern, not this list's), the real review flow " +
+        "above for a \"PRs ready for your review\" line, `git-pr merge` for a \"ready to merge\" " +
+        "line. A number with no corresponding line, or any ambiguity about which line it means, " +
+        "is a re-ask, not a guess."
     );
 }
 
@@ -128,8 +136,8 @@ function prSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts pr-ready\n` +
         "```\n\n" +
         "Just the two PR sections `tai-ready` also shows (**PRs ready for your review**, " +
-        "**Approved PRs ready to merge**) — no general Ready Work list, no \"Open PRs ready to " +
-        "test,\" no \"Already in flight,\" each numbered with its own shared counter the same way " +
+        "**Approved PRs ready to merge**) — no In Progress section, no general Ready Work list, " +
+        "no \"Open PRs ready to test,\" each numbered with its own shared counter the same way " +
         "`tai-ready`'s combined list is. Present it AS-IS, don't renumber it.\n\n" +
         "**Presenting this list is the entire, complete output of a bare `tai-pr` invocation — " +
         "TAI-215 (found live, 2026-08-26): a Gemini CLI session skipped straight from printing " +

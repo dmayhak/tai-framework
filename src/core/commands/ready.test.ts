@@ -18,6 +18,7 @@ import {
     type RepoId,
 } from "../git/interface.js";
 import { findReadyWork, findReadyPRWork } from "./ready.js";
+import { writeWorkStatus } from "../workspace/status.js";
 
 const CURRENT_USER: HumanRef = { id: toHumanId("del@example.com"), displayName: "Del", email: "del@example.com" };
 
@@ -183,6 +184,155 @@ describe("findReadyWork", () => {
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(!result.ready.some((i) => i.key === dev.key));
+        });
+    });
+});
+
+// ---------- TAI-196/200: In Progress / Ready Work split ----------
+//
+// Already-started work (Status.InProgress/InReview) moves to its own `inProgress` list,
+// sourced from the same live Jira search as `ready` — separate from the old, purely-local
+// `rollupStatus` "Already in flight" section this replaces.
+
+describe("findReadyWork in-progress split", () => {
+    test("an In-Progress subtask is NOT in ready, but IS in inProgress", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Already started",
+                persona: Persona.Developer,
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(dev.key, Status.InProgress);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.ready.some((i) => i.key === dev.key), "should not appear in ready once started");
+            assert.ok(result.inProgress.some((c) => c.issue.key === dev.key), "should appear in inProgress");
+        });
+    });
+
+    test("an In-Review subtask also counts as in-progress, not ready", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+            const kickoff = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Kickoff,
+                summary: "In review",
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(kickoff.key, Status.InReview);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.ready.some((i) => i.key === kickoff.key));
+            assert.ok(result.inProgress.some((c) => c.issue.key === kickoff.key));
+        });
+    });
+
+    test("a story-level ticket already In Progress moves to inProgress too, not just subtasks", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Story",
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(story.key, Status.InProgress);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.ready.some((i) => i.key === story.key));
+            assert.ok(result.inProgress.some((c) => c.issue.key === story.key));
+        });
+    });
+
+    test("an already-In-Progress subtask skips precedence re-checking entirely (still surfaced even if a sibling blocker isn't Done)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Story needing architecture first",
+            });
+            await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.ArchitectureDesign,
+                summary: "Design it — deliberately left NOT Done",
+                persona: Persona.Architect,
+                parentKey: story.key,
+            });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Somehow already started despite the precedence gate",
+                persona: Persona.Developer,
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(dev.key, Status.InProgress);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.inProgress.some((c) => c.issue.key === dev.key), "already-started work is never silently dropped");
+        });
+    });
+
+    test("hasLocalHistory is true when this machine has a status.json for the item", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Has local history",
+                persona: Persona.Developer,
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(dev.key, Status.InProgress);
+            await writeWorkStatus(taiRoot, "TAI", {
+                subtaskKey: dev.key,
+                currentStep: "writing tests",
+                state: "in-progress",
+                updatedAt: "x",
+            });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            const candidate = result.inProgress.find((c) => c.issue.key === dev.key);
+            assert.equal(candidate?.hasLocalHistory, true);
+        });
+    });
+
+    test("hasLocalHistory is false when there's no local record — started elsewhere", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "No local history",
+                persona: Persona.Developer,
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(dev.key, Status.InProgress);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            const candidate = result.inProgress.find((c) => c.issue.key === dev.key);
+            assert.equal(candidate?.hasLocalHistory, false);
+        });
+    });
+
+    test("an undecomposed Epic is unaffected by the split — Epic status doesn't route it to inProgress", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: "epic",
+                summary: "Fresh epic",
+                persona: Persona.Pm,
+            });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.ready.some((i) => i.key === epic.key));
+            assert.ok(!result.inProgress.some((c) => c.issue.key === epic.key));
         });
     });
 });
