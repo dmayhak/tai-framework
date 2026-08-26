@@ -183,7 +183,14 @@ function prSkillBody(taiHome: string): string {
         "`requestChanges` — only ever because they said so explicitly; \"neither\"/no clear " +
         "decision means no `review` call at all.\n" +
         "   - If their reply is genuinely ambiguous about either the posting or the decision, " +
-        "ask a clarifying question rather than guessing which they meant.\n\n" +
+        "ask ONE clarifying question, not two separate ones — bundle both the comment-posting " +
+        "choice and the approve/request-changes decision into a single `AskUserQuestion` call " +
+        "(one call, multiple sub-questions), pre-filled with your own stated leaning from the " +
+        "findings as the suggested answer for the human to confirm or override rather than " +
+        "leaving both blank. Confirmed working live (2026-08-25, Gemini CLI): a human reply of " +
+        "just \"post and review\" produced exactly this — one bundled question (\"PR Comment: " +
+        "yes, post comment\" / \"PR Decision: Approve\") the human could confirm in a single " +
+        "step, not a guess and not two back-and-forths.\n\n" +
         "This applies even when you already know the diff well (e.g. you wrote it earlier this " +
         "session) — reviewing and recording a decision are still two separate steps, and the " +
         "human still decides the outcome of each, every time. Never chain straight from reading a " +
