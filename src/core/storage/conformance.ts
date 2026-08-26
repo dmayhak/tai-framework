@@ -162,6 +162,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: create+get",
                         description: "original description",
                         persona: Persona.Developer,
@@ -204,6 +209,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: tri-state",
                         description: "keep me",
                         priority: "High",
@@ -242,6 +252,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: component",
                     })
                 );
@@ -263,6 +278,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: unassigned gate",
                     })
                 );
@@ -276,6 +296,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: assigned gate",
                     })
                 );
@@ -294,6 +319,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: workflow strictness",
                     })
                 );
@@ -317,6 +347,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: assignee validation",
                     })
                 );
@@ -343,6 +378,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: rejection shape",
                     })
                 );
@@ -408,6 +448,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: comments",
                     })
                 );
@@ -436,6 +481,11 @@ export function defineStorageConformance(
                         projectKey: h.projectKey,
                         issueType: SubtaskType.Dev,
                         parentKey: sharedParentKey,
+                        // Unrelated fixtures intentionally reuse one shared Dev-typed parent
+                        // (see `sharedParentKey`'s own doc comment) -- not a real redo, just
+                        // deliberate reuse, so it opts out of the TAI-226/228 duplicate-subtask
+                        // guard explicitly rather than tripping it.
+                        allowDuplicate: true,
                         summary: "Conformance: labels",
                     })
                 );

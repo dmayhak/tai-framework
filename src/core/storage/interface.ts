@@ -103,6 +103,11 @@ export interface CreateIssueInput {
     readonly severity?: string;
     readonly priority?: string;
     readonly labels?: readonly string[];
+    /** TAI-226/228: explicit opt-out of the one-per-story-instance duplicate-subtask guard
+     *  (see duplicate-subtask-gate.ts) — a genuine redo of a normally-singleton subtask type
+     *  under the same parent (e.g. the first attempt was Canceled) must set this to `true`;
+     *  otherwise createIssue rejects a duplicate outright. Default `false`/undefined. */
+    readonly allowDuplicate?: boolean;
 }
 
 // Tri-state on every nullable field: `undefined` = leave unchanged, `null` = clear,

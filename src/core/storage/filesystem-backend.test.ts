@@ -48,6 +48,89 @@ describe("issue CRUD", () => {
         });
     });
 
+    // TAI-226/228: found live (TAI-192 work) -- a second "dev" subtask (TAI-224) got created
+    // under a story that already had one (TAI-193, Done) with no guard catching it.
+    describe("duplicate-subtask guard (TAI-226/227/228)", () => {
+        test("rejects a second subtask of the same type under the same parent, even when the existing one is Done", async () => {
+            await withBackend(async ({ workTracker }) => {
+                const story = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Parent story",
+                });
+                const first = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    parentKey: story.key,
+                    summary: "First dev subtask",
+                });
+                await workTracker.transition(first.key, Status.Done);
+
+                await assert.rejects(
+                    () =>
+                        workTracker.createIssue({
+                            projectKey: "TAI",
+                            issueType: SubtaskType.Dev,
+                            parentKey: story.key,
+                            summary: "Accidental duplicate dev subtask",
+                        }),
+                    new RegExp(`${first.key} \\(Done\\) already exists`)
+                );
+            });
+        });
+
+        test("allows a deliberate redo via allowDuplicate: true", async () => {
+            await withBackend(async ({ workTracker }) => {
+                const story = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Parent story",
+                });
+                const first = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    parentKey: story.key,
+                    summary: "First dev subtask",
+                });
+                await workTracker.transition(first.key, Status.Canceled);
+
+                const redo = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    parentKey: story.key,
+                    summary: "Deliberate redo",
+                    allowDuplicate: true,
+                });
+                assert.notEqual(redo.key, first.key);
+            });
+        });
+
+        test("does not block SpikeTask, which has no fixed default owner and is explicitly ad-hoc/multi-instance", async () => {
+            await withBackend(async ({ workTracker }) => {
+                const story = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Parent story",
+                });
+                await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.SpikeTask,
+                    parentKey: story.key,
+                    persona: Persona.Developer,
+                    summary: "First spike task",
+                });
+                const second = await workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.SpikeTask,
+                    parentKey: story.key,
+                    persona: Persona.Architect,
+                    summary: "Second, unrelated spike task",
+                });
+                assert.equal(second.issueType, SubtaskType.SpikeTask);
+            });
+        });
+    });
+
     test("create, get, and update round-trip", async () => {
         await withBackend(async ({ workTracker }) => {
             const created = await workTracker.createIssue({
@@ -90,9 +173,11 @@ describe("issue CRUD", () => {
         await withBackend(async ({ workTracker }) => {
             const keys: string[] = [];
             for (let i = 0; i < 5; i++) {
+                // SpikeTask (no fixed default owner) is exempt from the duplicate-subtask
+                // guard -- this test is purely about key sequencing, not subtask semantics.
                 const issue = await workTracker.createIssue({
                     projectKey: "TAI",
-                    issueType: SubtaskType.Dev,
+                    issueType: SubtaskType.SpikeTask,
                     parentKey: toIssueKey("TAI-0"),
                     summary: `Task ${i}`,
                 });

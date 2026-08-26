@@ -930,10 +930,13 @@ async function main(): Promise<void> {
             if (!projectKey || !issueType || !summary) {
                 throw new Error(
                     "Usage: issue create <PROJECT-KEY> <ISSUE-TYPE> <SUMMARY> " +
-                        "[parent=<KEY>] [persona=<PERSONA>] [description=<TEXT>] [priority=<PRIORITY>] [labels=<a,b,c>]\n" +
+                        "[parent=<KEY>] [persona=<PERSONA>] [description=<TEXT>] [priority=<PRIORITY>] [labels=<a,b,c>] " +
+                        "[allowDuplicate=true]\n" +
                         '  <ISSUE-TYPE> is TAI\'s own internal value (e.g. "bug", "dev", "code-review", ' +
                         '"integration-test") -- see StoryType/SubtaskType in story-schema.ts -- NOT the raw Jira ' +
-                        'display name ("Bug", "Dev", "CodeReview").'
+                        'display name ("Bug", "Dev", "CodeReview").\n' +
+                        "  allowDuplicate=true opts out of the one-per-story-instance duplicate-subtask guard " +
+                        "(TAI-226/228) -- only for a deliberate redo of a normally-singleton subtask type."
                 );
             }
             const fields = parseKeyValueArgs(kv);
@@ -946,6 +949,7 @@ async function main(): Promise<void> {
                 ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
                 ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
                 ...(fields["labels"] !== undefined ? { labels: fields["labels"].split(",") } : {}),
+                ...(fields["allowDuplicate"] !== undefined ? { allowDuplicate: fields["allowDuplicate"] === "true" } : {}),
             };
             const issue = await config.backend.workTracker.createIssue(input);
             console.log(renderIssueRef(issue));

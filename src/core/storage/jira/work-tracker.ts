@@ -10,6 +10,7 @@
 
 import {
     Status,
+    isSubtaskIssueType,
     type Persona,
     type DependencyRelation,
     DependencyRelation as Rel,
@@ -36,6 +37,7 @@ import {
 import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
+import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
 import { loadRoster, type Roster } from "../../personas/roster.js";
 import {
     type RawIssue,
@@ -197,8 +199,23 @@ export function createJiraWorkTracker(
         return f;
     }
 
-    return {
+    const workTracker: WorkTracker = {
         async createIssue(input: CreateIssueInput): Promise<Issue> {
+            if (
+                isSubtaskIssueType(input.issueType) &&
+                input.parentKey &&
+                !isExemptFromDuplicateGate(input.issueType) &&
+                !input.allowDuplicate
+            ) {
+                const siblings = await workTracker.search({
+                    projectKey: input.projectKey,
+                    parentKey: input.parentKey,
+                    issueTypes: [input.issueType],
+                });
+                if (siblings[0]) {
+                    throw new Error(duplicateSubtaskGateReason(input.parentKey, input.issueType, siblings[0]));
+                }
+            }
             const created = await client.request<{ key: string }>("POST", `${API}/issue`, {
                 fields: toJiraFields(input, input),
             });
@@ -530,4 +547,5 @@ export function createJiraWorkTracker(
             return res.issues.map((r) => toIssue(r, personaFieldId, aliases));
         },
     };
+    return workTracker;
 }
