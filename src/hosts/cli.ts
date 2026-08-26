@@ -39,7 +39,7 @@ import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
-import { findReadyWork } from "../core/commands/ready.js";
+import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
 import {
@@ -62,6 +62,7 @@ import {
     parseMergeArgs,
     parseCommentArgs,
     isGreen,
+    isMergeConflict,
     findLinkedDevSubtask,
     validateBranchName,
     validatePrTitle,
@@ -73,6 +74,7 @@ import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from ".
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { DependencyRelation, Status, type Persona, type StoryType, type SubtaskType } from "../core/schema/story-schema.js";
+import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -93,6 +95,22 @@ function loadDotEnv(): void {
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
+}
+
+/**
+ * The current human's REAL git-host identity (TAI-213/214, found live 2026-08-26) —
+ * resolved through the git host itself, not synthesized from the configured email. A
+ * `PullRequestRef`'s own reviewer/participant entries carry the git host's real identity
+ * fields (Bitbucket: `account_id`/`display_name`, no email at all) — a `{ id: email,
+ * displayName: email }` construction can never match those via `sameHuman`, which is
+ * exactly what silently broke `readyToReview` (every open PR looked undecided, even ones
+ * the current human had already approved). `email` is merged in afterward since it's still
+ * needed for roster/eligibility matching against Confluence-sourced `HumanRef`s, which the
+ * git host's own identity doesn't carry (Bitbucket users have no email, for privacy).
+ */
+async function resolveCurrentHuman(gitHost: Pick<GitHost, "getCurrentUser">, email: string): Promise<HumanRef> {
+    const real = await gitHost.getCurrentUser();
+    return { ...real, email };
 }
 
 function requireEnv(name: string): string {
@@ -176,7 +194,7 @@ async function resolveReviewerGitHost(
     const token = requireEnv("BITBUCKET_API_TOKEN");
 
     const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
-    const currentHuman: HumanRef = { id: toHumanId(email), displayName: email, email };
+    const currentHuman = await resolveCurrentHuman(backend.gitHost, email);
 
     const reviewers = await loadPrReviewers(config.backend.docStore, { spaceKey: config.spaceKey, projectKey: config.projectKey });
     if (!isEligibleReviewer(reviewers, currentHuman)) {
@@ -258,7 +276,7 @@ async function tryResolveReadyGitDeps(
     }
     if (repos.length === 0) return undefined;
 
-    const currentHuman: HumanRef = { id: toHumanId(email), displayName: email, email };
+    const currentHuman = await resolveCurrentHuman(backend.gitHost, email);
 
     const requiredApprovalsEnv = process.env["TAI_PR_REQUIRED_APPROVALS"];
     const requiredApprovals = requiredApprovalsEnv ? Number(requiredApprovalsEnv) : undefined;
@@ -296,7 +314,12 @@ function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedIssue
     return lines.join("\n");
 }
 
-function renderGitMutationResult(result: GitMutationResult, personaId: string, devSubtaskClosed?: string): string {
+function renderGitMutationResult(
+    result: GitMutationResult,
+    personaId: string,
+    devSubtaskClosed?: string,
+    rebaseCommentPostedOn?: string
+): string {
     if (result.ok) {
         const lines = [renderPullRequestRef(result.pullRequest, personaId)];
         // rev 52 (TAI-159 ADR §4): a Dev subtask stays In Progress until its PR merges —
@@ -306,7 +329,20 @@ function renderGitMutationResult(result: GitMutationResult, personaId: string, d
         if (devSubtaskClosed) lines.push("", `${devSubtaskClosed} transitioned to Done (its PR just merged).`);
         return lines.join("\n");
     }
-    return `# Merge denied (as ${personaId})\n\n${result.reason}`;
+    const lines = [`# Merge denied (as ${personaId})`, "", result.reason];
+    // TAI-217/219: a merge-conflict denial specifically — posted a "Rebase needed:" comment
+    // on the linked Dev subtask (best-effort, same correlation as the success path above),
+    // and surfaces `git-pr unapprove` as a SUGGESTION only — never run automatically, a
+    // mutation needs the human's own explicit next instruction like every other one here.
+    if (rebaseCommentPostedOn) {
+        lines.push(
+            "",
+            `Posted a "Rebase needed:" comment on ${rebaseCommentPostedOn}. If this PR was already ` +
+                "approved, that approval predates the conflict — consider `git-pr unapprove` before " +
+                "it's re-reviewed and re-approved."
+        );
+    }
+    return lines.join("\n");
 }
 
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
@@ -341,12 +377,34 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     const counter = numberedLines();
     let actionableCount = 0;
 
+    // TAI-196/200: top section — already-started work, split out from genuinely-not-started
+    // Ready Work below. A Dev subtask with an open PR is ALWAYS In Progress (rev 52 — it
+    // stays open until the PR merges), so this is also the only place the TAI-217/219
+    // rebase-conflict flag can ever apply now.
+    if (result.inProgress.length > 0) {
+        lines.push("## In Progress — resume this", "");
+        for (const c of result.inProgress) {
+            const historyNote = c.hasLocalHistory
+                ? "local session history here"
+                : "no local history — started elsewhere, read fresh";
+            const rebaseFlag = hasUnresolvedRebaseMarker(c.issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
+            lines.push(
+                `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}) — ${historyNote}${rebaseFlag}`
+            );
+            actionableCount++;
+        }
+        lines.push("");
+    }
+
+    lines.push("## Ready Work", "");
     if (result.ready.length === 0) {
-        lines.push("Nothing is currently ready.");
+        lines.push("Nothing is currently ready to start.");
     } else {
         for (const issue of result.ready) {
             lines.push(
-                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`
+                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
+                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"})`
             );
             actionableCount++;
         }
@@ -377,17 +435,46 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             actionableCount++;
         }
     }
-    if (result.inFlight.items.length > 0) {
-        lines.push("", "## Already in flight", "");
-        for (const item of result.inFlight.items) {
-            lines.push(`- ${item.subtaskKey}: ${item.currentStep} (${item.state})`);
-        }
-    }
     if (actionableCount > 0) {
         lines.push(
             "",
             "Reply with a number above, or the issue key/PR directly — either works."
         );
+    }
+    return lines.join("\n");
+}
+
+/** Lighter sibling to `renderReadyWork` (TAI-211/212) — just the two PR-review-mode
+ *  sections, no general ready list, no in-flight section. Same "reply with a number"
+ *  numbered-line convention `tai-ready` already uses. */
+function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>): string {
+    const lines: string[] = ["# PRs ready for you", ""];
+    const counter = numberedLines();
+    let actionableCount = 0;
+
+    if (result.readyToReview.length > 0) {
+        lines.push("## PRs ready for your review", "");
+        for (const c of result.readyToReview) {
+            lines.push(
+                `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
+                    `${c.pullRequest.destinationBranch}) — \`git-pr review <REPO> approve|requestChanges\` to record it`
+            );
+            actionableCount++;
+        }
+    }
+    if (result.readyToMerge.length > 0) {
+        lines.push("", "## Approved PRs ready to merge", "");
+        for (const c of result.readyToMerge) {
+            lines.push(
+                `${counter.next()}. **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
+            );
+            actionableCount++;
+        }
+    }
+    if (actionableCount === 0) {
+        lines.push("Nothing ready for you right now.");
+    } else {
+        lines.push("", "Reply with a number above, or the issue key/PR directly — either works.");
     }
     return lines.join("\n");
 }
@@ -586,9 +673,11 @@ async function main(): Promise<void> {
             "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
             "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
             "     | git-pr comment <REPO> [PR-ID] <BODY>\n" +
+            "     | git-pr unapprove <REPO> [PR-ID]\n" +
             "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
-            "  [PR-ID] is optional on review/comment/merge — omit it to resolve against REPO's sole " +
-            "open PR; if more than one is open, the error lists them so you can pass one explicitly.";
+            "  [PR-ID] is optional on review/comment/unapprove/merge — omit it to resolve against " +
+            "REPO's sole open PR; if more than one is open, the error lists them so you can pass " +
+            "one explicitly.";
 
         // rev 52 (TAI-159 ADR): review/comment are roster-gated, not persona-gated — no
         // <ISSUE-KEY> at all (there's no CodeReview subtask left to resolve permission
@@ -621,6 +710,22 @@ async function main(): Promise<void> {
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             const comment = await gitHost.addPullRequestComment(repo, prId, body);
             console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
+            return;
+        }
+
+        // TAI-217/219: withdraws a stale approval — e.g. after a merge conflict is found,
+        // where Bitbucket's free tier has no "reset approvals on change" (Premium-only) to
+        // do this automatically. Same roster gate as review/comment; suggested (never run
+        // automatically) by the merge action's own conflict-denial message below.
+        if (action === "unapprove") {
+            const [repoArg, prIdArg] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
+            const repo = toRepoId(repoArg);
+
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            await gitHost.unapprovePullRequest(repo, prId);
+            console.log(`# Approval withdrawn (as ${currentHuman.email ?? currentHuman.displayName})\n\nPR ${prId} is no longer approved by ${currentHuman.email ?? currentHuman.displayName}.`);
             return;
         }
 
@@ -731,19 +836,32 @@ async function main(): Promise<void> {
             // remote link actually points at this PR. Best-effort: a merge that can't be
             // correlated to a Dev subtask still succeeds, only the side effect is skipped.
             let devSubtaskClosed: string | undefined;
+            let rebaseCommentPostedOn: string | undefined;
             if (result.ok) {
                 const devKey = await findLinkedDevSubtask(config.backend.workTracker, config.projectKey, result.pullRequest.url);
                 if (devKey) {
                     await config.backend.workTracker.transition(devKey, Status.Done);
                     devSubtaskClosed = devKey;
                 }
+            } else if (isMergeConflict(result.reason)) {
+                // TAI-217/219: Bitbucket doesn't invalidate an existing approval when new
+                // commits land (no "reset approvals on change" on the free tier) — so a
+                // merge conflict is exactly the moment a prior approval may have gone stale.
+                // Posting this comment is purely informational (not a decision with
+                // consequences), so it runs automatically as part of reporting the failure —
+                // unlike `git-pr unapprove`, which stays suggested-only, never automatic.
+                const devKey = await findLinkedDevSubtask(config.backend.workTracker, config.projectKey, pr.url);
+                if (devKey) {
+                    await config.backend.workTracker.addComment(devKey, rebaseNeededCommentBody(pr.url));
+                    rebaseCommentPostedOn = devKey;
+                }
             }
 
-            console.log(renderGitMutationResult(result, personaId, devSubtaskClosed));
+            console.log(renderGitMutationResult(result, personaId, devSubtaskClosed, rebaseCommentPostedOn));
             return;
         }
 
-        throw new Error(`Unknown git-pr action "${action}" — expected "create", "review", or "merge".`);
+        throw new Error(`Unknown git-pr action "${action}" — expected "create", "review", "comment", "unapprove", or "merge".`);
     }
 
     if (subcommand === "work") {
@@ -774,6 +892,17 @@ async function main(): Promise<void> {
             persona
         );
         console.log(renderReadyWork(result, arg));
+        return;
+    }
+
+    if (subcommand === "pr-ready") {
+        const gitDeps = await tryResolveReadyGitDeps(config);
+        const result = await findReadyPRWork({
+            workTracker: config.backend.workTracker,
+            projectKey: config.projectKey,
+            ...(gitDeps ?? {}),
+        });
+        console.log(renderPRReadyWork(result));
         return;
     }
 
@@ -913,7 +1042,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link ... | page create|link ... | install-global [TAI-HOME] ` +
             `| init status|jira|confluence|bitbucket|env|claude-md`
     );

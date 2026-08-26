@@ -131,6 +131,19 @@ export type GitMutationResult =
 // ---------- GitHost ----------
 
 export interface GitHost {
+    /**
+     * The authenticated identity behind the credentials this `GitHost` was constructed with
+     * (TAI-213/214, found live 2026-08-26) — NOT the same thing as a synthetic `HumanRef`
+     * built from a known email address. A PR's `reviewers`/participant entries (see
+     * `PullRequestRef`) carry the git host's own real identity fields (Bitbucket:
+     * `account_id`/`display_name`, no email at all), which a `{ id: email, displayName:
+     * email }` construction can never match via `sameHuman` — that mismatch is exactly what
+     * silently broke `ready.ts`'s `readyToReview` (every open PR looked undecided, even
+     * ones the current human had already approved). Callers that need to compare "is this
+     * me" against a PR's own reviewer data must resolve identity through here, not
+     * synthesize it from configuration.
+     */
+    getCurrentUser(): Promise<HumanRef>;
     getRepository(id: RepoId): Promise<RepoRef | null>;
     /** TAI-162/TAI-163 ADR: enumerates every repo in a workspace (Bitbucket's
      *  `GET /2.0/repositories/{workspace}`) — what lets `/tai-ready` discover PRs across a
@@ -148,6 +161,18 @@ export interface GitHost {
         decision: "approve" | "requestChanges",
         comment?: string
     ): Promise<void>;
+    /**
+     * Withdraws a previously-cast approval (TAI-217/219) — the mutation counterpart to
+     * `reviewPullRequest(..., "approve")`. No equivalent for withdrawing a `requestChanges`
+     * decision — Bitbucket's own approve/unapprove pair has no "un-request-changes" sibling,
+     * and nothing in this flow needs one. NOT idempotent (verified live, 2026-08-26, contrary
+     * to an earlier assumption here): calling this when the current human never approved in
+     * the first place throws — Bitbucket returns 404 "You haven't approved this pull
+     * request." (a `BitbucketRejection`), not a silent success. Left as a real error rather
+     * than caught-and-swallowed here, matching this codebase's "fail loudly, report the
+     * error, never guess or proceed anyway" discipline (`tai-pr`'s own SKILL.md).
+     */
+    unapprovePullRequest(repo: RepoId, id: PullRequestId): Promise<void>;
     addPullRequestComment(repo: RepoId, id: PullRequestId, body: string): Promise<Comment>;
     mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy): Promise<GitMutationResult>;
 

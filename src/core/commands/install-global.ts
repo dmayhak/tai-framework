@@ -76,9 +76,27 @@ function readySkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts ready [PERSONA]\n` +
         "```\n\n" +
-        "The output lists issues that are actually ready to start (open, and — for a subtask — " +
-        "with every precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`), " +
-        "plus — when `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured — " +
+        "The output has two Jira-sourced sections, both live (TAI-196/200, 2026-08-26 — replaces " +
+        "the old, purely-local \"Already in flight\" section, which couldn't show work paused on " +
+        "a different machine/session):\n\n" +
+        "- **In Progress — resume this** — issues already at `Status.InProgress`/`InReview`, no " +
+        "precedence re-check (already started once; precedence gates OFFERING new work, not " +
+        "resuming it). Each line notes whether THIS machine has local session history for it " +
+        "(\"local session history here\") or not (\"no local history — started elsewhere, read " +
+        "fresh\") — a flag only; full detail (currentStep etc.) surfaces via `/tai-work`'s own " +
+        "briefing once picked, not inline here. A `Dev` subtask carrying a \"⚠️ needs rebase " +
+        "(merge conflicts)\" flag (TAI-217/219) means a `git-pr merge` attempt hit a conflict and " +
+        "posted a `Rebase needed:` comment on it — self-clears once that PR actually merges, no " +
+        "separate action needed.\n" +
+        "- **Ready Work** — genuinely not-yet-started (open, and — for a subtask — with every " +
+        "precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`).\n\n" +
+        "Both sections sort Highest-priority tickets to the top and display each line's priority " +
+        "(TAI-195/199; extended to In Progress 2026-08-26 — the original decision predates that " +
+        "section existing). A subtask with no `Priority` of its own inherits its parent Story/" +
+        "Bug's for sort/display purposes (priority is usually set at Triage on the Bug/Story " +
+        "itself, not per-subtask) — this is purely a display/ordering change, never an " +
+        "auto-interrupt of in-flight work.\n\n" +
+        "Plus — when `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured — " +
         "up to three PR-related sections, all live signals read directly from Bitbucket rather " +
         "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +
         "- **PRs ready for your review** — open PRs where the current human (`BITBUCKET_EMAIL`) is " +
@@ -91,37 +109,77 @@ function readySkillBody(taiHome: string): string {
         "- **Approved PRs ready to merge** — the same `Dev`-subtask/PR pairs as above, additionally " +
         "at the required approval count AND CI-green. Run `git-pr merge <ISSUE-KEY> <REPO>` to " +
         "land it, not `/tai-work`.\n\n" +
-        "Plus an \"Already in flight\" section for context (the root status rollup — display only, " +
-        "never the readiness source itself, brief §7).\n\n" +
-        "Present this list to the human AS-IS — every actionable line above (Ready Work and all " +
-        "three PR sections) is already numbered with ONE shared counter (TAI-182), so don't " +
-        "renumber or reformat it yourself. \"Already in flight\" is deliberately NOT numbered — " +
-        "it's display-only context, never a valid reply. If the human replies with a bare number, " +
-        "map it back to that exact line (by its position in this shared numbering) and take the " +
-        "ACTION that section describes — `/tai-work <KEY>` for a Ready Work line, the real review " +
-        "flow above for a \"PRs ready for your review\" line, `git-pr merge` for a \"ready to " +
-        "merge\" line. A number with no corresponding line, or any ambiguity about which line it " +
-        "means, is a re-ask, not a guess."
+        "Present this list to the human AS-IS — every actionable line above (In Progress, Ready " +
+        "Work, and all three PR sections) is already numbered with ONE shared counter (TAI-182), " +
+        "so don't renumber or reformat it yourself.\n\n" +
+        "**Presenting this list is the entire, complete output of a `tai-ready` invocation — " +
+        "TAI-215 (found live, 2026-08-26, in `tai-pr`'s own equivalent listing step — same " +
+        "underlying gap, never triggered here yet but structurally identical): do NOT, in this " +
+        "same turn, pick a line yourself and act on it (start a review, run `/tai-work`, run any " +
+        "`git-pr` command) — no matter how obvious or unambiguous a line looks.** End your turn " +
+        "right here and wait for the human's own next message — a bare number, an issue key, a " +
+        "PR URL, or plain language all work, but it has to be an ordinary NEW turn, not a " +
+        "same-turn continuation (same principle as `tai-pr`'s findings step, TAI-202/203 — a " +
+        "complete-looking list reads as a place to stop just as much as a complete-looking " +
+        "recommendation does).\n\n" +
+        "Once the human's own next message picks a line: map it back to that exact line (by its " +
+        "position in this shared numbering) and take the ACTION that section describes — " +
+        "`/tai-work <KEY>` for an In Progress OR a Ready Work line (same action either way — " +
+        "resume vs. start is `/tai-work`'s own concern, not this list's), the real review flow " +
+        "above for a \"PRs ready for your review\" line, `git-pr merge` for a \"ready to merge\" " +
+        "line. A number with no corresponding line, or any ambiguity about which line it means, " +
+        "is a re-ask, not a guess."
     );
 }
 
 function prSkillBody(taiHome: string): string {
     return (
-        "Parse the raw typed command yourself, then run the matching command **directly via " +
+        "**Bare invocation (no arguments) — TAI-211/212, a lighter PR-only sibling to " +
+        "`tai-ready`:** run EXACTLY this command — `pr-ready`, not `ready` (that's `tai-ready`'s " +
+        "own, heavier command; running it here defeats the entire point of this lighter " +
+        "sibling, TAI-215 found live) — and read its full output:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts pr-ready\n` +
+        "```\n\n" +
+        "Just the two PR sections `tai-ready` also shows (**PRs ready for your review**, " +
+        "**Approved PRs ready to merge**) — no In Progress section, no general Ready Work list, " +
+        "no \"Open PRs ready to test,\" each numbered with its own shared counter the same way " +
+        "`tai-ready`'s combined list is. Present it AS-IS, don't renumber it.\n\n" +
+        "**Presenting this list is the entire, complete output of a bare `tai-pr` invocation — " +
+        "TAI-215 (found live, 2026-08-26): a Gemini CLI session skipped straight from printing " +
+        "this list into picking a line and fully reviewing that PR itself, in the same turn, " +
+        "with zero human input at any point.** Do NOT, in this same turn: pick a line yourself " +
+        "(no matter how obvious or unambiguous it looks), start the review flow below, or run " +
+        "any `git-pr` command. End your turn right here and wait for the human's own next " +
+        "message — a bare number, an issue key, a PR URL, or plain language all work, but it " +
+        "has to be an ordinary NEW turn, not a same-turn continuation (same principle as step 3 " +
+        "below, TAI-202/203 — this is the same class of \"looks done, so it reads as a place to " +
+        "stop\" trap, just one step earlier).\n\n" +
+        "Once the human's own next message picks a line: map it back to that exact line (by its " +
+        "position in the shared numbering) and take the action its section describes — for a " +
+        "\"ready for your review\" line, that means doing the real review flow below (fetch, " +
+        "diff, findings, stop — never skip straight to `git-pr review`); for a \"ready to merge\" " +
+        "line, picking that number IS the explicit instruction, so run `git-pr merge <ISSUE-KEY> " +
+        "<REPO>` directly, no further confirmation needed. A number with no corresponding line, or " +
+        "any ambiguity about which line it means, is a re-ask, not a guess.\n\n" +
+        "Everything below this point is for an explicit `create`/`review`/`comment`/`merge` " +
+        "invocation (typed directly, or reached via a number from `tai-ready`'s own combined " +
+        "list) — parse the raw typed command yourself, then run the matching command **directly via " +
         "your own Bash tool** — construct it as separate, correctly-quoted arguments (not one " +
         "blob), so a multi-word title/description/comment survives intact:\n\n" +
         "```\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment <REPO> [PR-ID] <BODY>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr unapprove <REPO> [PR-ID]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n` +
         "```\n\n" +
-        "**`review`/`comment` take NO `<ISSUE-KEY>`** — unlike `create`/`merge`, neither is scoped " +
-        "to one issue at all (rev 52, TAI-159 ADR): both resolve the acting human from " +
-        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and check them against the \"PR Reviewers\" " +
+        "**`review`/`comment`/`unapprove` take NO `<ISSUE-KEY>`** — unlike `create`/`merge`, none " +
+        "is scoped to one issue at all (rev 52, TAI-159 ADR): each resolves the acting human from " +
+        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and checks them against the \"PR Reviewers\" " +
         "roster, rejecting if they aren't listed. Passing an issue key as the first argument to " +
-        "either fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
-        "`[PR-ID]` is optional on `review`/`comment`/`merge` — omit it and TAI resolves it against " +
+        "any of them fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
+        "`[PR-ID]` is optional on `review`/`comment`/`unapprove`/`merge` — omit it and TAI resolves it against " +
         "`REPO`'s sole currently-open PR. If more than one is open, the command fails with a list " +
         "of candidates instead of guessing — pass one of those IDs explicitly and re-run.\n\n" +
         "`create`/`merge` are invoked as whichever persona owns `<ISSUE-KEY>` — resolved from the " +
@@ -142,12 +200,22 @@ function prSkillBody(taiHome: string): string {
         "- `comment` — posts a real general PR comment (not tied to an approve/request-changes " +
         "decision). This is how review findings actually get posted — see the review-flow section " +
         "below.\n" +
+        "- `unapprove` (TAI-217/219) — withdraws a previously-cast approval. Only ever run because " +
+        "the human explicitly asked for it, in their own words — never automatically, not even " +
+        "when `merge` itself suggests it (see below). The main real use: Bitbucket's free tier has " +
+        "no \"reset approvals on change\" (Premium-only), so a stale approval survives new commits " +
+        "on its own; this is how a human clears one before a rebased PR gets re-reviewed.\n" +
         "- `merge` — the Dev subtask's own owner merges their already-reviewed work. Gated on CI " +
         "status being green — a red or missing status is reported as \"Merge denied\" without " +
         "attempting the merge (approval-count gating happens upstream, in whether `readyToMerge` " +
         "surfaced this PR at all — `merge` itself doesn't re-check approvals). On success, also " +
         "transitions the linked Dev subtask to Done as a second write (rev 52) — the actual " +
-        "completion signal; Dev was never moved to Done earlier just because code was ready.\n\n" +
+        "completion signal; Dev was never moved to Done earlier just because code was ready. **On " +
+        "a merge-conflict denial specifically** (TAI-217/219): automatically posts a `Rebase " +
+        "needed:` comment on the linked Dev subtask — durable, visible whenever that ticket is " +
+        "next opened via `/tai-work` or `/tai-ready`, not just in whichever terminal ran this " +
+        "merge attempt — and the denial message suggests `git-pr unapprove` as the next step " +
+        "(suggest only; run it because the human says to, same as everywhere else in this file).\n\n" +
         "**Doing an actual review (TAI-187), not just recording a decision:** when the human asks " +
         "to review a PR — including picking a numbered \"PRs ready for your review\" line from " +
         "`/tai-ready`'s output — do the real review yourself, inline, in this same session, " +
@@ -159,23 +227,46 @@ function prSkillBody(taiHome: string): string {
         `2. Read \`${taiHome}/src/personas/code-reviewer.md\` and apply Cole's Core Principles to ` +
         "what the diff actually changed — the same standard a human reviewer on the \"PR " +
         "Reviewers\" roster would apply.\n" +
-        "3. Present your findings to the human directly (not silently, not just via a PR comment) " +
-        "— what you'd flag, and whether you'd approve, request changes, or lean neither.\n" +
-        "4. Ask, as two SEPARATE questions, waiting for a real answer to each — never assume, " +
-        "never auto-decide either one, regardless of how clean the diff looked:\n" +
-        "   - **\"Post these findings as a PR comment?\"** — if yes, run `git-pr comment` with " +
-        "your findings as `<BODY>`.\n" +
-        "   - **\"Approve, request changes, or neither?\"** — only run `git-pr review` if the " +
-        "human explicitly answers approve or requestChanges here; \"neither\" means stop, no " +
-        "`review` call at all.\n\n" +
+        "3. **Present your findings, then STOP — this is the complete output of \"review this " +
+        "PR,\" full stop.** What you'd flag (or \"no issues found\"), and your own leaning " +
+        "(approve, request changes, or neither) as one input for the human's decision. Do NOT, " +
+        "in this same turn: run `git-pr comment`, run `git-pr review`, or ask a question via any " +
+        "interactive tool. End your turn right here and wait for the human's own next message — " +
+        "do not try to keep going.\n\n" +
+        "TAI-202/TAI-203 (found live, 2026-08-25 — two same-turn wordings tried and failed the " +
+        "same way before landing on this design): a session that skips straight to a question " +
+        "with no findings shown leaves the human unable to answer it; a session that shows " +
+        "findings and then tries to immediately ask a question in the same turn reliably just " +
+        "stops after stating its own recommendation — a polished \"Findings... I'd lean " +
+        "approve\" write-up reads as a complete, satisfying answer, and no amount of \"don't " +
+        "stop\" wording in this file fixed that. **Don't try to word around it a third time** — " +
+        "stopping after step 3 is correct behavior, not a bug to prompt-engineer away.\n\n" +
+        "4. **When the human's own next message tells you what to do, that ordinary reply is " +
+        "the trigger — not a same-turn continuation, not a special tool.** They'll say it in " +
+        "plain language: \"post it and approve,\" \"don't post, request changes,\" \"neither,\" " +
+        "\"just approve, no comment needed,\" etc. — interpret it and act:\n" +
+        "   - If they want the findings posted: run `git-pr comment` with your findings as " +
+        "`<BODY>`.\n" +
+        "   - If they want a decision recorded: run `git-pr review` with `approve` or " +
+        "`requestChanges` — only ever because they said so explicitly; \"neither\"/no clear " +
+        "decision means no `review` call at all.\n" +
+        "   - If their reply is genuinely ambiguous about either the posting or the decision, " +
+        "ask ONE clarifying question, not two separate ones — bundle both the comment-posting " +
+        "choice and the approve/request-changes decision into a single `AskUserQuestion` call " +
+        "(one call, multiple sub-questions), pre-filled with your own stated leaning from the " +
+        "findings as the suggested answer for the human to confirm or override rather than " +
+        "leaving both blank. Confirmed working live (2026-08-25, Gemini CLI): a human reply of " +
+        "just \"post and review\" produced exactly this — one bundled question (\"PR Comment: " +
+        "yes, post comment\" / \"PR Decision: Approve\") the human could confirm in a single " +
+        "step, not a guess and not two back-and-forths.\n\n" +
         "This applies even when you already know the diff well (e.g. you wrote it earlier this " +
         "session) — reviewing and recording a decision are still two separate steps, and the " +
         "human still decides the outcome of each, every time. Never chain straight from reading a " +
         "diff into `review`/`merge` on your own initiative — only run either because the human " +
-        "explicitly, separately asked for that specific action. No condition here ever " +
+        "explicitly asked for that specific action, in their own message. No condition here ever " +
         "auto-approves (brief §3.4: human sign-off is the default) — running `review`/`comment` " +
-        "without both questions above being asked, and answered, in this same turn is always " +
-        "wrong, however clean the diff looked.\n\n" +
+        "without the human having actually said to, in their own words, is always wrong, however " +
+        "clean the diff looked.\n\n" +
         "If the command errors, report the error to the human rather than guessing or proceeding " +
         "anyway."
     );
