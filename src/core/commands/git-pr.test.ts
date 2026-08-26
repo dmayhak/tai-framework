@@ -27,6 +27,7 @@ import {
     parseMergeArgs,
     parseCommentArgs,
     isGreen,
+    isMergeConflict,
     findLinkedDevSubtask,
     validateBranchName,
     validatePrTitle,
@@ -189,6 +190,22 @@ describe("isGreen", () => {
 
     it("false when a status is still in progress", () => {
         assert.equal(isGreen([statusFixture("inProgress")]), false);
+    });
+});
+
+describe("isMergeConflict (TAI-217/219)", () => {
+    it("true for Bitbucket's actual observed conflict message", () => {
+        assert.equal(isMergeConflict("You can't merge until you resolve all merge conflicts."), true);
+    });
+
+    it("case-insensitive", () => {
+        assert.equal(isMergeConflict("MERGE CONFLICT detected"), true);
+    });
+
+    it("false for other denial reasons — insufficient approvals, branch restrictions, CI", () => {
+        assert.equal(isMergeConflict("Not enough approvals to merge this pull request."), false);
+        assert.equal(isMergeConflict("This branch is protected and requires a passing build."), false);
+        assert.equal(isMergeConflict("CI status not green for abc123 — build: failed."), false);
     });
 });
 

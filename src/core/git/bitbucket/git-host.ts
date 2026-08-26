@@ -25,10 +25,12 @@ import {
     toPullRequestRef,
     toCommitStatus,
     toComment,
+    toHumanRef,
     type BitbucketRepositoryJson,
     type BitbucketPullRequestJson,
     type BitbucketCommitStatusJson,
     type BitbucketCommentJson,
+    type BitbucketUserJson,
 } from "./mappers.js";
 
 /**
@@ -68,6 +70,15 @@ function humanReviewerBody(human: HumanRef): { account_id: string } {
 
 export function createBitbucketGitHost(client: RestClient): GitHost {
     return {
+        // TAI-213/214 (found live, 2026-08-26): the authenticated user's REAL Bitbucket
+        // identity (account_id/display_name) — not a synthetic HumanRef built from the
+        // configured email, which can never match a PullRequestRef's own reviewer entries
+        // (see this method's doc comment on the GitHost interface).
+        async getCurrentUser(): Promise<HumanRef> {
+            const user = await client.request<BitbucketUserJson>("GET", "/user");
+            return toHumanRef(user);
+        },
+
         async getRepository(id: RepoId): Promise<RepoRef | null> {
             const { workspace, slug } = splitRepoId(id);
             const repo = await client.getOrNull<BitbucketRepositoryJson>(
@@ -119,9 +130,19 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
             state?: PullRequestState
         ): Promise<readonly PullRequestRef[]> {
             const { workspace, slug } = splitRepoId(repo);
-            const query = state ? `?state=${BB_PR_STATE[state]}` : "";
+            // TAI-213/214 (found live, 2026-08-26): Bitbucket's list-PRs endpoint omits
+            // `participants` by default (see mappers.ts's `BitbucketPullRequestJson` doc comment)
+            // -- every `PullRequestRef` built from this endpoint used to report empty
+            // `reviewers` regardless of real approval state, silently breaking `readyToReview`
+            // (showed every open PR, approved or not) and `readyToMerge` (never populated) in
+            // `ready.ts`. `fields=+values.participants` is Bitbucket's partial-response syntax
+            // for asking a list endpoint to include a field it omits by default on each item;
+            // `URLSearchParams` percent-encodes the literal `+` to `%2B` (required -- a bare `+`
+            // in a query string means space, not the character Bitbucket's syntax needs).
+            const params = new URLSearchParams({ fields: "+values.participants" });
+            if (state) params.set("state", BB_PR_STATE[state]);
             const prs = await client.paginate<BitbucketPullRequestJson>(
-                `/repositories/${workspace}/${slug}/pullrequests${query}`
+                `/repositories/${workspace}/${slug}/pullrequests?${params}`
             );
             return prs.map((pr) => toPullRequestRef(pr, repo));
         },
@@ -146,6 +167,11 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
                     { content: { raw: comment } }
                 );
             }
+        },
+
+        async unapprovePullRequest(repo: RepoId, id: PullRequestId): Promise<void> {
+            const { workspace, slug } = splitRepoId(repo);
+            await client.request("DELETE", `/repositories/${workspace}/${slug}/pullrequests/${id}/approve`);
         },
 
         async addPullRequestComment(repo: RepoId, id: PullRequestId, body: string) {
