@@ -107,7 +107,24 @@ function readySkillBody(taiHome: string): string {
 
 function prSkillBody(taiHome: string): string {
     return (
-        "Parse the raw typed command yourself, then run the matching command **directly via " +
+        "**Bare invocation (no arguments) — TAI-211/212, a lighter PR-only sibling to " +
+        "`tai-ready`:** run this and read its full output:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts pr-ready\n` +
+        "```\n\n" +
+        "Just the two PR sections `tai-ready` also shows (**PRs ready for your review**, " +
+        "**Approved PRs ready to merge**) — no general Ready Work list, no \"Open PRs ready to " +
+        "test,\" no \"Already in flight,\" each numbered with its own shared counter the same way " +
+        "`tai-ready`'s combined list is. Present it AS-IS, don't renumber it. If the human replies " +
+        "with a bare number, map it back to that line and take the action its section describes — " +
+        "for a \"ready for your review\" line, that means doing the real review flow below (fetch, " +
+        "diff, findings, stop — never skip straight to `git-pr review`); for a \"ready to merge\" " +
+        "line, picking that number IS the explicit instruction, so run `git-pr merge <ISSUE-KEY> " +
+        "<REPO>` directly, no further confirmation needed. A number with no corresponding line, or " +
+        "any ambiguity about which line it means, is a re-ask, not a guess.\n\n" +
+        "Everything below this point is for an explicit `create`/`review`/`comment`/`merge` " +
+        "invocation (typed directly, or reached via a number from `tai-ready`'s own combined " +
+        "list) — parse the raw typed command yourself, then run the matching command **directly via " +
         "your own Bash tool** — construct it as separate, correctly-quoted arguments (not one " +
         "blob), so a multi-word title/description/comment survives intact:\n\n" +
         "```\n" +

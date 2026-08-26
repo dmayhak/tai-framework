@@ -39,7 +39,7 @@ import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
-import { findReadyWork } from "../core/commands/ready.js";
+import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
 import {
@@ -388,6 +388,41 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             "",
             "Reply with a number above, or the issue key/PR directly — either works."
         );
+    }
+    return lines.join("\n");
+}
+
+/** Lighter sibling to `renderReadyWork` (TAI-211/212) — just the two PR-review-mode
+ *  sections, no general ready list, no in-flight section. Same "reply with a number"
+ *  numbered-line convention `tai-ready` already uses. */
+function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>): string {
+    const lines: string[] = ["# PRs ready for you", ""];
+    const counter = numberedLines();
+    let actionableCount = 0;
+
+    if (result.readyToReview.length > 0) {
+        lines.push("## PRs ready for your review", "");
+        for (const c of result.readyToReview) {
+            lines.push(
+                `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
+                    `${c.pullRequest.destinationBranch}) — \`git-pr review <REPO> approve|requestChanges\` to record it`
+            );
+            actionableCount++;
+        }
+    }
+    if (result.readyToMerge.length > 0) {
+        lines.push("", "## Approved PRs ready to merge", "");
+        for (const c of result.readyToMerge) {
+            lines.push(
+                `${counter.next()}. **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
+            );
+            actionableCount++;
+        }
+    }
+    if (actionableCount === 0) {
+        lines.push("Nothing ready for you right now.");
+    } else {
+        lines.push("", "Reply with a number above, or the issue key/PR directly — either works.");
     }
     return lines.join("\n");
 }
@@ -777,6 +812,17 @@ async function main(): Promise<void> {
         return;
     }
 
+    if (subcommand === "pr-ready") {
+        const gitDeps = await tryResolveReadyGitDeps(config);
+        const result = await findReadyPRWork({
+            workTracker: config.backend.workTracker,
+            projectKey: config.projectKey,
+            ...(gitDeps ?? {}),
+        });
+        console.log(renderPRReadyWork(result));
+        return;
+    }
+
     if (subcommand === "link-precedence") {
         if (!arg) throw new Error("Usage: link-precedence <STORY-KEY>");
         // TAI-118: link-precedence is explicitly meant to be run immediately after
@@ -913,7 +959,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link ... | page create|link ... | install-global [TAI-HOME] ` +
             `| init status|jira|confluence|bitbucket|env|claude-md`
     );
