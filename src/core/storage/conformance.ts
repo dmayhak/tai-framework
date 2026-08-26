@@ -267,6 +267,71 @@ export function defineStorageConformance(
                 const cleared = await h.backend.workTracker.updateIssue(issue.key, { component: null });
                 assert.equal(cleared.component, undefined);
             });
+
+            // TAI-226/227/228/229: found live (TAI-192 work) -- a second "dev" subtask
+            // (TAI-224) got created under a story that already had one (TAI-193, Done) with
+            // no guard catching it. Own local parent (not `sharedParentKey`) since this test
+            // is specifically about one-per-story-instance semantics, not generic CRUD.
+            it("createIssue rejects a duplicate fixed-owner subtask, regardless of the existing sibling's status, unless allowDuplicate is set (ADR: Confluence page 29720577)", async () => {
+                const parent = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: duplicate-subtask guard parent",
+                    })
+                );
+                const first = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: parent.key,
+                        summary: "Conformance: first dev subtask",
+                    })
+                );
+                // Terminal status must still block -- this is exactly what TAI-193 (Done)
+                // failed to prevent for TAI-224.
+                await h.backend.workTracker.transition(first.key, Status.Done);
+
+                await assert.rejects(
+                    () =>
+                        h.backend.workTracker.createIssue({
+                            projectKey: h.projectKey,
+                            issueType: SubtaskType.Dev,
+                            parentKey: parent.key,
+                            summary: "Conformance: accidental duplicate",
+                        }),
+                    new RegExp(`${first.key} \\(Done\\) already exists`)
+                );
+
+                const redo = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: parent.key,
+                        summary: "Conformance: deliberate redo",
+                        allowDuplicate: true,
+                    })
+                );
+                assert.notEqual(redo.key, first.key, "allowDuplicate must let a genuine redo through");
+
+                // SpikeTask has no fixed default owner (SUBTASK_OWNER[SpikeTask] === null) --
+                // explicitly exempt from the guard, no allowDuplicate needed.
+                await h.backend.workTracker.createIssue({
+                    projectKey: h.projectKey,
+                    issueType: SubtaskType.SpikeTask,
+                    parentKey: parent.key,
+                    summary: "Conformance: first spike task",
+                });
+                const secondSpike = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.SpikeTask,
+                        parentKey: parent.key,
+                        summary: "Conformance: second spike task",
+                    })
+                );
+                assert.equal(secondSpike.issueType, SubtaskType.SpikeTask);
+            });
         });
 
         // ---------- Transitions & the §5.5 assignment gate ----------
