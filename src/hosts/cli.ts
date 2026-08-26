@@ -95,6 +95,22 @@ function loadDotEnv(): void {
     }
 }
 
+/**
+ * The current human's REAL git-host identity (TAI-213/214, found live 2026-08-26) —
+ * resolved through the git host itself, not synthesized from the configured email. A
+ * `PullRequestRef`'s own reviewer/participant entries carry the git host's real identity
+ * fields (Bitbucket: `account_id`/`display_name`, no email at all) — a `{ id: email,
+ * displayName: email }` construction can never match those via `sameHuman`, which is
+ * exactly what silently broke `readyToReview` (every open PR looked undecided, even ones
+ * the current human had already approved). `email` is merged in afterward since it's still
+ * needed for roster/eligibility matching against Confluence-sourced `HumanRef`s, which the
+ * git host's own identity doesn't carry (Bitbucket users have no email, for privacy).
+ */
+async function resolveCurrentHuman(gitHost: Pick<GitHost, "getCurrentUser">, email: string): Promise<HumanRef> {
+    const real = await gitHost.getCurrentUser();
+    return { ...real, email };
+}
+
 function requireEnv(name: string): string {
     const value = process.env[name];
     if (!value) {
@@ -176,7 +192,7 @@ async function resolveReviewerGitHost(
     const token = requireEnv("BITBUCKET_API_TOKEN");
 
     const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
-    const currentHuman: HumanRef = { id: toHumanId(email), displayName: email, email };
+    const currentHuman = await resolveCurrentHuman(backend.gitHost, email);
 
     const reviewers = await loadPrReviewers(config.backend.docStore, { spaceKey: config.spaceKey, projectKey: config.projectKey });
     if (!isEligibleReviewer(reviewers, currentHuman)) {
@@ -258,7 +274,7 @@ async function tryResolveReadyGitDeps(
     }
     if (repos.length === 0) return undefined;
 
-    const currentHuman: HumanRef = { id: toHumanId(email), displayName: email, email };
+    const currentHuman = await resolveCurrentHuman(backend.gitHost, email);
 
     const requiredApprovalsEnv = process.env["TAI_PR_REQUIRED_APPROVALS"];
     const requiredApprovals = requiredApprovalsEnv ? Number(requiredApprovalsEnv) : undefined;

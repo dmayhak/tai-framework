@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { toHumanId } from "../storage/interface.js";
-import type { Comment } from "../storage/interface.js";
+import type { Comment, HumanRef } from "../storage/interface.js";
 import {
     toRepoId,
     toPullRequestId,
@@ -25,6 +25,11 @@ import { PersonaPermissionError } from "./scoped-work-tracker.js";
  *  denied action never reaches it. */
 class RecordingGitHost implements GitHost {
     readonly calls: string[] = [];
+
+    async getCurrentUser(): Promise<HumanRef> {
+        this.calls.push("getCurrentUser");
+        return { id: toHumanId("x"), displayName: "x" };
+    }
 
     async getRepository(_id: RepoId): Promise<RepoRef | null> {
         this.calls.push("getRepository");

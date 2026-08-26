@@ -131,6 +131,19 @@ export type GitMutationResult =
 // ---------- GitHost ----------
 
 export interface GitHost {
+    /**
+     * The authenticated identity behind the credentials this `GitHost` was constructed with
+     * (TAI-213/214, found live 2026-08-26) — NOT the same thing as a synthetic `HumanRef`
+     * built from a known email address. A PR's `reviewers`/participant entries (see
+     * `PullRequestRef`) carry the git host's own real identity fields (Bitbucket:
+     * `account_id`/`display_name`, no email at all), which a `{ id: email, displayName:
+     * email }` construction can never match via `sameHuman` — that mismatch is exactly what
+     * silently broke `ready.ts`'s `readyToReview` (every open PR looked undecided, even
+     * ones the current human had already approved). Callers that need to compare "is this
+     * me" against a PR's own reviewer data must resolve identity through here, not
+     * synthesize it from configuration.
+     */
+    getCurrentUser(): Promise<HumanRef>;
     getRepository(id: RepoId): Promise<RepoRef | null>;
     /** TAI-162/TAI-163 ADR: enumerates every repo in a workspace (Bitbucket's
      *  `GET /2.0/repositories/{workspace}`) — what lets `/tai-ready` discover PRs across a

@@ -100,6 +100,24 @@ describe("listBranches", () => {
     });
 });
 
+describe("getCurrentUser", () => {
+    // TAI-213/214 (found live, 2026-08-26): the real, mapped identity from GET /user — NOT
+    // an email-based synthetic HumanRef, which can never match a PullRequestRef's own
+    // reviewer/participant entries (Bitbucket users carry no email at all).
+    it("hits /user and maps the response through toHumanRef", async () => {
+        const host = hostWith(
+            stubFetch((_method, url) => {
+                assert.ok(url.endsWith("/user"));
+                return json({ account_id: "712020:abc", display_name: "del", uuid: "{xyz}" });
+            })
+        );
+        const me = await host.getCurrentUser();
+        assert.equal(me.id, "712020:abc");
+        assert.equal(me.displayName, "del");
+        assert.equal(me.email, undefined);
+    });
+});
+
 describe("createPullRequest", () => {
     it("posts the source/destination shape and maps the response", async () => {
         let capturedBody: unknown;
@@ -136,15 +154,55 @@ describe("getPullRequest", () => {
 });
 
 describe("listPullRequests", () => {
-    it("appends a ?state= query param mapped to Bitbucket's uppercase vocabulary", async () => {
+    it("appends a state= query param mapped to Bitbucket's uppercase vocabulary, alongside fields=", async () => {
         const host = hostWith(
             stubFetch((_method, url) => {
-                assert.match(url, /\?state=MERGED$/);
+                assert.match(url, /\?fields=%2Bvalues\.participants&state=MERGED$/);
                 return json({ values: [PR_JSON] });
             })
         );
         const prs = await host.listPullRequests(REPO, "merged");
         assert.equal(prs.length, 1);
+    });
+
+    // TAI-213/214 (found live, 2026-08-26): without this, every PullRequestRef built from
+    // listPullRequests reported empty `reviewers` regardless of real approval state —
+    // Bitbucket's list-PRs endpoint omits `participants` by default, unlike the single-PR
+    // endpoint. `fields=+values.participants` (percent-encoded to %2B — a bare `+` in a query
+    // string means space) asks for it back explicitly.
+    it("always requests fields=+values.participants, even with no state filter", async () => {
+        const host = hostWith(
+            stubFetch((_method, url) => {
+                assert.match(url, /\?fields=%2Bvalues\.participants$/);
+                return json({ values: [PR_JSON] });
+            })
+        );
+        const prs = await host.listPullRequests(REPO);
+        assert.equal(prs.length, 1);
+    });
+
+    it("maps a populated participants array into real reviewer/approval state, not the empty-array default", async () => {
+        const host = hostWith(
+            stubFetch(() =>
+                json({
+                    values: [
+                        {
+                            ...PR_JSON,
+                            participants: [
+                                {
+                                    user: { account_id: "abc123", display_name: "Del" },
+                                    role: "PARTICIPANT",
+                                    state: "approved",
+                                },
+                            ],
+                        },
+                    ],
+                })
+            )
+        );
+        const prs = await host.listPullRequests(REPO);
+        assert.equal(prs[0]?.reviewers.length, 1);
+        assert.equal(prs[0]?.reviewers[0]?.status, "approved");
     });
 });
 
