@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { StorageConnectivityError } from "../../storage/interface.js";
 import { toRepoId, toPullRequestId, toCommitSha } from "../interface.js";
-import { RestClient, apiTokenAuth } from "./rest-client.js";
+import { RestClient, apiTokenAuth, BitbucketRejection } from "./rest-client.js";
 import { createBitbucketGitHost } from "./git-host.js";
 
 /** A fetch stub that replays canned responses, so these stay offline and deterministic
@@ -249,6 +249,17 @@ describe("unapprovePullRequest (TAI-217/219)", () => {
         assert.equal(calls.length, 1);
         assert.equal(calls[0]?.method, "DELETE");
         assert.ok(calls[0]?.url.endsWith("/pullrequests/7/approve"));
+    });
+
+    // TAI-217/219 (found live, 2026-08-26): NOT idempotent, contrary to an earlier assumption
+    // in this same PR — Bitbucket's DELETE .../approve returns 404 when there's nothing to
+    // withdraw, which must propagate as a real BitbucketRejection, not be swallowed.
+    it("propagates a real rejection when there's nothing to withdraw, rather than silently no-op'ing", async () => {
+        const host = hostWith(stubFetch(() => json({ error: { message: "You haven't approved this pull request." } }, 404)));
+        await assert.rejects(
+            () => host.unapprovePullRequest(REPO, toPullRequestId("7")),
+            (err: unknown) => err instanceof BitbucketRejection && err.reason === "You haven't approved this pull request."
+        );
     });
 });
 
