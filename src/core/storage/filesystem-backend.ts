@@ -40,6 +40,7 @@ import {
 } from "./interface.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "./assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "./review-gate.js";
+import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "./duplicate-subtask-gate.js";
 import { loadRoster, type Roster } from "../personas/roster.js";
 
 // ---------- Path helpers ----------
@@ -352,6 +353,22 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 throw new Error(
                     `Cannot create a "${input.issueType}" subtask with no parentKey — every subtask has a parent (brief §5.1). Real Jira rejects this structurally; this backend now matches that rather than silently accepting it.`
                 );
+            }
+            if (
+                SUBTASK_TYPES.has(input.issueType) &&
+                input.parentKey &&
+                !isExemptFromDuplicateGate(input.issueType as SubtaskType) &&
+                !input.allowDuplicate
+            ) {
+                const siblings = await readJsonDir<Issue>(issuesDir(rootDir, input.projectKey));
+                const existing = siblings.find(
+                    (s) => s.parentKey === input.parentKey && s.issueType === input.issueType
+                );
+                if (existing) {
+                    throw new Error(
+                        duplicateSubtaskGateReason(input.parentKey, input.issueType as SubtaskType, existing)
+                    );
+                }
             }
             const dir = issuesDir(rootDir, input.projectKey);
             await mkdir(dir, { recursive: true });

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { Status } from "../../schema/story-schema.js";
+import { Status, SubtaskType } from "../../schema/story-schema.js";
 import {
     StorageConnectivityError,
     toIssueKey,
@@ -172,6 +172,89 @@ describe("createIssue", () => {
         // The value that only exists because of the re-fetch:
         assert.equal(issue.persona, "developer");
         assert.equal(issue.status, Status.ToDo);
+    });
+
+    // TAI-226/228: found live (TAI-192 work) -- a second "dev" subtask (TAI-224) got created
+    // under a story that already had one (TAI-193, Done) with no guard catching it.
+    describe("duplicate-subtask guard (TAI-226/227/228)", () => {
+        it("rejects a second subtask of the same type under the same parent, without ever calling Jira's create endpoint", async () => {
+            const calls: string[] = [];
+            const wt = trackerWith(
+                stubFetch((url, init) => {
+                    const path = url.split("atlassian.net")[1]?.split("?")[0];
+                    calls.push(`${init.method ?? "GET"} ${path}`);
+                    if (path === "/rest/api/2/search/jql") {
+                        return json({
+                            issues: [
+                                {
+                                    key: "TAI-193",
+                                    fields: {
+                                        project: { key: "TAI" },
+                                        issuetype: { name: "Dev" },
+                                        summary: "First dev subtask",
+                                        status: { name: "Done" },
+                                        parent: { key: "TAI-192" },
+                                        created: "2026-08-25T00:00:00.000-0600",
+                                        updated: "2026-08-25T00:00:00.000-0600",
+                                        [PERSONA_FIELD]: { value: "Developer" },
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    throw new Error(`unexpected call: ${path}`);
+                })
+            );
+
+            await assert.rejects(
+                () =>
+                    wt.createIssue({
+                        projectKey: "TAI",
+                        issueType: SubtaskType.Dev,
+                        parentKey: toIssueKey("TAI-192"),
+                        summary: "Accidental duplicate",
+                    }),
+                /TAI-193 \(Done\) already exists/
+            );
+            assert.deepEqual(calls, ["POST /rest/api/2/search/jql"]);
+        });
+
+        it("allows the create when allowDuplicate: true is passed, skipping the guard's search entirely", async () => {
+            const calls: string[] = [];
+            const wt = trackerWith(
+                stubFetch((url, init) => {
+                    const path = url.split("atlassian.net")[1]?.split("?")[0];
+                    calls.push(`${init.method ?? "GET"} ${path}`);
+                    if (init.method === "POST" && path === "/rest/api/2/issue") return json({ key: "TAI-224" });
+                    if (path === "/rest/api/2/issue/TAI-224") {
+                        return json({
+                            key: "TAI-224",
+                            fields: {
+                                project: { key: "TAI" },
+                                issuetype: { name: "Dev" },
+                                summary: "Deliberate redo",
+                                status: { name: "To Do" },
+                                parent: { key: "TAI-192" },
+                                created: "2026-08-26T00:00:00.000-0600",
+                                updated: "2026-08-26T00:00:00.000-0600",
+                                [PERSONA_FIELD]: { value: "Developer" },
+                            },
+                        });
+                    }
+                    throw new Error(`unexpected call: ${path}`);
+                })
+            );
+
+            const issue = await wt.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: toIssueKey("TAI-192"),
+                summary: "Deliberate redo",
+                allowDuplicate: true,
+            });
+            assert.equal(issue.key, "TAI-224");
+            assert.deepEqual(calls, ["POST /rest/api/2/issue", "GET /rest/api/2/issue/TAI-224"]);
+        });
     });
 });
 
