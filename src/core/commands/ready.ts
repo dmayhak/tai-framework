@@ -334,6 +334,21 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     const parentContexts = new Map<IssueKey, ParentPrecedenceContext | null>();
 
     for (const issue of candidates) {
+        if (issue.issueType === "epic") {
+            // TAI-192: an Epic only reaches Done once everything under it finishes, so it
+            // would otherwise sit "open" and get swept in here for its entire multi-month
+            // lifetime — pure noise once it's actually been decomposed. PM's real action on
+            // an Epic (workOn: Epic, pm.md) is decomposing it into its first Stories/Kickoff;
+            // once that's happened at all, the Epic itself stops being the actionable unit.
+            // Only surface it while genuinely undecomposed (zero children yet).
+            const children = await deps.workTracker.search({
+                projectKey: deps.projectKey,
+                parentKey: issue.key,
+                limit: 1,
+            });
+            if (children.length === 0) ready.push(issue);
+            continue;
+        }
         if (!isSubtaskIssueType(issue.issueType)) {
             // Story-level ticket — no precedence gate of its own (brief §5.3), trivially
             // ready once it's open and matches the persona filter.
