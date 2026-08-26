@@ -90,6 +90,12 @@ function readySkillBody(taiHome: string): string {
         "separate action needed.\n" +
         "- **Ready Work** — genuinely not-yet-started (open, and — for a subtask — with every " +
         "precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`).\n\n" +
+        "Both sections sort Highest-priority tickets to the top and display each line's priority " +
+        "(TAI-195/199; extended to In Progress 2026-08-26 — the original decision predates that " +
+        "section existing). A subtask with no `Priority` of its own inherits its parent Story/" +
+        "Bug's for sort/display purposes (priority is usually set at Triage on the Bug/Story " +
+        "itself, not per-subtask) — this is purely a display/ordering change, never an " +
+        "auto-interrupt of in-flight work.\n\n" +
         "Plus — when `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`/`TAI_GIT_REPOS` are all configured — " +
         "up to three PR-related sections, all live signals read directly from Bitbucket rather " +
         "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +

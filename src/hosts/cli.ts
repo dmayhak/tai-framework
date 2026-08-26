@@ -390,7 +390,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             const rebaseFlag = hasUnresolvedRebaseMarker(c.issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}) — ${historyNote}${rebaseFlag}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}) — ${historyNote}${rebaseFlag}`
             );
             actionableCount++;
         }

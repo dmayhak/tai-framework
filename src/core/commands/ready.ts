@@ -444,11 +444,29 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     // priority (including "both unset") preserves the search's own key-ascending order.
     ready.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
 
+    // TAI-195/199 (extended 2026-08-26, human-confirmed after a live PR merge conflict
+    // surfaced the gap): In Progress gets the same priority sort/inheritance treatment as
+    // Ready Work — a P1 already in flight is exactly the kind of thing that should surface
+    // first when resuming work, same rationale as the original decision. Reuses the SAME
+    // `parentContexts` cache the Ready Work loop above already populated, so a parent shared
+    // between a ready and an in-progress sibling costs nothing extra to look up twice.
     const inProgress: InProgressCandidate[] = [];
     for (const issue of inProgressIssues) {
         const local = await readWorkStatus(deps.taiRoot, deps.projectKey, issue.key);
-        inProgress.push({ issue, hasLocalHistory: local !== null });
+
+        let withPriority = issue;
+        if (issue.priority === undefined && isSubtaskIssueType(issue.issueType) && issue.parentKey) {
+            let ctx = parentContexts.get(issue.parentKey);
+            if (ctx === undefined) {
+                ctx = await loadParentPrecedenceContext(deps.workTracker, deps.projectKey, issue.parentKey);
+                parentContexts.set(issue.parentKey, ctx);
+            }
+            if (ctx) withPriority = { ...issue, priority: ctx.priority };
+        }
+
+        inProgress.push({ issue: withPriority, hasLocalHistory: local !== null });
     }
+    inProgress.sort((a, b) => priorityRank(a.issue.priority) - priorityRank(b.issue.priority));
 
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
 

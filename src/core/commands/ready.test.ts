@@ -870,6 +870,60 @@ describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
             assert.deepEqual(order, [lowest.key, custom.key]);
         });
     });
+
+    // TAI-195/199 (extended 2026-08-26, human-confirmed): In Progress gets the same
+    // priority sort/inheritance treatment as Ready Work -- gap found live while resolving a
+    // merge conflict on this same ticket.
+    test("In Progress ALSO sorts Highest-priority tickets to the top", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const low = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Low priority, in progress",
+                priority: "Low",
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(low.key, Status.InProgress);
+            const highest = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Highest priority, in progress",
+                priority: "Highest",
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(highest.key, Status.InProgress);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(
+                result.inProgress.map((c) => c.issue.key),
+                [highest.key, low.key]
+            );
+        });
+    });
+
+    test("an in-progress subtask with no priority of its own inherits its parent's, same as Ready Work", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Bug,
+                summary: "Urgent bug",
+                priority: "Highest",
+            });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Already started, no priority of its own",
+                persona: Persona.Developer,
+                parentKey: bug.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(dev.key, Status.InProgress);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            const candidate = result.inProgress.find((c) => c.issue.key === dev.key);
+            assert.equal(candidate?.issue.priority, "Highest");
+        });
+    });
 });
 
 // ---------- findReadyPRWork (TAI-211/212) ----------
