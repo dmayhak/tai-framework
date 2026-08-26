@@ -96,28 +96,51 @@ function readySkillBody(taiHome: string): string {
         "Present this list to the human AS-IS — every actionable line above (Ready Work and all " +
         "three PR sections) is already numbered with ONE shared counter (TAI-182), so don't " +
         "renumber or reformat it yourself. \"Already in flight\" is deliberately NOT numbered — " +
-        "it's display-only context, never a valid reply. If the human replies with a bare number, " +
-        "map it back to that exact line (by its position in this shared numbering) and take the " +
-        "ACTION that section describes — `/tai-work <KEY>` for a Ready Work line, the real review " +
-        "flow above for a \"PRs ready for your review\" line, `git-pr merge` for a \"ready to " +
-        "merge\" line. A number with no corresponding line, or any ambiguity about which line it " +
-        "means, is a re-ask, not a guess."
+        "it's display-only context, never a valid reply.\n\n" +
+        "**Presenting this list is the entire, complete output of a `tai-ready` invocation — " +
+        "TAI-215 (found live, 2026-08-26, in `tai-pr`'s own equivalent listing step — same " +
+        "underlying gap, never triggered here yet but structurally identical): do NOT, in this " +
+        "same turn, pick a line yourself and act on it (start a review, run `/tai-work`, run any " +
+        "`git-pr` command) — no matter how obvious or unambiguous a line looks.** End your turn " +
+        "right here and wait for the human's own next message — a bare number, an issue key, a " +
+        "PR URL, or plain language all work, but it has to be an ordinary NEW turn, not a " +
+        "same-turn continuation (same principle as `tai-pr`'s findings step, TAI-202/203 — a " +
+        "complete-looking list reads as a place to stop just as much as a complete-looking " +
+        "recommendation does).\n\n" +
+        "Once the human's own next message picks a line: map it back to that exact line (by its " +
+        "position in this shared numbering) and take the ACTION that section describes — " +
+        "`/tai-work <KEY>` for a Ready Work line, the real review flow above for a \"PRs ready " +
+        "for your review\" line, `git-pr merge` for a \"ready to merge\" line. A number with no " +
+        "corresponding line, or any ambiguity about which line it means, is a re-ask, not a guess."
     );
 }
 
 function prSkillBody(taiHome: string): string {
     return (
         "**Bare invocation (no arguments) — TAI-211/212, a lighter PR-only sibling to " +
-        "`tai-ready`:** run this and read its full output:\n\n" +
+        "`tai-ready`:** run EXACTLY this command — `pr-ready`, not `ready` (that's `tai-ready`'s " +
+        "own, heavier command; running it here defeats the entire point of this lighter " +
+        "sibling, TAI-215 found live) — and read its full output:\n\n" +
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts pr-ready\n` +
         "```\n\n" +
         "Just the two PR sections `tai-ready` also shows (**PRs ready for your review**, " +
         "**Approved PRs ready to merge**) — no general Ready Work list, no \"Open PRs ready to " +
         "test,\" no \"Already in flight,\" each numbered with its own shared counter the same way " +
-        "`tai-ready`'s combined list is. Present it AS-IS, don't renumber it. If the human replies " +
-        "with a bare number, map it back to that line and take the action its section describes — " +
-        "for a \"ready for your review\" line, that means doing the real review flow below (fetch, " +
+        "`tai-ready`'s combined list is. Present it AS-IS, don't renumber it.\n\n" +
+        "**Presenting this list is the entire, complete output of a bare `tai-pr` invocation — " +
+        "TAI-215 (found live, 2026-08-26): a Gemini CLI session skipped straight from printing " +
+        "this list into picking a line and fully reviewing that PR itself, in the same turn, " +
+        "with zero human input at any point.** Do NOT, in this same turn: pick a line yourself " +
+        "(no matter how obvious or unambiguous it looks), start the review flow below, or run " +
+        "any `git-pr` command. End your turn right here and wait for the human's own next " +
+        "message — a bare number, an issue key, a PR URL, or plain language all work, but it " +
+        "has to be an ordinary NEW turn, not a same-turn continuation (same principle as step 3 " +
+        "below, TAI-202/203 — this is the same class of \"looks done, so it reads as a place to " +
+        "stop\" trap, just one step earlier).\n\n" +
+        "Once the human's own next message picks a line: map it back to that exact line (by its " +
+        "position in the shared numbering) and take the action its section describes — for a " +
+        "\"ready for your review\" line, that means doing the real review flow below (fetch, " +
         "diff, findings, stop — never skip straight to `git-pr review`); for a \"ready to merge\" " +
         "line, picking that number IS the explicit instruction, so run `git-pr merge <ISSUE-KEY> " +
         "<REPO>` directly, no further confirmation needed. A number with no corresponding line, or " +
