@@ -9,8 +9,8 @@ full design — this file only covers getting it running.
 ## One-time bootstrap (per machine)
 
 TAI installs itself once at a fixed, well-known location (`~/.tai-framework/` by
-default), separate from wherever you clone it. Every project on this machine then shares
-that one install — you do this once, not per project.
+default) — clone it directly there, not somewhere else first. Every project on this
+machine then shares that one install — you do this once, not per project.
 
 There's a real chicken-and-egg problem worth knowing about: `/tai-init` (and
 `/tai-work`, `/tai-ready`, `/tai-pr`) only exist as slash commands in Claude Code/Gemini
@@ -20,13 +20,16 @@ before, none of those commands exist yet, and you can't just type `/tai-init` to
 started. Bootstrap manually, once:
 
 ```bash
-git clone git@bitbucket.org:dmayhak/tai-framework.git ~/tai-framework-src
-npx tsx ~/tai-framework-src/src/hosts/cli.ts install-global
+git clone git@bitbucket.org:dmayhak/tai-framework.git ~/.tai-framework
+cd ~/.tai-framework
+npm install
+npx tsx src/hosts/cli.ts install-global
 ```
 
-(The clone location doesn't matter — only the fixed install path, `~/.tai-framework/` by
-default, does. `install-global` copies itself there and writes the global skill files
-for both Claude Code and Gemini CLI.)
+(`install-global` writes the global skill files for both Claude Code and Gemini CLI,
+referencing this exact clone as their fixed `TAI-HOME` — it does NOT copy or relocate
+anything, so the clone has to land directly at `~/.tai-framework` in the first place,
+not at some other path first.)
 
 From that point on, `/tai-init`, `/tai-work`, `/tai-ready`, and `/tai-pr` exist as slash
 commands in every future session, in every project, on this machine — no re-bootstrap
@@ -35,8 +38,8 @@ TAI at it (see `docs/target-project-setup-checklist.md` for what that actually
 provisions).
 
 A more robust one-shot installer (e.g. a single `curl | sh`) is a reasonable future
-improvement but explicitly out of scope for now — this manual two-command sequence is
-what v1 ships with.
+improvement but explicitly out of scope for now — this manual sequence is what v1 ships
+with.
 
 ## Developing TAI itself
 
