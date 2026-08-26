@@ -169,6 +169,11 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
             }
         },
 
+        async unapprovePullRequest(repo: RepoId, id: PullRequestId): Promise<void> {
+            const { workspace, slug } = splitRepoId(repo);
+            await client.request("DELETE", `/repositories/${workspace}/${slug}/pullrequests/${id}/approve`);
+        },
+
         async addPullRequestComment(repo: RepoId, id: PullRequestId, body: string) {
             const { workspace, slug } = splitRepoId(repo);
             const c = await client.request<BitbucketCommentJson>(
