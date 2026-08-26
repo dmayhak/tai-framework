@@ -125,6 +125,21 @@ by an HTML-comment marker) without touching the rest of an existing `CLAUDE.md`.
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init claude-md [TAI-HOME]
 ```
 
+## Suggested team rituals (not a verified `init` step)
+
+TAI deliberately doesn't build or tickle any of this itself (human-decided 2026-08-25) —
+recurring reminders are a job calendar apps already do well (real notifications,
+timezones, snoozing), and reinventing that inside TAI would be worse than just using one.
+Worth setting up now, while you're already thinking about how this project runs:
+
+- **A recurring prioritization/planning meeting** — the vehicle for moving tickets
+  `Backlog → To Do` (and back, if priorities shift) and for setting/adjusting `Priority`.
+  Both stay a soft, human-judged call in native Jira's own Backlog view (rev 29, brief
+  §8.28) — no `tai-planning` command, no automation. Set yourself a recurring calendar
+  reminder for it; no suggested cadence — whatever fits this team.
+- **A recurring standup**, if this team wants one — same reasoning, same "your calendar,
+  not TAI's job" answer.
+
 ## Checking progress / resuming
 
 ```bash
