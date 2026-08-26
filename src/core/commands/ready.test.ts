@@ -749,6 +749,136 @@ describe("findReadyWork out-of-band merge sync (rev 52, TAI-159 ADR)", () => {
     });
 });
 
+describe("findReadyWork Test-tier To Do sync (TAI-194)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+
+    /** An In-Progress Dev subtask, plus a same-parent Test-tier sibling sitting in
+     *  Backlog -- the fixture every test in this block starts from. */
+    async function devWithBacklogTestTier(
+        backend: StorageBackend,
+        testTierType: SubtaskType = SubtaskType.IntegrationTest
+    ): Promise<{ devKey: import("../storage/interface.js").IssueKey; testKey: import("../storage/interface.js").IssueKey }> {
+        const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+        const dev = await backend.workTracker.createIssue({
+            projectKey: "TAI",
+            issueType: SubtaskType.Dev,
+            summary: "Dev",
+            persona: Persona.Developer,
+            parentKey: story.key,
+            assignee: CURRENT_USER,
+        });
+        await backend.workTracker.transition(dev.key, Status.InProgress);
+
+        const testTier = await backend.workTracker.createIssue({
+            projectKey: "TAI",
+            issueType: testTierType,
+            summary: "Test tier",
+            persona: Persona.Tester,
+            parentKey: story.key,
+        });
+        await backend.workTracker.transition(testTier.key, Status.Backlog);
+
+        return { devKey: dev.key, testKey: testTier.key };
+    }
+
+    test("a Backlog Test-tier sibling moves to To Do once Dev's PR is open and linked", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const { devKey, testKey } = await devWithBacklogTestTier(backend);
+            const pr = prFixture({ state: "open" });
+            await backend.workTracker.createRemoteLink(devKey, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            const synced = await backend.workTracker.getIssue(testKey);
+            assert.equal(synced?.status, Status.ToDo);
+        });
+    });
+
+    test("every present test tier syncs, not just the first", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Dev",
+                persona: Persona.Developer,
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(dev.key, Status.InProgress);
+            const integration = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.IntegrationTest,
+                summary: "Integration",
+                persona: Persona.Tester,
+                parentKey: story.key,
+            });
+            await backend.workTracker.transition(integration.key, Status.Backlog);
+            const system = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.SystemTest,
+                summary: "System",
+                persona: Persona.Tester,
+                parentKey: story.key,
+            });
+            await backend.workTracker.transition(system.key, Status.Backlog);
+
+            const pr = prFixture({ state: "open" });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            assert.equal((await backend.workTracker.getIssue(integration.key))?.status, Status.ToDo);
+            assert.equal((await backend.workTracker.getIssue(system.key))?.status, Status.ToDo);
+        });
+    });
+
+    test("a Test-tier sibling already past Backlog (e.g. In Progress) is left untouched", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const { devKey, testKey } = await devWithBacklogTestTier(backend);
+            // Needs an assignee first -- brief §5.5's assignment gate blocks entering
+            // In Progress otherwise, which would leave it in Backlog and defeat the point
+            // of this test.
+            await backend.workTracker.assignIssue(testKey, CURRENT_USER);
+            const inProgress = await backend.workTracker.transition(testKey, Status.InProgress);
+            assert.equal(inProgress.ok, true, "test setup: the In Progress transition itself must succeed");
+            const pr = prFixture({ state: "open" });
+            await backend.workTracker.createRemoteLink(devKey, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            const untouched = await backend.workTracker.getIssue(testKey);
+            assert.equal(untouched?.status, Status.InProgress);
+        });
+    });
+
+    test("no open PR linked yet: the Test-tier sibling stays in Backlog", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const { testKey } = await devWithBacklogTestTier(backend);
+            const gitHost = new FakeGitHost(new Map([[repo, []]]));
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            const untouched = await backend.workTracker.getIssue(testKey);
+            assert.equal(untouched?.status, Status.Backlog);
+        });
+    });
+
+    test("skipped entirely when gitHost/repos aren't supplied", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const { devKey, testKey } = await devWithBacklogTestTier(backend);
+            const pr = prFixture({ state: "open" });
+            await backend.workTracker.createRemoteLink(devKey, pr.url, "PR");
+
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+
+            const untouched = await backend.workTracker.getIssue(testKey);
+            assert.equal(untouched?.status, Status.Backlog);
+        });
+    });
+});
+
 describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
     test("Ready Work sorts Highest-priority tickets to the top, regardless of creation order", async () => {
         await withBackend(async (backend, taiRoot) => {
