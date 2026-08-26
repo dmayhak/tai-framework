@@ -1,19 +1,27 @@
 /**
  * TAI Framework — `/tai_ready [persona]` command core (TAI-61 ADR decision 4)
  *
- * Root `status.json` (`rollupStatus`) is a **display index only** (brief §7: "purely a
- * rollup/index, never authoritative") — readiness itself is computed live here, per brief
- * §3.6's refresh-point rule, never read off the cached rollup:
+ * Root `status.json` (`rollupStatus`, `workspace/status.ts`) is a **display index only**
+ * (brief §7: "purely a rollup/index, never authoritative") — readiness itself is computed
+ * live here, per brief §3.6's refresh-point rule, never read off the cached rollup:
  *
  *   1. `search({ persona, statuses: OPEN_STATUSES })` — a coarse pre-filter (right persona,
  *      not yet closed). Story-level tickets (Kickoff/Story/Bug/Spike) have no precedence
  *      gate of their own (brief §5.3) and are trivially ready once open.
- *   2. For a subtask candidate, `isSubtaskReady()` against its parent's actual present/done
- *      subtask sets is the real gate — one `search({ parentKey })` per distinct parent
- *      (siblings share a parent, so this batches naturally rather than querying per subtask).
- *
- * `rollupStatus()`'s in-flight items are still surfaced alongside the ready list, as display
- * context (what's already being worked), not as part of the readiness computation.
+ *   2. For a subtask candidate at `Status.ToDo`, `isSubtaskReady()` against its parent's
+ *      actual present/done subtask sets is the real gate — one `search({ parentKey })` per
+ *      distinct parent (siblings share a parent, so this batches naturally rather than
+ *      querying per subtask).
+ *   3. TAI-196/200 (2026-08-26): a candidate already at `Status.InProgress`/`InReview` skips
+ *      that precedence check entirely (already started once — precedence gates OFFERING new
+ *      work, not resuming already-started work) and lands in `inProgress` instead of `ready`.
+ *      This REPLACES the old, purely-local `rollupStatus()` "Already in flight" section —
+ *      that one couldn't show work paused on a different machine/session; this one is
+ *      sourced from the same live Jira search as `ready`, so it works everywhere. Local
+ *      `.tai/work/` history, when present on THIS machine, only ever ANNOTATES an entry
+ *      already justified by that live check (a single `readWorkStatus` read per candidate —
+ *      local filesystem I/O, not a network round-trip, so unlike this file's other N+1
+ *      git-host calls this one isn't worth bounding/documenting as a scaling caveat).
  *
  * **rev 52 (TAI-159 ADR — CodeReview subtask retirement):** three live git-host-queried
  * lists extend the same "computed live, per refresh point" philosophy TAI-107/108's
@@ -47,7 +55,7 @@ import {
     type Persona,
 } from "../schema/story-schema.js";
 import { DEFAULT_SEARCH_LIMIT, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
-import { rollupStatus, type RootStatusRollup } from "../workspace/status.js";
+import { readWorkStatus } from "../workspace/status.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
@@ -103,8 +111,31 @@ export interface ReadyToMergeCandidate {
     readonly pullRequest: PullRequestRef;
 }
 
+/** An issue that's already started (live Jira status `In Progress`/`In Review`), not
+ *  genuinely-not-started work (TAI-196/200). `hasLocalHistory` FLAGS (never details) whether
+ *  THIS machine has session history for it (`.tai/work/<project>/<key>/status.json`) — full
+ *  detail (currentStep etc.) only surfaces once it's actually picked, via `/tai-work`'s own
+ *  briefing, not inline here. Membership comes entirely from live Jira status, never local
+ *  file presence, so a stale/drifted local cache can never produce a wrong or phantom entry
+ *  (brief §7: local status is index-only, it only ever ANNOTATES an entry already justified
+ *  by the live check). */
+export interface InProgressCandidate {
+    readonly issue: Issue;
+    readonly hasLocalHistory: boolean;
+}
+
 export interface ReadyWorkResult {
+    /** Genuinely not-yet-started (`Status.ToDo` for a subtask that's also precedence-ready,
+     *  or any open story-level ticket at ToDo — see `isSubtaskReady`). `InProgress`/
+     *  `InReview` issues live in `inProgress` instead (TAI-196/200) — this list never mixes
+     *  the two, unlike the pre-TAI-196 combined "Ready work" list. */
     readonly ready: readonly Issue[];
+    /** TAI-196/200: already-started work (`Status.InProgress`/`Status.InReview`), sourced
+     *  from the same live-Jira search as `ready` — works across machines/sessions, unlike
+     *  the old, purely-local `rollupStatus` "Already in flight" section this replaces. No
+     *  precedence re-check (already started once, so precedence — a gate on OFFERING new
+     *  work — doesn't apply to resuming it). */
+    readonly inProgress: readonly InProgressCandidate[];
     /** rev 52: open PRs the current human should review. Empty whenever `gitHost`/`repos`/
      *  `currentHuman`/`prReviewers` aren't all supplied, or the current human isn't on the
      *  PR Reviewers roster — never a partial/best-effort guess. */
@@ -117,8 +148,6 @@ export interface ReadyWorkResult {
     /** Same candidates as `readyToTest`, additionally CI-green (TAI-106/107/108's
      *  original check, unchanged). Empty whenever `gitHost`/`repos` aren't supplied. */
     readonly readyToMerge: readonly ReadyToMergeCandidate[];
-    /** Display context only — what's already in flight, per the root status rollup. */
-    readonly inFlight: RootStatusRollup;
 }
 
 interface ParentPrecedenceContext {
@@ -331,6 +360,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     });
 
     const ready: Issue[] = [];
+    const inProgressIssues: Issue[] = [];
     const parentContexts = new Map<IssueKey, ParentPrecedenceContext | null>();
 
     for (const issue of candidates) {
@@ -340,7 +370,9 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
             // lifetime — pure noise once it's actually been decomposed. PM's real action on
             // an Epic (workOn: Epic, pm.md) is decomposing it into its first Stories/Kickoff;
             // once that's happened at all, the Epic itself stops being the actionable unit.
-            // Only surface it while genuinely undecomposed (zero children yet).
+            // Only surface it while genuinely undecomposed (zero children yet). No
+            // TAI-196/200 in-progress split here — an Epic isn't "worked" directly the way a
+            // Story/subtask is, so its own status doesn't carry the same meaning.
             const children = await deps.workTracker.search({
                 projectKey: deps.projectKey,
                 parentKey: issue.key,
@@ -349,9 +381,20 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
             if (children.length === 0) ready.push(issue);
             continue;
         }
+
+        // TAI-196/200: already-started work (any issue type) skips precedence entirely and
+        // goes to `inProgress` instead of `ready` — precedence gates OFFERING new work, not
+        // resuming already-started work, so re-checking it here would be meaningless (and
+        // for a subtask, could even wrongly exclude something that started validly under an
+        // older precedence state).
+        if (issue.status === Status.InProgress || issue.status === Status.InReview) {
+            inProgressIssues.push(issue);
+            continue;
+        }
+
         if (!isSubtaskIssueType(issue.issueType)) {
             // Story-level ticket — no precedence gate of its own (brief §5.3), trivially
-            // ready once it's open and matches the persona filter.
+            // ready once it's open (ToDo, per the branch above) and matches the persona filter.
             ready.push(issue);
             continue;
         }
@@ -369,10 +412,15 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         }
     }
 
+    const inProgress: InProgressCandidate[] = [];
+    for (const issue of inProgressIssues) {
+        const local = await readWorkStatus(deps.taiRoot, deps.projectKey, issue.key);
+        inProgress.push({ issue, hasLocalHistory: local !== null });
+    }
+
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
 
-    const inFlight = await rollupStatus(deps.taiRoot);
-    return { ready, readyToReview, readyToTest, readyToMerge, inFlight };
+    return { ready, inProgress, readyToReview, readyToTest, readyToMerge };
 }
 
 export interface FindReadyPRWorkDeps {

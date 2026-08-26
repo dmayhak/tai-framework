@@ -377,18 +377,33 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     const counter = numberedLines();
     let actionableCount = 0;
 
+    // TAI-196/200: top section — already-started work, split out from genuinely-not-started
+    // Ready Work below. A Dev subtask with an open PR is ALWAYS In Progress (rev 52 — it
+    // stays open until the PR merges), so this is also the only place the TAI-217/219
+    // rebase-conflict flag can ever apply now.
+    if (result.inProgress.length > 0) {
+        lines.push("## In Progress — resume this", "");
+        for (const c of result.inProgress) {
+            const historyNote = c.hasLocalHistory
+                ? "local session history here"
+                : "no local history — started elsewhere, read fresh";
+            const rebaseFlag = hasUnresolvedRebaseMarker(c.issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
+            lines.push(
+                `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
+                    `(persona: ${c.issue.persona ?? "none"}) — ${historyNote}${rebaseFlag}`
+            );
+            actionableCount++;
+        }
+        lines.push("");
+    }
+
+    lines.push("## Ready Work", "");
     if (result.ready.length === 0) {
-        lines.push("Nothing is currently ready.");
+        lines.push("Nothing is currently ready to start.");
     } else {
         for (const issue of result.ready) {
-            // TAI-217/219: a Dev subtask stays In Progress (and so keeps appearing here)
-            // until its PR actually merges — flag it distinctly when a merge attempt found
-            // conflicts, so the need to rebase surfaces on the ticket itself, not just in
-            // whichever terminal happened to run `git-pr merge`. Free to check — comments
-            // are already part of every Issue this list was built from (brief §7).
-            const rebaseFlag = hasUnresolvedRebaseMarker(issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
             lines.push(
-                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})${rebaseFlag}`
+                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} (persona: ${issue.persona ?? "none"})`
             );
             actionableCount++;
         }
@@ -417,12 +432,6 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
                 `${counter.next()}. **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
             );
             actionableCount++;
-        }
-    }
-    if (result.inFlight.items.length > 0) {
-        lines.push("", "## Already in flight", "");
-        for (const item of result.inFlight.items) {
-            lines.push(`- ${item.subtaskKey}: ${item.currentStep} (${item.state})`);
         }
     }
     if (actionableCount > 0) {
