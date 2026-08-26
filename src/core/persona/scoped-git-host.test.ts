@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { toHumanId } from "../storage/interface.js";
-import type { Comment } from "../storage/interface.js";
+import type { Comment, HumanRef } from "../storage/interface.js";
 import {
     toRepoId,
     toPullRequestId,
@@ -25,6 +25,11 @@ import { PersonaPermissionError } from "./scoped-work-tracker.js";
  *  denied action never reaches it. */
 class RecordingGitHost implements GitHost {
     readonly calls: string[] = [];
+
+    async getCurrentUser(): Promise<HumanRef> {
+        this.calls.push("getCurrentUser");
+        return { id: toHumanId("x"), displayName: "x" };
+    }
 
     async getRepository(_id: RepoId): Promise<RepoRef | null> {
         this.calls.push("getRepository");
@@ -58,6 +63,10 @@ class RecordingGitHost implements GitHost {
 
     async reviewPullRequest(): Promise<void> {
         this.calls.push("reviewPullRequest");
+    }
+
+    async unapprovePullRequest(): Promise<void> {
+        this.calls.push("unapprovePullRequest");
     }
 
     async addPullRequestComment(_repo: RepoId, _id: PullRequestId, _body: string): Promise<Comment> {
@@ -183,20 +192,24 @@ describe("PersonaScopedGitHost pass-through methods", () => {
         const inner = new RecordingGitHost();
         const scoped = new PersonaScopedGitHost(inner, noGrantsConfig());
 
+        await scoped.getCurrentUser();
         await scoped.getRepository(repo);
         await scoped.listRepositories("dmayhak");
         await scoped.listBranches(repo);
         await scoped.getPullRequest(repo, pr);
         await scoped.listPullRequests(repo);
+        await scoped.unapprovePullRequest(repo, pr);
         await scoped.addPullRequestComment(repo, pr, "x");
         await scoped.getCommitStatuses(repo, toCommitSha("abc123"));
 
         assert.deepEqual(inner.calls, [
+            "getCurrentUser",
             "getRepository",
             "listRepositories",
             "listBranches",
             "getPullRequest",
             "listPullRequests",
+            "unapprovePullRequest",
             "addPullRequestComment",
             "getCommitStatuses",
         ]);

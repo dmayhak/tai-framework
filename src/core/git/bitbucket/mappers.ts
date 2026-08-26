@@ -53,12 +53,19 @@ export interface BitbucketPullRequestJson {
     // REGRESSION this fixes (found live, TAIT integration suite, 2026-07-15): Bitbucket's
     // list-pullrequests endpoint (GET .../pullrequests) returns a lighter PR representation
     // than the single-PR endpoint (GET .../pullrequests/{id}) — `participants` is simply
-    // ABSENT from list responses, not an empty array. `toPullRequestRef` crashed reading
-    // `.filter()` off `undefined` the first time `listPullRequests` actually ran against
-    // live data; no mocked unit test caught it because every mock supplied a well-formed
-    // array. Optional here; `toPullRequestRef` defaults to `[]`. Practical consequence: a
-    // `PullRequestRef` from `listPullRequests` always reports empty `reviewers` — callers
-    // that need real reviewer state must `getPullRequest` the specific PR.
+    // ABSENT by default, not an empty array. `toPullRequestRef` crashed reading `.filter()`
+    // off `undefined` the first time `listPullRequests` actually ran against live data; no
+    // mocked unit test caught it because every mock supplied a well-formed array. Optional
+    // here; `toPullRequestRef` defaults to `[]`.
+    //
+    // TAI-213/214 (found live, 2026-08-26): that default silently broke `ready.ts`'s
+    // `readyToReview` (showed every open PR, approved or not) and `readyToMerge` (never
+    // populated) — both read `PullRequestRef.reviewers` straight off `listPullRequests`
+    // results. Fixed at the call site, not here: `git-host.ts`'s `listPullRequests` now
+    // requests `fields=+values.participants` (Bitbucket's partial-response syntax for
+    // including a field a list endpoint omits by default), so `participants` — and
+    // therefore `reviewers` — is real and populated on `listPullRequests` results too,
+    // verified live. `getPullRequest` (the single-PR endpoint) was never affected either way.
     readonly participants?: readonly BitbucketParticipantJson[];
     readonly created_on: string;
     readonly updated_on: string;
