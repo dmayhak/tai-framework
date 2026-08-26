@@ -33,6 +33,7 @@ import {
     type CreatePageInput,
     type HumanRef,
     type Issue,
+    type IssuePatch,
     type StorageBackend,
 } from "../core/storage/interface.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
@@ -951,6 +952,30 @@ async function main(): Promise<void> {
             return;
         }
 
+        if (action === "update") {
+            const [issueKey, ...kv] = issueArgs;
+            if (!issueKey || kv.length === 0) {
+                throw new Error(
+                    "Usage: issue update <ISSUE-KEY> [summary=<TEXT>] [description=<TEXT>] " +
+                        "[persona=<PERSONA>] [priority=<PRIORITY>] [component=<TEXT>] [severity=<TEXT>]\n" +
+                        "  For reassigning to a different human, use \"issue assign\" instead -- it resolves " +
+                        "the real Atlassian Account ID that assignee patches require."
+                );
+            }
+            const fields = parseKeyValueArgs(kv);
+            const patch: IssuePatch = {
+                ...(fields["summary"] !== undefined ? { summary: fields["summary"] } : {}),
+                ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+                ...(fields["persona"] !== undefined ? { persona: fields["persona"] as Persona } : {}),
+                ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
+                ...(fields["component"] !== undefined ? { component: fields["component"] } : {}),
+                ...(fields["severity"] !== undefined ? { severity: fields["severity"] } : {}),
+            };
+            const issue = await config.backend.workTracker.updateIssue(toIssueKey(issueKey), patch);
+            console.log(renderIssueRef(issue));
+            return;
+        }
+
         if (action === "transition") {
             const [issueKey, status] = issueArgs;
             if (!issueKey || !status) throw new Error("Usage: issue transition <ISSUE-KEY> <STATUS>");
@@ -1007,7 +1032,9 @@ async function main(): Promise<void> {
             return;
         }
 
-        throw new Error(`Unknown issue action "${action}" -- expected "create", "transition", "assign", "comment", or "link".`);
+        throw new Error(
+            `Unknown issue action "${action}" -- expected "create", "update", "transition", "assign", "comment", or "link".`
+        );
     }
 
     if (subcommand === "page") {
