@@ -254,6 +254,66 @@ async function syncMergedDevSubtasks(
     return synced;
 }
 
+/** Just the git-host-derived deps `computePRSections` needs — a subset of
+ *  `FindReadyWorkDeps` shared by both `findReadyWork` and the lighter `findReadyPRWork`
+ *  (TAI-211/212), neither of which needs `taiRoot` for this part. */
+type PRSectionDeps = Pick<
+    FindReadyWorkDeps,
+    "workTracker" | "projectKey" | "gitHost" | "repos" | "requiredApprovals" | "currentHuman" | "prReviewers"
+>;
+
+interface PRSections {
+    readonly readyToReview: readonly ReadyToReviewCandidate[];
+    readonly readyToTest: readonly ReadyToTestCandidate[];
+    readonly readyToMerge: readonly ReadyToMergeCandidate[];
+}
+
+/** The `readyToReview`/`readyToTest`/`readyToMerge` computation, factored out so
+ *  `findReadyPRWork` (TAI-211/212) can reuse it without also paying for `findReadyWork`'s
+ *  general Jira-wide `ready` query. `readyToTest` falls out of the same `findDevLinkedOpenPRs`
+ *  call `readyToMerge` already needs — computing it costs nothing extra, so it stays part of
+ *  this shared helper even though `findReadyPRWork` doesn't expose it in its own result. */
+async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
+    let readyToTest: readonly ReadyToTestCandidate[] = [];
+    let readyToMerge: readonly ReadyToMergeCandidate[] = [];
+    if (deps.gitHost && deps.repos && deps.repos.length > 0) {
+        const requiredApprovals = deps.requiredApprovals ?? DEFAULT_REQUIRED_APPROVALS;
+        const devLinked = await findDevLinkedOpenPRs(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
+        // Testing runs in parallel with review, not gated behind it — every Dev-linked
+        // open PR is a test candidate regardless of approval count.
+        readyToTest = devLinked;
+
+        const approved = devLinked.filter((c) => approvalCount(c.pullRequest) >= requiredApprovals);
+        const merge: ReadyToMergeCandidate[] = [];
+        for (const c of approved) {
+            const statuses = await deps.gitHost.getCommitStatuses(c.pullRequest.repo, c.pullRequest.sourceCommit);
+            if (isGreen(statuses)) merge.push(c);
+        }
+        readyToMerge = merge;
+    }
+
+    let readyToReview: readonly ReadyToReviewCandidate[] = [];
+    if (
+        deps.gitHost &&
+        deps.repos &&
+        deps.repos.length > 0 &&
+        deps.currentHuman &&
+        deps.prReviewers &&
+        isEligibleReviewer(deps.prReviewers, deps.currentHuman)
+    ) {
+        const candidates: ReadyToReviewCandidate[] = [];
+        for (const repo of deps.repos) {
+            const openPRs = await deps.gitHost.listPullRequests(repo, "open");
+            for (const pr of openPRs) {
+                if (hasUndecidedReview(pr, deps.currentHuman)) candidates.push({ pullRequest: pr });
+            }
+        }
+        readyToReview = candidates;
+    }
+
+    return { readyToReview, readyToTest, readyToMerge };
+}
+
 /**
  * Finds work that's actually ready to start, optionally scoped to one persona. `persona`
  * omitted means "ready for anyone."
@@ -294,43 +354,42 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         }
     }
 
-    let readyToTest: readonly ReadyToTestCandidate[] = [];
-    let readyToMerge: readonly ReadyToMergeCandidate[] = [];
-    if (deps.gitHost && deps.repos && deps.repos.length > 0) {
-        const requiredApprovals = deps.requiredApprovals ?? DEFAULT_REQUIRED_APPROVALS;
-        const devLinked = await findDevLinkedOpenPRs(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
-        // Testing runs in parallel with review, not gated behind it — every Dev-linked
-        // open PR is a test candidate regardless of approval count.
-        readyToTest = devLinked;
-
-        const approved = devLinked.filter((c) => approvalCount(c.pullRequest) >= requiredApprovals);
-        const merge: ReadyToMergeCandidate[] = [];
-        for (const c of approved) {
-            const statuses = await deps.gitHost.getCommitStatuses(c.pullRequest.repo, c.pullRequest.sourceCommit);
-            if (isGreen(statuses)) merge.push(c);
-        }
-        readyToMerge = merge;
-    }
-
-    let readyToReview: readonly ReadyToReviewCandidate[] = [];
-    if (
-        deps.gitHost &&
-        deps.repos &&
-        deps.repos.length > 0 &&
-        deps.currentHuman &&
-        deps.prReviewers &&
-        isEligibleReviewer(deps.prReviewers, deps.currentHuman)
-    ) {
-        const candidates: ReadyToReviewCandidate[] = [];
-        for (const repo of deps.repos) {
-            const openPRs = await deps.gitHost.listPullRequests(repo, "open");
-            for (const pr of openPRs) {
-                if (hasUndecidedReview(pr, deps.currentHuman)) candidates.push({ pullRequest: pr });
-            }
-        }
-        readyToReview = candidates;
-    }
+    const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
 
     const inFlight = await rollupStatus(deps.taiRoot);
     return { ready, readyToReview, readyToTest, readyToMerge, inFlight };
+}
+
+export interface FindReadyPRWorkDeps {
+    readonly workTracker: WorkTracker;
+    readonly projectKey: string;
+    readonly gitHost?: Pick<GitHost, "listPullRequests" | "getCommitStatuses">;
+    readonly repos?: readonly RepoId[];
+    readonly requiredApprovals?: number;
+    readonly currentHuman?: HumanRef;
+    readonly prReviewers?: readonly HumanRef[];
+}
+
+export interface ReadyPRWorkResult {
+    readonly readyToReview: readonly ReadyToReviewCandidate[];
+    readonly readyToMerge: readonly ReadyToMergeCandidate[];
+}
+
+/**
+ * Lighter-weight sibling to `findReadyWork` (TAI-211/212) — for PR-review-mode, where the
+ * general Jira-wide `ready` query (and its per-parent precedence resolution) and the
+ * `inFlight` status rollup are pure overhead: just `readyToReview` + `readyToMerge`, the two
+ * sections actually relevant to a human deciding what PR to act on next. `readyToTest` is
+ * deliberately not exposed here — it's Tester-persona scope, out of place in a review/merge
+ * view (human-confirmed, TAI-211).
+ *
+ * Still runs `syncMergedDevSubtasks` first, same as `findReadyWork` — a `Dev` subtask merged
+ * out-of-band shouldn't spuriously appear as still awaiting review/merge from this same call.
+ */
+export async function findReadyPRWork(deps: FindReadyPRWorkDeps): Promise<ReadyPRWorkResult> {
+    if (deps.gitHost && deps.repos && deps.repos.length > 0) {
+        await syncMergedDevSubtasks(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
+    }
+    const { readyToReview, readyToMerge } = await computePRSections(deps);
+    return { readyToReview, readyToMerge };
 }
