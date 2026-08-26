@@ -41,6 +41,7 @@ import {
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "./assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "./review-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "./duplicate-subtask-gate.js";
+import { cascadeTriggersOn, shouldCascadeTransitionParent } from "./cascade-gate.js";
 import { loadRoster, type Roster } from "../personas/roster.js";
 
 // ---------- Path helpers ----------
@@ -444,6 +445,32 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 const check = checkReviewGate(existing, roster);
                 if (!check.ok) {
                     return { ok: false, reason: reviewGateReason(key, check.missing) };
+                }
+            }
+            // TAI-220/221/222: parent-status cascade -- move the parent first (best-effort),
+            // then this issue's own transition below. Recursing through the public
+            // transition() (not a raw status write) is what makes "Subtask -> Story -> Epic"
+            // work from this one call: the parent's own transition() cascades to ITS parent
+            // the same way. Entirely best-effort -- a thrown error or a rejected
+            // MutationResult are both just logged, never allowed to block this issue's own
+            // transition (ADR, Confluence page 29753345).
+            if (cascadeTriggersOn(target) && existing.parentKey) {
+                try {
+                    const parent = await mustGetIssue(rootDir, existing.parentKey);
+                    if (shouldCascadeTransitionParent(parent.status)) {
+                        const cascadeResult = await workTracker.transition(existing.parentKey, Status.InProgress);
+                        if (!cascadeResult.ok) {
+                            console.warn(
+                                `Parent-cascade transition failed for ${existing.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`
+                            );
+                        }
+                    }
+                } catch (err) {
+                    console.warn(
+                        `Parent-cascade transition threw for ${existing.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${
+                            err instanceof Error ? err.message : String(err)
+                        }`
+                    );
                 }
             }
             const updated: Issue = { ...existing, status: target, updatedAt: new Date().toISOString() };

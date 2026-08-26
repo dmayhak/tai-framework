@@ -270,6 +270,174 @@ describe("transitions and assignment", () => {
     });
 });
 
+// TAI-220/221/222: a Subtask starting real work should cascade its parent Story (and that
+// Story's own Epic, if any) to In Progress -- a real write, not just the existing read-time
+// Epic derivation in ready.ts.
+describe("parent-status cascade gate", () => {
+    test("cascades Subtask -> Story -> Epic in one transition call", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const epic = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: "epic",
+                summary: "Epic",
+            });
+            const story = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                parentKey: epic.key,
+                summary: "Story",
+            });
+            const dev = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: story.key,
+                summary: "Dev",
+            });
+            // The cascade recurses through the FULL transition() -- including the assignment
+            // gate -- for each ancestor, so each one needs its own assignee to actually move.
+            await workTracker.assignIssue(epic.key, CURRENT_USER);
+            await workTracker.assignIssue(story.key, CURRENT_USER);
+            await workTracker.assignIssue(dev.key, CURRENT_USER);
+
+            const result = await workTracker.transition(dev.key, Status.InProgress);
+            assert.equal(result.ok, true, "the child's own transition must still succeed");
+
+            const fetchedStory = await workTracker.getIssue(story.key);
+            assert.equal(fetchedStory?.status, Status.InProgress, "the parent Story must cascade");
+            const fetchedEpic = await workTracker.getIssue(epic.key);
+            assert.equal(fetchedEpic?.status, Status.InProgress, "the Epic must cascade one level further up");
+        });
+    });
+
+    // Jira allows a Story to have no Epic (a legitimate, common shape, not an edge case to
+    // guard against) -- the cascade must stop cleanly at the Story with no error, rather than
+    // assuming an Epic always exists one level further up.
+    test("cascades Subtask -> Story and stops cleanly when the Story has no Epic", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const story = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Top-level story, no Epic",
+            });
+            const dev = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: story.key,
+                summary: "Dev",
+            });
+            await workTracker.assignIssue(story.key, CURRENT_USER);
+            await workTracker.assignIssue(dev.key, CURRENT_USER);
+
+            const result = await workTracker.transition(dev.key, Status.InProgress);
+            assert.equal(result.ok, true);
+
+            const fetchedStory = await workTracker.getIssue(story.key);
+            assert.equal(fetchedStory?.status, Status.InProgress, "the Story must still cascade");
+            assert.equal(fetchedStory?.parentKey, undefined, "confirms this Story genuinely has no Epic");
+        });
+    });
+
+    test("never regresses a Done or In Review parent backward to In Progress", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const story = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Already-finished story",
+            });
+            await workTracker.transition(story.key, Status.Done);
+
+            const dev = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: story.key,
+                summary: "Unrelated follow-up work",
+            });
+            await workTracker.assignIssue(dev.key, CURRENT_USER);
+            await workTracker.transition(dev.key, Status.InProgress);
+
+            const fetchedStory = await workTracker.getIssue(story.key);
+            assert.equal(fetchedStory?.status, Status.Done, "a Done parent must never be moved backward");
+        });
+    });
+
+    test("is idempotent -- a parent already In Progress is left alone, not re-written", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const story = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Story",
+            });
+            await workTracker.assignIssue(story.key, CURRENT_USER);
+            await workTracker.transition(story.key, Status.InProgress);
+            const beforeSecondChild = await workTracker.getIssue(story.key);
+
+            const secondDev = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: story.key,
+                summary: "Second child starting later",
+                allowDuplicate: true,
+            });
+            await workTracker.assignIssue(secondDev.key, CURRENT_USER);
+            await workTracker.transition(secondDev.key, Status.InProgress);
+
+            const afterSecondChild = await workTracker.getIssue(story.key);
+            assert.equal(afterSecondChild?.status, Status.InProgress);
+            assert.equal(
+                afterSecondChild?.updatedAt,
+                beforeSecondChild?.updatedAt,
+                "an already-In-Progress parent must not be re-written at all"
+            );
+        });
+    });
+
+    test("a rejected parent-cascade transition is best-effort -- the child's own transition still succeeds", async () => {
+        await withBackend(async ({ workTracker }) => {
+            // The parent Story has no assignee -- its own cascade transition to In Progress
+            // will be rejected by the assignment gate. The child is assigned, so ITS
+            // transition must still succeed regardless.
+            const story = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Unassigned parent story",
+            });
+            const dev = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: story.key,
+                summary: "Dev",
+            });
+            await workTracker.assignIssue(dev.key, CURRENT_USER);
+
+            const result = await workTracker.transition(dev.key, Status.InProgress);
+            assert.equal(result.ok, true, "a rejected cascade must never block the child's own transition");
+
+            const fetchedStory = await workTracker.getIssue(story.key);
+            assert.equal(fetchedStory?.status, Status.ToDo, "the rejected parent cascade must not have applied");
+        });
+    });
+
+    test("does not fire for a transition into Done", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const story = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Story",
+            });
+            const dev = await workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                parentKey: story.key,
+                summary: "Dev",
+            });
+            await workTracker.transition(dev.key, Status.Done);
+
+            const fetchedStory = await workTracker.getIssue(story.key);
+            assert.equal(fetchedStory?.status, Status.ToDo, "Done must never trigger the cascade");
+        });
+    });
+});
+
 // TAI-41 ADR's "hard" checkpoint kind, TAI-42's own scope: REVIEW_GATES enforcement
 // (brief §3.3/§3.9/§5.6), same gate the Jira backend enforces (work-tracker.test.ts) — kept
 // identical across backends so this doesn't become another TAI-15-style divergence.
