@@ -360,6 +360,140 @@ describe("transition", () => {
         });
     });
 
+    // TAI-220/221/222: a Subtask starting real work should cascade its parent Story to In
+    // Progress -- a real write, recursing through transition() itself (so a Story's own
+    // cascade to its Epic works the same way, one level further up).
+    describe("the parent-status cascade gate", () => {
+        interface FakeIssueState {
+            status: string;
+            assignee: { accountId: string; displayName: string } | null;
+            issuetype: string;
+            parentKey?: string;
+        }
+
+        /** A minimal, stateful multi-issue Jira fake -- mutates `issues[key].status` on a
+         *  POST transition, so a subsequent GET (the cascade's own re-fetch, and the outer
+         *  `asMutation` re-fetch after a real write) reflects it. Generic single-issue fakes
+         *  elsewhere in this file don't need this since they never recurse across two keys. */
+        function trackerForIssues(issues: Record<string, FakeIssueState>) {
+            const calls: string[] = [];
+            const wt = trackerWith(
+                stubFetch((url, init) => {
+                    const path = url.split("atlassian.net")[1]?.split("?")[0] ?? "";
+                    calls.push(`${init.method ?? "GET"} ${path}`);
+                    const match = path.match(/^\/rest\/api\/2\/issue\/([A-Za-z0-9-]+)(\/transitions)?$/);
+                    if (!match) throw new Error(`unexpected call: ${path}`);
+                    const [, key, transitionsSuffix] = match;
+                    const rec = issues[key];
+                    if (!rec) throw new Error(`unknown issue in fake: ${key}`);
+
+                    if (transitionsSuffix && (init.method ?? "GET") === "GET") {
+                        return json({ transitions: [{ id: "21", name: "Start", to: { name: "In Progress" } }] });
+                    }
+                    if (transitionsSuffix && init.method === "POST") {
+                        rec.status = "In Progress";
+                        return new Response(null, { status: 204 });
+                    }
+                    return json({
+                        key,
+                        fields: {
+                            project: { key: "TAI" },
+                            issuetype: { name: rec.issuetype },
+                            summary: "s",
+                            status: { name: rec.status },
+                            assignee: rec.assignee,
+                            ...(rec.parentKey ? { parent: { key: rec.parentKey } } : {}),
+                            created: "x",
+                            updated: "y",
+                        },
+                    });
+                })
+            );
+            return { wt, calls };
+        }
+
+        it("cascades Subtask -> Story -> Epic, recursing through transition() itself", async () => {
+            const issues: Record<string, FakeIssueState> = {
+                "TAI-10": {
+                    status: "To Do",
+                    assignee: { accountId: "a1", displayName: "del" },
+                    issuetype: "Dev",
+                    parentKey: "TAI-1",
+                },
+                "TAI-1": {
+                    status: "To Do",
+                    assignee: { accountId: "a1", displayName: "del" },
+                    issuetype: "Story",
+                    parentKey: "TAI-0",
+                },
+                "TAI-0": { status: "To Do", assignee: { accountId: "a1", displayName: "del" }, issuetype: "Epic" },
+            };
+            const { wt } = trackerForIssues(issues);
+
+            const result = await wt.transition(toIssueKey("TAI-10"), Status.InProgress);
+            assert.equal(result.ok, true, "the child's own transition must still succeed");
+            assert.equal(issues["TAI-1"]?.status, "In Progress", "the Story must have been cascaded");
+            assert.equal(issues["TAI-0"]?.status, "In Progress", "the Epic must cascade one level further up");
+        });
+
+        it("cascades to a Story and stops cleanly when the Story has no Epic (a legitimate, common shape)", async () => {
+            const issues: Record<string, FakeIssueState> = {
+                "TAI-10": {
+                    status: "To Do",
+                    assignee: { accountId: "a1", displayName: "del" },
+                    issuetype: "Dev",
+                    parentKey: "TAI-1",
+                },
+                // No parentKey -- a top-level Story with no Epic. Must not be assumed to
+                // always have one just because a cascade path exists above it.
+                "TAI-1": { status: "To Do", assignee: { accountId: "a1", displayName: "del" }, issuetype: "Story" },
+            };
+            const { wt } = trackerForIssues(issues);
+
+            const result = await wt.transition(toIssueKey("TAI-10"), Status.InProgress);
+            assert.equal(result.ok, true);
+            assert.equal(issues["TAI-1"]?.status, "In Progress", "the Story must still cascade");
+        });
+
+        it("a rejected parent-cascade (parent unassigned) is best-effort -- the child's own transition still succeeds", async () => {
+            const issues: Record<string, FakeIssueState> = {
+                "TAI-10": {
+                    status: "To Do",
+                    assignee: { accountId: "a1", displayName: "del" },
+                    issuetype: "Dev",
+                    parentKey: "TAI-1",
+                },
+                "TAI-1": { status: "To Do", assignee: null, issuetype: "Story" },
+            };
+            const { wt } = trackerForIssues(issues);
+
+            const result = await wt.transition(toIssueKey("TAI-10"), Status.InProgress);
+            assert.equal(result.ok, true, "a rejected cascade must never block the child's own transition");
+            assert.equal(issues["TAI-1"]?.status, "To Do", "the rejected parent cascade must not have applied");
+        });
+
+        it("does not cascade a Done or In Review parent backward -- and never even attempts the write", async () => {
+            const issues: Record<string, FakeIssueState> = {
+                "TAI-10": {
+                    status: "To Do",
+                    assignee: { accountId: "a1", displayName: "del" },
+                    issuetype: "Dev",
+                    parentKey: "TAI-1",
+                },
+                "TAI-1": { status: "Done", assignee: { accountId: "a1", displayName: "del" }, issuetype: "Story" },
+            };
+            const { wt, calls } = trackerForIssues(issues);
+
+            const result = await wt.transition(toIssueKey("TAI-10"), Status.InProgress);
+            assert.equal(result.ok, true);
+            assert.equal(issues["TAI-1"]?.status, "Done", "a Done parent must never be moved backward");
+            assert.ok(
+                !calls.includes("POST /rest/api/2/issue/TAI-1/transitions"),
+                "a Done parent must not even receive a transition attempt"
+            );
+        });
+    });
+
     /**
      * TAI-41 ADR's "hard" checkpoint kind, TAI-42's own scope: REVIEW_GATES enforcement
      * (brief §3.3/§3.9/§5.6). Only Kickoff has a gate today (`REVIEW_GATES` in

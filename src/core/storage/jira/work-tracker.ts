@@ -38,6 +38,7 @@ import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
+import { cascadeTriggersOn, shouldCascadeTransitionParent } from "../cascade-gate.js";
 import { loadRoster, type Roster } from "../../personas/roster.js";
 import {
     type RawIssue,
@@ -287,6 +288,33 @@ export function createJiraWorkTracker(
                         const check = checkReviewGate(current, roster);
                         if (!check.ok) {
                             throw new JiraRejection(reviewGateReason(key, check.missing), 409);
+                        }
+                    }
+                    // TAI-220/221/222: parent-status cascade -- move the parent first
+                    // (best-effort), then this issue's own transition below. Recursing
+                    // through the public transition() (not a raw status write) is what makes
+                    // "Subtask -> Story -> Epic" work from this one call: the parent's own
+                    // transition() cascades to ITS parent the same way. Entirely best-effort
+                    // -- a thrown error or a rejected MutationResult are both just logged,
+                    // never allowed to block this issue's own transition (ADR, Confluence
+                    // page 29753345).
+                    if (cascadeTriggersOn(target) && current.parentKey) {
+                        try {
+                            const parent = await fetchIssue(current.parentKey);
+                            if (shouldCascadeTransitionParent(parent.status)) {
+                                const cascadeResult = await workTracker.transition(current.parentKey, Status.InProgress);
+                                if (!cascadeResult.ok) {
+                                    console.warn(
+                                        `Parent-cascade transition failed for ${current.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`
+                                    );
+                                }
+                            }
+                        } catch (err) {
+                            console.warn(
+                                `Parent-cascade transition threw for ${current.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${
+                                    err instanceof Error ? err.message : String(err)
+                                }`
+                            );
                         }
                     }
                 }
