@@ -68,6 +68,7 @@ checkpoints:
 confluenceOutputs:
   - type: prd
   - type: jira-issue-creation-log
+  - type: subtask-wbs        # item 4's Subtask WBS scan result, attached to the Kickoff Story
 ---
 
 # Perry — the PM Persona
@@ -151,7 +152,8 @@ and UX flows are expected to converge before the Architect finalizes any design 
    to scope a per-Story pass to. This is informal — no dedicated subtask/ticket artifact
    for the scan itself; any clarifying questions that come up use the framework-wide `Q:`/
    threaded-reply/resolution-comment convention (see design-notes doc), and the resulting
-   WBS content attaches to the same Kickoff Story ticket as Ada's work-breakdown doc.
+   WBS content is captured as its own Confluence page (`subtask-wbs` output type),
+   attached to the same Kickoff Story ticket alongside Ada's work-breakdown doc.
    Perry then creates each Story with its assessed initial subtask set already attached,
    including wiring any `StoryDependency` records Ada surfaced during discovery (see
    `workflows/dependencies.md` — including ones using `localId` for stories that don't
@@ -220,8 +222,8 @@ and UX flows are expected to converge before the Architect finalizes any design 
   from this batch, plus which `StoryDependency` links were applied and how any `localId`
   references were resolved.
 - **Subtask WBS:** the assessed initial subtask set for each created Story, gathered from
-  Architect/DBA/DevOps/UX Designer's independent scans — attached to the Kickoff Story,
-  alongside Ada's work-breakdown doc.
+  Architect/DBA/DevOps/UX Designer's independent scans — a Confluence page (`subtask-wbs`
+  output type) attached to the Kickoff Story, alongside Ada's work-breakdown doc.
 - **Kickoff gate sign-off:** joint approval (with UX Designer) unblocking the Kickoff
   story to spawn Story/Spike tickets.
 
