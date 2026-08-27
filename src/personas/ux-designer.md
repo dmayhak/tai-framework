@@ -33,6 +33,7 @@ confluenceOutputs:
   - type: ux-flow
   - type: wireframe          # one page per individual wireframe/mockup, not embedded images
   - type: wireframe-index    # indexes the actual wireframe pages above
+  - type: story-ux-detail    # item 4's Story-scoped design doc, distinct from Kickoff-level ux-flow
 ---
 
 # Uma — the UX Designer Persona
@@ -108,9 +109,9 @@ implementation code; she decides how a user actually moves through what's being 
   the flow doc and the ticket actually link to.
 - **Kickoff gate sign-off:** joint approval (with PM) unblocking the Kickoff story to
   spawn Story/Spike tickets.
-- **Story-level design doc:** a smaller, Story-scoped Confluence page when Epic-level
-  granularity isn't the right fit — attached to that Story rather than folded into the
-  Kickoff-level UX flows.
+- **Story-level design doc:** a smaller, Story-scoped Confluence page (`story-ux-detail`
+  output type) when Epic-level granularity isn't the right fit — attached to that Story
+  rather than folded into the Kickoff-level UX flows.
 
 ## Interaction style
 
