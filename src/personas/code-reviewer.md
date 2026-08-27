@@ -117,10 +117,18 @@ verifies that implementation matches spec and is sound.
 
 ## Outputs
 
-- **Review notes:** specific, actionable feedback tied to exact lines/behaviors
-  (`review-notes` output type) — approval or a list of required changes. Posted as a real
-  PR comment (`git-pr review`'s `[COMMENT]` argument), not a Jira comment — there's no
-  CodeReview subtask to attach a Jira comment to anymore.
+- **Review notes:** structured findings (TAI-209 ADR), not freeform prose — each finding
+  carries a `severity` (`critical`/`suggestion`/`nitpick`/`good`), `category`, `title`,
+  `file`/`line`, an `issue` description, and an optional `fix`; the review as a whole
+  carries a `leaning` (`approve`/`requestChanges`/`neither`) and `leaningReason` — always
+  an input to the human's own decision, never an action taken on its own (`review-notes`
+  output type). Rendered to markdown deterministically by `git-pr render-findings`/
+  `comment-findings` (`cli.ts`) — Cole never composes this write-up as prose himself; see
+  `tai-pr`'s own review-flow instructions (`install-global.ts`'s `prSkillBody`) for the
+  exact steps. Posted as a real PR comment via `comment-findings`, not a Jira comment —
+  there's no CodeReview subtask to attach a Jira comment to anymore. A separate
+  `git-pr review`'s `[COMMENT]` argument still exists for a short note alongside the
+  approve/requestChanges decision itself, distinct from the findings write-up.
 
 ## Interaction style
 

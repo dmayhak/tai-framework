@@ -250,3 +250,18 @@ export function parseCommentArgs(gitArgs: readonly string[]): ParsedCommentArgs 
     if (first !== undefined) return { prIdArg: undefined, body: first };
     throw new Error("Usage: git-pr comment <REPO> [PR-ID] <BODY>");
 }
+
+export interface ParsedFindingsCommentArgs {
+    readonly prIdArg: string | undefined;
+    readonly findingsArg: string;
+}
+
+/** Parses `git-pr comment-findings`'s trailing args: `[PR-ID] <FINDINGS-JSON-OR-@FILE>` —
+ *  same last-argument-is-required, count-disambiguates convention as `parseCommentArgs`
+ *  (TAI-209 ADR Decision §2). */
+export function parseFindingsCommentArgs(gitArgs: readonly string[]): ParsedFindingsCommentArgs {
+    const [first, second] = gitArgs;
+    if (second !== undefined) return { prIdArg: first, findingsArg: second };
+    if (first !== undefined) return { prIdArg: undefined, findingsArg: first };
+    throw new Error("Usage: git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>");
+}

@@ -62,12 +62,14 @@ import {
     parseReviewArgs,
     parseMergeArgs,
     parseCommentArgs,
+    parseFindingsCommentArgs,
     isGreen,
     isMergeConflict,
     findLinkedDevSubtask,
     validateBranchName,
     validatePrTitle,
 } from "../core/commands/git-pr.js";
+import { parseReviewFindings, renderReviewFindings } from "../core/git/review-findings.js";
 import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -725,11 +727,25 @@ async function main(): Promise<void> {
             "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
             "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
             "     | git-pr comment <REPO> [PR-ID] <BODY>\n" +
+            "     | git-pr render-findings <FINDINGS-JSON-OR-@FILE>\n" +
+            "     | git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>\n" +
             "     | git-pr unapprove <REPO> [PR-ID]\n" +
             "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
-            "  [PR-ID] is optional on review/comment/unapprove/merge — omit it to resolve against " +
-            "REPO's sole open PR; if more than one is open, the error lists them so you can pass " +
-            "one explicitly.";
+            "  [PR-ID] is optional on review/comment/comment-findings/unapprove/merge — omit it to " +
+            "resolve against REPO's sole open PR; if more than one is open, the error lists them so " +
+            "you can pass one explicitly.";
+
+        // TAI-209/210 ADR: structured findings, not model-composed prose. render-findings is a
+        // pure function (JSON in, markdown out) -- no GitHost call, no roster gate, no <REPO> --
+        // this is what the model runs at step 3 so its own stdout becomes the visible findings
+        // text, never a narrative it authored itself.
+        if (action === "render-findings") {
+            const [findingsArg] = actionArgs;
+            if (!findingsArg) throw new Error(usage);
+            const findings = parseReviewFindings(findingsArg);
+            console.log(renderReviewFindings(findings));
+            return;
+        }
 
         // rev 52 (TAI-159 ADR): review/comment are roster-gated, not persona-gated — no
         // <ISSUE-KEY> at all (there's no CodeReview subtask left to resolve permission
@@ -761,6 +777,26 @@ async function main(): Promise<void> {
             const { prIdArg, body } = parseCommentArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             const comment = await gitHost.addPullRequestComment(repo, prId, body);
+            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
+            return;
+        }
+
+        // TAI-209/210 ADR: the step-4 action, run only once the human has said to post.
+        // Renders the same way render-findings does, posts it as the summary comment via the
+        // same general-comment path as `comment` above. No per-finding inline posting yet --
+        // TAI-207's GitHost.addInlineComment doesn't exist yet, and the ADR's own Consequences
+        // section is explicit this isn't a blocking gap for this ticket: critical findings
+        // simply appear in the summary's own severity section until TAI-207 lands.
+        if (action === "comment-findings") {
+            const [repoArg, ...gitArgs] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
+            const repo = toRepoId(repoArg);
+
+            const { prIdArg, findingsArg } = parseFindingsCommentArgs(gitArgs);
+            const findings = parseReviewFindings(findingsArg);
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            const comment = await gitHost.addPullRequestComment(repo, prId, renderReviewFindings(findings));
             console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
             return;
         }
@@ -914,7 +950,10 @@ async function main(): Promise<void> {
             return;
         }
 
-        throw new Error(`Unknown git-pr action "${action}" — expected "create", "review", "comment", "unapprove", or "merge".`);
+        throw new Error(
+            `Unknown git-pr action "${action}" — expected "create", "review", "comment", "render-findings", ` +
+                `"comment-findings", "unapprove", or "merge".`
+        );
     }
 
     if (subcommand === "work") {

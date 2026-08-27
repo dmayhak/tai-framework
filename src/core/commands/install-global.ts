@@ -171,17 +171,23 @@ function prSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment <REPO> [PR-ID] <BODY>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr render-findings <FINDINGS-JSON-OR-@FILE>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr unapprove <REPO> [PR-ID]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n` +
         "```\n\n" +
-        "**`review`/`comment`/`unapprove` take NO `<ISSUE-KEY>`** — unlike `create`/`merge`, none " +
-        "is scoped to one issue at all (rev 52, TAI-159 ADR): each resolves the acting human from " +
-        "`BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and checks them against the \"PR Reviewers\" " +
-        "roster, rejecting if they aren't listed. Passing an issue key as the first argument to " +
-        "any of them fails with \"Malformed RepoId\" — `<REPO>` really is the first argument.\n\n" +
-        "`[PR-ID]` is optional on `review`/`comment`/`unapprove`/`merge` — omit it and TAI resolves it against " +
-        "`REPO`'s sole currently-open PR. If more than one is open, the command fails with a list " +
-        "of candidates instead of guessing — pass one of those IDs explicitly and re-run.\n\n" +
+        "**`review`/`comment`/`comment-findings`/`unapprove` take NO `<ISSUE-KEY>`** — unlike " +
+        "`create`/`merge`, none is scoped to one issue at all (rev 52, TAI-159 ADR): each resolves " +
+        "the acting human from `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and checks them against the " +
+        "\"PR Reviewers\" roster, rejecting if they aren't listed. Passing an issue key as the " +
+        "first argument to any of them fails with \"Malformed RepoId\" — `<REPO>` really is the " +
+        "first argument. **`render-findings` takes neither `<ISSUE-KEY>` nor `<REPO>`** — it's a " +
+        "pure local render (findings JSON in, markdown out), no GitHost call at all, so there's " +
+        "nothing to scope it to or gate.\n\n" +
+        "`[PR-ID]` is optional on `review`/`comment`/`comment-findings`/`unapprove`/`merge` — omit " +
+        "it and TAI resolves it against `REPO`'s sole currently-open PR. If more than one is open, " +
+        "the command fails with a list of candidates instead of guessing — pass one of those IDs " +
+        "explicitly and re-run.\n\n" +
         "`create`/`merge` are invoked as whichever persona owns `<ISSUE-KEY>` — resolved from the " +
         "issue's own `persona` field, with its `gitHost` permission grant enforced, the same way " +
         "`/tai-work` enforces `workOn`. `review`/`comment` are not persona-scoped at all (see " +
@@ -198,8 +204,15 @@ function prSkillBody(taiHome: string): string {
         "the roster-gated review action `readyToReview` surfaces (no Jira subtask involved at " +
         "all) — nothing else to transition afterward.\n" +
         "- `comment` — posts a real general PR comment (not tied to an approve/request-changes " +
-        "decision). This is how review findings actually get posted — see the review-flow section " +
-        "below.\n" +
+        "decision, and not structured review findings — see `render-findings`/`comment-findings` " +
+        "below for those).\n" +
+        "- `render-findings` (TAI-209/210 ADR) — takes a structured findings JSON payload " +
+        "(`@<path>` to a file, or the raw JSON inline) and deterministically renders it to " +
+        "markdown on stdout. Posts nothing. This is what the review flow below runs so the " +
+        "*rendered output*, not any prose you compose, becomes the visible findings text.\n" +
+        "- `comment-findings` — same rendering as `render-findings`, but posts the result as the " +
+        "PR's summary comment (via the same general-comment path `comment` uses). This is how " +
+        "review findings actually get posted — see the review-flow section below.\n" +
         "- `unapprove` (TAI-217/219) — withdraws a previously-cast approval. Only ever run because " +
         "the human explicitly asked for it, in their own words — never automatically, not even " +
         "when `merge` itself suggests it (see below). The main real use: Bitbucket's free tier has " +
@@ -226,13 +239,36 @@ function prSkillBody(taiHome: string): string {
         "origin/<destinationBranch>...origin/<sourceBranch>`.\n" +
         `2. Read \`${taiHome}/src/personas/code-reviewer.md\` and apply Cole's Core Principles to ` +
         "what the diff actually changed — the same standard a human reviewer on the \"PR " +
-        "Reviewers\" roster would apply.\n" +
-        "3. **Present your findings, then STOP — this is the complete output of \"review this " +
-        "PR,\" full stop.** What you'd flag (or \"no issues found\"), and your own leaning " +
-        "(approve, request changes, or neither) as one input for the human's decision. Do NOT, " +
-        "in this same turn: run `git-pr comment`, run `git-pr review`, or ask a question via any " +
-        "interactive tool. End your turn right here and wait for the human's own next message — " +
-        "do not try to keep going.\n\n" +
+        "Reviewers\" roster would apply. Build your findings as a single structured JSON object " +
+        "(TAI-209 ADR) — never prose — conforming to:\n\n" +
+        "```json\n" +
+        "{\n" +
+        '  "overview": "2-3 sentence high-level assessment",\n' +
+        '  "findings": [\n' +
+        "    {\n" +
+        '      "severity": "critical|suggestion|nitpick|good",\n' +
+        '      "category": "Security|Performance|Logic|Style|Architecture|...",\n' +
+        '      "title": "brief title",\n' +
+        '      "file": "path/to/file.ts",\n' +
+        '      "line": 42,\n' +
+        '      "issue": "one short paragraph, no line breaks",\n' +
+        '      "fix": "exact replacement for the single line at \\"line\\", or omit"\n' +
+        "    }\n" +
+        "  ],\n" +
+        '  "leaning": "approve|requestChanges|neither",\n' +
+        '  "leaningReason": "one sentence — your own rationale, never a decision"\n' +
+        "}\n" +
+        "```\n\n" +
+        "`line`/`fix` are optional per finding, everything else is required. An empty " +
+        "`findings` array is a valid, preferred outcome for clean code — don't invent issues to " +
+        "justify the review. Write this JSON to a temporary file (your host's own scratch/temp " +
+        "location if it has one, otherwise any plain temp path) — every command below takes it as " +
+        "`@<path>`, never as prose you type into the command yourself.\n" +
+        "3. **Run `git-pr render-findings @<path>` and let ITS OWN stdout be the visible findings " +
+        "— then STOP. This is the complete output of \"review this PR,\" full stop.** Do NOT, in " +
+        "this same turn: run `git-pr comment-findings`, run `git-pr review`, or ask a question via " +
+        "any interactive tool. End your turn right here and wait for the human's own next " +
+        "message — do not try to keep going.\n\n" +
         "TAI-202/TAI-203 (found live, 2026-08-25 — two same-turn wordings tried and failed the " +
         "same way before landing on this design): a session that skips straight to a question " +
         "with no findings shown leaves the human unable to answer it; a session that shows " +
@@ -240,13 +276,18 @@ function prSkillBody(taiHome: string): string {
         "stops after stating its own recommendation — a polished \"Findings... I'd lean " +
         "approve\" write-up reads as a complete, satisfying answer, and no amount of \"don't " +
         "stop\" wording in this file fixed that. **Don't try to word around it a third time** — " +
-        "stopping after step 3 is correct behavior, not a bug to prompt-engineer away.\n\n" +
+        "stopping after step 3 is correct behavior, not a bug to prompt-engineer away. TAI-209 " +
+        "ADR (2026-08-27): moving findings to structured JSON removes the specific narrative-" +
+        "conclusion trap at its root — you never compose the write-up yourself, `render-findings`' " +
+        "own deterministic stdout is what the human sees — but the stop-and-wait boundary stays " +
+        "exactly as strict as before. Don't relax it just because the text is machine-rendered " +
+        "now.\n\n" +
         "4. **When the human's own next message tells you what to do, that ordinary reply is " +
         "the trigger — not a same-turn continuation, not a special tool.** They'll say it in " +
         "plain language: \"post it and approve,\" \"don't post, request changes,\" \"neither,\" " +
         "\"just approve, no comment needed,\" etc. — interpret it and act:\n" +
-        "   - If they want the findings posted: run `git-pr comment` with your findings as " +
-        "`<BODY>`.\n" +
+        "   - If they want the findings posted: run `git-pr comment-findings <REPO> [PR-ID] " +
+        "@<path>` — the same file from step 2, never retyped or re-composed as prose.\n" +
         "   - If they want a decision recorded: run `git-pr review` with `approve` or " +
         "`requestChanges` — only ever because they said so explicitly; \"neither\"/no clear " +
         "decision means no `review` call at all.\n" +
