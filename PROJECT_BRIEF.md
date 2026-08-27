@@ -4,7 +4,26 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-24 (rev 52 — **§5.4/§6: `CodeReview` subtask retired in favor
+> **Last updated:** 2026-08-27 (rev 53 — **§5.4: the CI-green merge gate no longer treats a
+> commit with zero `getCommitStatuses` as failing.** Context: `bitbucket-pipelines.yml`
+> became a `custom:` (manual-only) pipeline this cycle — no automatic trigger of any kind —
+> after this project's Bitbucket free-tier 50 build-minute/month quota was hit twice in one
+> session; `git-pr merge`'s CI-gate was never updated to match, so it rejected every merge
+> from PR #56 onward (tracked as TAI-230). `isGreen()` (`src/core/commands/git-pr.ts`)
+> originally read zero statuses as "pipeline never ran, treat as failing" — a deliberate
+> TAI-107/108 decision from when Pipelines auto-ran on every push, so an empty list was
+> genuinely suspicious. That assumption is gone: zero statuses is now the ORDINARY case for
+> every commit unless a human deliberately triggers the manual pipeline. Human-confirmed
+> live (2026-08-27): a merge must not be held up over a pipeline nobody asked to run.
+> `isGreen([])` now returns `true`; any status that IS present and non-successful (failed,
+> in-progress) still blocks, same as before — only the "nobody ran anything" case stopped
+> gating. Fixed in `git-pr.ts`, `git-pr.test.ts`, and
+> `bitbucket-git-host.integration.test.ts`'s live assertion (TAI-250, a Dev subtask under
+> TAI-230's Spike). This also unblocks `readyToMerge` (§5.4/TAI-107-108's own list), which
+> had been silently empty forever under the old rule once Pipelines went manual. TAI-230
+> itself stays open for the broader Pipelines-strategy question this was only the
+> `git-pr merge` half of.
+> Prior: rev 52 — **§5.4/§6: `CodeReview` subtask retired in favor
 > of git-host-driven review readiness, superseding TAI-34's design.** TAI-157/158/159: a
 > real, near-term company requirement for N-of-M PR approvals surfaced a structural gap
 > TAI-34 didn't anticipate — a Jira subtask needs exactly one `Assignee` (§5.5's hard

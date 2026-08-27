@@ -56,14 +56,16 @@ describe("bitbucket GitHost: tai-framework (live, read-only)", { skip }, () => {
         assert.ok(branches.includes("master"));
     });
 
-    it("getCommitStatuses reports the pipeline's own build status for HEAD of master", async () => {
+    it("getCommitStatuses returns cleanly for HEAD of master (TAI-230: Pipelines is manual-only now)", async () => {
         const headHash = await branchTipHash(REPO_SLUG, "master");
         const statuses = await backend.gitHost.getCommitStatuses(repo, headHash);
-        // This project's own bitbucket-pipelines.yml (TAI-32) runs on every push to master —
-        // by the time TAI-37 exists, master has multiple green builds (see the
-        // bitbucket-pipelines-gotchas memory). A commit with zero statuses would mean either
-        // the pipeline never ran or this call is hitting the wrong commit.
-        assert.ok(statuses.length > 0, "expected at least one commit status on master's HEAD");
+        // bitbucket-pipelines.yml (TAI-32) originally ran on every push to master, so by
+        // TAI-37 master had multiple green builds. REVISED (TAI-230, 2026-08-27): the
+        // pipeline is now `custom:` (manual-only) after hitting the 50 build-minute/month
+        // free-tier quota twice — a commit with zero statuses is the ordinary case now, not
+        // a sign something's wrong (see isGreen, TAI-230/250). This just confirms the call
+        // itself works against the real repo; it no longer asserts statuses exist.
+        assert.ok(Array.isArray(statuses));
     });
 });
 
