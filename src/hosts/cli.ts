@@ -918,7 +918,7 @@ async function main(): Promise<void> {
     }
 
     if (subcommand === "work") {
-        if (!arg) throw new Error("Usage: tai_work <ISSUE-KEY>");
+        if (!arg) throw new Error("Usage: work <ISSUE-KEY>");
         const turn = await prepareWorkTurn(
             {
                 backend: config.backend,
@@ -1125,7 +1125,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: tai_work <ISSUE-KEY> | tai_ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link ... | page create|link ... | install-global [TAI-HOME] ` +
             `| init status|jira|confluence|bitbucket|env|claude-md`
     );
