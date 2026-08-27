@@ -43,21 +43,27 @@ export async function resolvePullRequestId(
     return open[0]!.id;
 }
 
-// ---------- CI-status gating (TAI-107/TAI-108) ----------
+// ---------- CI-status gating (TAI-107/TAI-108, revised TAI-230/250) ----------
 //
 // Brief §5.4: "Merge/Deploy -> GitHost.mergePullRequest, gated on GitHost.getCommitStatuses
 // being green first." Confirmed live (2026-08-20) that nothing in the codebase actually did
 // this — both this session's real merges (PR #16, #17) went through with zero CI check.
+//
+// REVISED (TAI-230/250, human-confirmed 2026-08-27): the original rule treated zero statuses
+// as failing, on the assumption Pipelines always auto-ran on push so an empty list meant
+// something was wrong. That assumption no longer holds — `bitbucket-pipelines.yml` is now a
+// `custom:` (manual-only) pipeline after hitting the 50 build-minute/month free-tier quota
+// twice, so zero statuses is the ORDINARY case for every commit unless a human deliberately
+// triggers a run. A merge must not be held up over a pipeline nobody asked to run.
 
 /**
- * "Green" per brief §5.4's merge gate: at least one status exists — a commit with zero
- * statuses means the pipeline never ran (or this is the wrong commit), which must NOT read
- * as "nothing to block on," same reasoning as `bitbucket-git-host.integration.test.ts`'s own
- * live assertion that master's HEAD always has statuses once the pipeline exists — AND every
- * one of them succeeded.
+ * "Green" per brief §5.4's merge gate: no EXISTING status may be non-successful (failed,
+ * in-progress) — but an empty list is vacuously green, since Pipelines is manual-only and
+ * most commits will never have a status at all. A pipeline that WAS actually triggered still
+ * gates the merge on its real outcome; only the "nobody ran anything" case stopped blocking.
  */
 export function isGreen(statuses: readonly CommitStatus[]): boolean {
-    return statuses.length > 0 && statuses.every((s) => s.state === "successful");
+    return statuses.every((s) => s.state === "successful");
 }
 
 /**

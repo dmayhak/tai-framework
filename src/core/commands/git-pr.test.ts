@@ -176,8 +176,8 @@ function statusFixture(state: CommitStatus["state"]): CommitStatus {
 }
 
 describe("isGreen", () => {
-    it("false when there are no statuses at all (pipeline never ran, or wrong commit)", () => {
-        assert.equal(isGreen([]), false);
+    it("true when there are no statuses at all (TAI-230/250: Pipelines is manual-only now, so nobody having run one is the ordinary case, not a block)", () => {
+        assert.equal(isGreen([]), true);
     });
 
     it("true when every status succeeded", () => {

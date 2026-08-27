@@ -866,13 +866,14 @@ async function main(): Promise<void> {
             if (!pr) throw new Error(`PR ${prId} not found on ${repo}.`);
             const statuses = await gitHost.getCommitStatuses(repo, pr.sourceCommit);
             if (!isGreen(statuses)) {
+                // TAI-230/250: isGreen only fails here when at least one status EXISTS and
+                // isn't successful — zero statuses is green now (Pipelines is manual-only),
+                // so `statuses` is never empty in this branch.
                 const result: GitMutationResult = {
                     ok: false,
-                    reason: `CI status not green for ${pr.sourceCommit} — ${
-                        statuses.length === 0
-                            ? "no commit statuses found (pipeline never ran, or wrong commit)"
-                            : statuses.map((s) => `${s.key}: ${s.state}`).join(", ")
-                    }.`,
+                    reason: `CI status not green for ${pr.sourceCommit} — ${statuses
+                        .map((s) => `${s.key}: ${s.state}`)
+                        .join(", ")}.`,
                 };
                 console.log(renderGitMutationResult(result, personaId));
                 return;
