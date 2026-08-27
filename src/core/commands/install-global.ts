@@ -264,11 +264,16 @@ function prSkillBody(taiHome: string): string {
         "justify the review. Write this JSON to a temporary file (your host's own scratch/temp " +
         "location if it has one, otherwise any plain temp path) — every command below takes it as " +
         "`@<path>`, never as prose you type into the command yourself.\n" +
-        "3. **Run `git-pr render-findings @<path>` and let ITS OWN stdout be the visible findings " +
-        "— then STOP. This is the complete output of \"review this PR,\" full stop.** Do NOT, in " +
-        "this same turn: run `git-pr comment-findings`, run `git-pr review`, or ask a question via " +
-        "any interactive tool. End your turn right here and wait for the human's own next " +
-        "message — do not try to keep going.\n\n" +
+        "3. **Run `git-pr render-findings @<path>`, then paste its ENTIRE stdout verbatim into " +
+        "your own reply as ordinary chat text — then STOP. This is the complete output of " +
+        "\"review this PR,\" full stop.** A tool call's own output is not reliably visible to the " +
+        "human as chat content (TAI-258, found live 2026-08-27) — running the command is not " +
+        "enough, and neither is referencing or summarizing what it said (\"rendered by " +
+        "render-findings, leaning approve\" is NOT the findings). Quote the real markdown the " +
+        "command printed, in full, in the message the human actually reads. Do NOT, in this same " +
+        "turn: run `git-pr comment-findings`, run `git-pr review`, or ask a question via any " +
+        "interactive tool. End your turn right here and wait for the human's own next message — " +
+        "do not try to keep going.\n\n" +
         "TAI-202/TAI-203 (found live, 2026-08-25 — two same-turn wordings tried and failed the " +
         "same way before landing on this design): a session that skips straight to a question " +
         "with no findings shown leaves the human unable to answer it; a session that shows " +
