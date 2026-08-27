@@ -26,6 +26,7 @@ import {
     parseReviewArgs,
     parseMergeArgs,
     parseCommentArgs,
+    parseFindingsCommentArgs,
     isGreen,
     isMergeConflict,
     findLinkedDevSubtask,
@@ -168,6 +169,23 @@ describe("parseCommentArgs (TAI-187)", () => {
 
     it("throws on no args at all rather than defaulting to an empty body", () => {
         assert.throws(() => parseCommentArgs([]), /Usage: git-pr comment/);
+    });
+});
+
+describe("parseFindingsCommentArgs (TAI-209/210)", () => {
+    it("PR-ID omitted: one trailing arg is the findings payload", () => {
+        assert.deepEqual(parseFindingsCommentArgs(["@findings.json"]), { prIdArg: undefined, findingsArg: "@findings.json" });
+    });
+
+    it("PR-ID given: two trailing args are PR-ID then findings payload", () => {
+        assert.deepEqual(parseFindingsCommentArgs(["42", "@findings.json"]), {
+            prIdArg: "42",
+            findingsArg: "@findings.json",
+        });
+    });
+
+    it("throws on no args at all rather than defaulting to empty findings", () => {
+        assert.throws(() => parseFindingsCommentArgs([]), /Usage: git-pr comment-findings/);
     });
 });
 
