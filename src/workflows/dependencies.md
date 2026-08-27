@@ -303,6 +303,20 @@ mutually exclusive:
     inward_issue_key=<blocker>, outward_issue_key=<blocked>)`. A link created
     with the keys swapped reads backwards in the Jira UI and is worse than no
     link — double-check direction, don't just fire-and-forget the call.
+- **A subtask's linked Confluence page also gets linked directly to that subtask's
+  immediate parent Story/Bug** — a second, purely human-facing link, on top of
+  whatever `generateBriefing`'s own traversal already covers. Found live (TAI-255,
+  2026-08-27): TAI-209's ADR was linked to TAI-209 itself, and reached TAI-210's
+  (sibling Dev subtask) briefing automatically via the existing
+  `ArchitectureDesign`-blocks-`Dev` link and the one-hop linked-ticket-page rule
+  above — but TAI-208, the parent Story whose own scope the ADR resolves, had zero
+  Confluence links, so a human opening TAI-208 directly in Jira saw nothing pointing
+  at the decision. The AI-side briefing mechanism working correctly doesn't make the
+  page discoverable to a human browsing the board — that's a different consumer with
+  no equivalent traversal, and needs its own real link. Same immediate-parent-only
+  bound as everywhere else in this file (no Epic) — whoever links a page to a
+  subtask links it to that subtask's parent in the same turn, not as a follow-up
+  pass.
 
 ## Open Questions
 - **Resolved (D12):** test tiers are sequential by default
