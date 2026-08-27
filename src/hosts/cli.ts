@@ -74,7 +74,14 @@ import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
-import { DependencyRelation, Status, type Persona, type StoryType, type SubtaskType } from "../core/schema/story-schema.js";
+import {
+    DependencyRelation,
+    isSubtaskIssueType,
+    Status,
+    type Persona,
+    type StoryType,
+    type SubtaskType,
+} from "../core/schema/story-schema.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 
 interface ResolvedConfig {
@@ -373,6 +380,25 @@ function numberedLines(): { next: () => number } {
     return { next: () => ++n };
 }
 
+/**
+ * TAI-244/245: within a section, list subtask-level tickets ("Tasks" — what a human
+ * usually picks) before Story-level tickets ("Stories" — kept for PM reference/context,
+ * e.g. what a Task's parent is, rather than because they're usually picked directly).
+ * Input is assumed already priority-sorted (ready.ts does this); partitioning with a
+ * plain filter preserves that order within each bucket, so no re-sort is needed here.
+ */
+function splitTasksAndStories<T>(
+    items: readonly T[],
+    issueTypeOf: (item: T) => StoryType | SubtaskType | "epic"
+): { tasks: T[]; stories: T[] } {
+    const tasks: T[] = [];
+    const stories: T[] = [];
+    for (const item of items) {
+        (isSubtaskIssueType(issueTypeOf(item)) ? tasks : stories).push(item);
+    }
+    return { tasks, stories };
+}
+
 function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, persona?: string): string {
     const lines: string[] = [`# Ready work${persona ? ` for ${persona}` : ""}`, ""];
     const counter = numberedLines();
@@ -384,7 +410,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     // rebase-conflict flag can ever apply now.
     if (result.inProgress.length > 0) {
         lines.push("## In Progress — resume this", "");
-        for (const c of result.inProgress) {
+        const renderInProgressLine = (c: (typeof result.inProgress)[number]) => {
             const historyNote = c.hasLocalHistory
                 ? "local session history here"
                 : "no local history — started elsewhere, read fresh";
@@ -395,6 +421,19 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
                     `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote}) — ${historyNote}${rebaseFlag}`
             );
             actionableCount++;
+        };
+        const { tasks: inProgressTasks, stories: inProgressStories } = splitTasksAndStories(
+            result.inProgress,
+            (c) => c.issue.issueType
+        );
+        if (inProgressTasks.length > 0) {
+            lines.push("### Tasks", "");
+            inProgressTasks.forEach(renderInProgressLine);
+            if (inProgressStories.length > 0) lines.push("");
+        }
+        if (inProgressStories.length > 0) {
+            lines.push("### Stories", "");
+            inProgressStories.forEach(renderInProgressLine);
         }
         lines.push("");
     }
@@ -403,13 +442,23 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     if (result.ready.length === 0) {
         lines.push("Nothing is currently ready to start.");
     } else {
-        for (const issue of result.ready) {
+        const renderReadyLine = (issue: (typeof result.ready)[number]) => {
             const parentNote = issue.parentKey ? `, parent: ${issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
                     `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote})`
             );
             actionableCount++;
+        };
+        const { tasks: readyTasks, stories: readyStories } = splitTasksAndStories(result.ready, (issue) => issue.issueType);
+        if (readyTasks.length > 0) {
+            lines.push("### Tasks", "");
+            readyTasks.forEach(renderReadyLine);
+            if (readyStories.length > 0) lines.push("");
+        }
+        if (readyStories.length > 0) {
+            lines.push("### Stories", "");
+            readyStories.forEach(renderReadyLine);
         }
     }
     if (result.readyToReview.length > 0) {
