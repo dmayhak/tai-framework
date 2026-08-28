@@ -474,6 +474,12 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                                 `Parent-cascade transition failed for ${existing.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`
                             );
                             cascadeWarnings.push({ key: existing.parentKey, reason: cascadeResult.reason });
+                        } else {
+                            // The parent's OWN transition() may have cascaded further up
+                            // (Story -> Epic) and hit its own rejection -- bubble it up
+                            // rather than losing it one level short of the top-level caller
+                            // (found in review, TAI-276 PR).
+                            cascadeWarnings.push(...(cascadeResult.cascadeWarnings ?? []));
                         }
                     }
                 } catch (err) {
@@ -514,6 +520,11 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                                     `Child-cascade transition failed for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${cascadeResult.reason}`
                                 );
                                 cascadeWarnings.push({ key: child.key, reason: cascadeResult.reason });
+                            } else {
+                                // Same bubble-up as the upward cascade above -- the child's
+                                // own transition() may have cascaded further down to a
+                                // grandchild and hit its own rejection there.
+                                cascadeWarnings.push(...(cascadeResult.cascadeWarnings ?? []));
                             }
                         } catch (err) {
                             const reason = err instanceof Error ? err.message : String(err);

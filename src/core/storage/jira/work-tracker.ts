@@ -324,6 +324,14 @@ export function createJiraWorkTracker(
                                         `Parent-cascade transition failed for ${current.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`
                                     );
                                     warnCascade({ key: current.parentKey, reason: cascadeResult.reason });
+                                } else {
+                                    // The parent's OWN transition() may have cascaded further
+                                    // up (Story -> Epic) and hit its own rejection -- that
+                                    // lands on the PARENT's MutationResult, not this one, so
+                                    // it must be bubbled up explicitly or it's silently lost
+                                    // one level short of the top-level caller (found in
+                                    // review, TAI-276 PR).
+                                    for (const w of cascadeResult.cascadeWarnings ?? []) warnCascade(w);
                                 }
                             }
                         } catch (err) {
@@ -389,6 +397,11 @@ export function createJiraWorkTracker(
                                         `Child-cascade transition failed for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${cascadeResult.reason}`
                                     );
                                     warnCascade({ key: child.key, reason: cascadeResult.reason });
+                                } else {
+                                    // Same bubble-up as the upward cascade above -- the
+                                    // child's own transition() may have cascaded further
+                                    // down to a grandchild and hit its own rejection there.
+                                    for (const w of cascadeResult.cascadeWarnings ?? []) warnCascade(w);
                                 }
                             } catch (err) {
                                 const reason = err instanceof Error ? err.message : String(err);
