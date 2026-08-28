@@ -46,6 +46,7 @@
  */
 
 import {
+    DependencyRelation,
     Status,
     StoryType,
     SubtaskType,
@@ -148,6 +149,14 @@ export interface ReadyWorkResult {
     /** Same candidates as `readyToTest`, additionally CI-green (TAI-106/107/108's
      *  original check, unchanged). Empty whenever `gitHost`/`repos` aren't supplied. */
     readonly readyToMerge: readonly ReadyToMergeCandidate[];
+    /** TAI-266 (TAI-243 ADR): open real-Jira `DependsOn` blockers, keyed by issue key —
+     *  covers both `ready` and `inProgress` entries (ADR decision #3), a separate map
+     *  rather than a new field on `Issue`/`InProgressCandidate` themselves so this stays
+     *  purely additive to the existing shape (no ripple through every other consumer of
+     *  `ready: Issue[]`). A key with no entry here has no open blockers — purely
+     *  informational (ADR decision #4): never excludes anything from `ready`/`inProgress`,
+     *  never blocks `/tai-work`. */
+    readonly blockedBy: ReadonlyMap<IssueKey, readonly IssueKey[]>;
 }
 
 interface ParentPrecedenceContext {
@@ -181,6 +190,34 @@ async function loadParentPrecedenceContext(
             .map((s) => s.issueType as SubtaskType)
     );
     return { storyType: parent.issueType, presentSubtaskTypes, doneSubtaskTypes, priority: parent.priority };
+}
+
+/**
+ * TAI-266 (TAI-243 ADR): the keys of tickets `issue` genuinely depends on that are still
+ * open — a real cross-ticket Jira `Blocks` link (`DependencyRelation.DependsOn`,
+ * `"outgoing"`: the tickets `issue` depends on, not the ones depending on it — see
+ * `jira/work-tracker.ts`'s `getLinkedIssues` doc comment for the inward/outward mapping),
+ * distinct from the internal `SUBTASK_PRECEDENCE` graph `loadParentPrecedenceContext`
+ * already checks. A resolved/canceled blocker link is stale data, not a real block (ADR
+ * decision #2) — filtered out here, not left for a caller to re-check.
+ *
+ * One `getLinkedIssues` + one `getIssue` per returned link, per candidate — the same
+ * per-candidate extra-Jira-call cost shape `loadParentPrecedenceContext` already accepts
+ * for sibling precedence (ADR decision #2: no batching/caching layer for this project's
+ * current backlog size).
+ */
+async function findOpenDependsOnBlockers(workTracker: WorkTracker, issue: Issue): Promise<readonly IssueKey[]> {
+    const links = await workTracker.getLinkedIssues(issue.key, DependencyRelation.DependsOn, "outgoing");
+    if (links.length === 0) return [];
+
+    const blockers: IssueKey[] = [];
+    for (const link of links) {
+        const blocker = await workTracker.getIssue(link.key);
+        if (blocker && blocker.status !== Status.Done && blocker.status !== Status.Canceled) {
+            blockers.push(link.key);
+        }
+    }
+    return blockers;
 }
 
 /**
@@ -512,9 +549,18 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     }
     inProgress.sort((a, b) => priorityRank(a.issue.priority) - priorityRank(b.issue.priority));
 
+    // TAI-266 (TAI-243 ADR decision #3): the same open-DependsOn-blocker check applies to
+    // BOTH `ready` and `inProgress` — an In Progress item can newly become blocked if a
+    // DependsOn link is added or its blocker reopens after work already started.
+    const blockedBy = new Map<IssueKey, readonly IssueKey[]>();
+    for (const issue of [...ready, ...inProgress.map((c) => c.issue)]) {
+        const blockers = await findOpenDependsOnBlockers(deps.workTracker, issue);
+        if (blockers.length > 0) blockedBy.set(issue.key, blockers);
+    }
+
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
 
-    return { ready, inProgress, readyToReview, readyToTest, readyToMerge };
+    return { ready, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy };
 }
 
 export interface FindReadyPRWorkDeps {

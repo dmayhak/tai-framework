@@ -33,6 +33,7 @@ import {
     type CreatePageInput,
     type HumanRef,
     type Issue,
+    type IssueKey,
     type IssuePatch,
     type StorageBackend,
     type WorkTracker,
@@ -510,10 +511,19 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
     const counter = numberedLines();
     let actionableCount = 0;
 
+    // TAI-266 (TAI-243 ADR): a soft, informational suffix -- never excludes anything from
+    // either section below, never blocks `/tai-work` (ADR decision #4). Renders alongside
+    // (not instead of) the rebase-conflict flag below -- an item could carry both at once.
+    const blockedFlag = (key: IssueKey) => {
+        const blockers = result.blockedBy.get(key);
+        return blockers && blockers.length > 0 ? ` ⚠️ blocked by ${blockers.join(", ")} (open)` : "";
+    };
+
     // TAI-196/200: top section — already-started work, split out from genuinely-not-started
     // Ready Work below. A Dev subtask with an open PR is ALWAYS In Progress (rev 52 — it
-    // stays open until the PR merges), so this is also the only place the TAI-217/219
-    // rebase-conflict flag can ever apply now.
+    // stays open until the PR merges), so this is the only place the TAI-217/219
+    // rebase-conflict flag can ever apply — unlike the TAI-266 blocked flag just above,
+    // which applies to both this section and Ready Work below (ADR decision #3).
     if (result.inProgress.length > 0) {
         lines.push("## In Progress — resume this", "");
         const renderInProgressLine = (c: (typeof result.inProgress)[number]) => {
@@ -524,7 +534,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote}) — ${historyNote}${rebaseFlag}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote}) — ${historyNote}${rebaseFlag}${blockedFlag(c.issue.key)}`
             );
             actionableCount++;
         };
@@ -552,7 +562,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             const parentNote = issue.parentKey ? `, parent: ${issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
-                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote})`
+                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote})${blockedFlag(issue.key)}`
             );
             actionableCount++;
         };
