@@ -155,6 +155,32 @@ describe("findReadyWork", () => {
             });
         });
 
+        test("mixed links -- one open, one already-Done -- flags only the genuinely-open blocker", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const openBlocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Still open",
+                });
+                const resolvedBlocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Already resolved",
+                });
+                await backend.workTracker.transition(resolvedBlocker.key, Status.Done);
+                const dependent = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Depends on both",
+                });
+                await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, openBlocker.key);
+                await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, resolvedBlocker.key);
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.deepEqual(result.blockedBy.get(dependent.key), [openBlocker.key]);
+            });
+        });
+
         test("a stale DependsOn link to a Canceled ticket does not flag the dependent", async () => {
             await withBackend(async (backend, taiRoot) => {
                 const blocker = await backend.workTracker.createIssue({
