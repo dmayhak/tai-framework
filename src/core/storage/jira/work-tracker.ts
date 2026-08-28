@@ -23,6 +23,7 @@ import {
     type IssuePatch,
     type IssueFilter,
     type MutationResult,
+    type CascadeWarning,
     type IssueLink,
     type Comment,
     type HumanRef,
@@ -118,9 +119,19 @@ export async function discoverPersonaFieldId(
  * checkpoint, not an ordinary failure" is enforced — §3.3 is explicit that it lives in the
  * storage plugin's operation, "not repeated in each persona's own instructions."
  */
-async function asMutation(run: () => Promise<Issue>): Promise<MutationResult> {
+/**
+ * `run` gets a `warnCascade` callback (TAI-275/276 ADR) — `transition()`'s own best-effort
+ * parent/child cascade block calls it alongside its existing `console.warn` on a failed
+ * cascade attempt, so the failure becomes visible in the returned `MutationResult` too, not
+ * just server-side stderr. Every other `asMutation` caller (`assignIssue`, etc.) simply
+ * never calls it — TS allows a narrower callback (fewer params) to satisfy a wider
+ * function-typed parameter, so their existing `async () => {...}` callbacks are unchanged.
+ */
+async function asMutation(run: (warnCascade: (w: CascadeWarning) => void) => Promise<Issue>): Promise<MutationResult> {
+    const cascadeWarnings: CascadeWarning[] = [];
     try {
-        return { ok: true, issue: await run() };
+        const issue = await run((w) => cascadeWarnings.push(w));
+        return cascadeWarnings.length > 0 ? { ok: true, issue, cascadeWarnings } : { ok: true, issue };
     } catch (err) {
         if (err instanceof JiraRejection) return { ok: false, reason: err.reason };
         throw err; // StorageConnectivityError and genuine bugs both belong upstairs.
@@ -257,7 +268,7 @@ export function createJiraWorkTracker(
          * Returning the reason unaltered is what makes that possible.
          */
         async transition(key: IssueKey, target: Status): Promise<MutationResult> {
-            return asMutation(async () => {
+            return asMutation(async (warnCascade) => {
                 // TAI's OWN checkpoints are checked BEFORE calling Jira (§3.3: "We check
                 // conditions *before* ever calling the Jira 'transition' API"). These are two
                 // of them, not Jira rules.
@@ -312,14 +323,23 @@ export function createJiraWorkTracker(
                                     console.warn(
                                         `Parent-cascade transition failed for ${current.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`
                                     );
+                                    warnCascade({ key: current.parentKey, reason: cascadeResult.reason });
+                                } else {
+                                    // The parent's OWN transition() may have cascaded further
+                                    // up (Story -> Epic) and hit its own rejection -- that
+                                    // lands on the PARENT's MutationResult, not this one, so
+                                    // it must be bubbled up explicitly or it's silently lost
+                                    // one level short of the top-level caller (found in
+                                    // review, TAI-276 PR).
+                                    for (const w of cascadeResult.cascadeWarnings ?? []) warnCascade(w);
                                 }
                             }
                         } catch (err) {
+                            const reason = err instanceof Error ? err.message : String(err);
                             console.warn(
-                                `Parent-cascade transition threw for ${current.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${
-                                    err instanceof Error ? err.message : String(err)
-                                }`
+                                `Parent-cascade transition threw for ${current.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${reason}`
                             );
+                            warnCascade({ key: current.parentKey, reason });
                         }
                     }
                 }
@@ -376,21 +396,27 @@ export function createJiraWorkTracker(
                                     console.warn(
                                         `Child-cascade transition failed for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${cascadeResult.reason}`
                                     );
+                                    warnCascade({ key: child.key, reason: cascadeResult.reason });
+                                } else {
+                                    // Same bubble-up as the upward cascade above -- the
+                                    // child's own transition() may have cascaded further
+                                    // down to a grandchild and hit its own rejection there.
+                                    for (const w of cascadeResult.cascadeWarnings ?? []) warnCascade(w);
                                 }
                             } catch (err) {
+                                const reason = err instanceof Error ? err.message : String(err);
                                 console.warn(
-                                    `Child-cascade transition threw for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${
-                                        err instanceof Error ? err.message : String(err)
-                                    }`
+                                    `Child-cascade transition threw for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${reason}`
                                 );
+                                warnCascade({ key: child.key, reason });
                             }
                         }
                     } catch (err) {
+                        const reason = err instanceof Error ? err.message : String(err);
                         console.warn(
-                            `Child-cascade search failed for ${key} (best-effort, ${key} -> "${target}" already succeeded): ${
-                                err instanceof Error ? err.message : String(err)
-                            }`
+                            `Child-cascade search failed for ${key} (best-effort, ${key} -> "${target}" already succeeded): ${reason}`
                         );
+                        warnCascade({ key, reason: `child-cascade search failed: ${reason}` });
                     }
                 }
 

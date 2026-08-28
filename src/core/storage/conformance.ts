@@ -583,6 +583,82 @@ export function defineStorageConformance(
                 const fetchedStory = await h.backend.workTracker.getIssue(story.key);
                 assert.equal(fetchedStory?.status, Status.ToDo, "the rejected parent cascade must not have applied");
             });
+
+            // TAI-275/276 ADR: visibility, not auto-retry -- the same rejected-cascade
+            // scenario above must also surface it on the result itself, identically on both
+            // backends, not just via console.warn.
+            it("surfaces a rejected parent-cascade as a cascadeWarning on the child's own successful result", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: unassigned parent story (cascadeWarnings)",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: cascade rejection (cascadeWarnings)",
+                    })
+                );
+                await h.backend.workTracker.assignIssue(dev.key, h.validAssignee);
+
+                const result = await h.backend.workTracker.transition(dev.key, Status.InProgress);
+                assert.equal(result.ok, true);
+                assert.ok(result.ok && result.cascadeWarnings && result.cascadeWarnings.length === 1);
+                if (result.ok && result.cascadeWarnings) {
+                    assert.equal(result.cascadeWarnings[0]!.key, story.key);
+                    assert.ok(result.cascadeWarnings[0]!.reason.length > 0);
+                }
+            });
+
+            // Found in review (TAI-276 PR): the FIRST version of the fix only checked
+            // whether the immediate recursive transition() call itself was rejected --
+            // dropping any cascadeWarnings nested INSIDE a recursive call that itself
+            // succeeded. Story -> Epic here is exactly that shape: Story's own transition
+            // succeeds (it cascades to Epic internally and that fails), so Dev's own
+            // transition() must bubble the Epic-level warning up two levels, not just one.
+            it("bubbles up a cascadeWarning from a NESTED cascade two levels down (Dev -> Story succeeds, Story -> Epic fails)", async () => {
+                const epic = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: "epic",
+                        summary: "Conformance: unassigned epic (nested cascadeWarnings)",
+                    })
+                );
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        parentKey: epic.key,
+                        summary: "Conformance: assigned story, unassigned epic (nested cascadeWarnings)",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: cascade rejection two levels up (nested cascadeWarnings)",
+                    })
+                );
+                await h.backend.workTracker.assignIssue(story.key, h.validAssignee);
+                await h.backend.workTracker.assignIssue(dev.key, h.validAssignee);
+                // epic is deliberately left unassigned.
+
+                const result = await h.backend.workTracker.transition(dev.key, Status.InProgress);
+                assert.equal(result.ok, true, "the child's own transition must still succeed");
+
+                const fetchedStory = await h.backend.workTracker.getIssue(story.key);
+                assert.equal(fetchedStory?.status, Status.InProgress, "the assigned Story must still cascade fine");
+
+                assert.ok(
+                    result.ok && result.cascadeWarnings && result.cascadeWarnings.some((w) => w.key === epic.key),
+                    "the Epic-level rejection, nested inside the Story's own transition(), must bubble all the way up to Dev's own result"
+                );
+            });
         });
 
         // ---------- Downward/terminal cascade gate (TAI-267, TAI-247 ADR) ----------
