@@ -585,6 +585,122 @@ export function defineStorageConformance(
             });
         });
 
+        // ---------- Downward/terminal cascade gate (TAI-267, TAI-247 ADR) ----------
+        // No "rejected child cascade" test here, unlike the upward cascade's own coverage
+        // above: Canceled (one of the two targets this cascade fires FROM a child's own
+        // transition) is exempt from both the assignment gate and the review gate (terminal
+        // states need no owner, and reviewGateApplies only ever fires for a Done target) --
+        // there's no real gate in this system that can reject a plain transition-to-Canceled
+        // to construct that scenario against. The best-effort try/catch around the cascade
+        // still exists for a genuine connectivity fault or a future gate, just not something
+        // this conformance harness can currently trigger.
+        describe("WorkTracker: transition() and the downward/terminal cascade gate (TAI-267, TAI-247 ADR)", () => {
+            it("cascade-cancels an open child when the parent reaches Done", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: downward cascade parent",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: orphaned-to-be child",
+                    })
+                );
+
+                const result = await h.backend.workTracker.transition(story.key, Status.Done);
+                assert.equal(result.ok, true, "the parent's own transition must still succeed");
+
+                const fetchedDev = await h.backend.workTracker.getIssue(dev.key);
+                assert.equal(fetchedDev?.status, Status.Canceled, "the open child must be cascade-canceled");
+            });
+
+            it("cascades through multiple levels -- Epic -> Story -> Dev all close in one transition call", async () => {
+                const epic = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: "epic",
+                        summary: "Conformance: downward cascade epic",
+                    })
+                );
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        parentKey: epic.key,
+                        summary: "Conformance: downward cascade story",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: downward cascade grandchild",
+                    })
+                );
+
+                const result = await h.backend.workTracker.transition(epic.key, Status.Done);
+                assert.equal(result.ok, true);
+
+                const fetchedStory = await h.backend.workTracker.getIssue(story.key);
+                assert.equal(fetchedStory?.status, Status.Canceled, "the Story (direct child) must cascade-cancel");
+                const fetchedDev = await h.backend.workTracker.getIssue(dev.key);
+                assert.equal(fetchedDev?.status, Status.Canceled, "the Dev (grandchild) must ALSO cascade-cancel");
+            });
+
+            it("a Canceled parent cascades too, not just a Done one (ADR decision #1)", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: downward cascade via Canceled",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: child of a canceled parent",
+                    })
+                );
+
+                await h.backend.workTracker.transition(story.key, Status.Canceled);
+
+                const fetchedDev = await h.backend.workTracker.getIssue(dev.key);
+                assert.equal(fetchedDev?.status, Status.Canceled);
+            });
+
+            it("never touches a child that's already terminal -- Done stays Done, not regressed to Canceled", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: downward cascade, one child already finished",
+                    })
+                );
+                const finishedDev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: already-Done sibling",
+                    })
+                );
+                await h.backend.workTracker.transition(finishedDev.key, Status.Done);
+
+                await h.backend.workTracker.transition(story.key, Status.Done);
+
+                const fetchedDev = await h.backend.workTracker.getIssue(finishedDev.key);
+                assert.equal(fetchedDev?.status, Status.Done, "an already-Done child must never be regressed to Canceled");
+            });
+        });
+
         // ---------- Review gate (TAI-41 ADR, TAI-42) ----------
 
         describe("WorkTracker: transition() and the review gate", () => {

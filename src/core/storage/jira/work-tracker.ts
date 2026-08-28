@@ -38,7 +38,12 @@ import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
-import { cascadeTriggersOn, shouldCascadeTransitionParent } from "../cascade-gate.js";
+import {
+    cascadeTriggersOn,
+    shouldCascadeTransitionParent,
+    cascadeTriggersOnClose,
+    shouldCascadeCancelChild,
+} from "../cascade-gate.js";
 import { loadRoster, type Roster } from "../../personas/roster.js";
 import {
     type RawIssue,
@@ -337,7 +342,59 @@ export function createJiraWorkTracker(
                 await client.request("POST", `${API}/issue/${key}/transitions`, {
                     transition: { id: match.id },
                 });
-                return fetchIssue(key);
+                const updated = await fetchIssue(key);
+
+                // TAI-267 (TAI-247 ADR): downward/terminal cascade -- the closing counterpart
+                // to the upward cascade above. Runs AFTER this issue's own transition has
+                // already succeeded, unlike the upward cascade's parent-first ordering --
+                // canceling children on behalf of a close that itself got rejected would be a
+                // real bug, not a best-effort tradeoff. Deliberately outside the `target ===
+                // InProgress|InReview|Done` gate above (line 278): that gate exists to skip an
+                // extra fetch for ungated targets, but `Canceled` -- one of the two targets
+                // this cascade fires on -- is itself ungated, so this has to live down here,
+                // common to every target, not nested inside that block.
+                //
+                // 1:N, not 1:1 (a parent can have many children, each with children of their
+                // own) -- one `search({ parentKey: key })`, then recurse into transition()
+                // itself for each open child, which walks further down the same way (Epic ->
+                // Story -> subtask, no special-cased depth limit). Entirely best-effort from
+                // here: a failed search or a failed/thrown child transition is logged and
+                // skipped, never allowed to retroactively fail THIS transition, which has
+                // already committed (ADR decision #3).
+                if (cascadeTriggersOnClose(target)) {
+                    try {
+                        const children = await workTracker.search({
+                            projectKey: updated.projectKey,
+                            parentKey: key,
+                            limit: DEFAULT_SEARCH_LIMIT,
+                        });
+                        for (const child of children) {
+                            if (!shouldCascadeCancelChild(child.status)) continue;
+                            try {
+                                const cascadeResult = await workTracker.transition(child.key, Status.Canceled);
+                                if (!cascadeResult.ok) {
+                                    console.warn(
+                                        `Child-cascade transition failed for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${cascadeResult.reason}`
+                                    );
+                                }
+                            } catch (err) {
+                                console.warn(
+                                    `Child-cascade transition threw for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${
+                                        err instanceof Error ? err.message : String(err)
+                                    }`
+                                );
+                            }
+                        }
+                    } catch (err) {
+                        console.warn(
+                            `Child-cascade search failed for ${key} (best-effort, ${key} -> "${target}" already succeeded): ${
+                                err instanceof Error ? err.message : String(err)
+                            }`
+                        );
+                    }
+                }
+
+                return updated;
             });
         },
 

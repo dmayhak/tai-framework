@@ -448,6 +448,44 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
 }
 
 /**
+ * TAI-267 (TAI-247 ADR decision #2): the key of the nearest terminal (Done/Canceled)
+ * ancestor, or `null` if none — walks up at most two hops (subtask -> Story/Bug -> Epic),
+ * matching TAI's own hierarchy depth, no deeper. A candidate under a terminal ancestor is
+ * stale and gets EXCLUDED outright (not just flagged, unlike TAI-266's DependsOn check) —
+ * this listing shouldn't be acted on at all, not "proceed with caution."
+ *
+ * Independent of (and a STRONGER guarantee than) TAI-266's downward cascade
+ * (`WorkTracker.transition()`/`cascade-gate.ts`): this also catches a parent closed via a
+ * path that bypassed the cascade entirely (e.g. directly in the Jira UI — the exact class of
+ * bypass risk the cascade's own doc comment already acknowledges), and any ticket that was
+ * ALREADY stale before the cascade ever shipped (TAI-133, this ADR's own motivating case,
+ * predates it).
+ *
+ * `ancestorCache` is a plain `getIssue`-result cache local to one `findReadyWork` call —
+ * siblings under the same parent (or cousins under the same grandparent) share fetches
+ * rather than each re-fetching the same ancestor.
+ */
+async function findTerminalAncestor(
+    workTracker: WorkTracker,
+    issue: Issue,
+    ancestorCache: Map<IssueKey, Issue | null>
+): Promise<IssueKey | null> {
+    let current = issue;
+    for (let hop = 0; hop < 2; hop++) {
+        if (!current.parentKey) return null;
+        let parent = ancestorCache.get(current.parentKey);
+        if (parent === undefined) {
+            parent = await workTracker.getIssue(current.parentKey);
+            ancestorCache.set(current.parentKey, parent);
+        }
+        if (!parent) return null; // malformed/missing data -- not this function's job to flag
+        if (parent.status === Status.Done || parent.status === Status.Canceled) return parent.key;
+        current = parent;
+    }
+    return null;
+}
+
+/**
  * Finds work that's actually ready to start, optionally scoped to one persona. `persona`
  * omitted means "ready for anyone."
  */
@@ -467,6 +505,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     const ready: Issue[] = [];
     const inProgressIssues: Issue[] = [];
     const parentContexts = new Map<IssueKey, ParentPrecedenceContext | null>();
+    const ancestorCache = new Map<IssueKey, Issue | null>();
 
     for (const issue of candidates) {
         if (issue.issueType === "epic") {
@@ -486,6 +525,12 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
             if (children.length === 0) ready.push(issue);
             continue;
         }
+
+        // TAI-267 (TAI-247 ADR decision #2): a candidate under an already-terminal ancestor
+        // is stale -- excluded outright, before it can reach EITHER `ready` or `inProgress`
+        // below. See `findTerminalAncestor`'s own doc comment for why this exists
+        // independently of TAI-266's downward cascade, not just as a fallback for it.
+        if (await findTerminalAncestor(deps.workTracker, issue, ancestorCache)) continue;
 
         // TAI-196/200: already-started work (any issue type) skips precedence entirely and
         // goes to `inProgress` instead of `ready` — precedence gates OFFERING new work, not

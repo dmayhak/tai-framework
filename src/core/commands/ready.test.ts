@@ -225,6 +225,128 @@ describe("findReadyWork", () => {
         });
     });
 
+    describe("terminal-ancestor exclusion (TAI-267, TAI-247 ADR decision #2)", () => {
+        // The parent is transitioned to Done BEFORE its child even exists -- this is the
+        // ADR's own point: decision #2 exists independently of TAI-266's downward cascade
+        // (decision #1) precisely because it also catches staleness that PREDATES the
+        // cascade (exactly TAI-133's real shape) or bypasses it entirely, not just
+        // staleness the cascade itself would have already cleaned up.
+
+        test("a subtask under an already-Done parent is excluded from ready outright, not just flagged", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const story = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Closed before this child ever existed",
+                });
+                await backend.workTracker.transition(story.key, Status.Done);
+                const dev = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    summary: "Stale child, same shape as TAI-133",
+                    persona: Persona.Developer,
+                    parentKey: story.key,
+                });
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(!result.ready.some((i) => i.key === dev.key), "must be excluded, not merely flagged");
+            });
+        });
+
+        test("a subtask under an already-Canceled parent is also excluded", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const story = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Canceled before this child ever existed",
+                });
+                await backend.workTracker.transition(story.key, Status.Canceled);
+                const dev = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    summary: "Stale child under a canceled parent",
+                    persona: Persona.Developer,
+                    parentKey: story.key,
+                });
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(!result.ready.some((i) => i.key === dev.key));
+            });
+        });
+
+        test("a subtask whose GRANDPARENT (Epic) is already Done is excluded, even with an open immediate parent", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const epic = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: "epic",
+                    summary: "Closed epic",
+                });
+                await backend.workTracker.transition(epic.key, Status.Done);
+                const story = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Still nominally open, but its Epic is Done",
+                    parentKey: epic.key,
+                });
+                const dev = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    summary: "Two hops from the terminal ancestor",
+                    persona: Persona.Developer,
+                    parentKey: story.key,
+                });
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(!result.ready.some((i) => i.key === dev.key), "the two-hop grandparent check must catch this");
+                // The Story itself, one hop from the terminal Epic, is also excluded.
+                assert.ok(!result.ready.some((i) => i.key === story.key));
+            });
+        });
+
+        test("an In Progress item under an already-terminal parent is excluded from inProgress too", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const story = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Closed parent, in-progress child",
+                });
+                await backend.workTracker.transition(story.key, Status.Done);
+                const dev = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    summary: "Stale in-progress child",
+                    persona: Persona.Developer,
+                    parentKey: story.key,
+                    assignee: CURRENT_USER,
+                });
+                await backend.workTracker.transition(dev.key, Status.InProgress);
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(!result.inProgress.some((c) => c.issue.key === dev.key));
+            });
+        });
+
+        test("a candidate under a genuinely open parent is NOT excluded", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const story = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Still open",
+                });
+                const dev = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.Dev,
+                    summary: "Perfectly good child",
+                    persona: Persona.Developer,
+                    parentKey: story.key,
+                });
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(result.ready.some((i) => i.key === dev.key));
+            });
+        });
+    });
+
     test("a subtask with no applicable precedence rule (a root) is ready immediately", async () => {
         await withBackend(async (backend, taiRoot) => {
             const story = await backend.workTracker.createIssue({
