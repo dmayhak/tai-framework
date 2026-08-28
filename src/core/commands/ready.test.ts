@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
+import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type StorageBackend } from "../storage/interface.js";
 import {
@@ -110,6 +110,118 @@ describe("findReadyWork", () => {
 
             const after = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(after.ready.some((i) => i.key === dev.key), "Dev should unblock once ArchitectureDesign is Done");
+        });
+    });
+
+    describe("blockedBy — real Jira DependsOn links (TAI-266, TAI-243 ADR)", () => {
+        test("a ready item with an open DependsOn blocker is flagged, but NOT excluded from ready", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const blocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "The real blocker, still open",
+                });
+                const dependent = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Depends on the blocker via a real cross-ticket link",
+                });
+                await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, blocker.key);
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(result.ready.some((i) => i.key === dependent.key), "ADR decision #4: soft flag, never excluded");
+                assert.deepEqual(result.blockedBy.get(dependent.key), [blocker.key]);
+                assert.equal(result.blockedBy.get(blocker.key), undefined, "the blocker itself has no blocker of its own");
+            });
+        });
+
+        test("a stale DependsOn link to an already-Done ticket does not flag the dependent", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const blocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Resolved blocker",
+                });
+                await backend.workTracker.transition(blocker.key, Status.Done);
+                const dependent = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Depends on an already-resolved ticket",
+                });
+                await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, blocker.key);
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.equal(result.blockedBy.get(dependent.key), undefined, "a resolved blocker link is stale, not a real block");
+            });
+        });
+
+        test("mixed links -- one open, one already-Done -- flags only the genuinely-open blocker", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const openBlocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Still open",
+                });
+                const resolvedBlocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Already resolved",
+                });
+                await backend.workTracker.transition(resolvedBlocker.key, Status.Done);
+                const dependent = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Depends on both",
+                });
+                await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, openBlocker.key);
+                await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, resolvedBlocker.key);
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.deepEqual(result.blockedBy.get(dependent.key), [openBlocker.key]);
+            });
+        });
+
+        test("a stale DependsOn link to a Canceled ticket does not flag the dependent", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const blocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Canceled blocker",
+                });
+                await backend.workTracker.transition(blocker.key, Status.Canceled);
+                const dependent = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Depends on a canceled ticket",
+                });
+                await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, blocker.key);
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.equal(result.blockedBy.get(dependent.key), undefined);
+            });
+        });
+
+        test("ADR decision #3: an In Progress item with an open DependsOn blocker is flagged too", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const blocker = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Blocks an in-progress item",
+                });
+                const inProgress = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: "Already started, but a blocker reopened",
+                    persona: Persona.Developer,
+                    assignee: CURRENT_USER,
+                });
+                await backend.workTracker.transition(inProgress.key, Status.InProgress);
+                await backend.workTracker.createLink(inProgress.key, DependencyRelation.DependsOn, blocker.key);
+
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(result.inProgress.some((c) => c.issue.key === inProgress.key));
+                assert.deepEqual(result.blockedBy.get(inProgress.key), [blocker.key]);
+            });
         });
     });
 
