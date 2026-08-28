@@ -38,6 +38,19 @@ export function entryGateReason(key: IssueKey, target: StatusType): string {
     return `${key} has no Assignee. A ticket must be assigned to a human before it can move to "${target}" (brief §5.5). Assign it, or let the assignment-helper surface candidates for its persona.`;
 }
 
+/**
+ * True if a `MutationResult` rejection reason is specifically `entryGateReason`'s text —
+ * lets a caller (`cli.ts`'s `issue transition` handler, TAI-249/260 ADR) react to THIS
+ * particular rejection (resolve+retry via the assignment-helper, or enrich the message
+ * with real candidates) without `MutationResult` needing a new structured discriminant.
+ * Same string-match-on-a-known-rejection-shape idiom `isMergeConflict` (`git-pr.ts`)
+ * already establishes for the equivalent "is this rejection the specific kind I know how
+ * to react to" question there.
+ */
+export function isAssignmentGateReason(reason: string): boolean {
+    return reason.includes("has no Assignee. A ticket must be assigned to a human before it can move to");
+}
+
 /** Exit-side: rejecting an attempt to clear the assignee while already in a gated status. */
 export function exitGateReason(key: IssueKey, status: StatusType): string {
     return `${key} is "${status}" and has no Assignee. A ticket may not be unassigned while in a non-terminal, non-To-Do status (brief §5.5).`;

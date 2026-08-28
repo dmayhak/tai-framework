@@ -35,6 +35,7 @@ import {
     type Issue,
     type IssuePatch,
     type StorageBackend,
+    type WorkTracker,
 } from "../core/storage/interface.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
@@ -80,17 +81,28 @@ import {
     DependencyRelation,
     isSubtaskIssueType,
     Status,
+    PERSONA_ROLE_LABEL,
     type Persona,
     type StoryType,
     type SubtaskType,
 } from "../core/schema/story-schema.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
+import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
+import { loadRoster } from "../core/personas/roster.js";
+import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
     readonly taiRoot: string;
     readonly projectKey: string;
     readonly spaceKey: string;
+    /** The human driving THIS session (TAI-249/260 ADR) -- resolved once here so the
+     *  assignment-helper's multi-candidate current-user shortcut doesn't need its own
+     *  ad-hoc resolution at each of its two call sites (`issue create`/`issue transition`).
+     *  `null` when no session-identity signal is available (filesystem backend with
+     *  `TAI_HUMAN_EMAIL` unset) -- the shortcut simply doesn't apply then, same as today's
+     *  "always ask" behavior. */
+    readonly currentHuman: HumanRef | null;
 }
 
 // Loads `.env` from the current working directory into `process.env`, if present —
@@ -138,26 +150,86 @@ async function resolveConfig(): Promise<ResolvedConfig> {
 
     if (backendKind === "jira") {
         const spaceKey = requireEnv("TAI_SPACE_KEY");
+        const jiraEmail = requireEnv("TAI_JIRA_EMAIL");
         const backend = await createJiraBackend({
             siteUrl: requireEnv("TAI_JIRA_SITE_URL"),
             spaceKey,
-            auth: apiTokenAuth(requireEnv("TAI_JIRA_EMAIL"), requireEnv("TAI_JIRA_API_TOKEN")),
+            auth: apiTokenAuth(jiraEmail, requireEnv("TAI_JIRA_API_TOKEN")),
         });
-        return { backend, taiRoot, projectKey, spaceKey };
+        const currentHuman = await backend.workTracker.resolveHuman(jiraEmail);
+        return { backend, taiRoot, projectKey, spaceKey, currentHuman };
     }
 
     if (backendKind === "filesystem") {
         // spaceKey === projectKey by convention — the filesystem backend has no
         // independent Confluence-space concept (brief §4 rev 18; see its own header comment).
+        const humanEmail = process.env["TAI_HUMAN_EMAIL"];
         const backend = createFilesystemBackend(taiRoot, {
             id: toHumanId(requireEnv("TAI_HUMAN_ID")),
             displayName: process.env["TAI_HUMAN_NAME"] ?? requireEnv("TAI_HUMAN_ID"),
-            ...(process.env["TAI_HUMAN_EMAIL"] ? { email: process.env["TAI_HUMAN_EMAIL"] } : {}),
+            ...(humanEmail ? { email: humanEmail } : {}),
         });
-        return { backend, taiRoot, projectKey, spaceKey: projectKey };
+        const currentHuman = humanEmail ? await backend.workTracker.resolveHuman(humanEmail) : null;
+        return { backend, taiRoot, projectKey, spaceKey: projectKey, currentHuman };
     }
 
     throw new Error(`Unknown TAI_BACKEND "${backendKind}" — expected "jira" or "filesystem".`);
+}
+
+/**
+ * Loads the Persona Roster and resolves an assignment for `persona` via the
+ * assignment-helper (TAI-249/260 ADR) — shared by `issue create`'s pre-assign path and
+ * `issue transition`'s gate-retry path so the roster-load-plus-resolve logic exists once,
+ * not duplicated at each call site.
+ *
+ * `resolveAssignment` itself is pure and roster-sourced, so any `assignee` it returns
+ * carries the Persona Roster's own SYNTHETIC id (email, lowercased — `roster.ts`'s
+ * `parseHumanCell`, since the roster has no real Jira accountId at all). Sending that
+ * straight to `createIssue`/`assignIssue` fails Jira's assignee validation (confirmed
+ * live: "assignee: Please select a valid user") — the exact reason `issue assign` already
+ * re-resolves through `workTracker.resolveHuman` instead of using a synthetic HumanRef
+ * directly. Same fix applied here: re-resolve whatever candidate was picked to its REAL
+ * Jira identity before returning it. A candidate with no email at all (a bare-name roster
+ * entry) or no matching real Jira user can't be resolved this way — treated as
+ * unresolved, falling through to candidate-surfacing, not a crash.
+ */
+async function resolveIssueAssignment(config: ResolvedConfig, persona: Persona): Promise<AssignmentResolution> {
+    const roster = await loadRoster(config.backend.docStore, { spaceKey: config.spaceKey, projectKey: config.projectKey });
+    const resolved = resolveAssignment(roster, persona, config.currentHuman);
+    if (!resolved.assignee) return resolved;
+
+    const real = resolved.assignee.email ? await config.backend.workTracker.resolveHuman(resolved.assignee.email) : null;
+    return { assignee: real, candidates: resolved.candidates };
+}
+
+// Open, non-terminal statuses — same "still needs an owner" set the assignment gate itself
+// cares about (Done/Canceled are exempt from the gate; an open-ticket load signal should
+// count the same statuses that gate is actually protecting).
+const OPEN_STATUSES: readonly Status[] = [Status.Backlog, Status.ToDo, Status.InProgress, Status.InReview];
+
+/**
+ * Renders `candidates` for a rejection message, each with brief §5.6's "current open-ticket
+ * count" load signal (one `search` per candidate — candidate lists are small, a handful of
+ * roster entries per persona, never a real cost concern). The other named signal, "whether
+ * one already has a branch/related work in flight," is deliberately NOT computed here — it
+ * needs `GitHost` awareness this command has no existing dependency on, and no `issue`
+ * subcommand wires one today; adding it now would be scope beyond what's asked (revisit if
+ * a real need shows up, same posture as `tryResolveReadyGitDeps`'s own git-awareness gating).
+ */
+async function formatAssignmentCandidates(
+    workTracker: Pick<WorkTracker, "search">,
+    projectKey: string,
+    persona: Persona,
+    candidates: readonly HumanRef[]
+): Promise<string> {
+    const lines = await Promise.all(
+        candidates.map(async (c) => {
+            const open = await workTracker.search({ projectKey, assignee: c.id, statuses: OPEN_STATUSES });
+            const who = c.email ? `${c.displayName} (${c.email})` : c.displayName;
+            return `  - ${who} — ${open.length} open ticket${open.length === 1 ? "" : "s"}`;
+        })
+    );
+    return `Candidates for ${PERSONA_ROLE_LABEL[persona]}:\n${lines.join("\n")}`;
 }
 
 /**
@@ -1031,16 +1103,30 @@ async function main(): Promise<void> {
                 );
             }
             const fields = parseKeyValueArgs(kv);
+            const persona = fields["persona"] !== undefined ? (fields["persona"] as Persona) : undefined;
+
+            // TAI-249/260 ADR: pre-assign at creation via the assignment-helper -- both
+            // halves of brief §5.5 (sole-candidate, and the ratified current-user shortcut
+            // for 2+ candidates). `issue create` has no `assignee=` argument of its own, so
+            // this always applies whenever `persona` is set; a human can still reassign
+            // afterward via `issue assign`.
+            let resolvedAssignee: HumanRef | undefined;
+            if (persona) {
+                const { assignee } = await resolveIssueAssignment(config, persona);
+                if (assignee) resolvedAssignee = assignee;
+            }
+
             const input: CreateIssueInput = {
                 projectKey,
                 issueType: issueType as StoryType | SubtaskType | "epic",
                 summary,
                 ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
-                ...(fields["persona"] !== undefined ? { persona: fields["persona"] as Persona } : {}),
+                ...(persona !== undefined ? { persona } : {}),
                 ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
                 ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
                 ...(fields["labels"] !== undefined ? { labels: fields["labels"].split(",") } : {}),
                 ...(fields["allowDuplicate"] !== undefined ? { allowDuplicate: fields["allowDuplicate"] === "true" } : {}),
+                ...(resolvedAssignee !== undefined ? { assignee: resolvedAssignee } : {}),
             };
             const issue = await config.backend.workTracker.createIssue(input);
             console.log(renderIssueRef(issue));
@@ -1074,11 +1160,44 @@ async function main(): Promise<void> {
         if (action === "transition") {
             const [issueKey, status] = issueArgs;
             if (!issueKey || !status) throw new Error("Usage: issue transition <ISSUE-KEY> <STATUS>");
-            const result = await config.backend.workTracker.transition(toIssueKey(issueKey), status as Status);
+            const key = toIssueKey(issueKey);
+            let result = await config.backend.workTracker.transition(key, status as Status);
+            let enrichedCandidates: string | undefined;
+
+            // TAI-249/260 ADR: gate-time wiring. On the assignment gate specifically, try
+            // the assignment-helper before giving up -- auto-assign+retry once if the
+            // current session's human resolves as the pick, otherwise enrich the rejection
+            // with the real candidate list (never a new command, per the ADR's ratified
+            // choice) instead of the old generic "let the assignment-helper surface
+            // candidates" pointer-to-nothing.
+            if (!result.ok && isAssignmentGateReason(result.reason)) {
+                const issue = await config.backend.workTracker.getIssue(key);
+                if (issue?.persona) {
+                    const { assignee, candidates } = await resolveIssueAssignment(config, issue.persona);
+                    if (assignee) {
+                        const assigned = await config.backend.workTracker.assignIssue(key, assignee);
+                        if (assigned.ok) {
+                            result = await config.backend.workTracker.transition(key, status as Status);
+                        }
+                        // A failed auto-assign just falls through to reporting the ORIGINAL
+                        // transition rejection below -- no retry attempted, no second error
+                        // to reconcile; the human sees exactly what blocked them.
+                    } else if (candidates.length > 0) {
+                        enrichedCandidates = await formatAssignmentCandidates(
+                            config.backend.workTracker,
+                            config.projectKey,
+                            issue.persona,
+                            candidates
+                        );
+                    }
+                }
+            }
+
             console.log(
                 result.ok
                     ? renderIssueRef(result.issue)
-                    : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}`
+                    : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
+                          (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")
             );
             return;
         }
