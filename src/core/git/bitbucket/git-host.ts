@@ -18,6 +18,7 @@ import type {
     CommitSha,
     CommitStatus,
     GitMutationResult,
+    InlineCommentInput,
 } from "../interface.js";
 import { RestClient, BitbucketRejection } from "./rest-client.js";
 import {
@@ -180,6 +181,20 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
                 "POST",
                 `/repositories/${workspace}/${slug}/pullrequests/${id}/comments`,
                 { content: { raw: body } }
+            );
+            return toComment(c);
+        },
+
+        // TAI-207: same comments endpoint `addPullRequestComment` posts to, with an `inline`
+        // object added to the payload -- Bitbucket's own way of anchoring a comment to a
+        // diff line (confirmed against reviewd's proven Bitbucket provider, which uses the
+        // identical shape: `{ path, to: line }` for a destination-side line number).
+        async addInlineComment(repo: RepoId, id: PullRequestId, input: InlineCommentInput) {
+            const { workspace, slug } = splitRepoId(repo);
+            const c = await client.request<BitbucketCommentJson>(
+                "POST",
+                `/repositories/${workspace}/${slug}/pullrequests/${id}/comments`,
+                { content: { raw: input.body }, inline: { path: input.path, to: input.line } }
             );
             return toComment(c);
         },

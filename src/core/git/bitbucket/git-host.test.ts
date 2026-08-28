@@ -263,6 +263,42 @@ describe("unapprovePullRequest (TAI-217/219)", () => {
     });
 });
 
+describe("addInlineComment (TAI-207)", () => {
+    it("posts to the same comments endpoint as addPullRequestComment, with an inline anchor", async () => {
+        let capturedBody: unknown;
+        const host = hostWith(
+            stubFetch((method, url, body) => {
+                assert.equal(method, "POST");
+                assert.ok(url.endsWith("/repositories/dmayhak/tai-framework/pullrequests/7/comments"));
+                capturedBody = body;
+                return json({ id: 99, content: { raw: "found a bug" }, user: { account_id: "acct-1", display_name: "Del" }, created_on: "2026-08-28T00:00:00Z", updated_on: "2026-08-28T00:00:00Z" });
+            })
+        );
+        const comment = await host.addInlineComment(REPO, toPullRequestId("7"), {
+            path: "src/db.ts",
+            line: 42,
+            body: "found a bug",
+        });
+        assert.deepEqual(capturedBody, {
+            content: { raw: "found a bug" },
+            inline: { path: "src/db.ts", to: 42 },
+        });
+        assert.equal(comment.body, "found a bug");
+    });
+
+    // Bitbucket rejects (400) when `line` isn't actually part of the PR's diff -- a real,
+    // expected rejection (a finding can point at a line the diff doesn't touch), not a
+    // connectivity fault. Propagates as a BitbucketRejection, same as every other mutation
+    // here -- callers (cli.ts's comment-findings) decide what to do about it, not this layer.
+    it("propagates a real rejection (e.g. line not part of the diff) as a BitbucketRejection", async () => {
+        const host = hostWith(stubFetch(() => json({ error: { message: "line 42 is not part of the diff" } }, 400)));
+        await assert.rejects(
+            () => host.addInlineComment(REPO, toPullRequestId("7"), { path: "src/db.ts", line: 42, body: "x" }),
+            (err: unknown) => err instanceof BitbucketRejection && err.reason === "line 42 is not part of the diff"
+        );
+    });
+});
+
 describe("mergePullRequest — the §3.3 rejection-vs-connectivity split", () => {
     it("returns ok:true with the merged PR on success", async () => {
         const host = hostWith(stubFetch(() => json({ ...PR_JSON, state: "MERGED" })));

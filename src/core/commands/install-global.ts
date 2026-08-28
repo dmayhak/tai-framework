@@ -209,10 +209,20 @@ function prSkillBody(taiHome: string): string {
         "- `render-findings` (TAI-209/210 ADR) — takes a structured findings JSON payload " +
         "(`@<path>` to a file, or the raw JSON inline) and deterministically renders it to " +
         "markdown on stdout. Posts nothing. This is what the review flow below runs so the " +
-        "*rendered output*, not any prose you compose, becomes the visible findings text.\n" +
+        "*rendered output*, not any prose you compose, becomes the visible findings text. Also " +
+        "previews TAI-207's inline-vs-summary split (next bullet) — a `critical`-severity " +
+        "finding with a `line` is pulled out of its severity section and shown as a one-line " +
+        "tally instead (e.g. \"🔴 — posted as inline comments\"), same as what `comment-findings` " +
+        "will actually do.\n" +
         "- `comment-findings` — same rendering as `render-findings`, but posts the result as the " +
-        "PR's summary comment (via the same general-comment path `comment` uses). This is how " +
-        "review findings actually get posted — see the review-flow section below.\n" +
+        "PR's summary comment (via the same general-comment path `comment` uses). TAI-207: before " +
+        "posting the summary, also posts one real inline PR comment (anchored to that exact file " +
+        "and line) for every `critical`-severity finding that has a `line` — those findings are " +
+        "then excluded from the summary's own severity sections (the tally line stands in for " +
+        "them). A finding whose inline post itself fails (e.g. its `line` isn't actually part of " +
+        "the diff) falls back into the summary instead of being silently dropped, and the failure " +
+        "is reported alongside the summary comment's own output. This is how review findings " +
+        "actually get posted — see the review-flow section below.\n" +
         "- `unapprove` (TAI-217/219) — withdraws a previously-cast approval. Only ever run because " +
         "the human explicitly asked for it, in their own words — never automatically, not even " +
         "when `merge` itself suggests it (see below). The main real use: Bitbucket's free tier has " +

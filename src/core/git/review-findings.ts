@@ -134,17 +134,102 @@ function renderFinding(f: ReviewFinding): string {
 }
 
 /**
+ * TAI-209 ADR Decision §4: the inline-vs-summary threshold is hardcoded to `critical` only
+ * for v1 (matches reviewd's own default `inline_comments_for: ["critical"]`) — no config
+ * surface yet. A finding also needs a `line` to be inline-postable at all (Bitbucket's
+ * inline-comment API anchors to a specific file+line; `file` alone can't anchor).
+ */
+export function isInlineEligible(f: ReviewFinding): boolean {
+    return f.severity === "critical" && f.line !== undefined;
+}
+
+/**
+ * Splits `findings` into the ones that get posted as inline PR comments vs. the ones that
+ * stay in the summary comment (TAI-207/209: "mirrors reviewd's inline_comments_for
+ * pattern") — shared by `renderReviewFindings` (so the preview accurately reflects what
+ * `comment-findings` will actually do) and `comment-findings` itself (`cli.ts`), which needs
+ * the raw `ReviewFinding`s, not just rendered text, to call `GitHost.addInlineComment` per
+ * finding.
+ */
+export function partitionInlineFindings(findings: readonly ReviewFinding[]): {
+    readonly inline: readonly ReviewFinding[];
+    readonly summary: readonly ReviewFinding[];
+} {
+    const inline: ReviewFinding[] = [];
+    const summary: ReviewFinding[] = [];
+    for (const f of findings) (isInlineEligible(f) ? inline : summary).push(f);
+    return { inline, summary };
+}
+
+/**
+ * The body posted via `GitHost.addInlineComment` for one inline-eligible finding — no
+ * file:line prefix (unlike `renderFinding`'s summary form), since Bitbucket's own inline
+ * anchor already places the comment at that exact line. Same shape reviewd's
+ * `_format_inline_comment` uses.
+ */
+export function renderInlineComment(f: ReviewFinding): string {
+    const parts = [`${SEVERITY_EMOJI[f.severity]} **${f.title}**`, f.issue];
+    if (f.fix) parts.push(`\`\`\`suggestion\n${f.fix}\n\`\`\``);
+    return parts.join("\n\n");
+}
+
+const MAX_TALLY_DOTS = 3;
+
+/**
+ * Compact emoji tally of `inline` findings for the summary comment, e.g. "🔴🔴🔴+2 — posted
+ * as inline comments" — same shape reviewd's `_format_inline_tally` uses, so a human sees
+ * at a glance that SOME findings were pulled out of the summary and posted inline instead,
+ * rather than the summary silently having fewer findings than expected.
+ */
+function renderInlineTally(inline: readonly ReviewFinding[]): string {
+    const counts = new Map<FindingSeverity, number>();
+    for (const f of inline) counts.set(f.severity, (counts.get(f.severity) ?? 0) + 1);
+
+    const parts: string[] = [];
+    for (const severity of SEVERITY_ORDER) {
+        const count = counts.get(severity) ?? 0;
+        if (count === 0) continue;
+        const shown = Math.min(count, MAX_TALLY_DOTS);
+        const overflow = count > MAX_TALLY_DOTS ? `+${count - MAX_TALLY_DOTS}` : "";
+        parts.push(SEVERITY_EMOJI[severity].repeat(shown) + overflow);
+    }
+    return `${parts.join(" ")} — posted as inline comments`;
+}
+
+/**
  * Deterministically renders `ReviewFindings` to markdown — grouped by severity, same shape
  * reviewd's own `commenter.py` uses (severity sections, per-finding file:line, bottom-line
  * leaning). This is the ONLY place this markdown gets composed — `git-pr render-findings`
  * (preview) and `comment-findings` (post) both call this rather than the model authoring
  * the write-up itself (ADR Decision §2).
+ *
+ * TAI-207: inline-eligible findings (`partitionInlineFindings`) are excluded from the
+ * severity sections below and replaced with a one-line tally — same split reviewd's own
+ * `_format_summary_comment` makes (`summary_findings = findings not in inline_ids`) — so
+ * this rendering accurately previews what `comment-findings` will actually post where, not
+ * just what the summary comment alone will contain.
+ *
+ * `partition` defaults to the eligibility-based split (correct for `render-findings`'
+ * preview, where nothing has actually been posted anywhere yet). `comment-findings`
+ * (`cli.ts`) passes an EXPLICIT partition instead, computed from what actually succeeded
+ * after attempting each inline post — a finding whose inline post failed falls back into
+ * `summary` there rather than vanishing (it's eligible, but not actually posted, so it must
+ * not be excluded from the one place it's still visible).
  */
-export function renderReviewFindings(findings: ReviewFindings): string {
+export function renderReviewFindings(
+    findings: ReviewFindings,
+    partition: {
+        readonly inline: readonly ReviewFinding[];
+        readonly summary: readonly ReviewFinding[];
+    } = partitionInlineFindings(findings.findings)
+): string {
     const lines: string[] = ["## Review", "", findings.overview, ""];
 
+    const { inline, summary } = partition;
+    if (inline.length > 0) lines.push(renderInlineTally(inline), "");
+
     const grouped = new Map<FindingSeverity, ReviewFinding[]>();
-    for (const f of findings.findings) {
+    for (const f of summary) {
         const bucket = grouped.get(f.severity) ?? [];
         bucket.push(f);
         grouped.set(f.severity, bucket);
