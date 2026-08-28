@@ -96,9 +96,15 @@ interface ResolvedConfig {
     readonly taiRoot: string;
     readonly projectKey: string;
     readonly spaceKey: string;
-    /** The human driving THIS session (TAI-249/260 ADR) -- resolved once here so the
-     *  assignment-helper's multi-candidate current-user shortcut doesn't need its own
-     *  ad-hoc resolution at each of its two call sites (`issue create`/`issue transition`).
+    /** The human driving THIS session (TAI-249/260 ADR) -- a SYNTHETIC `HumanRef` (same
+     *  email-derived id convention as `roster.ts`'s `parseHumanCell`), not a real Jira-
+     *  resolved identity. `resolveAssignment`'s matching (`sameHuman`) only needs `id`/
+     *  `email`/`displayName` to compare against roster candidates, which are themselves
+     *  synthetic -- so no `workTracker.resolveHuman` call is needed here. Deliberately NOT
+     *  eagerly resolved (PR #71 review, suggestion severity, fixed this session): that would
+     *  cost one extra Jira API call on EVERY CLI invocation, not just `issue create`/
+     *  `transition` where this is actually used. `resolveIssueAssignment` still re-resolves
+     *  the real identity for whichever candidate ends up picked, same as before.
      *  `null` when no session-identity signal is available (filesystem backend with
      *  `TAI_HUMAN_EMAIL` unset) -- the shortcut simply doesn't apply then, same as today's
      *  "always ask" behavior. */
@@ -135,6 +141,16 @@ async function resolveCurrentHuman(gitHost: Pick<GitHost, "getCurrentUser">, ema
     return { ...real, email };
 }
 
+/**
+ * A synthetic `HumanRef` for `email`, same id convention `roster.ts`'s `parseHumanCell`
+ * uses (lowercased email as the id) -- good enough for `sameHuman` matching against roster
+ * candidates without a real backend lookup. See `ResolvedConfig.currentHuman`'s doc comment
+ * for why `resolveConfig` uses this instead of `workTracker.resolveHuman`.
+ */
+function syntheticHuman(email: string): HumanRef {
+    return { id: toHumanId(email.toLowerCase()), displayName: email, email };
+}
+
 function requireEnv(name: string): string {
     const value = process.env[name];
     if (!value) {
@@ -156,7 +172,7 @@ async function resolveConfig(): Promise<ResolvedConfig> {
             spaceKey,
             auth: apiTokenAuth(jiraEmail, requireEnv("TAI_JIRA_API_TOKEN")),
         });
-        const currentHuman = await backend.workTracker.resolveHuman(jiraEmail);
+        const currentHuman = syntheticHuman(jiraEmail);
         return { backend, taiRoot, projectKey, spaceKey, currentHuman };
     }
 
@@ -169,7 +185,7 @@ async function resolveConfig(): Promise<ResolvedConfig> {
             displayName: process.env["TAI_HUMAN_NAME"] ?? requireEnv("TAI_HUMAN_ID"),
             ...(humanEmail ? { email: humanEmail } : {}),
         });
-        const currentHuman = humanEmail ? await backend.workTracker.resolveHuman(humanEmail) : null;
+        const currentHuman = humanEmail ? syntheticHuman(humanEmail) : null;
         return { backend, taiRoot, projectKey, spaceKey: projectKey, currentHuman };
     }
 
@@ -1173,6 +1189,7 @@ async function main(): Promise<void> {
             const key = toIssueKey(issueKey);
             let result = await config.backend.workTracker.transition(key, status as Status);
             let enrichedCandidates: string | undefined;
+            let autoAssignFailure: string | undefined;
 
             // TAI-249/260 ADR: gate-time wiring. On the assignment gate specifically, try
             // the assignment-helper before giving up -- auto-assign+retry once if the
@@ -1188,10 +1205,14 @@ async function main(): Promise<void> {
                         const assigned = await config.backend.workTracker.assignIssue(key, assignee);
                         if (assigned.ok) {
                             result = await config.backend.workTracker.transition(key, status as Status);
+                        } else {
+                            // Falls through to reporting the ORIGINAL transition rejection
+                            // below (no retry attempted), but the human also sees WHY the
+                            // auto-assign attempt itself failed instead of that failure
+                            // being swallowed silently (PR #71 review, nitpick, fixed this
+                            // session).
+                            autoAssignFailure = `Auto-assign to ${assignee.displayName} failed: ${assigned.reason}`;
                         }
-                        // A failed auto-assign just falls through to reporting the ORIGINAL
-                        // transition rejection below -- no retry attempted, no second error
-                        // to reconcile; the human sees exactly what blocked them.
                     } else if (candidates.length > 0) {
                         enrichedCandidates = await formatAssignmentCandidates(
                             config.backend.workTracker,
@@ -1207,6 +1228,7 @@ async function main(): Promise<void> {
                 result.ok
                     ? renderIssueRef(result.issue)
                     : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
+                          (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")
             );
             return;
