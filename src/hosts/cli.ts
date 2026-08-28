@@ -13,7 +13,7 @@
  *
  * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
  * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
- * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`), installed
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-audit`), installed
  * once via `install-global` (below) rather than generated per-project as
  * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
  * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
@@ -29,12 +29,17 @@ import {
     toHumanId,
     toIssueKey,
     toPageId,
+    DEFAULT_SEARCH_LIMIT,
     type CreateIssueInput,
     type CreatePageInput,
     type HumanRef,
     type Issue,
+    type IssueFilter,
     type IssueKey,
+    type DocStore,
+    type IssueLink,
     type IssuePatch,
+    type PageRef,
     type StorageBackend,
     type WorkTracker,
 } from "../core/storage/interface.js";
@@ -696,6 +701,143 @@ function renderIssueRef(issue: Issue): string {
     ].join("\n");
 }
 
+// TAI-268 (TAI-254 ADR): `search`/`get`/`page get` below are read-only thin wrappers
+// around `WorkTracker.search`/`getIssue`/`getLinkedIssues`/`getLinkedPages` and
+// `DocStore.getPage` — all pre-existing methods, none new (the ADR's own decision #5
+// explicitly rules out adding new WorkTracker/DocStore surface for this). They exist so a
+// bulk, whole-backlog read (the `tai-audit` skill's actual need) never has to reach for
+// the Atlassian MCP server, matching this file's own header note (TAI-126) that direct
+// REST via these wrappers is how TAI avoids that dependency.
+
+/** Pure filter-construction for `issue search` (TAI-268) — separated from the `main()`
+ *  branch that calls it so it's unit-testable without a real backend. `fields` is whatever
+ *  `parseKeyValueArgs` produced from the trailing CLI args; `defaultProjectKey` is
+ *  `config.projectKey`, used whenever no explicit `projectKey=` override was given. */
+export function parseIssueSearchFilter(fields: Readonly<Record<string, string>>, defaultProjectKey: string): IssueFilter {
+    return {
+        projectKey: fields["projectKey"] ?? defaultProjectKey,
+        ...(fields["status"] !== undefined ? { statuses: fields["status"].split(",") as Status[] } : {}),
+        ...(fields["type"] !== undefined ? { issueTypes: fields["type"].split(",") as (StoryType | SubtaskType | "epic")[] } : {}),
+        ...(fields["persona"] !== undefined ? { persona: fields["persona"] as Persona } : {}),
+        ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
+        ...(fields["updatedSince"] !== undefined ? { updatedSince: fields["updatedSince"] } : {}),
+        ...(fields["limit"] !== undefined ? { limit: Number(fields["limit"]) } : {}),
+    };
+}
+
+/** Pure `PageRef` parsing for `page get` (TAI-268) — `id=<PAGE-ID>` selects the by-id form,
+ *  otherwise `first`/`second` are `<SPACE-KEY>`/`<TITLE>`. `null` means the arguments don't
+ *  resolve to a valid `PageRef` at all (missing title with no `id=` given either) — the
+ *  caller's job to turn that into a usage error, not this function's. */
+export function parsePageGetRef(first: string, second: string | undefined): PageRef | null {
+    if (first.startsWith("id=")) return { id: toPageId(first.slice(3)) };
+    if (!second) return null;
+    return { spaceKey: first, title: second };
+}
+
+export function renderIssueSearchResults(issues: readonly Issue[], filter: IssueFilter): string {
+    const scope = [
+        `project: ${filter.projectKey}`,
+        filter.statuses ? `status: ${filter.statuses.join(", ")}` : undefined,
+        filter.issueTypes ? `type: ${filter.issueTypes.join(", ")}` : undefined,
+        filter.persona ? `persona: ${filter.persona}` : undefined,
+        filter.parentKey ? `parent: ${filter.parentKey}` : undefined,
+        filter.updatedSince ? `updatedSince: ${filter.updatedSince}` : undefined,
+    ]
+        .filter((s): s is string => s !== undefined)
+        .join(" · ");
+
+    const lines = [`# Issues matching filter (${issues.length} found)`, "", scope, ""];
+    if (issues.length === 0) {
+        lines.push("No matches.");
+        return lines.join("\n");
+    }
+
+    for (const issue of issues) {
+        lines.push(
+            `## ${issue.key} [${issue.issueType}] ${issue.status} — ${issue.summary}`,
+            `Persona: ${issue.persona ?? "none"}${issue.parentKey ? ` | Parent: ${issue.parentKey}` : ""} | ` +
+                `Updated: ${issue.updatedAt} | Comments: ${issue.comments.length}`,
+            "",
+            issue.description ?? "_(no description)_",
+            "",
+            "---",
+            ""
+        );
+    }
+
+    const effectiveLimit = filter.limit ?? DEFAULT_SEARCH_LIMIT;
+    if (issues.length >= effectiveLimit) {
+        lines.push(
+            `_Hit the search limit (${effectiveLimit}) — more matches may exist. Re-run with a higher ` +
+                `limit= to confirm this is everything before treating it as a complete sweep._`
+        );
+    }
+    return lines.join("\n");
+}
+
+export function renderLinkedIssues(outgoing: readonly IssueLink[], incoming: readonly IssueLink[]): string {
+    if (outgoing.length === 0 && incoming.length === 0) return "None.";
+    const lines: string[] = [];
+    for (const l of outgoing) lines.push(`- ${l.relation} → ${l.key} (outgoing)`);
+    for (const l of incoming) lines.push(`- ${l.relation} ← ${l.key} (incoming)`);
+    return lines.join("\n");
+}
+
+/** Narrowed to just what it needs (this file's existing `Pick<>` testability pattern —
+ *  see `formatAssignmentCandidates` above) rather than the full `ResolvedConfig`, so a unit
+ *  test can pass a small fake instead of a real `StorageBackend`. */
+export async function renderIssueDetail(
+    backend: {
+        readonly workTracker: Pick<WorkTracker, "getLinkedIssues" | "getLinkedPages">;
+        readonly docStore: Pick<DocStore, "getPage">;
+    },
+    issue: Issue
+): Promise<string> {
+    const [outgoing, incoming, pageIds] = await Promise.all([
+        backend.workTracker.getLinkedIssues(issue.key, undefined, "outgoing"),
+        backend.workTracker.getLinkedIssues(issue.key, undefined, "incoming"),
+        backend.workTracker.getLinkedPages(issue.key),
+    ]);
+
+    const pageLines = pageIds.length
+        ? await Promise.all(
+              pageIds.map(async (id) => {
+                  const page = await backend.docStore.getPage({ id });
+                  return page ? `- ${page.title} (id: ${id}, space: ${page.spaceKey})` : `- **MISSING** — linked page id ${id} no longer exists`;
+              })
+          )
+        : ["None."];
+
+    const commentLines = issue.comments.length
+        ? issue.comments.map((c) => `### ${c.author.displayName} — ${c.createdAt}\n\n${c.body}`)
+        : ["_(no comments)_"];
+
+    return [
+        `# Issue ${issue.key}`,
+        "",
+        `**${issue.summary}**`,
+        `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}`,
+        `Persona: ${issue.persona ?? "none"} | Priority: ${issue.priority ?? "none"} | Labels: ${issue.labels.join(", ") || "none"} | Updated: ${issue.updatedAt}`,
+        "",
+        "## Description",
+        "",
+        issue.description ?? "_(no description)_",
+        "",
+        `## Comments (${issue.comments.length})`,
+        "",
+        commentLines.join("\n\n"),
+        "",
+        "## Linked issues",
+        "",
+        renderLinkedIssues(outgoing, incoming),
+        "",
+        "## Linked pages",
+        "",
+        pageLines.join("\n"),
+    ].join("\n");
+}
+
 // ---------- init subcommand (TAI-116 piece 3, TAI-130) ----------
 
 function renderInitStepResult(step: InitStep, ok: boolean, detail: string): string {
@@ -1325,8 +1467,35 @@ async function main(): Promise<void> {
             return;
         }
 
+        // TAI-268: bulk read primitive `tai-audit` needs (and anything else doing a
+        // whole-backlog sweep) -- no free-text/JQL, just the structured fields
+        // `IssueFilter` already supports. Defaults to the CURRENT project; every other
+        // field is an explicit opt-in filter, omitted entirely means unfiltered on that
+        // axis (NOT narrowed to open statuses by default -- a generic primitive, not an
+        // audit-specific one; pass status=... explicitly for that).
+        if (action === "search") {
+            const fields = parseKeyValueArgs(issueArgs);
+            const filter = parseIssueSearchFilter(fields, config.projectKey);
+            const issues = await config.backend.workTracker.search(filter);
+            console.log(renderIssueSearchResults(issues, filter));
+            return;
+        }
+
+        if (action === "get") {
+            const [issueKey] = issueArgs;
+            if (!issueKey) throw new Error("Usage: issue get <ISSUE-KEY>");
+            const issue = await config.backend.workTracker.getIssue(toIssueKey(issueKey));
+            if (!issue) {
+                console.log(`# Issue ${issueKey}\n\nNot found.`);
+                return;
+            }
+            console.log(await renderIssueDetail(config.backend, issue));
+            return;
+        }
+
         throw new Error(
-            `Unknown issue action "${action}" -- expected "create", "update", "transition", "assign", "comment", or "link".`
+            `Unknown issue action "${action}" -- expected "create", "update", "transition", "assign", "comment", ` +
+                `"link", "search", or "get".`
         );
     }
 
@@ -1358,21 +1527,66 @@ async function main(): Promise<void> {
             return;
         }
 
-        throw new Error(`Unknown page action "${action}" -- expected "create" or "link".`);
+        // TAI-268: read primitive, same rationale as `issue search`/`issue get` above.
+        // `PageRef` is id-or-(spaceKey,title) (interface.ts) -- `id=<PAGE-ID>` selects the
+        // former, two positional args the latter.
+        if (action === "get") {
+            const usage = "Usage: page get <SPACE-KEY> <TITLE> | page get id=<PAGE-ID>";
+            const [first, second] = pageArgs;
+            if (!first) throw new Error(usage);
+            const ref = parsePageGetRef(first, second);
+            if (!ref) throw new Error(usage);
+
+            const page = await config.backend.docStore.getPage(ref);
+            if (!page) {
+                console.log(`# Page not found\n\n${JSON.stringify(ref)}`);
+                return;
+            }
+            console.log(
+                [
+                    `# ${page.title}`,
+                    "",
+                    `id: ${page.id} | space: ${page.spaceKey} | updated: ${page.updatedAt}`,
+                    "",
+                    page.content,
+                    "",
+                    `## Comments (${page.comments.length})`,
+                    "",
+                    page.comments.length
+                        ? page.comments.map((c) => `### ${c.author.displayName} — ${c.createdAt}\n\n${c.body}`).join("\n\n")
+                        : "_(no comments)_",
+                ].join("\n")
+            );
+            return;
+        }
+
+        throw new Error(`Unknown page action "${action}" -- expected "create", "link", or "get".`);
     }
 
     throw new Error(
         `Usage: work <ISSUE-KEY> | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link ... | page create|link ... | install-global [TAI-HOME] ` +
+            `| issue create|transition|comment|link|search|get ... | page create|link|get ... | install-global [TAI-HOME] ` +
             `| init status|jira|confluence|bitbucket|env|claude-md`
     );
 }
 
-main().catch((err: unknown) => {
-    if (err instanceof NoOwningPersonaError || err instanceof PersonaPermissionError) {
-        console.error(err.message);
-    } else {
-        console.error(err instanceof Error ? err.message : String(err));
-    }
-    process.exitCode = 1;
-});
+// TAI-268: guarded so `cli.test.ts` can import this module's own pure helper functions
+// (renderIssueSearchResults, parseIssueSearchFilter, etc.) for unit testing without also
+// executing `main()` as a side effect of the import itself -- the exact reason no
+// cli.test.ts existed before this. `import.meta.main` (Node 24, this repo's own runtime --
+// see loadDotEnv's comment) rather than the classic `import.meta.url === file://+argv[1]`
+// idiom -- that comparison breaks the moment this file is reached through a symlink (found
+// live: EVERY real invocation goes through `~/.tai-framework` -> `tai-
+// framework`, TAI-90's own fixed-install-path convention -- `argv[1]` keeps the symlink
+// path while `import.meta.url` resolves through it, so the two never matched and `main()`
+// silently never ran at all). `import.meta.main` handles that correctly by construction.
+if (import.meta.main) {
+    main().catch((err: unknown) => {
+        if (err instanceof NoOwningPersonaError || err instanceof PersonaPermissionError) {
+            console.error(err.message);
+        } else {
+            console.error(err instanceof Error ? err.message : String(err));
+        }
+        process.exitCode = 1;
+    });
+}
