@@ -269,6 +269,12 @@ function prSkillBody(taiHome: string): string {
         '  "leaningReason": "one sentence — your own rationale, never a decision"\n' +
         "}\n" +
         "```\n\n" +
+        "`line`, when given, is the line number in the NEW (current) version of the file — " +
+        "the same numbering the diff's `+` side uses. A finding about a deleted line, or " +
+        "one you can only place on the old side of the diff, should omit `line` rather than " +
+        "guess at a new-side number (TAI-207: `line` now anchors a real inline PR comment, " +
+        "not just cosmetic text — a wrong or old-side line number posts to the wrong place " +
+        "or gets rejected by Bitbucket outright).\n" +
         "`line`/`fix` are optional per finding, everything else is required. An empty " +
         "`findings` array is a valid, preferred outcome for clean code — don't invent issues to " +
         "justify the review. Write this JSON to a temporary file (your host's own scratch/temp " +
