@@ -4,7 +4,27 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-27 (rev 53 — **§5.4: the CI-green merge gate no longer treats a
+> **Last updated:** 2026-08-27 (rev 54 — **§5.5: the multi-candidate assignment-helper gains
+> a current-user shortcut — the driving session's own human is auto-assigned when they're
+> among 2+ Persona Roster candidates, rather than always falling back to asking.** Context:
+> TAI-244/245 both hit the §5.5 assignment gate live with no automated resolution at all —
+> brief §5.5's two rules (sole-candidate pre-assign, multi-candidate assignment-helper
+> fallback) were decided at rev 19 but never actually wired up (TAI-248/249/260). Fixing
+> that surfaced a real gap in the multi-candidate rule as originally written: it always
+> falls back to asking, even in the extremely common solo/small-team case where the human
+> driving the session IS one of the candidates and the answer is obvious. Ratified
+> live (human-confirmed 2026-08-27, TAI-249 ADR, Confluence page 30572546): auto-assign that
+> human without asking; only surface the full candidate list (with lightweight load
+> signals, unchanged) when the current session's human isn't among the candidates, or has
+> no resolvable session identity at all. Fires at **both** ticket-creation time and the
+> transition-gate moment (not reactively-only) — implemented as one shared, pure resolver
+> (`src/core/personas/assignment-helper.ts`) called from `cli.ts`'s `issue create`/
+> `issue transition` handlers, deliberately NOT from inside `WorkTracker.createIssue` in
+> either backend (avoids the exact per-backend rule-drift regression `assignment-gate.ts`'s
+> own header already documents, and keeps session-identity resolution — a host-layer
+> concern — out of backend internals). A human can always override either way via
+> `issue assign`, unchanged.
+> Prior: rev 53 — **§5.4: the CI-green merge gate no longer treats a
 > commit with zero `getCommitStatuses` as failing.** Context: `bitbucket-pipelines.yml`
 > became a `custom:` (manual-only) pipeline this cycle — no automatic trigger of any kind —
 > after this project's Bitbucket free-tier 50 build-minute/month quota was hit twice in one
@@ -1269,8 +1289,17 @@ etc., differentiated by their type and their subtasks.
   sets `Assignee` **at creation time** rather than leaving it to be claimed later. Common
   cases: a solo developer (every persona maps to the same one person), or a team with a
   single PM/DBA/etc. When the roster lists **more than one** candidate for that persona,
-  TAI does **not** guess — it falls back to the assignment-helper (§5.6): surface the
-  candidates with their lightweight load signals and let the human driving the session pick.
+  TAI does **not blindly guess** — but it does check one thing first (rev 54): if the
+  **human currently driving the session** is among the candidates, that human is
+  auto-assigned, no prompt needed — the answer is unambiguous in practice even though the
+  roster lists more than one name. Only when the driving human ISN'T among the candidates
+  (or there's no resolvable session identity at all) does it fall back to the
+  assignment-helper (§5.6): surface the remaining candidates with their lightweight load
+  signals and let the human pick. This check applies at **both** creation time and the
+  transition-gate moment (a ticket that predates this rule, or was created by a different
+  session/human, still gets the same shortcut the first time someone tries to move it out
+  of `To Do`) — never a guess beyond "the person already here is an authorized candidate,"
+  and always overridable via a normal `issue assign`.
 - Ready, unassigned tickets are **claimable.** People *should* work their own tickets, but
   we deliberately do **not** hard-lock *who* may pick a ticket up — people take time off,
   need help, hand work off. (Distinct from the rule above, which lock*s* that *somebody* is
