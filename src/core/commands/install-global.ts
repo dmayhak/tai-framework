@@ -405,7 +405,7 @@ function auditSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue search [status=<CSV>] [type=<CSV>] [persona=<P>] [parent=<KEY>] [limit=<N>]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue get <ISSUE-KEY>\n` +
-        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts page get <SPACE-KEY> <TITLE>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts page get <SPACE-KEY> <TITLE> | page get id=<PAGE-ID>\n` +
         "```\n\n" +
         "`issue search` defaults to the CURRENT project (from `.env`) and applies NO status " +
         "filter unless given one — for \"the open backlog,\" pass the whole `status=` pair as one " +
@@ -486,7 +486,13 @@ function auditSkillBody(taiHome: string): string {
         "search parent=<KEY>` its siblings, and check for a stated fact that contradicts what the " +
         "parent or a sibling currently says (e.g. a subtask describing its parent or a sibling as " +
         "in a status/state that isn't actually true anymore). A finding is: the ticket key(s) " +
-        "involved and the specific contradiction or dangling reference.\n\n" +
+        "involved and the specific contradiction or dangling reference. **Caveat on (a) for pages:** " +
+        "`page get`'s by-title form is an EXACT `(spaceKey, title)` lookup, not a fuzzy search — a " +
+        "\"not found\" only means the page is gone if the mentioned title is verbatim-accurate. A " +
+        "ticket paraphrasing or slightly mis-titling a page that still exists will also miss; before " +
+        "flagging a page as orphaned from a title mention, prefer resolving it via the mentioning " +
+        "ticket's own `issue get` \"Linked pages\" list (by id) if it's linked at all, and treat a " +
+        "title-only miss as a lower-confidence finding, not a certain one.\n\n" +
         "---\n\n" +
         "**Output:** for each check that ran, a `## <check-name>` section listing every finding " +
         "as its own bullet (ticket key(s) + the specific issue, concrete enough to act on without " +
