@@ -583,6 +583,36 @@ export function defineStorageConformance(
                 const fetchedStory = await h.backend.workTracker.getIssue(story.key);
                 assert.equal(fetchedStory?.status, Status.ToDo, "the rejected parent cascade must not have applied");
             });
+
+            // TAI-275/276 ADR: visibility, not auto-retry -- the same rejected-cascade
+            // scenario above must also surface it on the result itself, identically on both
+            // backends, not just via console.warn.
+            it("surfaces a rejected parent-cascade as a cascadeWarning on the child's own successful result", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: unassigned parent story (cascadeWarnings)",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: cascade rejection (cascadeWarnings)",
+                    })
+                );
+                await h.backend.workTracker.assignIssue(dev.key, h.validAssignee);
+
+                const result = await h.backend.workTracker.transition(dev.key, Status.InProgress);
+                assert.equal(result.ok, true);
+                assert.ok(result.ok && result.cascadeWarnings && result.cascadeWarnings.length === 1);
+                if (result.ok && result.cascadeWarnings) {
+                    assert.equal(result.cascadeWarnings[0]!.key, story.key);
+                    assert.ok(result.cascadeWarnings[0]!.reason.length > 0);
+                }
+            });
         });
 
         // ---------- Downward/terminal cascade gate (TAI-267, TAI-247 ADR) ----------

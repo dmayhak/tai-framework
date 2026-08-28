@@ -36,6 +36,7 @@ import {
     type Issue,
     type IssueFilter,
     type IssueKey,
+    type CascadeWarning,
     type DocStore,
     type IssueLink,
     type IssuePatch,
@@ -699,6 +700,15 @@ function renderIssueRef(issue: Issue): string {
         `**${issue.summary}**`,
         `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}`,
     ].join("\n");
+}
+
+/** TAI-275/276 ADR: visibility, not auto-retry -- prints alongside `issue transition`'s own
+ *  success output so a cascade failure (e.g. an unassigned parent the cascade tried and
+ *  failed to move) is visible in the SAME terminal output a human is already looking at,
+ *  not just a server-side `console.warn` they may never see. */
+export function renderCascadeWarnings(warnings: readonly CascadeWarning[] | undefined): string {
+    if (!warnings || warnings.length === 0) return "";
+    return "\n\n" + warnings.map((w) => `⚠️ Cascade warning: ${w.key} — ${w.reason}`).join("\n");
 }
 
 // TAI-268 (TAI-254 ADR): `search`/`get`/`page get` below are read-only thin wrappers
@@ -1415,7 +1425,7 @@ async function main(): Promise<void> {
 
             console.log(
                 result.ok
-                    ? renderIssueRef(result.issue)
+                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings)
                     : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")

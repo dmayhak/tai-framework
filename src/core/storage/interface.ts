@@ -169,6 +169,16 @@ export interface RemoteLink {
     readonly title: string;
 }
 
+// A best-effort parent/child cascade (cascade-gate.ts — TAI-220/221/222 upward,
+// TAI-247/267 downward) that failed or threw on some OTHER issue while handling this
+// transition. TAI-275 ADR: visibility only, never auto-retried by anything reading this —
+// `key`/`reason` are just enough for a human to run `issue transition <key> ...` themselves
+// once they see it.
+export interface CascadeWarning {
+    readonly key: IssueKey; // the OTHER issue the cascade tried and failed to touch
+    readonly reason: string; // the rejection reason, or a thrown error's message
+}
+
 // Rejection vs. connectivity failure are DIFFERENT cases the brief treats
 // differently (§3.3's escalate-immediately-no-retry vs. §3.6's queue-and-retry on
 // reconnect) — collapsing them into one `ok: false` shape would force callers to
@@ -176,8 +186,14 @@ export interface RemoteLink {
 // StorageConnectivityError for network/infra failures; return `ok: false` only for a
 // genuine backend-side rejection (validator, permission, missing field, concurrent
 // change — brief §3.3's "unplanned checkpoint").
+//
+// `cascadeWarnings` (TAI-275/276, optional and additive — every existing caller ignoring
+// it is unaffected) lives only on the `ok: true` arm: a rejected primary transition
+// already carries its own clear `reason`, and cascade noise doesn't belong mixed into
+// that. Only ever populated by `transition()`'s own best-effort cascade handling; never
+// set by any other mutation.
 export type MutationResult =
-    | { readonly ok: true; readonly issue: Issue }
+    | { readonly ok: true; readonly issue: Issue; readonly cascadeWarnings?: readonly CascadeWarning[] }
     | { readonly ok: false; readonly reason: string };
 
 export class StorageConnectivityError extends Error {}

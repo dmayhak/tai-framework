@@ -22,6 +22,7 @@ import {
     type IssuePatch,
     type IssueFilter,
     type MutationResult,
+    type CascadeWarning,
     type IssueLink,
     type Comment,
     type HumanRef,
@@ -442,6 +443,10 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             if (violatesAssignmentGate(target, existing.assignee)) {
                 return { ok: false, reason: entryGateReason(key, target) };
             }
+            // TAI-275/276 ADR: collected from both best-effort cascade blocks below,
+            // surfaced (never auto-retried) on the final MutationResult -- see interface.ts's
+            // CascadeWarning doc comment.
+            const cascadeWarnings: CascadeWarning[] = [];
             // REVIEW_GATES (§3.3/§5.6, TAI-41 ADR's "hard" checkpoint kind) — same gate the
             // Jira backend enforces (work-tracker.ts), kept identical across backends so this
             // doesn't become another TAI-15-style behavioral divergence.
@@ -468,14 +473,15 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                             console.warn(
                                 `Parent-cascade transition failed for ${existing.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`
                             );
+                            cascadeWarnings.push({ key: existing.parentKey, reason: cascadeResult.reason });
                         }
                     }
                 } catch (err) {
+                    const reason = err instanceof Error ? err.message : String(err);
                     console.warn(
-                        `Parent-cascade transition threw for ${existing.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${
-                            err instanceof Error ? err.message : String(err)
-                        }`
+                        `Parent-cascade transition threw for ${existing.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${reason}`
                     );
+                    cascadeWarnings.push({ key: existing.parentKey, reason });
                 }
             }
             const updated: Issue = { ...existing, status: target, updatedAt: new Date().toISOString() };
@@ -507,25 +513,26 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                                 console.warn(
                                     `Child-cascade transition failed for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${cascadeResult.reason}`
                                 );
+                                cascadeWarnings.push({ key: child.key, reason: cascadeResult.reason });
                             }
                         } catch (err) {
+                            const reason = err instanceof Error ? err.message : String(err);
                             console.warn(
-                                `Child-cascade transition threw for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${
-                                    err instanceof Error ? err.message : String(err)
-                                }`
+                                `Child-cascade transition threw for ${child.key} (best-effort, ${key} -> "${target}" already succeeded): ${reason}`
                             );
+                            cascadeWarnings.push({ key: child.key, reason });
                         }
                     }
                 } catch (err) {
+                    const reason = err instanceof Error ? err.message : String(err);
                     console.warn(
-                        `Child-cascade search failed for ${key} (best-effort, ${key} -> "${target}" already succeeded): ${
-                            err instanceof Error ? err.message : String(err)
-                        }`
+                        `Child-cascade search failed for ${key} (best-effort, ${key} -> "${target}" already succeeded): ${reason}`
                     );
+                    cascadeWarnings.push({ key, reason: `child-cascade search failed: ${reason}` });
                 }
             }
 
-            return { ok: true, issue: updated };
+            return cascadeWarnings.length > 0 ? { ok: true, issue: updated, cascadeWarnings } : { ok: true, issue: updated };
         },
 
         async getAvailableTransitions(key: IssueKey): Promise<readonly Status[]> {

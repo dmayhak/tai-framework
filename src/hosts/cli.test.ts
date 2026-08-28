@@ -1,9 +1,26 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { toHumanId, toIssueKey, toPageId, type Comment, type HumanRef, type Issue, type IssueLink, type Page } from "../core/storage/interface.js";
+import {
+    toHumanId,
+    toIssueKey,
+    toPageId,
+    type CascadeWarning,
+    type Comment,
+    type HumanRef,
+    type Issue,
+    type IssueLink,
+    type Page,
+} from "../core/storage/interface.js";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../core/schema/story-schema.js";
-import { parseIssueSearchFilter, parsePageGetRef, renderIssueSearchResults, renderLinkedIssues, renderIssueDetail } from "./cli.js";
+import {
+    parseIssueSearchFilter,
+    parsePageGetRef,
+    renderIssueSearchResults,
+    renderLinkedIssues,
+    renderIssueDetail,
+    renderCascadeWarnings,
+} from "./cli.js";
 
 const AUTHOR: HumanRef = { id: toHumanId("del@example.com"), displayName: "Del", email: "del@example.com" };
 
@@ -216,5 +233,22 @@ describe("renderIssueDetail", () => {
         );
         assert.match(out, /_\(no comments\)_/);
         assert.match(out, /## Linked pages\n\nNone\./);
+    });
+});
+
+describe("renderCascadeWarnings", () => {
+    it("renders nothing for undefined or an empty array", () => {
+        assert.equal(renderCascadeWarnings(undefined), "");
+        assert.equal(renderCascadeWarnings([]), "");
+    });
+
+    it("renders one line per warning, each naming the key and reason", () => {
+        const warnings: readonly CascadeWarning[] = [
+            { key: toIssueKey("TAI-253"), reason: "TAI-253 has no Assignee." },
+            { key: toIssueKey("TAI-9"), reason: "some other rejection" },
+        ];
+        const out = renderCascadeWarnings(warnings);
+        assert.match(out, /⚠️ Cascade warning: TAI-253 — TAI-253 has no Assignee\./);
+        assert.match(out, /⚠️ Cascade warning: TAI-9 — some other rejection/);
     });
 });
