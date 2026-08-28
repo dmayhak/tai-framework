@@ -215,17 +215,27 @@ const OPEN_STATUSES: readonly Status[] = [Status.Backlog, Status.ToDo, Status.In
  * needs `GitHost` awareness this command has no existing dependency on, and no `issue`
  * subcommand wires one today; adding it now would be scope beyond what's asked (revisit if
  * a real need shows up, same posture as `tryResolveReadyGitDeps`'s own git-awareness gating).
+ *
+ * `candidates` are `resolveAssignment`'s raw, roster-sourced output — SYNTHETIC email-derived
+ * ids (`roster.ts`'s `parseHumanCell`), not real Jira `accountId`s. `search`'s `assignee`
+ * filter needs the real id (same boundary `resolveIssueAssignment` already crosses for the
+ * one *picked* assignee) — each candidate is re-resolved through `resolveHuman` here too,
+ * before searching, or the count would silently read 0 for everyone. Found in review
+ * (TAI-260, PR #71): the first version of this function searched on the synthetic id
+ * directly, which never matches a real ticket.
  */
 async function formatAssignmentCandidates(
-    workTracker: Pick<WorkTracker, "search">,
+    workTracker: Pick<WorkTracker, "search" | "resolveHuman">,
     projectKey: string,
     persona: Persona,
     candidates: readonly HumanRef[]
 ): Promise<string> {
     const lines = await Promise.all(
         candidates.map(async (c) => {
-            const open = await workTracker.search({ projectKey, assignee: c.id, statuses: OPEN_STATUSES });
             const who = c.email ? `${c.displayName} (${c.email})` : c.displayName;
+            const real = c.email ? await workTracker.resolveHuman(c.email) : null;
+            if (!real) return `  - ${who} — open-ticket count unavailable (no resolvable Jira user)`;
+            const open = await workTracker.search({ projectKey, assignee: real.id, statuses: OPEN_STATUSES });
             return `  - ${who} — ${open.length} open ticket${open.length === 1 ? "" : "s"}`;
         })
     );
