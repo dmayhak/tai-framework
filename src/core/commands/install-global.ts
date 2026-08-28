@@ -348,9 +348,9 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts install-global\n` +
         "```\n\n" +
-        "This (re)writes all four skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`) for both " +
-        "Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after `tai-framework` " +
-        "itself has been updated at its fixed location.\n\n" +
+        "This (re)writes all five skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`) " +
+        "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
+        "`tai-framework` itself has been updated at its fixed location.\n\n" +
         "**Target-project setup (TAI-116 piece 3, TAI-130):** once the bootstrap above is done, " +
         "check whether the CURRENT project (cwd) still needs onboarding:\n\n" +
         "```bash\n" +
@@ -370,7 +370,144 @@ function initSkillBody(taiHome: string): string {
     );
 }
 
-/** All 8 skill files (4 skills × 2 hosts) — identical content per skill across hosts, since
+/** TAI-268 (TAI-254 ADR) — the seven checks this skill runs, each a `[check-name]` value.
+ *  Kept as a named list (not just prose) so both the argument-parsing instructions below
+ *  and each check's own subsection can reference the exact same identifiers. */
+const AUDIT_CHECKS: readonly { readonly name: string; readonly title: string }[] = [
+    { name: "brief-gaps", title: "Stale brief-gap notes" },
+    { name: "output-types", title: "Undescribed declared output types" },
+    { name: "decision-drift", title: "Cross-cutting decision drift" },
+    { name: "missing-links", title: "Missing real Jira links" },
+    { name: "duplicate-scope", title: "Duplicate scope across open tickets" },
+    { name: "stale-verification", title: "Stale test/verification claims" },
+    { name: "orphaned-descriptions", title: "Orphaned or contradicting descriptions" },
+];
+
+function auditSkillBody(taiHome: string): string {
+    const checkList = AUDIT_CHECKS.map((c) => `\`${c.name}\` (${c.title})`).join(", ");
+    return (
+        "**What this is (TAI-254 ADR):** a report-only, purely human-initiated sweep of the " +
+        "current project's OPEN backlog for seven recurring staleness/drift patterns — the same " +
+        "seven an earlier session ran ad hoc, one \"check the rest of the tickets for X\" request " +
+        "at a time. This skill unifies them under one invocation. It never writes to Jira or " +
+        "Confluence itself; every finding is surfaced for the human to decide on, case by case " +
+        "(v1 has no auto-fix path at all, not even for the mechanical-looking findings).\n\n" +
+        "**The one rule every check below shares, and the actual reason this ADR exists (not a " +
+        "performance concern — a correctness one):** search fresh, every single time, for every " +
+        "check. Never answer from anything recalled earlier in this conversation, a prior " +
+        "`tai-audit` run, or `/tai-work`'s own cached briefing for a ticket you happen to already " +
+        "know well — several checks in the session this skill is built from silently produced " +
+        "wrong findings until re-run with an explicit \"force a fresh read\" instruction. Treat " +
+        "every check as if this were the first time you'd ever looked at these tickets.\n\n" +
+        "**Read primitives** (TAI-268 — plain wrappers around `WorkTracker`/`DocStore` methods " +
+        "that already existed; no Atlassian MCP server needed, same TAI-126 posture as every " +
+        "other `cli.ts` subcommand):\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue search [status=<CSV>] [type=<CSV>] [persona=<P>] [parent=<KEY>] [limit=<N>]\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue get <ISSUE-KEY>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts page get <SPACE-KEY> <TITLE> | page get id=<PAGE-ID>\n` +
+        "```\n\n" +
+        "`issue search` defaults to the CURRENT project (from `.env`) and applies NO status " +
+        "filter unless given one — for \"the open backlog,\" pass the whole `status=` pair as one " +
+        "quoted argument (values contain spaces): " +
+        '`"status=Backlog,To Do,In Progress,In Review"`. Also pass a generous `limit=` (e.g. ' +
+        "`limit=200`) — the default cap is only 50, and a truncated sweep is worse than a slow " +
+        "one; the command itself says in its own output when the limit was hit, re-run higher if " +
+        "so. `issue get` is the per-ticket drill-down — full description, every comment, real " +
+        "linked issues (both `depends-on`/`relates-to`, both directions), and every linked " +
+        "Confluence page (flagging one outright as `**MISSING**` if the page itself is gone, not " +
+        "just unlinked). Use `issue search`'s bulk output for text-pattern scanning across the " +
+        "whole backlog, `issue get`/`page get` when a specific finding needs the full picture.\n\n" +
+        `**Local docs each check reads fresh** (never from memory): \`${taiHome}/PROJECT_BRIEF.md\` ` +
+        `(the framework's own living design doc — read its CURRENT content and its revision-` +
+        `history trail at the top, not a remembered rev number), \`${taiHome}/src/personas/*.md\` ` +
+        `(one file per persona), \`${taiHome}/src/workflows/dependencies.md\` (the "material ` +
+        "bearing\" link bar, §RelatesTo).\n\n" +
+        `**Argument:** \`tai-audit [check-name]\`. With no argument, run all seven checks below ` +
+        "in sequence — each one fully independent (its own fresh searches, no sharing/batching " +
+        "across checks; decision #5's own conclusion was that batching was never the actual " +
+        "problem, stale-cache correctness was). With a `check-name` argument, run only that one " +
+        `check. Valid names: ${checkList}. Any other value is a re-ask — list the valid names ` +
+        "back rather than guessing which one was meant.\n\n" +
+        "---\n\n" +
+        "## Check: `brief-gaps` — stale brief-gap notes\n\n" +
+        "Search the open backlog's descriptions and comments for a ticket asserting something is " +
+        "**currently unresolved** in `PROJECT_BRIEF.md` — phrasing like \"the brief doesn't cover " +
+        "this yet,\" \"open question in §N,\" \"not yet decided in the brief,\" or an explicit " +
+        '`NEEDS CLARIFICATION` left unresolved past the ticket it was raised in. For each one, ' +
+        "read the CURRENT `PROJECT_BRIEF.md` fresh and check whether a later revision actually " +
+        "resolved it already — the ticket's own claim has simply gone stale. A finding is: the " +
+        "ticket key, the exact stale claim (quoted), and which brief section/revision resolved it.\n\n" +
+        "## Check: `output-types` — undescribed declared output types\n\n" +
+        `Read every \`${taiHome}/src/personas/*.md\` file fresh. Each has a \`confluenceOutputs:\` ` +
+        "frontmatter list (output `type`s that persona can produce) and a prose `## Outputs` " +
+        "section further down. Flag any type present in one but not the other (declared with no " +
+        "description, or described with no matching frontmatter entry) — both directions are a " +
+        "finding. Separately, scan open tickets for a persona promising to produce some named " +
+        "output/artifact that the OWNING persona's doc doesn't declare or describe at all. A " +
+        "finding is: the persona file (or ticket key) and the specific undescribed/undeclared " +
+        "type.\n\n" +
+        "## Check: `decision-drift` — cross-cutting decision drift\n\n" +
+        "Distinct from `brief-gaps`: this is about a ticket stating a specific behavior as " +
+        "CURRENT FACT that has since changed, not about a gap that closed. Read `PROJECT_BRIEF.md`" +
+        "'s own revision-history trail at the top fresh (the \"Prior: rev N —\" chain covers the " +
+        "last several decisions) and check each open ticket's description/comments against it for " +
+        "a stated behavior that a later revision superseded — e.g. a ticket describing an old " +
+        "gating rule, a retired mechanism, or a since-reversed default as if it were still true " +
+        "today. A finding is: the ticket key, the stale statement (quoted), and the brief " +
+        "revision that actually superseded it.\n\n" +
+        "## Check: `missing-links` — missing real Jira links\n\n" +
+        "For each open ticket, scan its description/comments for a mention of another ticket key " +
+        "(`TAI-\\d+`-shaped) or a Confluence page title/URL. For each mention, run `issue get` on " +
+        "that ticket and check whether a REAL link (not just prose) already exists to the " +
+        "mentioned key/page. Where one is missing, read " +
+        `\`${taiHome}/src/workflows/dependencies.md\` fresh and apply its own "material bearing" ` +
+        "bar before flagging it — link only what has a material bearing on completing the " +
+        "CURRENT ticket more efficiently, never every passing topical mention. A finding is: the " +
+        "ticket key, the referenced key/page, and a one-line reason it clears the material-" +
+        "bearing bar.\n\n" +
+        "## Check: `duplicate-scope` — duplicate scope across open tickets\n\n" +
+        "Enumerate the open backlog (Stories/Bugs/Epics as one group, subtasks as another — " +
+        "duplication across those two groups isn't meaningful, within each group it is) and " +
+        "compare summaries/descriptions for two or more open tickets covering substantially the " +
+        "same piece of work. A finding is: the overlapping ticket keys and what scope they share.\n\n" +
+        "## Check: `stale-verification` — stale test/verification claims\n\n" +
+        "The one check that also needs the actual repo, not just Jira/Confluence: scan open " +
+        "tickets for a specific test/verification claim (\"N/N tests pass,\" \"verified against " +
+        "real Jira,\" naming a specific test file or `describe` block) and confirm it's still " +
+        "true against the CURRENT code — run the real test suite, or `grep` for the named test/" +
+        "describe block to confirm it still exists and still says what the ticket claims. A " +
+        "finding is: the ticket key, the stale claim (quoted), and what's actually true now.\n\n" +
+        "## Check: `orphaned-descriptions` — orphaned or contradicting descriptions\n\n" +
+        "Two sub-patterns: **(a) dangling references** — the same ticket-key/page-mention scan " +
+        "as `missing-links`, but here the referenced ticket/page itself no longer exists at all " +
+        '(`issue get`/`page get` returns "not found"), not merely unlinked. **(b) parent/child or ' +
+        "sibling contradiction** — for each open subtask, `issue get` its parent and `issue " +
+        "search parent=<KEY>` its siblings, and check for a stated fact that contradicts what the " +
+        "parent or a sibling currently says (e.g. a subtask describing its parent or a sibling as " +
+        "in a status/state that isn't actually true anymore). A finding is: the ticket key(s) " +
+        "involved and the specific contradiction or dangling reference. **Caveat on (a) for pages:** " +
+        "`page get`'s by-title form is an EXACT `(spaceKey, title)` lookup, not a fuzzy search — a " +
+        "\"not found\" only means the page is gone if the mentioned title is verbatim-accurate. A " +
+        "ticket paraphrasing or slightly mis-titling a page that still exists will also miss; before " +
+        "flagging a page as orphaned from a title mention, prefer resolving it via the mentioning " +
+        "ticket's own `issue get` \"Linked pages\" list (by id) if it's linked at all, and treat a " +
+        "title-only miss as a lower-confidence finding, not a certain one.\n\n" +
+        "---\n\n" +
+        "**Output:** for each check that ran, a `## <check-name>` section listing every finding " +
+        "as its own bullet (ticket key(s) + the specific issue, concrete enough to act on without " +
+        "re-deriving it) — or the literal line `No findings.` when a check comes back clean " +
+        "(a clean pass is a real, good outcome; never invent a finding to avoid an empty section). " +
+        "Present the full report for every check that ran, **then stop and wait for the human's " +
+        "own next message** — same stop-and-wait discipline as `tai-ready`/`tai-pr`'s own findings " +
+        "steps (TAI-202/203/258): do NOT, in this same turn, fix anything, create a Jira link or " +
+        "ticket, edit `PROJECT_BRIEF.md`, or re-run a check unasked, no matter how obvious or " +
+        "mechanical a finding looks. This is report-only, full stop (decision #3) — the human " +
+        "decides every fix, one at a time, in their own next message."
+    );
+}
+
+/** All 10 skill files (5 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
     const skills: readonly { readonly name: string; readonly description: string; readonly body: string }[] = [
@@ -393,6 +530,14 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
             name: "tai-init",
             description: "Install/refresh TAI's own global skills, and (eventually) guide setup of a real target project (TAI-116)",
             body: initSkillBody(taiHome),
+        },
+        {
+            name: "tai-audit",
+            description:
+                "Report-only sweep of the open backlog for seven staleness/drift patterns -- stale brief-gap " +
+                "notes, undescribed output types, decision drift, missing links, duplicate scope, stale " +
+                "verification claims, orphaned/contradicting descriptions (TAI-254 ADR)",
+            body: auditSkillBody(taiHome),
         },
     ];
 

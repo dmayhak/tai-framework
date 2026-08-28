@@ -360,8 +360,8 @@ function claudeMdSection(taiHome: string): string {
         `${CLAUDE_MD_BEGIN}\n` +
         `## Team AI (TAI)\n\n` +
         `This project uses [TAI](${taiHome}) (Team AI) for Jira/Confluence-driven persona ` +
-        `workflows. Global skills (\`tai-work\`, \`tai-ready\`, \`tai-pr\`, \`tai-init\`) are ` +
-        `installed at \`~/.claude/skills/tai-*/\` and \`~/.gemini/skills/tai-*/\`, referencing ` +
+        `workflows. Global skills (\`tai-work\`, \`tai-ready\`, \`tai-pr\`, \`tai-init\`, ` +
+        `\`tai-audit\`) are installed at \`~/.claude/skills/tai-*/\` and \`~/.gemini/skills/tai-*/\`, referencing ` +
         `TAI's fixed install at \`${taiHome}\`. See \`${taiHome}/PROJECT_BRIEF.md\` for the ` +
         `framework's own design reference.\n` +
         `${CLAUDE_MD_END}\n`
