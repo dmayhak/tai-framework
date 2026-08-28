@@ -126,9 +126,15 @@ verifies that implementation matches spec and is sound.
   `comment-findings` (`cli.ts`) — Cole never composes this write-up as prose himself; see
   `tai-pr`'s own review-flow instructions (`install-global.ts`'s `prSkillBody`) for the
   exact steps. Posted as a real PR comment via `comment-findings`, not a Jira comment —
-  there's no CodeReview subtask to attach a Jira comment to anymore. A separate
-  `git-pr review`'s `[COMMENT]` argument still exists for a short note alongside the
-  approve/requestChanges decision itself, distinct from the findings write-up.
+  there's no CodeReview subtask to attach a Jira comment to anymore. **TAI-207:**
+  `comment-findings` posts a real inline PR comment (anchored to the exact file/line) for
+  every `critical`-severity finding that has a `line`, in addition to the summary comment —
+  a `critical` finding without a `line`, or any lower severity, stays summary-only (v1
+  threshold hardcoded per TAI-209 ADR Decision §4, no config surface yet). Cole doesn't do
+  anything differently to get this — `comment-findings` splits inline vs. summary
+  automatically from the same structured findings JSON. A separate `git-pr review`'s
+  `[COMMENT]` argument still exists for a short note alongside the approve/requestChanges
+  decision itself, distinct from the findings write-up.
 
 ## Interaction style
 

@@ -103,6 +103,19 @@ export interface CreatePullRequestInput {
     readonly reviewers?: readonly HumanRef[];
 }
 
+/**
+ * TAI-207: what `GitHost.addInlineComment` needs to anchor a comment to one line of one
+ * file in a PR's diff. `line` is the DESTINATION-side (new-file) line number only — the
+ * common case for a review comment pointing at current code, and the only shape TAI-209's
+ * `ReviewFinding` schema itself carries (a single `line`, no old/new distinction). Anchoring
+ * to the source (old-file) side isn't exposed here; add it if a real caller ever needs it.
+ */
+export interface InlineCommentInput {
+    readonly path: string;
+    readonly line: number;
+    readonly body: string;
+}
+
 export type CommitStatusState = "successful" | "failed" | "inProgress" | "stopped";
 
 export interface CommitStatus {
@@ -174,6 +187,17 @@ export interface GitHost {
      */
     unapprovePullRequest(repo: RepoId, id: PullRequestId): Promise<void>;
     addPullRequestComment(repo: RepoId, id: PullRequestId, body: string): Promise<Comment>;
+    /**
+     * TAI-207: posts a comment anchored to one line of one file in the PR's diff — the
+     * per-finding counterpart to `addPullRequestComment`'s single general comment. Used by
+     * `git-pr comment-findings` (`cli.ts`) for `critical`-severity findings (TAI-209 ADR
+     * Decision §4), the rest still go through `addPullRequestComment`'s summary comment.
+     * Same failure contract as `addPullRequestComment`: throws (a `BitbucketRejection` on a
+     * real rejection — e.g. `line` isn't part of the diff — or a connectivity fault), no
+     * ok/reason result type, since there's nothing structurally different about this
+     * mutation that would need one.
+     */
+    addInlineComment(repo: RepoId, id: PullRequestId, input: InlineCommentInput): Promise<Comment>;
     mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy): Promise<GitMutationResult>;
 
     /**

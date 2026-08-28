@@ -70,7 +70,13 @@ import {
     validateBranchName,
     validatePrTitle,
 } from "../core/commands/git-pr.js";
-import { parseReviewFindings, renderReviewFindings } from "../core/git/review-findings.js";
+import {
+    parseReviewFindings,
+    renderReviewFindings,
+    partitionInlineFindings,
+    renderInlineComment,
+    type ReviewFinding,
+} from "../core/git/review-findings.js";
 import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -880,11 +886,16 @@ async function main(): Promise<void> {
         }
 
         // TAI-209/210 ADR: the step-4 action, run only once the human has said to post.
-        // Renders the same way render-findings does, posts it as the summary comment via the
-        // same general-comment path as `comment` above. No per-finding inline posting yet --
-        // TAI-207's GitHost.addInlineComment doesn't exist yet, and the ADR's own Consequences
-        // section is explicit this isn't a blocking gap for this ticket: critical findings
-        // simply appear in the summary's own severity section until TAI-207 lands.
+        // TAI-207: `critical`-severity findings with a `line` now post as real inline PR
+        // comments (via GitHost.addInlineComment) FIRST, then the summary comment posts via
+        // the same general-comment path as `comment` above -- renderReviewFindings already
+        // excludes whatever went inline from the summary's own severity sections (a one-line
+        // tally stands in for them instead), same split reviewd's own commenter.py makes.
+        // Inline posting is best-effort per finding (mirrors reviewd's own
+        // catch-log-and-continue posture in _post_review_impl): a single bad anchor (e.g. a
+        // finding's `line` isn't actually part of the diff -- a real, expected Bitbucket
+        // rejection, not a connectivity fault) shouldn't block the summary comment, which is
+        // the one artifact every reviewer actually depends on seeing.
         if (action === "comment-findings") {
             const [repoArg, ...gitArgs] = actionArgs;
             if (!repoArg) throw new Error(usage);
@@ -894,8 +905,34 @@ async function main(): Promise<void> {
             const { prIdArg, findingsArg } = parseFindingsCommentArgs(gitArgs);
             const findings = parseReviewFindings(findingsArg);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
-            const comment = await gitHost.addPullRequestComment(repo, prId, renderReviewFindings(findings));
-            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
+
+            const { inline: eligible, summary } = partitionInlineFindings(findings.findings);
+            const posted: ReviewFinding[] = [];
+            const failed: ReviewFinding[] = [];
+            const inlineFailures: string[] = [];
+            for (const f of eligible) {
+                try {
+                    await gitHost.addInlineComment(repo, prId, { path: f.file, line: f.line!, body: renderInlineComment(f) });
+                    posted.push(f);
+                } catch (err) {
+                    // A failed inline post (e.g. `line` isn't actually part of the diff --
+                    // a real Bitbucket rejection, not a connectivity fault) falls back into
+                    // the summary below rather than being silently dropped -- it's still
+                    // eligible, just not actually posted anywhere yet.
+                    failed.push(f);
+                    inlineFailures.push(`${f.file}:${f.line} (${f.title}) — ${err instanceof Error ? err.message : String(err)}`);
+                }
+            }
+
+            const comment = await gitHost.addPullRequestComment(
+                repo,
+                prId,
+                renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] })
+            );
+            const failureNote = inlineFailures.length > 0
+                ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
+                : "";
+            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}${failureNote}`);
             return;
         }
 
