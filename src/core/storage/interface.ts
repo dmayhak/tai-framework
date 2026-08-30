@@ -175,7 +175,11 @@ export interface RemoteLink {
 // `key`/`reason` are just enough for a human to run `issue transition <key> ...` themselves
 // once they see it.
 export interface CascadeWarning {
-    readonly key: IssueKey; // the OTHER issue the cascade tried and failed to touch
+    // The OTHER issue the cascade tried and failed to touch -- except when the
+    // downward cascade's own child SEARCH fails (no child was ever identified to
+    // blame), in which case this is the current transitioning issue itself, whose
+    // own transition already succeeded despite the warning.
+    readonly key: IssueKey;
     readonly reason: string; // the rejection reason, or a thrown error's message
 }
 
