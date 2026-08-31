@@ -4,7 +4,20 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-31 (rev 55 — **§8: seven new open questions captured live from
+> **Last updated:** 2026-08-31 (rev 56 — **§8/`personas/pm.md`: the "flagged-live idea
+> becomes a real Backlog ticket" convention gets written down for the first time
+> (TAI-286).** Rev 55 (immediately below) captured seven open questions and, separately,
+> created real Backlog tickets for them (TAI-279-285) — following the same shape already
+> established by TAI-115/189/230, but that shape had never actually been documented
+> anywhere a persona is instructed to follow it (confirmed live: zero hits grepping every
+> `src/personas/*.md`/`src/workflows/*.md` file for the pattern). Human-flagged gap,
+> fixed same-session: `personas/pm.md` gains a new Core Principle — "Captures genuinely
+> open ideas as real Backlog tickets, not just brief prose or conversation-only notes" —
+> and §8's own preamble now states its scope explicitly: genuinely undecided DESIGN
+> questions stay here, anything scoped enough to investigate or build gets a real Jira
+> Story/Spike, backlinked from its §8 entry. Formalizes existing practice; no behavior
+> changes as a result.
+> Prior: rev 55 — **§8: seven new open questions captured live from
 > a human notes dump, none resolved here.** Priority-value alias mapping alongside TAI-116/
 > 179's issue-type-only alias work (§8 item 31); an Analyst-owned Confluence project "home"
 > page and an Architect-owned architectural-overview doc, both flagged as possible new
@@ -1569,7 +1582,11 @@ is designed.)*
 
 ## 8. Open Design Questions
 
-Carry these forward; resolve them in upcoming design sessions.
+Carry these forward; resolve them in upcoming design sessions. **This list is for
+genuinely undecided design questions only** — once an idea is scoped enough to actually
+investigate or build, it gets a real Jira Story/Spike in `Backlog` status (`personas/
+pm.md`'s "Captures genuinely open ideas as real Backlog tickets" principle, rev 56,
+TAI-286), backlinked from its §8 entry here, not left sitting only as brief prose.
 
 1. ~~**Story-type taxonomy**~~ — **RESOLVED (rev 11):** **Kickoff / Story / Bug / Spike**
    is final for now, no new type added ahead of a real need — the taxonomy stays open/
