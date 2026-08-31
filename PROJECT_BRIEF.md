@@ -1876,26 +1876,27 @@ Carry these forward; resolve them in upcoming design sessions.
     that would actually break on a non-default scheme, and if so, does it want the same
     alias-mapping treatment (`src/core/storage/jira/type-alias-config.ts`) extended to
     cover it, or its own lighter mechanism? Revisit once a concrete case surfaces, same
-    posture as items 1/28/29.
+    posture as items 1/28/29. **See TAI-279 (Spike, Backlog).**
 32. **Analyst-owned Confluence project "home" page (rev 55, 2026-08-31, open, possible new
     skill).** No persona currently owns keeping a project-level executive-summary/
     description page current in Confluence. Flagged as a likely Ada (Analyst) job, wholly
     undesigned: what it should contain, how/when it gets updated (once at Kickoff? every
     Epic? periodically?), and whether it's a new `confluenceOutputs` doc type or folds into
     the existing project-level `Config` folder (§4 rev 13, which already holds untyped,
-    non-ticket-tied content).
+    non-ticket-tied content). **See TAI-280 (Story, Backlog).**
 33. **Architect-owned architectural overview doc (rev 55, 2026-08-31, open, possible new
     skill).** Same shape as item 32 but for Dario (Architect): a living doc describing the
     codebase's actual structure/design — content (code layout? ERD? API reference? some
     mix?), page count (one doc or several), and update cadence are all undecided. Likely
-    wants the same home as item 32 once designed, but not decided together here.
+    wants the same home as item 32 once designed, but not decided together here. **See
+    TAI-281 (Story, Backlog).**
 34. **Keep local master/main fresh across multiple machines/checkouts (rev 55, 2026-08-31,
     open).** Distinct from §8 item 8's worktree-swap-on-ticket-switch design (resolved,
     not yet implemented) and TAI-115's worktree-concurrency Story (explicitly deferred to
     v2) — this is about the same human (or team) working from more than one machine/folder
     letting a local `master`/`main` go stale before branching new work off it, i.e.
     fetching/pulling as appropriate, and often. §6 doesn't cover this today. Flagged live,
-    not yet designed.
+    not yet designed. **See TAI-282 (Story, Backlog).**
 35. **Systematic per-persona job/scope audit against competitor frameworks (rev 55,
     2026-08-31, open, sized as a real investigation).** For each of the 9 personas: what
     tickets do they actually touch, what marks their work "done," how deep do they dig,
@@ -1904,12 +1905,13 @@ Carry these forward; resolve them in upcoming design sessions.
     items 21-26) compared specific mechanisms (uncertainty markers, completion markers,
     checkpoint taxonomy, …), not full per-persona scope — this is a different, broader
     pass. Scale suggests a dedicated Spike or Analyst-led investigation, not a quick brief
-    edit.
+    edit. **See TAI-283 (Spike, Backlog).**
 36. **Overall TAI-vs-competition comparison (rev 55, 2026-08-31, open, sized as a real
     investigation).** Follow-on to item 35: once the per-persona comparison exists, do a
     "real" comparison of TAI against GSD/BMAD-METHOD/Spec Kit as whole systems — where TAI
     wins, where it falls short, concrete improvement candidates. Same "real investigation,
-    not a brief edit" scale note as item 35; likely shares its Spike.
+    not a brief edit" scale note as item 35; likely shares its Spike. **See TAI-284 (Spike,
+    Backlog).**
 37. **Extend the out-of-band-human-edit posture from git hosts to Jira/Confluence directly
     (rev 55, 2026-08-31, open).** §6/the TAI-34 ADR already establish that a human acting
     directly on the git host (reviewing, merging) is treated as authoritative, not fought —
@@ -1919,7 +1921,8 @@ Carry these forward; resolve them in upcoming design sessions.
     as the biggest exposure — ticket/requirement content changing under them mid-flight —
     but every persona is exposed to some degree. Undesigned: how a persona notices a
     ticket/page changed since its own last read (a diff against the cache/`lastUpdated`,
-    §7?), and what reconciliation looks like once noticed.
+    §7?), and what reconciliation looks like once noticed. **See TAI-285 (Story,
+    Backlog).**
 
 ---
 
