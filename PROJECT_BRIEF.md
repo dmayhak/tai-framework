@@ -4,7 +4,23 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-27 (rev 54 — **§5.5: the multi-candidate assignment-helper gains
+> **Last updated:** 2026-08-31 (rev 55 — **§8: seven new open questions captured live from
+> a human notes dump, none resolved here.** Priority-value alias mapping alongside TAI-116/
+> 179's issue-type-only alias work (§8 item 31); an Analyst-owned Confluence project "home"
+> page and an Architect-owned architectural-overview doc, both flagged as possible new
+> skills with undecided content/cadence (§8 items 32-33); keeping local `master`/`main`
+> fresh across multiple machines/checkouts — distinct from §8 item 8's worktree-swap design
+> and TAI-115's deferred worktree-concurrency Story (§8 item 34); a systematic per-persona
+> job/scope audit against GSD/BMAD-METHOD/Spec Kit's equivalent roles, and a follow-on
+> overall TAI-vs-competition comparison — both sized as a real investigation, not a brief
+> edit (§8 items 35-36); and extending the existing git-host out-of-band-human-edit posture
+> (§6/TAI-34 — "a human acting directly is authoritative, not fought, detected on next
+> refresh") to direct Jira/Confluence edits, named as PM/Analyst's biggest exposure (§8
+> item 37). An eighth note — "link real tickets/docs, not just text" — was NOT added here;
+> it's already the `missing-links` check in `tai-audit` (TAI-254 ADR), so it's a sweep to
+> run, not a new question. Captured verbatim per items 1/28/29's "flag live, don't design
+> on the spot" posture.
+> Prior: rev 54 — **§5.5: the multi-candidate assignment-helper gains
 > a current-user shortcut — the driving session's own human is auto-assigned when they're
 > among 2+ Persona Roster candidates, rather than always falling back to asking.** Context:
 > TAI-244/245 both hit the §5.5 assignment gate live with no automated resolution at all —
@@ -1853,6 +1869,57 @@ Carry these forward; resolve them in upcoming design sessions.
     *artifact* doesn't go away. Revisit only if this friction is actually felt on a real
     project — would need the precedence graph to become instance-aware, not type-aware, a
     bigger change than anything rev 52 did.
+31. **Custom Jira priorities may need alias-mapping too (rev 55, 2026-08-31, open).**
+    TAI-116/TAI-179 built type-alias mapping for issue *types* only (TAI-90/91's ADR). A
+    target project's Jira admin may have set up custom `Priority` values that don't match
+    whatever TAI reads/assumes — not yet investigated: does TAI touch `Priority` anywhere
+    that would actually break on a non-default scheme, and if so, does it want the same
+    alias-mapping treatment (`src/core/storage/jira/type-alias-config.ts`) extended to
+    cover it, or its own lighter mechanism? Revisit once a concrete case surfaces, same
+    posture as items 1/28/29.
+32. **Analyst-owned Confluence project "home" page (rev 55, 2026-08-31, open, possible new
+    skill).** No persona currently owns keeping a project-level executive-summary/
+    description page current in Confluence. Flagged as a likely Ada (Analyst) job, wholly
+    undesigned: what it should contain, how/when it gets updated (once at Kickoff? every
+    Epic? periodically?), and whether it's a new `confluenceOutputs` doc type or folds into
+    the existing project-level `Config` folder (§4 rev 13, which already holds untyped,
+    non-ticket-tied content).
+33. **Architect-owned architectural overview doc (rev 55, 2026-08-31, open, possible new
+    skill).** Same shape as item 32 but for Dario (Architect): a living doc describing the
+    codebase's actual structure/design — content (code layout? ERD? API reference? some
+    mix?), page count (one doc or several), and update cadence are all undecided. Likely
+    wants the same home as item 32 once designed, but not decided together here.
+34. **Keep local master/main fresh across multiple machines/checkouts (rev 55, 2026-08-31,
+    open).** Distinct from §8 item 8's worktree-swap-on-ticket-switch design (resolved,
+    not yet implemented) and TAI-115's worktree-concurrency Story (explicitly deferred to
+    v2) — this is about the same human (or team) working from more than one machine/folder
+    letting a local `master`/`main` go stale before branching new work off it, i.e.
+    fetching/pulling as appropriate, and often. §6 doesn't cover this today. Flagged live,
+    not yet designed.
+35. **Systematic per-persona job/scope audit against competitor frameworks (rev 55,
+    2026-08-31, open, sized as a real investigation).** For each of the 9 personas: what
+    tickets do they actually touch, what marks their work "done," how deep do they dig,
+    and what's their focus — compared against GSD/BMAD-METHOD/Spec Kit's equivalent agent
+    roles, with an explicit likes/dislikes call on each competitor. The rev 22 survey (§8
+    items 21-26) compared specific mechanisms (uncertainty markers, completion markers,
+    checkpoint taxonomy, …), not full per-persona scope — this is a different, broader
+    pass. Scale suggests a dedicated Spike or Analyst-led investigation, not a quick brief
+    edit.
+36. **Overall TAI-vs-competition comparison (rev 55, 2026-08-31, open, sized as a real
+    investigation).** Follow-on to item 35: once the per-persona comparison exists, do a
+    "real" comparison of TAI against GSD/BMAD-METHOD/Spec Kit as whole systems — where TAI
+    wins, where it falls short, concrete improvement candidates. Same "real investigation,
+    not a brief edit" scale note as item 35; likely shares its Spike.
+37. **Extend the out-of-band-human-edit posture from git hosts to Jira/Confluence directly
+    (rev 55, 2026-08-31, open).** §6/the TAI-34 ADR already establish that a human acting
+    directly on the git host (reviewing, merging) is treated as authoritative, not fought —
+    detected on next refresh and reflected, same principle as §4's Confluence-gate-
+    reopening rule. That posture isn't yet extended to a human creating or editing a Jira
+    ticket or Confluence page directly, out of band. PM (Perry) and Analyst (Ada) are named
+    as the biggest exposure — ticket/requirement content changing under them mid-flight —
+    but every persona is exposed to some degree. Undesigned: how a persona notices a
+    ticket/page changed since its own last read (a diff against the cache/`lastUpdated`,
+    §7?), and what reconciliation looks like once noticed.
 
 ---
 
