@@ -159,10 +159,15 @@ describe("refreshLocalDefaultBranch", () => {
             // still within the debounce window, so it must be invisible to it.
             const root = path.dirname(remote);
             await advanceRemote(root, remote);
+            const localShaBeforeSecondCall = await git(["rev-parse", "master"], local);
 
             const second = await refreshLocalDefaultBranch(local, taiRoot, new Date("2026-09-03T10:05:00.000Z"));
             assert.deepEqual(second, { kind: "skipped-debounce" });
-            assert.equal(await git(["rev-parse", "master"], local), await git(["rev-parse", "master"], local));
+            assert.equal(
+                await git(["rev-parse", "master"], local),
+                localShaBeforeSecondCall,
+                "debounced call must not touch local master"
+            );
         });
     });
 
