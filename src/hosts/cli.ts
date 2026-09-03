@@ -74,6 +74,7 @@ import {
     isGreen,
     isMergeConflict,
     findLinkedIssueForPR,
+    resolveStoryKeyForPr,
     validateBranchName,
     validatePrTitle,
 } from "../core/commands/git-pr.js";
@@ -1150,10 +1151,13 @@ async function main(): Promise<void> {
             }
             // Brief §6: a branch is named after the parent Story/Bug, not the subtask
             // opening the PR — TAI-107 found this session's own branches had deviated.
-            validateBranchName(sourceBranch, issue.parentKey ?? issue.key);
+            // TAI-297: resolveStoryKeyForPr checks the issue's actual type, not merely
+            // whether it has a parentKey — see its own doc comment for why that matters.
+            const { storyKey, subtaskKey } = resolveStoryKeyForPr(issue);
+            validateBranchName(sourceBranch, storyKey);
             // TAI-112: the PR title is tied to the parent Story/Bug first, subtask second —
             // the 10 PRs preceding this ticket used neither convention consistently.
-            validatePrTitle(title, issue.parentKey ?? issue.key, issue.parentKey ? issue.key : null);
+            validatePrTitle(title, storyKey, subtaskKey);
 
             // rev 52 (TAI-159 ADR §3.3): loads PR Reviewers roster from Confluence and
             // passes them as reviewers so they are auto-assigned on PR creation.
