@@ -90,6 +90,7 @@ import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
+import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
 import {
     DependencyRelation,
     isSubtaskIssueType,
@@ -1255,6 +1256,7 @@ async function main(): Promise<void> {
 
     if (subcommand === "work") {
         if (!arg) throw new Error("Usage: work <ISSUE-KEY>");
+        const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
         const turn = await prepareWorkTurn(
             {
                 backend: config.backend,
@@ -1264,12 +1266,13 @@ async function main(): Promise<void> {
             },
             toIssueKey(arg)
         );
-        console.log(renderWorkTurn(turn));
+        console.log((fetchNote ? `${fetchNote}\n\n` : "") + renderWorkTurn(turn));
         return;
     }
 
     if (subcommand === "ready") {
         const persona = arg as Persona | undefined;
+        const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
         const gitDeps = await tryResolveReadyGitDeps(config);
         const result = await findReadyWork(
             {
@@ -1280,7 +1283,7 @@ async function main(): Promise<void> {
             },
             persona
         );
-        console.log(renderReadyWork(result, arg));
+        console.log((fetchNote ? `${fetchNote}\n\n` : "") + renderReadyWork(result, arg));
         return;
     }
 
