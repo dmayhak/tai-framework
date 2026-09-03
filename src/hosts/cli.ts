@@ -746,6 +746,26 @@ export function parsePageGetRef(first: string, second: string | undefined): Page
     return { spaceKey: first, title: second };
 }
 
+/**
+ * TAI-292 (`workflows/dependencies.md`'s "Initial Status & Priority for a Created
+ * Subtask"): `issue create`'s default for a subtask's `priority` when the caller didn't
+ * pass `priority=` explicitly. An explicit `priority=` always wins outright (this
+ * function isn't even consulted for that case in practice, but stays correct if it is).
+ * Only actual subtask issue types inherit this way — a Story/Bug/Spike's own priority is
+ * never inferred from a parent Epic, which has no meaningful "priority" of its own to
+ * inherit. Pure decision logic only; resolving `parentPriority` (an async fetch) is the
+ * caller's job.
+ */
+export function resolveCreatePriority(
+    explicitPriority: string | undefined,
+    issueType: StoryType | SubtaskType | "epic",
+    parentPriority: string | undefined
+): string | undefined {
+    if (explicitPriority !== undefined) return explicitPriority;
+    if (isSubtaskIssueType(issueType) && parentPriority !== undefined) return parentPriority;
+    return undefined;
+}
+
 export function renderIssueSearchResults(issues: readonly Issue[], filter: IssueFilter): string {
     const scope = [
         `project: ${filter.projectKey}`,
@@ -1327,7 +1347,9 @@ async function main(): Promise<void> {
                         '"integration-test") -- see StoryType/SubtaskType in story-schema.ts -- NOT the raw Jira ' +
                         'display name ("Bug", "Dev", "CodeReview").\n' +
                         "  allowDuplicate=true opts out of the one-per-story-instance duplicate-subtask guard " +
-                        "(TAI-226/228) -- only for a deliberate redo of a normally-singleton subtask type."
+                        "(TAI-226/228) -- only for a deliberate redo of a normally-singleton subtask type.\n" +
+                        "  A subtask with parent= but no explicit priority= inherits its parent's Priority " +
+                        "automatically (TAI-292) -- pass priority= explicitly to override."
                 );
             }
             const fields = parseKeyValueArgs(kv);
@@ -1344,6 +1366,21 @@ async function main(): Promise<void> {
                 if (assignee) resolvedAssignee = assignee;
             }
 
+            // TAI-292: only bother fetching the parent when its priority could actually
+            // matter (priority= omitted, a parent was given) -- resolveCreatePriority
+            // itself also gates on issueType, but there's no reason to fetch at all for a
+            // Story/Bug/Spike's own creation (no parent Story to inherit from).
+            let parentPriority: string | undefined;
+            if (fields["priority"] === undefined && fields["parent"] !== undefined) {
+                const parent = await config.backend.workTracker.getIssue(toIssueKey(fields["parent"]));
+                parentPriority = parent?.priority;
+            }
+            const resolvedPriority = resolveCreatePriority(
+                fields["priority"],
+                issueType as StoryType | SubtaskType | "epic",
+                parentPriority
+            );
+
             const input: CreateIssueInput = {
                 projectKey,
                 issueType: issueType as StoryType | SubtaskType | "epic",
@@ -1351,7 +1388,7 @@ async function main(): Promise<void> {
                 ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
                 ...(persona !== undefined ? { persona } : {}),
                 ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
-                ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
+                ...(resolvedPriority !== undefined ? { priority: resolvedPriority } : {}),
                 ...(fields["labels"] !== undefined ? { labels: fields["labels"].split(",") } : {}),
                 ...(fields["allowDuplicate"] !== undefined ? { allowDuplicate: fields["allowDuplicate"] === "true" } : {}),
                 ...(resolvedAssignee !== undefined ? { assignee: resolvedAssignee } : {}),

@@ -208,6 +208,46 @@ for one Story). When that happens, PM should state which optional subtask types 
 considered and why none applied, in the Story's creation comment, so the judgment is visible
 and reviewable rather than silent.
 
+## Initial Status & Priority for a Created Subtask (TAI-292, 2026-09-03)
+
+Applies uniformly to every subtask-creation path above — PM's WBS-assembly batch (items
+4/5 above), the single-Story informal judgment call (the "Known gap" paragraph just
+above), and TAI-83's eager/ad-hoc creation alike. Refines brief §5.3's rev 27/29
+`Backlog`-is-the-default-landing-status decision (still the actual default — unchanged);
+this section is about the narrower question rev 29 explicitly left open: when does a
+persona count as "authority to judge readiness" (rev 29's own phrase) and promote past it
+at creation time, rather than always leaving that to a later manual step.
+
+- **Status: `To Do`, not `Backlog`, iff the subtask's description is fully actionable as
+  written** — someone picking it up later needs no further scoping/triage first. This is
+  the one crisp, self-checkable signal, not a fuzzy "how important/complex is this"
+  judgment: a WBS-assembled subtask (Perry already wrote a scoped description) and a
+  Developer's well-defined ad-hoc `SpikeTask` both qualify; a placeholder flag for
+  something not yet concretely scoped ("we might need a DB migration eventually") does
+  not, and lands in `Backlog` same as before. No separate "ask a human" branch is needed
+  on top of this — landing in `Backlog` already **is** the fallback, per rev 29's existing
+  soft-gate design (a human, or a persona with the authority, moves it later); a comment
+  explaining why a given subtask landed in `Backlog` rather than `To Do` is good practice
+  but not new machinery.
+- **A created subtask never starts directly `In Progress`.** Creating and starting work
+  stay two separate steps, always — matches every subtask-creation path in this file, and
+  keeps `SUBTASK_PRECEDENCE` gating meaningful (a newly-created, still-blocked subtask
+  starting `In Progress` would be a contradiction).
+- **Priority: always an explicit `priority=<parent's priority>` write on `issue create`,
+  unconditionally — no carve-out for a "minor" subtask under a High-priority parent.**
+  `tai-ready`'s existing parent-priority-inheritance behavior is display/sort-only (a
+  subtask with no `Priority` of its own falls back to its parent's for that purpose) — the
+  underlying Jira field itself was never actually being set, which is a real, silent gap:
+  found live this session (TAI-292) when TAI-289/290/291 defaulted to Jira's own `Medium`
+  under a `High`-priority parent (TAI-285), since none of the `issue create` calls passed
+  `priority=` explicitly. TAI's priority field has exactly one consumer today (`tai-ready`'s
+  sort/display) — no SLA or queue-depth logic exists that "priority inflation" from
+  inheriting the parent's could actually harm, and a High-priority Story's subtasks
+  surfacing prominently in `tai-ready` is the intended behavior, not a bug to guard
+  against. Independent subtask-level priority is a solution to a problem TAI doesn't have
+  yet (this codebase's own repeated "don't build ahead of an observed need" stance) —
+  revisit only if a real workload/triage need for it actually surfaces.
+
 ## Ad-Hoc Subtask-Level Dependencies (escape hatch)
 
 Most dynamically-inserted subtasks are already covered by the static

@@ -1168,6 +1168,14 @@ behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban
   ticket `Backlog → To Do` manually; TAI's plugin layer does not currently gate this
   transition. **Resolved (rev 29, §8 item 28): stays soft indefinitely** — no hard gate
   planned; revisit only if a concrete "left `Backlog` too early" incident actually occurs.
+  **Refined (rev 57, TAI-292, 2026-09-03): a persona creating a subtask now IS one of
+  those "authority to judge readiness" cases, narrowly** — lands the subtask directly in
+  `To Do` instead of `Backlog` iff its description is fully actionable as written (no
+  further scoping/triage needed first); otherwise still `Backlog`, unchanged. See
+  `workflows/dependencies.md`'s "Initial Status & Priority for a Created Subtask" for the
+  full rule, including the companion priority decision (a created subtask's `Priority`
+  field is now always explicitly written to match its parent's, not left to `tai-ready`'s
+  display-only fallback).
 - Applies to **every issue type — story-level tickets and subtasks alike** — same scope
   as `Canceled` (rev 16), for the same reason: a subtask can just as easily be created
   ahead of its own readiness (e.g. a `Database` subtask flagged during Architecture work
@@ -1907,13 +1915,17 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     mix?), page count (one doc or several), and update cadence are all undecided. Likely
     wants the same home as item 32 once designed, but not decided together here. **See
     TAI-281 (Story, Backlog).**
-34. **Keep local master/main fresh across multiple machines/checkouts (rev 55, 2026-08-31,
-    open).** Distinct from §8 item 8's worktree-swap-on-ticket-switch design (resolved,
-    not yet implemented) and TAI-115's worktree-concurrency Story (explicitly deferred to
-    v2) — this is about the same human (or team) working from more than one machine/folder
-    letting a local `master`/`main` go stale before branching new work off it, i.e.
-    fetching/pulling as appropriate, and often. §6 doesn't cover this today. Flagged live,
-    not yet designed. **See TAI-282 (Story, Backlog).**
+34. **Keep local master/main fresh across multiple machines/checkouts (rev 55, 2026-08-31;
+    resolved rev 57, 2026-09-03).** Distinct from §8 item 8's worktree-swap-on-ticket-switch
+    design (resolved, not yet implemented) and TAI-115's worktree-concurrency Story
+    (explicitly deferred to v2) — this is about the same human (or team) working from more
+    than one machine/folder letting a local `master`/`main` go stale before branching new
+    work off it, i.e. fetching/pulling as appropriate, and often. **Shipped:** TAI-282
+    (Story, Done) via TAI-287's ADR (Confluence, page 32899073) and TAI-288's
+    implementation (`src/core/git/local-fetch.ts`, PR #80, merged) — `tai-work`/`tai-ready`
+    now fetch `origin` and auto-fast-forward the local default branch when safe (clean
+    fast-forward only, never merge/rebase/force), debounced ~10min via
+    `.tai/last-fetch.json`.
 35. **Systematic per-persona job/scope audit against competitor frameworks (rev 55,
     2026-08-31, open, sized as a real investigation).** For each of the 9 personas: what
     tickets do they actually touch, what marks their work "done," how deep do they dig,
