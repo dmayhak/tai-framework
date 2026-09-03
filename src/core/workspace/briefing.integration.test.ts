@@ -60,7 +60,7 @@ describe("generateBriefing against a real StorageBackend", () => {
             });
             await workTracker.linkPage(parent.key, page.id);
 
-            const markdown = await generateBriefing(workTracker, docStore, taiRoot, "TAI", subtask.key);
+            const { markdown } = await generateBriefing(workTracker, docStore, taiRoot, "TAI", subtask.key);
 
             assert.match(markdown, /Build the thing/);
             assert.match(markdown, /The parent story\./);
@@ -99,7 +99,7 @@ describe("generateBriefing against a real StorageBackend", () => {
             await workTracker.createLink(subtask.key, DependencyRelation.RelatesTo, related.key);
             await workTracker.linkPage(related.key, relatedPage.id);
 
-            const markdown = await generateBriefing(workTracker, docStore, taiRoot, "TAI", subtask.key);
+            const { markdown } = await generateBriefing(workTracker, docStore, taiRoot, "TAI", subtask.key);
 
             assert.match(markdown, /## Linked Tickets/);
             assert.match(markdown, /Relates to.*A related Story/);

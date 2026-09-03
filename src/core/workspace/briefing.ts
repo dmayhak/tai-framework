@@ -23,17 +23,32 @@
 
 import { DependencyRelation } from "../schema/story-schema.js";
 import type { DocStore, Issue, IssueKey, IssueLink, Page, PageId, WorkTracker } from "../storage/interface.js";
-import { refreshIssue } from "../cache/issue-cache.js";
+import { combineSeverity, refreshIssue, type ChangeSeverity } from "../cache/issue-cache.js";
 import { refreshPage } from "../cache/page-cache.js";
+import { snapshotLinkedKeys } from "../cache/links-snapshot.js";
 import { briefingPath } from "../cache/paths.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+/** TAI-285 ADR: one entry per issue whose content changed since it was last cached here —
+ *  "none"-severity issues are excluded, so an empty array means nothing worth mentioning. */
+export interface BriefingChangeNote {
+    readonly key: IssueKey;
+    readonly severity: "content" | "structural";
+}
+
+export interface GenerateBriefingResult {
+    readonly markdown: string;
+    readonly changeNotes: readonly BriefingChangeNote[];
+}
+
 /**
  * Refreshes the subtask, its immediate parent (if any), and every Confluence page linked to
  * either, renders `briefing.md`, writes it to `.tai/work/<project>/<subtaskKey>/briefing.md`,
- * and returns the rendered markdown. Throws if the subtask itself can't be found — there's
- * nothing to brief on.
+ * and returns the rendered markdown plus any out-of-band change notes (TAI-285 ADR) for the
+ * subtask/parent specifically (decision 4 — not linked tickets/pages, one-hop-bounded same
+ * as everywhere else in this function). Throws if the subtask itself can't be found —
+ * there's nothing to brief on.
  */
 export async function generateBriefing(
     workTracker: WorkTracker,
@@ -41,12 +56,14 @@ export async function generateBriefing(
     taiRoot: string,
     projectKey: string,
     subtaskKey: IssueKey
-): Promise<string> {
-    const subtask = await refreshIssue(workTracker, taiRoot, projectKey, subtaskKey);
-    if (!subtask) {
+): Promise<GenerateBriefingResult> {
+    const subtaskRefresh = await refreshIssue(workTracker, taiRoot, projectKey, subtaskKey);
+    if (!subtaskRefresh.issue) {
         throw new Error(`Cannot generate a briefing for ${subtaskKey}: issue not found.`);
     }
-    const parent = subtask.parentKey ? await refreshIssue(workTracker, taiRoot, projectKey, subtask.parentKey) : null;
+    const subtask = subtaskRefresh.issue;
+    const parentRefresh = subtask.parentKey ? await refreshIssue(workTracker, taiRoot, projectKey, subtask.parentKey) : null;
+    const parent = parentRefresh?.issue ?? null;
 
     const pageIds = new Set<PageId>(await workTracker.getLinkedPages(subtask.key));
     if (parent) {
@@ -68,14 +85,29 @@ export async function generateBriefing(
             linkedIssueRelations.set(link.key, relations);
         }
     };
-    collectLinks(await workTracker.getLinkedIssues(subtask.key, undefined, "outgoing"));
+    const subtaskLinks = await workTracker.getLinkedIssues(subtask.key, undefined, "outgoing");
+    collectLinks(subtaskLinks);
+    // TAI-285 ADR decision 3b: diffs the SAME already-fetched links above against the last
+    // snapshot — never a second getLinkedIssues() call just for this (the exact duplicate-
+    // fetch mistake PR #82's review caught elsewhere this session).
+    let subtaskSeverity = subtaskRefresh.severity;
+    if (await snapshotLinkedKeys(taiRoot, projectKey, subtask.key, subtaskLinks)) {
+        subtaskSeverity = combineSeverity(subtaskSeverity, "structural");
+    }
+
+    let parentSeverity: ChangeSeverity = "none";
     if (parent) {
-        collectLinks(await workTracker.getLinkedIssues(parent.key, undefined, "outgoing"));
+        const parentLinks = await workTracker.getLinkedIssues(parent.key, undefined, "outgoing");
+        collectLinks(parentLinks);
+        parentSeverity = parentRefresh?.severity ?? "none";
+        if (await snapshotLinkedKeys(taiRoot, projectKey, parent.key, parentLinks)) {
+            parentSeverity = combineSeverity(parentSeverity, "structural");
+        }
     }
 
     const linkedIssues: { issue: Issue; relations: ReadonlySet<DependencyRelation> }[] = [];
     for (const [key, relations] of linkedIssueRelations) {
-        const linked = await refreshIssue(workTracker, taiRoot, projectKey, key);
+        const linked = (await refreshIssue(workTracker, taiRoot, projectKey, key)).issue;
         if (!linked) continue;
         linkedIssues.push({ issue: linked, relations });
         // TAI-77 ADR decision 5: a linked ticket's OWN linked pages come along too — its
@@ -86,7 +118,7 @@ export async function generateBriefing(
 
     const pages: Page[] = [];
     for (const pageId of pageIds) {
-        const page = await refreshPage(docStore, taiRoot, projectKey, { id: pageId });
+        const page = (await refreshPage(docStore, taiRoot, projectKey, { id: pageId })).page;
         if (page) pages.push(page);
     }
 
@@ -94,7 +126,12 @@ export async function generateBriefing(
     const filePath = briefingPath(taiRoot, projectKey, subtaskKey);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, markdown, "utf8");
-    return markdown;
+
+    const changeNotes: BriefingChangeNote[] = [];
+    if (subtaskSeverity !== "none") changeNotes.push({ key: subtask.key, severity: subtaskSeverity });
+    if (parent && parentSeverity !== "none") changeNotes.push({ key: parent.key, severity: parentSeverity });
+
+    return { markdown, changeNotes };
 }
 
 function renderBriefing(

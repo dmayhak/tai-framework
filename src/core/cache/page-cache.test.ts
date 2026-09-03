@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { StorageConnectivityError, toPageId, type DocStore, type Page } from "../storage/interface.js";
-import { cachePage, readCachedPage, refreshPage } from "./page-cache.js";
+import { cachePage, classifyPageChange, readCachedPage, refreshPage } from "./page-cache.js";
 
 function page(overrides: Partial<Page> = {}): Page {
     return {
@@ -41,16 +41,17 @@ describe("refreshPage / readCachedPage / cachePage", () => {
         await withTempDir(async (dir) => {
             const docStore = new FakeDocStore(null) as unknown as DocStore;
             const result = await refreshPage(docStore, dir, "TAI", { id: toPageId("123") });
-            assert.equal(result, null);
+            assert.deepEqual(result, { page: null, severity: "none" });
             assert.equal(await readCachedPage(dir, "TAI", "123"), null);
         });
     });
 
-    it("writes a fresh cache entry on first refresh", async () => {
+    it("writes a fresh cache entry on first refresh, severity 'none' -- nothing to have changed from", async () => {
         await withTempDir(async (dir) => {
             const docStore = new FakeDocStore(page()) as unknown as DocStore;
             const result = await refreshPage(docStore, dir, "TAI", { id: toPageId("123") });
-            assert.equal(result?.id, "123");
+            assert.equal(result.page?.id, "123");
+            assert.equal(result.severity, "none");
             assert.deepEqual(await readCachedPage(dir, "TAI", "123"), page());
         });
     });
@@ -58,8 +59,9 @@ describe("refreshPage / readCachedPage / cachePage", () => {
     it("cachePage skips the disk write when updatedAt is unchanged", async () => {
         await withTempDir(async (dir) => {
             await cachePage(dir, "TAI", page());
-            await cachePage(dir, "TAI", page({ content: "different content" }));
+            const severity = await cachePage(dir, "TAI", page({ content: "different content" }));
             const after = await readCachedPage(dir, "TAI", "123");
+            assert.equal(severity, "none");
             assert.equal(after?.content, "content");
         });
     });
@@ -86,7 +88,7 @@ describe("refreshPage / readCachedPage / cachePage", () => {
                 } as unknown as DocStore;
 
                 const result = await refreshPage(offlineDocStore, dir, "TAI", { id: toPageId("123") });
-                assert.deepEqual(result, page());
+                assert.deepEqual(result, { page: page(), severity: "none" });
             });
         });
 
@@ -119,5 +121,19 @@ describe("refreshPage / readCachedPage / cachePage", () => {
                 );
             });
         });
+    });
+});
+
+describe("classifyPageChange (TAI-285 ADR)", () => {
+    it("classifies as 'none' when neither title nor content differs", () => {
+        assert.equal(classifyPageChange(page(), page({ spaceKey: "OTHER" })), "none");
+    });
+
+    it("classifies a title change as 'content' -- pages have no structural tier", () => {
+        assert.equal(classifyPageChange(page(), page({ title: "New title" })), "content");
+    });
+
+    it("classifies a content change as 'content'", () => {
+        assert.equal(classifyPageChange(page(), page({ content: "new content" })), "content");
     });
 });

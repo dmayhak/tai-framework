@@ -48,6 +48,7 @@ import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
+import type { BriefingChangeNote } from "../core/workspace/briefing.js";
 import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
@@ -469,8 +470,28 @@ function renderGitMutationResult(
     return lines.join("\n");
 }
 
+/** TAI-285 ADR: renders one line per out-of-band change note — mild for "content", a
+ *  prominent warning (telling the acting persona to pause and confirm with the human
+ *  before proceeding on possibly-invalid assumptions) for "structural" — same
+ *  "informational note prepended before the real output" shape as TAI-282's
+ *  `renderLocalFetchNote`. `undefined` when there's nothing to mention. */
+export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string | undefined {
+    if (notes.length === 0) return undefined;
+    return notes
+        .map((n) =>
+            n.severity === "structural"
+                ? `⚠️ ${n.key} changed (status/priority/type/assignee/relationship) since it was last read here — ` +
+                  `confirm with the human before proceeding on assumptions that may no longer hold.`
+                : `(note: ${n.key}'s content changed since it was last read here — worth a fresh look.)`
+        )
+        .join("\n");
+}
+
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
     const lines = [`# Persona: ${turn.personaDisplayName} (${turn.personaId})`, ""];
+
+    const changeNotesText = renderChangeNotes(turn.changeNotes);
+    if (changeNotesText) lines.push(changeNotesText, "");
 
     const { replayed, stillQueued, escalated } = turn.replayOutcome;
     if (replayed > 0 || stillQueued > 0 || escalated.length > 0) {

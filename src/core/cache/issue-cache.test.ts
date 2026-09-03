@@ -5,8 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { Status, StoryType } from "../schema/story-schema.js";
-import { StorageConnectivityError, toIssueKey, type Issue, type WorkTracker } from "../storage/interface.js";
-import { cacheIssue, readCachedIssue, refreshIssue } from "./issue-cache.js";
+import { StorageConnectivityError, toHumanId, toIssueKey, type HumanRef, type Issue, type WorkTracker } from "../storage/interface.js";
+import { cacheIssue, classifyIssueChange, combineSeverity, readCachedIssue, refreshIssue } from "./issue-cache.js";
+
+const HUMAN_A: HumanRef = { id: toHumanId("a@x.test"), displayName: "A" };
+const HUMAN_B: HumanRef = { id: toHumanId("b@x.test"), displayName: "B" };
 
 function issue(overrides: Partial<Issue> = {}): Issue {
     return {
@@ -48,16 +51,17 @@ describe("refreshIssue / readCachedIssue / cacheIssue", () => {
         await withTempDir(async (dir) => {
             const tracker = new FakeWorkTracker(null) as unknown as WorkTracker;
             const result = await refreshIssue(tracker, dir, "TAI", toIssueKey("TAI-1"));
-            assert.equal(result, null);
+            assert.deepEqual(result, { issue: null, severity: "none" });
             assert.equal(await readCachedIssue(dir, "TAI", "TAI-1"), null);
         });
     });
 
-    it("writes a fresh cache entry on first refresh", async () => {
+    it("writes a fresh cache entry on first refresh, severity 'none' -- nothing to have changed from", async () => {
         await withTempDir(async (dir) => {
             const tracker = new FakeWorkTracker(issue()) as unknown as WorkTracker;
             const result = await refreshIssue(tracker, dir, "TAI", toIssueKey("TAI-1"));
-            assert.equal(result?.key, "TAI-1");
+            assert.equal(result.issue?.key, "TAI-1");
+            assert.equal(result.severity, "none");
             const cached = await readCachedIssue(dir, "TAI", "TAI-1");
             assert.deepEqual(cached, issue());
         });
@@ -69,8 +73,9 @@ describe("refreshIssue / readCachedIssue / cacheIssue", () => {
             const before = await readCachedIssue(dir, "TAI", "TAI-1");
             // A different summary but the SAME updatedAt should not overwrite the cache --
             // proves the compare is on updatedAt specifically, not a deep-equals.
-            await cacheIssue(dir, "TAI", issue({ summary: "Different summary now" }));
+            const severity = await cacheIssue(dir, "TAI", issue({ summary: "Different summary now" }));
             const after = await readCachedIssue(dir, "TAI", "TAI-1");
+            assert.equal(severity, "none");
             assert.equal(before?.summary, after?.summary);
             assert.equal(after?.summary, "A story");
         });
@@ -98,7 +103,7 @@ describe("refreshIssue / readCachedIssue / cacheIssue", () => {
                 } as unknown as WorkTracker;
 
                 const result = await refreshIssue(offlineTracker, dir, "TAI", toIssueKey("TAI-1"));
-                assert.deepEqual(result, issue());
+                assert.deepEqual(result, { issue: issue(), severity: "none" });
             });
         });
 
@@ -111,7 +116,7 @@ describe("refreshIssue / readCachedIssue / cacheIssue", () => {
                 } as unknown as WorkTracker;
 
                 const result = await refreshIssue(offlineTracker, dir, "TAI", toIssueKey("TAI-1"));
-                assert.equal(result, null);
+                assert.deepEqual(result, { issue: null, severity: "none" });
             });
         });
 
@@ -129,5 +134,63 @@ describe("refreshIssue / readCachedIssue / cacheIssue", () => {
                 );
             });
         });
+    });
+});
+
+describe("classifyIssueChange (TAI-285 ADR)", () => {
+    it("classifies as 'none' when nothing tracked differs", () => {
+        assert.equal(classifyIssueChange(issue(), issue({ labels: ["x"] })), "none");
+    });
+
+    it("classifies a summary-only change as 'content'", () => {
+        assert.equal(classifyIssueChange(issue(), issue({ summary: "New summary" })), "content");
+    });
+
+    it("classifies a description-only change as 'content'", () => {
+        assert.equal(classifyIssueChange(issue({ description: "old" }), issue({ description: "new" })), "content");
+    });
+
+    it("classifies a status change as 'structural'", () => {
+        assert.equal(classifyIssueChange(issue({ status: Status.ToDo }), issue({ status: Status.InProgress })), "structural");
+    });
+
+    it("classifies a priority change as 'structural'", () => {
+        assert.equal(classifyIssueChange(issue({ priority: "Low" }), issue({ priority: "High" })), "structural");
+    });
+
+    it("classifies an issueType change as 'structural'", () => {
+        assert.equal(classifyIssueChange(issue({ issueType: StoryType.Story }), issue({ issueType: StoryType.Bug })), "structural");
+    });
+
+    it("classifies an assignee change (by id) as 'structural'", () => {
+        assert.equal(classifyIssueChange(issue({ assignee: HUMAN_A }), issue({ assignee: HUMAN_B })), "structural");
+    });
+
+    it("does not treat an assignee with the same id but a different displayName as changed", () => {
+        const sameHumanRenamed: HumanRef = { id: HUMAN_A.id, displayName: "A Renamed" };
+        assert.equal(classifyIssueChange(issue({ assignee: HUMAN_A }), issue({ assignee: sameHumanRenamed })), "none");
+    });
+
+    it("classifies unassigned -> assigned (and back) as 'structural'", () => {
+        assert.equal(classifyIssueChange(issue({ assignee: null }), issue({ assignee: HUMAN_A })), "structural");
+        assert.equal(classifyIssueChange(issue({ assignee: HUMAN_A }), issue({ assignee: null })), "structural");
+    });
+
+    it("a structural change wins even when a content field ALSO changed", () => {
+        assert.equal(
+            classifyIssueChange(issue({ summary: "old", status: Status.ToDo }), issue({ summary: "new", status: Status.InProgress })),
+            "structural"
+        );
+    });
+});
+
+describe("combineSeverity", () => {
+    it("picks the more severe of two signals, in either argument order", () => {
+        assert.equal(combineSeverity("none", "content"), "content");
+        assert.equal(combineSeverity("content", "none"), "content");
+        assert.equal(combineSeverity("content", "structural"), "structural");
+        assert.equal(combineSeverity("structural", "content"), "structural");
+        assert.equal(combineSeverity("none", "none"), "none");
+        assert.equal(combineSeverity("structural", "structural"), "structural");
     });
 });

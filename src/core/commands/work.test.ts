@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { Persona, StoryType, SubtaskType } from "../schema/story-schema.js";
+import { Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import {
     StorageConnectivityError,
@@ -98,7 +98,36 @@ describe("prepareWorkTurn", () => {
             assert.match(turn.briefingMarkdown, /Implement the thing/);
             assert.match(turn.briefingMarkdown, /Parent story/);
             assert.equal(turn.issue.key, dev.key);
+            assert.deepEqual(turn.changeNotes, [], "nothing to have changed from on the very first turn");
             assert.deepEqual(turn.replayOutcome, { replayed: 0, stillQueued: 0, escalated: [] });
+        });
+    });
+
+    test("TAI-285 ADR: a real out-of-band status change between two turns surfaces as a structural change note", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Parent story",
+            });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Implement the thing",
+                persona: Persona.Developer,
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+
+            const first = await prepareWorkTurn({ backend, taiRoot, projectKey: "TAI", spaceKey: "TAI" }, dev.key);
+            assert.deepEqual(first.changeNotes, []);
+
+            // A real out-of-band change -- e.g. a human transitioning the ticket directly,
+            // outside this session -- between the two turns.
+            await backend.workTracker.transition(dev.key, Status.InProgress);
+
+            const second = await prepareWorkTurn({ backend, taiRoot, projectKey: "TAI", spaceKey: "TAI" }, dev.key);
+            assert.deepEqual(second.changeNotes, [{ key: dev.key, severity: "structural" }]);
         });
     });
 

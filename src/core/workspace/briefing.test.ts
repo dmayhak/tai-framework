@@ -89,7 +89,7 @@ describe("generateBriefing", () => {
         await withTempDir(async (dir) => {
             const tracker = new FakeWorkTracker(new Map([["TAI-1", issue()]]), new Map()) as unknown as WorkTracker;
             const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
             assert.match(markdown, /Subtask: TAI-1 — Do the thing/);
             assert.match(markdown, /Implementation details here\./);
             assert.doesNotMatch(markdown, /Parent:/);
@@ -115,7 +115,7 @@ describe("generateBriefing", () => {
 
             const tracker = new FakeWorkTracker(issues, linkedPages) as unknown as WorkTracker;
             const docStore = new FakeDocStore(pages) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
 
             assert.match(markdown, /Subtask: TAI-1/);
             assert.match(markdown, /Parent: TAI-100 — The Story/);
@@ -140,7 +140,7 @@ describe("generateBriefing", () => {
 
             const tracker = new FakeWorkTracker(issues, new Map(), linkedIssues) as unknown as WorkTracker;
             const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
 
             assert.match(markdown, /## Linked Tickets/);
             assert.match(markdown, /### Relates to: TAI-200 — Related work/);
@@ -162,7 +162,7 @@ describe("generateBriefing", () => {
 
             const tracker = new FakeWorkTracker(issues, new Map(), linkedIssues) as unknown as WorkTracker;
             const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
 
             assert.match(markdown, /### Depends on: TAI-201 — Blocking work/);
         });
@@ -188,7 +188,7 @@ describe("generateBriefing", () => {
 
             const tracker = new FakeWorkTracker(issues, new Map(), linkedIssues) as unknown as WorkTracker;
             const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
 
             assert.match(markdown, /### Depends on, Relates to: TAI-202 — Both relations/);
             assert.equal(markdown.match(/TAI-202/g)?.length, 1);
@@ -214,7 +214,7 @@ describe("generateBriefing", () => {
 
             const tracker = new FakeWorkTracker(issues, new Map(), linkedIssues) as unknown as WorkTracker;
             const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
 
             assert.match(markdown, /Via subtask/);
             assert.match(markdown, /Via parent/);
@@ -236,7 +236,7 @@ describe("generateBriefing", () => {
 
             const tracker = new FakeWorkTracker(issues, new Map(), linkedIssues) as unknown as WorkTracker;
             const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
 
             assert.doesNotMatch(markdown, /## Linked Tickets/);
         });
@@ -258,7 +258,7 @@ describe("generateBriefing", () => {
 
             const tracker = new FakeWorkTracker(issues, linkedPages, linkedIssues) as unknown as WorkTracker;
             const docStore = new FakeDocStore(pages) as unknown as DocStore;
-            const markdown = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
 
             assert.match(markdown, /## Linked Confluence pages/);
             assert.match(markdown, /adr content from the linked ticket/);
@@ -272,6 +272,210 @@ describe("generateBriefing", () => {
             await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
             const written = await readFile(path.join(dir, "work", "TAI", "TAI-1", "briefing.md"), "utf8");
             assert.match(written, /Do the thing/);
+        });
+    });
+});
+
+describe("generateBriefing change notes (TAI-285 ADR)", () => {
+    const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
+
+    it("no change notes on the very first briefing -- nothing to have changed from", async () => {
+        await withTempDir(async (dir) => {
+            const tracker = new FakeWorkTracker(new Map([["TAI-1", issue()]]), new Map()) as unknown as WorkTracker;
+            const { changeNotes } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            assert.deepEqual(changeNotes, []);
+        });
+    });
+
+    it("no change notes when nothing actually changed between two briefings", async () => {
+        await withTempDir(async (dir) => {
+            await generateBriefing(
+                new FakeWorkTracker(new Map([["TAI-1", issue()]]), new Map()) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+            const { changeNotes } = await generateBriefing(
+                new FakeWorkTracker(new Map([["TAI-1", issue()]]), new Map()) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+            assert.deepEqual(changeNotes, []);
+        });
+    });
+
+    it("a summary/description-only change is reported as 'content'", async () => {
+        await withTempDir(async (dir) => {
+            await generateBriefing(
+                new FakeWorkTracker(new Map([["TAI-1", issue()]]), new Map()) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+            const changed = issue({ description: "New requirement content.", updatedAt: "2026-02-01T00:00:00Z" });
+            const { changeNotes } = await generateBriefing(
+                new FakeWorkTracker(new Map([["TAI-1", changed]]), new Map()) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "content" }]);
+        });
+    });
+
+    it("a status change is reported as 'structural'", async () => {
+        await withTempDir(async (dir) => {
+            await generateBriefing(
+                new FakeWorkTracker(new Map([["TAI-1", issue()]]), new Map()) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+            const changed = issue({ status: Status.InReview, updatedAt: "2026-02-01T00:00:00Z" });
+            const { changeNotes } = await generateBriefing(
+                new FakeWorkTracker(new Map([["TAI-1", changed]]), new Map()) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "structural" }]);
+        });
+    });
+
+    it("tracks the subtask and parent independently, both can carry their own change note", async () => {
+        await withTempDir(async (dir) => {
+            const parent = issue({ key: toIssueKey("TAI-100"), issueType: StoryType.Story, summary: "The Story" });
+            const subtask = issue({ parentKey: toIssueKey("TAI-100") });
+            await generateBriefing(
+                new FakeWorkTracker(
+                    new Map([
+                        ["TAI-1", subtask],
+                        ["TAI-100", parent],
+                    ]),
+                    new Map()
+                ) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+
+            const changedSubtask = { ...subtask, description: "Changed.", updatedAt: "2026-02-01T00:00:00Z" };
+            const changedParent = { ...parent, status: Status.InReview, updatedAt: "2026-02-01T00:00:00Z" };
+            const { changeNotes } = await generateBriefing(
+                new FakeWorkTracker(
+                    new Map([
+                        ["TAI-1", changedSubtask],
+                        ["TAI-100", changedParent],
+                    ]),
+                    new Map()
+                ) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+
+            assert.equal(changeNotes.length, 2);
+            assert.deepEqual(
+                changeNotes.find((n) => n.key === toIssueKey("TAI-1")),
+                { key: toIssueKey("TAI-1"), severity: "content" }
+            );
+            assert.deepEqual(
+                changeNotes.find((n) => n.key === toIssueKey("TAI-100")),
+                { key: toIssueKey("TAI-100"), severity: "structural" }
+            );
+        });
+    });
+
+    it("a LINKED ticket's content changing does NOT produce a change note -- scope is subtask+parent only (decision 4)", async () => {
+        await withTempDir(async (dir) => {
+            const subtask = issue();
+            const linked = issue({ key: toIssueKey("TAI-200"), issueType: StoryType.Story, summary: "Linked" });
+            const linkedIssues = new Map<string, readonly IssueLink[]>([
+                ["TAI-1", [{ relation: DependencyRelation.RelatesTo, key: toIssueKey("TAI-200") }]],
+            ]);
+            await generateBriefing(
+                new FakeWorkTracker(
+                    new Map([
+                        ["TAI-1", subtask],
+                        ["TAI-200", linked],
+                    ]),
+                    new Map(),
+                    linkedIssues
+                ) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+
+            const changedLinked = { ...linked, description: "Now has different content.", updatedAt: "2026-02-01T00:00:00Z" };
+            const { changeNotes } = await generateBriefing(
+                new FakeWorkTracker(
+                    new Map([
+                        ["TAI-1", subtask],
+                        ["TAI-200", changedLinked],
+                    ]),
+                    new Map(),
+                    linkedIssues
+                ) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+
+            assert.deepEqual(changeNotes, []);
+        });
+    });
+
+    it("a relationship (link) change on the subtask is reported as 'structural', even with no Issue field changed at all (decision 3b)", async () => {
+        await withTempDir(async (dir) => {
+            const subtask = issue();
+            const targetA = issue({ key: toIssueKey("TAI-200"), issueType: StoryType.Story, summary: "A" });
+            const targetB = issue({ key: toIssueKey("TAI-201"), issueType: StoryType.Story, summary: "B" });
+
+            await generateBriefing(
+                new FakeWorkTracker(
+                    new Map([
+                        ["TAI-1", subtask],
+                        ["TAI-200", targetA],
+                    ]),
+                    new Map(),
+                    new Map([["TAI-1", [{ relation: DependencyRelation.RelatesTo, key: toIssueKey("TAI-200") }]]])
+                ) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+
+            // Same subtask, byte-identical -- only its outgoing RelatesTo link changed.
+            const { changeNotes } = await generateBriefing(
+                new FakeWorkTracker(
+                    new Map([
+                        ["TAI-1", subtask],
+                        ["TAI-200", targetA],
+                        ["TAI-201", targetB],
+                    ]),
+                    new Map(),
+                    new Map([["TAI-1", [{ relation: DependencyRelation.RelatesTo, key: toIssueKey("TAI-201") }]]])
+                ) as unknown as WorkTracker,
+                docStore,
+                dir,
+                "TAI",
+                toIssueKey("TAI-1")
+            );
+
+            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "structural" }]);
         });
     });
 });

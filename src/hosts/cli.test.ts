@@ -17,6 +17,7 @@ import {
     parseIssueSearchFilter,
     parsePageGetRef,
     resolveCreatePriority,
+    renderChangeNotes,
     renderIssueSearchResults,
     renderLinkedIssues,
     renderIssueDetail,
@@ -258,6 +259,37 @@ describe("renderIssueDetail", () => {
         );
         assert.match(out, /_\(no comments\)_/);
         assert.match(out, /## Linked pages\n\nNone\./);
+    });
+});
+
+describe("renderChangeNotes (TAI-285 ADR)", () => {
+    it("returns undefined for an empty list -- nothing worth mentioning", () => {
+        assert.equal(renderChangeNotes([]), undefined);
+    });
+
+    it("renders a mild note for a 'content' severity change", () => {
+        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "content" }]);
+        assert.match(out!, /TAI-1/);
+        assert.match(out!, /content changed/);
+        assert.doesNotMatch(out!, /⚠️/);
+    });
+
+    it("renders a prominent warning for a 'structural' severity change, telling the persona to confirm with the human", () => {
+        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "structural" }]);
+        assert.match(out!, /⚠️/);
+        assert.match(out!, /TAI-1/);
+        assert.match(out!, /confirm with the human/);
+    });
+
+    it("renders one line per note when both the subtask and parent changed", () => {
+        const out = renderChangeNotes([
+            { key: toIssueKey("TAI-1"), severity: "content" },
+            { key: toIssueKey("TAI-100"), severity: "structural" },
+        ]);
+        const lines = out!.split("\n");
+        assert.equal(lines.length, 2);
+        assert.match(lines[0]!, /TAI-1/);
+        assert.match(lines[1]!, /⚠️ TAI-100/);
     });
 });
 
