@@ -16,6 +16,7 @@ import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../
 import {
     parseIssueSearchFilter,
     parsePageGetRef,
+    resolveCreatePriority,
     renderIssueSearchResults,
     renderLinkedIssues,
     renderIssueDetail,
@@ -83,6 +84,30 @@ describe("parseIssueSearchFilter", () => {
         assert.equal("statuses" in filter, false);
         assert.equal("issueTypes" in filter, false);
         assert.equal("limit" in filter, false);
+    });
+});
+
+describe("resolveCreatePriority", () => {
+    it("an explicit priority always wins, regardless of the parent's priority", () => {
+        assert.equal(resolveCreatePriority("Low", SubtaskType.Dev, "High"), "Low");
+    });
+
+    it("an explicit priority wins even with no parent priority available", () => {
+        assert.equal(resolveCreatePriority("Low", SubtaskType.Dev, undefined), "Low");
+    });
+
+    it("inherits the parent's priority for a subtask when none was given explicitly", () => {
+        assert.equal(resolveCreatePriority(undefined, SubtaskType.Dev, "High"), "High");
+    });
+
+    it("resolves to undefined (Jira's own default) when neither an explicit nor a parent priority exists", () => {
+        assert.equal(resolveCreatePriority(undefined, SubtaskType.Dev, undefined), undefined);
+    });
+
+    it("does NOT inherit for a Story/Bug/Spike -- only actual subtask issue types", () => {
+        assert.equal(resolveCreatePriority(undefined, StoryType.Story, "High"), undefined);
+        assert.equal(resolveCreatePriority(undefined, StoryType.Bug, "High"), undefined);
+        assert.equal(resolveCreatePriority(undefined, "epic", "High"), undefined);
     });
 });
 
