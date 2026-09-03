@@ -263,6 +263,20 @@ function hasUndecidedReview(pr: PullRequestRef, human: HumanRef): boolean {
     return !existing || existing.status === "pending";
 }
 
+/** Fetches every configured repo's open PRs ONCE — shared by `findDevLinkedOpenPRs` and
+ *  `findStoryLinkedOpenPRs` (TAI-293's review, PR #82) so `computePRSections` doesn't pay
+ *  for the same `gitHost.listPullRequests` calls twice per invocation. */
+async function fetchOpenPRsByRepo(
+    gitHost: Pick<GitHost, "listPullRequests">,
+    repos: readonly RepoId[]
+): Promise<ReadonlyMap<RepoId, readonly PullRequestRef[]>> {
+    const openPRsByRepo = new Map<RepoId, readonly PullRequestRef[]>();
+    for (const repo of repos) {
+        openPRsByRepo.set(repo, await gitHost.listPullRequests(repo, "open"));
+    }
+    return openPRsByRepo;
+}
+
 /**
  * Finds `Dev` subtasks that are `In Progress` (rev 52: `Dev` stays open until its PR
  * merges, not until the PR opens — see story-schema.ts) with a linked open PR (`git-pr
@@ -279,9 +293,8 @@ function hasUndecidedReview(pr: PullRequestRef, human: HumanRef): boolean {
  */
 async function findDevLinkedOpenPRs(
     workTracker: WorkTracker,
-    gitHost: Pick<GitHost, "listPullRequests">,
     projectKey: string,
-    repos: readonly RepoId[]
+    openPRsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>
 ): Promise<readonly { readonly devSubtaskKey: IssueKey; readonly pullRequest: PullRequestRef }[]> {
     const inProgressDevs = await workTracker.search({
         projectKey,
@@ -290,11 +303,6 @@ async function findDevLinkedOpenPRs(
         limit: DEFAULT_SEARCH_LIMIT,
     });
     if (inProgressDevs.length === 0) return [];
-
-    const openPRsByRepo = new Map<RepoId, readonly PullRequestRef[]>();
-    for (const repo of repos) {
-        openPRsByRepo.set(repo, await gitHost.listPullRequests(repo, "open"));
-    }
 
     const candidates: { devSubtaskKey: IssueKey; pullRequest: PullRequestRef }[] = [];
     for (const dev of inProgressDevs) {
@@ -322,9 +330,8 @@ async function findDevLinkedOpenPRs(
  */
 async function findStoryLinkedOpenPRs(
     workTracker: WorkTracker,
-    gitHost: Pick<GitHost, "listPullRequests">,
     projectKey: string,
-    repos: readonly RepoId[]
+    openPRsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>
 ): Promise<readonly { readonly issueKey: IssueKey; readonly pullRequest: PullRequestRef }[]> {
     const inProgressGovernance = await workTracker.search({
         projectKey,
@@ -333,11 +340,6 @@ async function findStoryLinkedOpenPRs(
         limit: DEFAULT_SEARCH_LIMIT,
     });
     if (inProgressGovernance.length === 0) return [];
-
-    const openPRsByRepo = new Map<RepoId, readonly PullRequestRef[]>();
-    for (const repo of repos) {
-        openPRsByRepo.set(repo, await gitHost.listPullRequests(repo, "open"));
-    }
 
     const candidates: { issueKey: IssueKey; pullRequest: PullRequestRef }[] = [];
     for (const issue of inProgressGovernance) {
@@ -426,7 +428,8 @@ async function syncTestTiersToToDo(
     projectKey: string,
     repos: readonly RepoId[]
 ): Promise<readonly IssueKey[]> {
-    const devLinked = await findDevLinkedOpenPRs(workTracker, gitHost, projectKey, repos);
+    const openPRsByRepo = await fetchOpenPRsByRepo(gitHost, repos);
+    const devLinked = await findDevLinkedOpenPRs(workTracker, projectKey, openPRsByRepo);
     if (devLinked.length === 0) return [];
 
     const synced: IssueKey[] = [];
@@ -470,7 +473,12 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
     let readyToMerge: readonly ReadyToMergeCandidate[] = [];
     if (deps.gitHost && deps.repos && deps.repos.length > 0) {
         const requiredApprovals = deps.requiredApprovals ?? DEFAULT_REQUIRED_APPROVALS;
-        const devLinked = await findDevLinkedOpenPRs(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
+        // Fetched ONCE (PR #82 review) — findDevLinkedOpenPRs/findStoryLinkedOpenPRs both
+        // need it, and each configured repo's open-PR list only changes between refresh
+        // points anyway (brief §3.6), so there's no reason to ask the git host for it twice.
+        const openPRsByRepo = await fetchOpenPRsByRepo(deps.gitHost, deps.repos);
+
+        const devLinked = await findDevLinkedOpenPRs(deps.workTracker, deps.projectKey, openPRsByRepo);
         // Testing runs in parallel with review, not gated behind it — every Dev-linked
         // open PR is a test candidate regardless of approval count. Governance-content
         // PRs (TAI-293) never feed readyToTest — no meaningful test tier for docs-only
@@ -481,7 +489,7 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         // or a governance-content PR linked directly to a Story/Bug/Spike/Epic ticket.
         // Same approval-count + CI-green gating either way; `git-pr merge` resolves
         // permission from whichever issue's `persona` field, not from which source found it.
-        const storyLinked = await findStoryLinkedOpenPRs(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
+        const storyLinked = await findStoryLinkedOpenPRs(deps.workTracker, deps.projectKey, openPRsByRepo);
         const mergeCandidates: readonly ReadyToMergeCandidate[] = [
             ...devLinked.map((c) => ({ issueKey: c.devSubtaskKey, pullRequest: c.pullRequest })),
             ...storyLinked,

@@ -598,14 +598,22 @@ function prFixture(overrides: Partial<PullRequestRef>): PullRequestRef {
     };
 }
 
-/** A fake exposing only what `findReadyWork`'s PR-awareness path actually needs. */
+/** A fake exposing only what `findReadyWork`'s PR-awareness path actually needs.
+ *  `openCallCount` (TAI-293's review, PR #82) pins that `computePRSections` fetches each
+ *  repo's OPEN-PR list only once (shared between `findDevLinkedOpenPRs`/
+ *  `findStoryLinkedOpenPRs` via `fetchOpenPRsByRepo`), not once per find-function -- kept
+ *  separate from `state: "merged"` calls (`syncMergedIssues`'s own, unrelated fetch) so the
+ *  count isolates exactly what this fix changed. */
 class FakeGitHost implements Pick<GitHost, "listPullRequests" | "getCommitStatuses"> {
+    openCallCount = 0;
+
     constructor(
         private readonly prsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>,
         private readonly statuses: readonly CommitStatus[] = [{ key: "build", name: "build", state: "successful" }]
     ) {}
 
     async listPullRequests(repo: RepoId, state?: PullRequestState): Promise<readonly PullRequestRef[]> {
+        if (state === "open") this.openCallCount++;
         const prs = this.prsByRepo.get(repo) ?? [];
         return state ? prs.filter((pr) => pr.state === state) : prs;
     }
@@ -896,6 +904,24 @@ describe("findReadyWork readyToMerge — governance-content PRs (TAI-293)", () =
             });
 
             assert.deepEqual(result.readyToMerge, []);
+        });
+    });
+
+    test("computePRSections fetches each repo's open-PR list only once, shared between the Dev and governance-content searches (PR #82 review)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await inProgressBug(backend, "Governance content");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(bug.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            // findReadyPRWork also runs syncTestTiersToToDo first, which fetches OPEN PRs
+            // independently for its own, unrelated purpose (pre-existing, untouched by this
+            // fix) -- so the count to pin here is 2 (syncTestTiersToToDo's own + ONE shared
+            // fetch inside computePRSections), not 3, which is what it would have been before
+            // this fix (syncTestTiersToToDo's own + TWO separate fetches inside
+            // computePRSections, one per find-function).
+            await findReadyPRWork({ workTracker: backend.workTracker, projectKey: "TAI", gitHost, repos: [repo] });
+            assert.equal(gitHost.openCallCount, 2);
         });
     });
 
