@@ -143,7 +143,12 @@ function inlineToStorage(md: string): string {
 
 function inlineToMarkdown(html: string): string {
     let s = html;
-    s = s.replace(/<code>(.*?)<\/code>/gs, (_m, c: string) => `\`${unesc(c)}\``);
+    // TAI-295: do NOT unesc() the code span's content here -- that restores literal `<`/`>`
+    // (e.g. a `<KEY>` placeholder) into the string before the catch-all tag-strip pass below
+    // runs, which then mistakes the now-literal content for a real, unrecognized HTML tag and
+    // silently drops it. Leaving it entity-escaped here lets it survive that pass unmatched;
+    // the function's own final unesc(s) call (below) restores it as the very last step.
+    s = s.replace(/<code>(.*?)<\/code>/gs, (_m, c: string) => `\`${c}\``);
     s = s.replace(/<strong>(.*?)<\/strong>|<b>(.*?)<\/b>/gs, (_m, a?: string, b?: string) => `**${a ?? b}**`);
     s = s.replace(/<em>(.*?)<\/em>|<i>(.*?)<\/i>/gs, (_m, a?: string, b?: string) => `*${a ?? b}*`);
     // Tolerant of extra attributes on <a> (Confluence's own editor commonly adds
