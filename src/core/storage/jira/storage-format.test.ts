@@ -67,6 +67,19 @@ describe("round trip (the contract: TAI's own content survives)", () => {
         assert.equal(roundTrip(md), md);
     });
 
+    it("a code span containing angle brackets, e.g. a <KEY>-style CLI placeholder (TAI-295)", () => {
+        // Found live writing an ADR: `/tai-work <KEY>` round-tripped to `/tai-work ` --
+        // storageToMarkdown's tag-strip pass was mistaking the unescaped placeholder for a
+        // real, unrecognized HTML tag and silently dropping it.
+        const md = "Run `/tai-work <ISSUE-KEY>` to start.";
+        assert.equal(roundTrip(md), md);
+    });
+
+    it("a code span containing multiple angle-bracket placeholders", () => {
+        const md = "See `.tai/cache/<project>/links/<key>.json` for the snapshot.";
+        assert.equal(roundTrip(md), md);
+    });
+
     it("fenced code, verbatim", () => {
         const md = "```ts\nconst x = 1;\nif (x > 0) { go(); }\n```";
         assert.equal(roundTrip(md), md);
