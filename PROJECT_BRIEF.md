@@ -1584,9 +1584,9 @@ is designed.)*
 
 Carry these forward; resolve them in upcoming design sessions. **This list is for
 genuinely undecided design questions only** — once an idea is scoped enough to actually
-investigate or build, it gets a real Jira Story/Spike in `Backlog` status (`personas/
-pm.md`'s "Captures genuinely open ideas as real Backlog tickets" principle, rev 56,
-TAI-286), backlinked from its §8 entry here, not left sitting only as brief prose.
+investigate or build, it gets a real Jira Story/Spike in `Backlog` status
+(`personas/pm.md`'s "Captures genuinely open ideas as real Backlog tickets" principle,
+rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as brief prose.
 
 1. ~~**Story-type taxonomy**~~ — **RESOLVED (rev 11):** **Kickoff / Story / Bug / Spike**
    is final for now, no new type added ahead of a real need — the taxonomy stays open/
