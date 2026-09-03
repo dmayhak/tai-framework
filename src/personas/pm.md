@@ -56,8 +56,19 @@ permissions:
                                    # caused git-pr create's auto-linker to wrongly attach the
                                    # new PR to that subtask's real CodeReview sibling (live,
                                    # PR #18/#21). Decided: grant it directly, same asymmetry
-                                   # as Tester/Developer -- NOT paired with mergePullRequest,
-                                   # no self-merge for PM either.
+                                   # as Tester/Developer.
+    - mergePullRequest            # TAI-293 — SUPERSEDES TAI-112's "not paired with
+                                   # mergePullRequest, no self-merge for PM either": found
+                                   # live (2026-09-03) that without it, a governance-content
+                                   # PR (no Dev subtask at all -- TAI-286, TAI-292) was
+                                   # invisible to tai-ready's readyToMerge AND had no persona
+                                   # able to land it through git-pr merge at all, forcing a
+                                   # direct-Bitbucket-MCP workaround every time (PR #78/#79/
+                                   # #81). Same reasoning as Developer's own mergePullRequest
+                                   # grant: merging already-Cole-approved work isn't self-
+                                   # certification (cannotApprove: own-output, below, is
+                                   # untouched) -- the approval already happened as a
+                                   # separate action.
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 

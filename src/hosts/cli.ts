@@ -73,7 +73,7 @@ import {
     parseFindingsCommentArgs,
     isGreen,
     isMergeConflict,
-    findLinkedDevSubtask,
+    findLinkedIssueForPR,
     validateBranchName,
     validatePrTitle,
 } from "../core/commands/git-pr.js";
@@ -439,22 +439,23 @@ function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedIssue
 function renderGitMutationResult(
     result: GitMutationResult,
     personaId: string,
-    devSubtaskClosed?: string,
+    closedIssueKey?: string,
     rebaseCommentPostedOn?: string
 ): string {
     if (result.ok) {
         const lines = [renderPullRequestRef(result.pullRequest, personaId)];
-        // rev 52 (TAI-159 ADR §4): a Dev subtask stays In Progress until its PR merges —
+        // rev 52 (TAI-159 ADR §4; generalized TAI-293): a Dev subtask, OR a governance-
+        // content Story/Bug/Spike/Epic ticket, stays In Progress until its PR merges —
         // this is the self-closing trigger, a second write in the same command (same
         // shape `git-pr create`'s PR+link already has). `undefined` (no line at all) when
-        // no linked Dev subtask was found (best-effort — see `findLinkedDevSubtask`).
-        if (devSubtaskClosed) lines.push("", `${devSubtaskClosed} transitioned to Done (its PR just merged).`);
+        // no linked issue was found (best-effort — see `findLinkedIssueForPR`).
+        if (closedIssueKey) lines.push("", `${closedIssueKey} transitioned to Done (its PR just merged).`);
         return lines.join("\n");
     }
     const lines = [`# Merge denied (as ${personaId})`, "", result.reason];
     // TAI-217/219: a merge-conflict denial specifically — posted a "Rebase needed:" comment
-    // on the linked Dev subtask (best-effort, same correlation as the success path above),
-    // and surfaces `git-pr unapprove` as a SUGGESTION only — never run automatically, a
+    // on the linked issue (best-effort, same correlation as the success path above), and
+    // surfaces `git-pr unapprove` as a SUGGESTION only — never run automatically, a
     // mutation needs the human's own explicit next instruction like every other one here.
     if (rebaseCommentPostedOn) {
         lines.push(
@@ -605,7 +606,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
         lines.push("", "## Approved PRs ready to merge", "");
         for (const c of result.readyToMerge) {
             lines.push(
-                `${counter.next()}. **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
+                `${counter.next()}. **${c.issueKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
             );
             actionableCount++;
         }
@@ -641,7 +642,7 @@ function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>):
         lines.push("", "## Approved PRs ready to merge", "");
         for (const c of result.readyToMerge) {
             lines.push(
-                `${counter.next()}. **${c.devSubtaskKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
+                `${counter.next()}. **${c.issueKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
             );
             actionableCount++;
         }
@@ -1235,20 +1236,21 @@ async function main(): Promise<void> {
 
             const result = await gitHost.mergePullRequest(repo, prId, strategy);
 
-            // rev 52 (TAI-159 ADR §4): self-closing Dev-Done trigger — a second write in
-            // this same command, same shape `git-pr create`'s PR+link already has. The
-            // <ISSUE-KEY> this merge was invoked with isn't assumed to BE the linked Dev
-            // subtask (it's sometimes borrowed purely for permission resolution) —
-            // `findLinkedDevSubtask` searches for whichever In-Progress Dev subtask's own
-            // remote link actually points at this PR. Best-effort: a merge that can't be
-            // correlated to a Dev subtask still succeeds, only the side effect is skipped.
-            let devSubtaskClosed: string | undefined;
+            // rev 52 (TAI-159 ADR §4; generalized TAI-293): self-closing Done trigger — a
+            // second write in this same command, same shape `git-pr create`'s PR+link
+            // already has. The <ISSUE-KEY> this merge was invoked with isn't assumed to BE
+            // the linked issue (it's sometimes borrowed purely for permission resolution) —
+            // `findLinkedIssueForPR` searches for whichever In-Progress Dev/Story/Bug/Spike/
+            // Epic issue's own remote link actually points at this PR. Best-effort: a merge
+            // that can't be correlated to any tracked issue still succeeds, only the side
+            // effect is skipped.
+            let closedIssueKey: string | undefined;
             let rebaseCommentPostedOn: string | undefined;
             if (result.ok) {
-                const devKey = await findLinkedDevSubtask(config.backend.workTracker, config.projectKey, result.pullRequest.url);
-                if (devKey) {
-                    await config.backend.workTracker.transition(devKey, Status.Done);
-                    devSubtaskClosed = devKey;
+                const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, result.pullRequest.url);
+                if (linkedKey) {
+                    await config.backend.workTracker.transition(linkedKey, Status.Done);
+                    closedIssueKey = linkedKey;
                 }
             } else if (isMergeConflict(result.reason)) {
                 // TAI-217/219: Bitbucket doesn't invalidate an existing approval when new
@@ -1257,14 +1259,14 @@ async function main(): Promise<void> {
                 // Posting this comment is purely informational (not a decision with
                 // consequences), so it runs automatically as part of reporting the failure —
                 // unlike `git-pr unapprove`, which stays suggested-only, never automatic.
-                const devKey = await findLinkedDevSubtask(config.backend.workTracker, config.projectKey, pr.url);
-                if (devKey) {
-                    await config.backend.workTracker.addComment(devKey, rebaseNeededCommentBody(pr.url));
-                    rebaseCommentPostedOn = devKey;
+                const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, pr.url);
+                if (linkedKey) {
+                    await config.backend.workTracker.addComment(linkedKey, rebaseNeededCommentBody(pr.url));
+                    rebaseCommentPostedOn = linkedKey;
                 }
             }
 
-            console.log(renderGitMutationResult(result, personaId, devSubtaskClosed, rebaseCommentPostedOn));
+            console.log(renderGitMutationResult(result, personaId, closedIssueKey, rebaseCommentPostedOn));
             return;
         }
 

@@ -190,7 +190,7 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
             "readyToTest never checked CI, pre- or post-rev-52 — the approved PR belongs here"
         );
         assert.ok(
-            !result.readyToMerge.some((c) => c.devSubtaskKey === dev.key),
+            !result.readyToMerge.some((c) => c.issueKey === dev.key),
             "no CI info must exclude the PR from readyToMerge, not silently treat it as ready"
         );
 
@@ -242,7 +242,7 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
             repos: [repo],
         });
         assert.ok(!result.readyToTest.some((c) => c.devSubtaskKey === dev.key));
-        assert.ok(!result.readyToMerge.some((c) => c.devSubtaskKey === dev.key));
+        assert.ok(!result.readyToMerge.some((c) => c.issueKey === dev.key));
     });
 });
 

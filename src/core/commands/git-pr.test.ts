@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { Status, SubtaskType } from "../schema/story-schema.js";
+import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import {
     toHumanId,
     toIssueKey,
@@ -29,7 +29,7 @@ import {
     parseFindingsCommentArgs,
     isGreen,
     isMergeConflict,
-    findLinkedDevSubtask,
+    findLinkedIssueForPR,
     validateBranchName,
     validatePrTitle,
 } from "./git-pr.js";
@@ -242,7 +242,7 @@ function issueFixture(overrides: Partial<Issue> & Pick<Issue, "key" | "issueType
     };
 }
 
-/** A fake exposing only the two methods `findLinkedDevSubtask` actually needs. */
+/** A fake exposing only the two methods `findLinkedIssueForPR` actually needs. */
 class FakeSearchLinksWorkTracker implements Pick<WorkTracker, "search" | "getRemoteLinks"> {
     constructor(
         private readonly issues: readonly Issue[],
@@ -262,18 +262,18 @@ class FakeSearchLinksWorkTracker implements Pick<WorkTracker, "search" | "getRem
     }
 }
 
-describe("findLinkedDevSubtask (rev 52, TAI-159 ADR §4)", () => {
+describe("findLinkedIssueForPR (rev 52, TAI-159 ADR §4)", () => {
     const prUrl = "https://bitbucket.org/dmayhak/tai-framework/pull-requests/1";
 
     it("returns null when no In-Progress Dev subtask exists", async () => {
         const wt = new FakeSearchLinksWorkTracker([]);
-        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), null);
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), null);
     });
 
     it("finds the In-Progress Dev subtask whose remote link matches the PR URL", async () => {
         const dev = issueFixture({ key: toIssueKey("TAI-160"), issueType: SubtaskType.Dev, status: Status.InProgress });
         const wt = new FakeSearchLinksWorkTracker([dev], new Map([[dev.key, [{ url: prUrl, title: "PR" }]]]));
-        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), dev.key);
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), dev.key);
     });
 
     it("returns null when a Dev subtask exists but its link doesn't match this PR", async () => {
@@ -282,7 +282,7 @@ describe("findLinkedDevSubtask (rev 52, TAI-159 ADR §4)", () => {
             [dev],
             new Map([[dev.key, [{ url: "https://bitbucket.org/x/y/pull-requests/99", title: "Other PR" }]]])
         );
-        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), null);
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), null);
     });
 
     it("doesn't match a Dev subtask that's already Done — only In Progress is a candidate", async () => {
@@ -290,7 +290,7 @@ describe("findLinkedDevSubtask (rev 52, TAI-159 ADR §4)", () => {
         // The fake's search() filters by status same as a real backend would — a Done Dev
         // subtask wouldn't even be returned by the InProgress-scoped search.
         const wt = new FakeSearchLinksWorkTracker([dev], new Map([[dev.key, [{ url: prUrl, title: "PR" }]]]));
-        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), null);
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), null);
     });
 
     it("picks the correct Dev subtask among several In-Progress ones", async () => {
@@ -303,7 +303,26 @@ describe("findLinkedDevSubtask (rev 52, TAI-159 ADR §4)", () => {
                 [devB.key, [{ url: prUrl, title: "B" }]],
             ])
         );
-        assert.equal(await findLinkedDevSubtask(wt, "TAI", prUrl), devB.key);
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), devB.key);
+    });
+
+    it("finds an In-Progress governance-content Bug/Story/Spike/Epic ticket with no Dev subtask at all (TAI-293)", async () => {
+        const bug = issueFixture({ key: toIssueKey("TAI-292"), issueType: StoryType.Bug, status: Status.InProgress });
+        const wt = new FakeSearchLinksWorkTracker([bug], new Map([[bug.key, [{ url: prUrl, title: "PR" }]]]));
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), bug.key);
+    });
+
+    it("prefers whichever In-Progress issue's link actually matches -- Dev subtask and governance ticket mixed together", async () => {
+        const dev = issueFixture({ key: toIssueKey("TAI-160"), issueType: SubtaskType.Dev, status: Status.InProgress });
+        const bug = issueFixture({ key: toIssueKey("TAI-292"), issueType: StoryType.Bug, status: Status.InProgress });
+        const wt = new FakeSearchLinksWorkTracker(
+            [dev, bug],
+            new Map([
+                [dev.key, [{ url: "https://bitbucket.org/x/y/pull-requests/1", title: "Other" }]],
+                [bug.key, [{ url: prUrl, title: "PR" }]],
+            ])
+        );
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), bug.key);
     });
 });
 
