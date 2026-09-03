@@ -30,6 +30,7 @@ import {
     isGreen,
     isMergeConflict,
     findLinkedIssueForPR,
+    resolveStoryKeyForPr,
     validateBranchName,
     validatePrTitle,
 } from "./git-pr.js";
@@ -323,6 +324,33 @@ describe("findLinkedIssueForPR (rev 52, TAI-159 ADR §4)", () => {
             ])
         );
         assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), bug.key);
+    });
+});
+
+describe("resolveStoryKeyForPr (TAI-297)", () => {
+    it("a Dev subtask resolves to its parent's key, subtaskKey set to its own", () => {
+        const dev = issueFixture({ key: toIssueKey("TAI-294"), issueType: SubtaskType.Dev, parentKey: toIssueKey("TAI-293") });
+        assert.deepEqual(resolveStoryKeyForPr(dev), { storyKey: toIssueKey("TAI-293"), subtaskKey: toIssueKey("TAI-294") });
+    });
+
+    it("a Dev subtask with no parentKey falls back to its own key (defensive)", () => {
+        const dev = issueFixture({ key: toIssueKey("TAI-294"), issueType: SubtaskType.Dev });
+        assert.deepEqual(resolveStoryKeyForPr(dev), { storyKey: toIssueKey("TAI-294"), subtaskKey: toIssueKey("TAI-294") });
+    });
+
+    it("a standalone Bug resolves to its OWN key, subtaskKey null -- even when it carries a parentKey (TAI-292's exact shape: a governance-content Bug parented under an Epic for categorization only)", () => {
+        const bug = issueFixture({ key: toIssueKey("TAI-292"), issueType: StoryType.Bug, parentKey: toIssueKey("TAI-9") });
+        assert.deepEqual(resolveStoryKeyForPr(bug), { storyKey: toIssueKey("TAI-292"), subtaskKey: null });
+    });
+
+    it("a Story with no parentKey also resolves to its own key, subtaskKey null", () => {
+        const story = issueFixture({ key: toIssueKey("TAI-293"), issueType: StoryType.Story });
+        assert.deepEqual(resolveStoryKeyForPr(story), { storyKey: toIssueKey("TAI-293"), subtaskKey: null });
+    });
+
+    it("an Epic resolves to its own key, subtaskKey null", () => {
+        const epic = issueFixture({ key: toIssueKey("TAI-9"), issueType: "epic" });
+        assert.deepEqual(resolveStoryKeyForPr(epic), { storyKey: toIssueKey("TAI-9"), subtaskKey: null });
     });
 });
 

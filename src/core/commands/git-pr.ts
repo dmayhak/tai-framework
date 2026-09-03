@@ -20,8 +20,8 @@
 import type { CommitStatus, MergeStrategy, PullRequestId, RepoId } from "../git/interface.js";
 import type { GitHost } from "../git/interface.js";
 import { toPullRequestId } from "../git/interface.js";
-import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
-import type { IssueKey, WorkTracker } from "../storage/interface.js";
+import { isSubtaskIssueType, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
+import type { Issue, IssueKey, WorkTracker } from "../storage/interface.js";
 
 export async function resolvePullRequestId(
     gitHost: Pick<GitHost, "listPullRequests">,
@@ -131,6 +131,34 @@ export async function findLinkedIssueForPR(
 }
 
 // ---------- Branch naming (TAI-107/TAI-108) ----------
+
+/**
+ * TAI-297: resolves which key `git-pr create`'s branch/title validation should require —
+ * the issue's OWN key, unless it's actually a subtask, in which case its parent's.
+ *
+ * Deliberately checks `isSubtaskIssueType(issue.issueType)`, NOT `issue.parentKey`
+ * presence — a standalone governance-content Story/Bug can carry a `parentKey` purely for
+ * topical categorization under an Epic (not as a branch-naming parent), and checking
+ * presence alone misclassified it as a subtask, wrongly demanding the branch/title
+ * reference that Epic instead of the ticket's own key. Found live (TAI-292's PR):
+ * `git-pr create TAI-292 ...` rejected a `TAI-292-...` branch name, insisting on
+ * `TAI-9-...` (TAI-292's Epic parent), forcing a direct-Bitbucket-MCP workaround instead
+ * of TAI's own tooling.
+ *
+ * `subtaskKey` is `null` for a story-level ticket (matches `validatePrTitle`'s own
+ * "Story/Bug/Epic key with no subtask" direct-invocation form), or the issue's own key
+ * when it IS a subtask (a subtask's parent, if it has none, falls back to the subtask's
+ * own key — same defensive fallback the pre-TAI-297 form had).
+ */
+export function resolveStoryKeyForPr(issue: Pick<Issue, "key" | "issueType" | "parentKey">): {
+    readonly storyKey: IssueKey;
+    readonly subtaskKey: IssueKey | null;
+} {
+    if (isSubtaskIssueType(issue.issueType)) {
+        return { storyKey: issue.parentKey ?? issue.key, subtaskKey: issue.key };
+    }
+    return { storyKey: issue.key, subtaskKey: null };
+}
 
 /**
  * Validates brief §6's branching convention: a branch is named after the *parent* Story/Bug
