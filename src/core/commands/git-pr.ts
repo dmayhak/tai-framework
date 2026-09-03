@@ -20,7 +20,7 @@
 import type { CommitStatus, MergeStrategy, PullRequestId, RepoId } from "../git/interface.js";
 import type { GitHost } from "../git/interface.js";
 import { toPullRequestId } from "../git/interface.js";
-import { Status, SubtaskType } from "../schema/story-schema.js";
+import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import type { IssueKey, WorkTracker } from "../storage/interface.js";
 
 export async function resolvePullRequestId(
@@ -88,39 +88,44 @@ export function isMergeConflict(reason: string): boolean {
 // first argument, and the PR links directly to it, no search/disambiguation needed at all.
 // A net simplification, not a replacement function.
 
-// ---------- Dev subtask self-closing on merge (rev 52, TAI-159 ADR §4) ----------
+// ---------- Issue self-closing on merge (rev 52, TAI-159 ADR §4; generalized TAI-293) ----------
 
 /**
- * Finds the `In Progress` `Dev` subtask linked to a just-merged PR, so `git-pr merge` can
- * transition it to `Done` as a second write in the same call — the same "one command, two
- * writes" shape `git-pr create` already has (PR create + remote link).
+ * Finds the `In Progress` issue linked to a just-merged PR — a `Dev` subtask for ordinary
+ * Story/Bug work, OR (TAI-293) a governance-content Story/Bug/Spike/Epic ticket with no
+ * `Dev` subtask at all (PM/Architect-authored, e.g. `PROJECT_BRIEF.md`/persona-doc
+ * content) — so `git-pr merge` can transition it to `Done` as a second write in the same
+ * call. Same "one command, two writes" shape `git-pr create` already has (PR create +
+ * remote link).
  *
- * Doesn't assume the `<ISSUE-KEY>` the merge was invoked with IS the linked Dev subtask —
- * that key is sometimes borrowed purely to resolve a different persona's `gitHost`
- * permission grant (an established pattern: merging a PM/Architect governance-content PR
- * via a Dev subtask's `mergePullRequest` grant), so it isn't reliable as the correlation
- * key. Instead searches the project's `In Progress` `Dev` subtasks for whichever one's own
- * remote link points at this PR's URL — same correlation idiom `ready.ts`'s
- * `findDevLinkedOpenPRs` and (pre-rev-52) `findCodeReviewSiblingForLink` both used.
+ * Doesn't assume the `<ISSUE-KEY>` the merge was invoked with IS the linked issue — before
+ * TAI-293 granted PM/Architect their own `mergePullRequest`, that key was sometimes
+ * borrowed purely to resolve a different persona's `gitHost` permission grant, so it was
+ * never reliable as the correlation key; still isn't assumed now, for the same reason a
+ * human might invoke `git-pr merge` with any issue key that happens to have the right
+ * permission. Instead searches the project's `In Progress` Dev/Story/Bug/Spike/Epic issues
+ * for whichever one's own remote link points at this PR's URL — same correlation idiom
+ * `ready.ts`'s `findDevLinkedOpenPRs`/`findStoryLinkedOpenPRs` and (pre-rev-52)
+ * `findCodeReviewSiblingForLink` all used.
  *
  * Returns `null` rather than throwing when no match exists — same "best-effort, don't fail
  * the action itself over this" posture as the pre-rev-52 sibling-correlation function. A
- * merge that can't be correlated to a Dev subtask (e.g. a governance-content PR with no
- * Dev subtask at all) still succeeds; only the self-closing side effect is skipped.
+ * merge that can't be correlated to any tracked issue still succeeds; only the self-closing
+ * side effect is skipped.
  */
-export async function findLinkedDevSubtask(
+export async function findLinkedIssueForPR(
     workTracker: Pick<WorkTracker, "search" | "getRemoteLinks">,
     projectKey: string,
     prUrl: string
 ): Promise<IssueKey | null> {
-    const inProgressDevs = await workTracker.search({
+    const inProgressCandidates = await workTracker.search({
         projectKey,
-        issueTypes: [SubtaskType.Dev],
+        issueTypes: [SubtaskType.Dev, StoryType.Story, StoryType.Bug, StoryType.Spike, "epic"],
         statuses: [Status.InProgress],
     });
-    for (const dev of inProgressDevs) {
-        const links = await workTracker.getRemoteLinks(dev.key);
-        if (links.some((l) => l.url === prUrl)) return dev.key;
+    for (const issue of inProgressCandidates) {
+        const links = await workTracker.getRemoteLinks(issue.key);
+        if (links.some((l) => l.url === prUrl)) return issue.key;
     }
     return null;
 }

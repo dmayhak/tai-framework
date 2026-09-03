@@ -36,8 +36,11 @@ permissions:
                                    # borrowing an unrelated Dev subtask's key just for permission,
                                    # which then caused git-pr create's auto-linker to wrongly
                                    # attach the new PR to that subtask's real CodeReview sibling
-                                   # (live, PR #18/#21). NOT paired with mergePullRequest -- no
-                                   # self-merge for Architect either.
+                                   # (live, PR #18/#21).
+    - mergePullRequest            # TAI-293 — SUPERSEDES TAI-112's "not paired with
+                                   # mergePullRequest, no self-merge for Architect either": same
+                                   # reasoning/history as personas/pm.md's identical change --
+                                   # see there for the full rationale.
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 

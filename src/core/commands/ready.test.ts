@@ -598,14 +598,22 @@ function prFixture(overrides: Partial<PullRequestRef>): PullRequestRef {
     };
 }
 
-/** A fake exposing only what `findReadyWork`'s PR-awareness path actually needs. */
+/** A fake exposing only what `findReadyWork`'s PR-awareness path actually needs.
+ *  `openCallCount` (TAI-293's review, PR #82) pins that `computePRSections` fetches each
+ *  repo's OPEN-PR list only once (shared between `findDevLinkedOpenPRs`/
+ *  `findStoryLinkedOpenPRs` via `fetchOpenPRsByRepo`), not once per find-function -- kept
+ *  separate from `state: "merged"` calls (`syncMergedIssues`'s own, unrelated fetch) so the
+ *  count isolates exactly what this fix changed. */
 class FakeGitHost implements Pick<GitHost, "listPullRequests" | "getCommitStatuses"> {
+    openCallCount = 0;
+
     constructor(
         private readonly prsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>,
         private readonly statuses: readonly CommitStatus[] = [{ key: "build", name: "build", state: "successful" }]
     ) {}
 
     async listPullRequests(repo: RepoId, state?: PullRequestState): Promise<readonly PullRequestRef[]> {
+        if (state === "open") this.openCallCount++;
         const prs = this.prsByRepo.get(repo) ?? [];
         return state ? prs.filter((pr) => pr.state === state) : prs;
     }
@@ -627,6 +635,20 @@ async function inProgressDev(backend: StorageBackend, summary: string): Promise<
     });
     await backend.workTracker.transition(dev.key, Status.InProgress);
     return dev;
+}
+
+/** TAI-293: an In-Progress governance-content Bug (no Dev subtask, no parent) -- the
+ *  PM/Architect-authored PR case, mirroring `inProgressDev` above. */
+async function inProgressBug(backend: StorageBackend, summary: string): Promise<{ key: import("../storage/interface.js").IssueKey }> {
+    const bug = await backend.workTracker.createIssue({
+        projectKey: "TAI",
+        issueType: StoryType.Bug,
+        summary,
+        persona: Persona.Pm,
+        assignee: CURRENT_USER,
+    });
+    await backend.workTracker.transition(bug.key, Status.InProgress);
+    return bug;
 }
 
 describe("findReadyWork readyToTest / readyToMerge", () => {
@@ -661,7 +683,7 @@ describe("findReadyWork readyToTest / readyToMerge", () => {
             assert.equal(result.readyToTest.length, 1);
             assert.equal(result.readyToTest[0]?.devSubtaskKey, dev.key);
             assert.equal(result.readyToMerge.length, 1);
-            assert.equal(result.readyToMerge[0]?.devSubtaskKey, dev.key);
+            assert.equal(result.readyToMerge[0]?.issueKey, dev.key);
         });
     });
 
@@ -812,6 +834,125 @@ describe("findReadyWork readyToTest / readyToMerge", () => {
     });
 });
 
+describe("findReadyWork readyToMerge — governance-content PRs (TAI-293)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+
+    test("an In-Progress Bug with a linked, approved, green PR surfaces in readyToMerge but NOT readyToTest", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await inProgressBug(backend, "Governance content");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(bug.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.deepEqual(result.readyToTest, [], "no meaningful test tier for docs-only governance content");
+            assert.equal(result.readyToMerge.length, 1);
+            assert.equal(result.readyToMerge[0]?.issueKey, bug.key);
+        });
+    });
+
+    test("a Dev subtask's PR and a governance-content Bug's PR both surface in readyToMerge, each with the correct issueKey", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const devPr = prFixture({ id: toPullRequestId("10"), reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, devPr.url, "PR");
+
+            const bug = await inProgressBug(backend, "Governance content");
+            const bugPr = prFixture({
+                id: toPullRequestId("11"),
+                url: "https://bitbucket.org/dmayhak/tai-framework/pull-requests/11",
+                reviewers: [{ human: REVIEWER_A, status: "approved" }],
+            });
+            await backend.workTracker.createRemoteLink(bug.key, bugPr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [devPr, bugPr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.equal(result.readyToTest.length, 1, "only the Dev subtask's PR is a test candidate");
+            assert.equal(result.readyToTest[0]?.devSubtaskKey, dev.key);
+            const mergeKeys = result.readyToMerge.map((c) => c.issueKey).sort();
+            assert.deepEqual(mergeKeys, [bug.key, dev.key].sort());
+        });
+    });
+
+    test("a Bug not yet approved is not surfaced in readyToMerge, same approval-count gate as a Dev subtask", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await inProgressBug(backend, "Governance content");
+            const pr = prFixture({ reviewers: [] });
+            await backend.workTracker.createRemoteLink(bug.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.deepEqual(result.readyToMerge, []);
+        });
+    });
+
+    test("computePRSections fetches each repo's open-PR list only once, shared between the Dev and governance-content searches (PR #82 review)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await inProgressBug(backend, "Governance content");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(bug.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            // findReadyPRWork also runs syncTestTiersToToDo first, which fetches OPEN PRs
+            // independently for its own, unrelated purpose (pre-existing, untouched by this
+            // fix) -- so the count to pin here is 2 (syncTestTiersToToDo's own + ONE shared
+            // fetch inside computePRSections), not 3, which is what it would have been before
+            // this fix (syncTestTiersToToDo's own + TWO separate fetches inside
+            // computePRSections, one per find-function).
+            await findReadyPRWork({ workTracker: backend.workTracker, projectKey: "TAI", gitHost, repos: [repo] });
+            assert.equal(gitHost.openCallCount, 2);
+        });
+    });
+
+    test("an In-Progress Epic/Spike with a linked, approved, green PR also surfaces in readyToMerge", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: "epic",
+                summary: "Epic",
+                assignee: CURRENT_USER,
+            });
+            const transitioned = await backend.workTracker.transition(epic.key, Status.InProgress);
+            assert.ok(transitioned.ok, `expected transition to succeed: ${JSON.stringify(transitioned)}`);
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(epic.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.equal(result.readyToMerge.length, 1);
+            assert.equal(result.readyToMerge[0]?.issueKey, epic.key);
+        });
+    });
+});
+
 describe("findReadyWork readyToReview", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 
@@ -920,6 +1061,26 @@ describe("findReadyWork out-of-band merge sync (rev 52, TAI-159 ADR)", () => {
             });
 
             const synced = await backend.workTracker.getIssue(dev.key);
+            assert.equal(synced?.status, Status.Done);
+        });
+    });
+
+    test("TAI-293: an In-Progress governance-content Bug whose linked PR is now merged out-of-band is synced to Done too", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await inProgressBug(backend, "Governance content");
+            const pr = prFixture({ state: "merged" });
+            await backend.workTracker.createRemoteLink(bug.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            const synced = await backend.workTracker.getIssue(bug.key);
             assert.equal(synced?.status, Status.Done);
         });
     });
@@ -1353,7 +1514,7 @@ describe("findReadyPRWork", () => {
             });
 
             assert.equal(result.readyToMerge.length, 1);
-            assert.equal(result.readyToMerge[0]?.devSubtaskKey, dev.key);
+            assert.equal(result.readyToMerge[0]?.issueKey, dev.key);
         });
     });
 
