@@ -324,7 +324,7 @@ describe("generateBriefing change notes (TAI-285 ADR)", () => {
                 "TAI",
                 toIssueKey("TAI-1")
             );
-            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "content" }]);
+            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "content", fields: ["description"] }]);
         });
     });
 
@@ -345,7 +345,7 @@ describe("generateBriefing change notes (TAI-285 ADR)", () => {
                 "TAI",
                 toIssueKey("TAI-1")
             );
-            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "structural" }]);
+            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "structural", fields: ["status"] }]);
         });
     });
 
@@ -386,11 +386,11 @@ describe("generateBriefing change notes (TAI-285 ADR)", () => {
             assert.equal(changeNotes.length, 2);
             assert.deepEqual(
                 changeNotes.find((n) => n.key === toIssueKey("TAI-1")),
-                { key: toIssueKey("TAI-1"), severity: "content" }
+                { key: toIssueKey("TAI-1"), severity: "content", fields: ["description"] }
             );
             assert.deepEqual(
                 changeNotes.find((n) => n.key === toIssueKey("TAI-100")),
-                { key: toIssueKey("TAI-100"), severity: "structural" }
+                { key: toIssueKey("TAI-100"), severity: "structural", fields: ["status"] }
             );
         });
     });
@@ -475,7 +475,7 @@ describe("generateBriefing change notes (TAI-285 ADR)", () => {
                 toIssueKey("TAI-1")
             );
 
-            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "structural" }]);
+            assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "structural", fields: ["relationship"] }]);
         });
     });
 });

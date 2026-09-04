@@ -23,18 +23,26 @@
 
 import { DependencyRelation } from "../schema/story-schema.js";
 import type { DocStore, Issue, IssueKey, IssueLink, Page, PageId, WorkTracker } from "../storage/interface.js";
-import { combineSeverity, refreshIssue, type ChangeSeverity } from "../cache/issue-cache.js";
+import { combineFieldChange, refreshIssue, type FieldChange } from "../cache/issue-cache.js";
 import { refreshPage } from "../cache/page-cache.js";
 import { snapshotLinkedKeys } from "../cache/links-snapshot.js";
 import { briefingPath } from "../cache/paths.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+const NO_CHANGE: FieldChange = { severity: "none", fields: [] };
+/** A `links-snapshot.ts` relationship change, expressed the same `FieldChange` shape an
+ *  `Issue`'s own field change uses, so `combineFieldChange` can merge the two uniformly. */
+const RELATIONSHIP_CHANGED: FieldChange = { severity: "structural", fields: ["relationship"] };
+
 /** TAI-285 ADR: one entry per issue whose content changed since it was last cached here —
- *  "none"-severity issues are excluded, so an empty array means nothing worth mentioning. */
+ *  "none"-severity issues are excluded, so an empty array means nothing worth mentioning.
+ *  `fields` (PR #85 review — TAI-290) names exactly which field(s) changed, e.g.
+ *  `["status"]` or `["summary", "description"]`. */
 export interface BriefingChangeNote {
     readonly key: IssueKey;
     readonly severity: "content" | "structural";
+    readonly fields: readonly string[];
 }
 
 export interface GenerateBriefingResult {
@@ -90,18 +98,18 @@ export async function generateBriefing(
     // TAI-285 ADR decision 3b: diffs the SAME already-fetched links above against the last
     // snapshot — never a second getLinkedIssues() call just for this (the exact duplicate-
     // fetch mistake PR #82's review caught elsewhere this session).
-    let subtaskSeverity = subtaskRefresh.severity;
+    let subtaskChange = subtaskRefresh.change;
     if (await snapshotLinkedKeys(taiRoot, projectKey, subtask.key, subtaskLinks)) {
-        subtaskSeverity = combineSeverity(subtaskSeverity, "structural");
+        subtaskChange = combineFieldChange(subtaskChange, RELATIONSHIP_CHANGED);
     }
 
-    let parentSeverity: ChangeSeverity = "none";
+    let parentChange: FieldChange = NO_CHANGE;
     if (parent) {
         const parentLinks = await workTracker.getLinkedIssues(parent.key, undefined, "outgoing");
         collectLinks(parentLinks);
-        parentSeverity = parentRefresh?.severity ?? "none";
+        parentChange = parentRefresh?.change ?? NO_CHANGE;
         if (await snapshotLinkedKeys(taiRoot, projectKey, parent.key, parentLinks)) {
-            parentSeverity = combineSeverity(parentSeverity, "structural");
+            parentChange = combineFieldChange(parentChange, RELATIONSHIP_CHANGED);
         }
     }
 
@@ -128,8 +136,12 @@ export async function generateBriefing(
     await writeFile(filePath, markdown, "utf8");
 
     const changeNotes: BriefingChangeNote[] = [];
-    if (subtaskSeverity !== "none") changeNotes.push({ key: subtask.key, severity: subtaskSeverity });
-    if (parent && parentSeverity !== "none") changeNotes.push({ key: parent.key, severity: parentSeverity });
+    if (subtaskChange.severity !== "none") {
+        changeNotes.push({ key: subtask.key, severity: subtaskChange.severity, fields: subtaskChange.fields });
+    }
+    if (parent && parentChange.severity !== "none") {
+        changeNotes.push({ key: parent.key, severity: parentChange.severity, fields: parentChange.fields });
+    }
 
     return { markdown, changeNotes };
 }

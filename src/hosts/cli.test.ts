@@ -268,23 +268,40 @@ describe("renderChangeNotes (TAI-285 ADR)", () => {
     });
 
     it("renders a mild note for a 'content' severity change", () => {
-        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "content" }]);
+        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "content", fields: ["summary"] }]);
         assert.match(out!, /TAI-1/);
-        assert.match(out!, /content changed/);
+        assert.match(out!, /summary changed/);
         assert.doesNotMatch(out!, /⚠️/);
     });
 
     it("renders a prominent warning for a 'structural' severity change, telling the persona to confirm with the human", () => {
-        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "structural" }]);
+        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "structural", fields: ["status"] }]);
         assert.match(out!, /⚠️/);
         assert.match(out!, /TAI-1/);
+        assert.match(out!, /status/);
         assert.match(out!, /confirm with the human/);
+    });
+
+    it("names the specific field(s) that changed, not a generic list of every possible cause (PR #85 review)", () => {
+        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "structural", fields: ["assignee"] }]);
+        assert.match(out!, /assignee/);
+        assert.doesNotMatch(out!, /status\/priority/);
+    });
+
+    it("names multiple changed fields together, comma-separated", () => {
+        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "structural", fields: ["status", "priority"] }]);
+        assert.match(out!, /status, priority/);
+    });
+
+    it("names 'relationship' when that's the field that changed", () => {
+        const out = renderChangeNotes([{ key: toIssueKey("TAI-1"), severity: "structural", fields: ["relationship"] }]);
+        assert.match(out!, /relationship/);
     });
 
     it("renders one line per note when both the subtask and parent changed", () => {
         const out = renderChangeNotes([
-            { key: toIssueKey("TAI-1"), severity: "content" },
-            { key: toIssueKey("TAI-100"), severity: "structural" },
+            { key: toIssueKey("TAI-1"), severity: "content", fields: ["description"] },
+            { key: toIssueKey("TAI-100"), severity: "structural", fields: ["status"] },
         ]);
         const lines = out!.split("\n");
         assert.equal(lines.length, 2);

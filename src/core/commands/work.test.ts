@@ -127,7 +127,7 @@ describe("prepareWorkTurn", () => {
             await backend.workTracker.transition(dev.key, Status.InProgress);
 
             const second = await prepareWorkTurn({ backend, taiRoot, projectKey: "TAI", spaceKey: "TAI" }, dev.key);
-            assert.deepEqual(second.changeNotes, [{ key: dev.key, severity: "structural" }]);
+            assert.deepEqual(second.changeNotes, [{ key: dev.key, severity: "structural", fields: ["status"] }]);
         });
     });
 

@@ -474,16 +474,19 @@ function renderGitMutationResult(
  *  prominent warning (telling the acting persona to pause and confirm with the human
  *  before proceeding on possibly-invalid assumptions) for "structural" — same
  *  "informational note prepended before the real output" shape as TAI-282's
- *  `renderLocalFetchNote`. `undefined` when there's nothing to mention. */
+ *  `renderLocalFetchNote`. `undefined` when there's nothing to mention. Names exactly
+ *  which field(s) changed (PR #85 review — TAI-290) rather than listing every possible
+ *  cause generically, so the warning is actually actionable. */
 export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string | undefined {
     if (notes.length === 0) return undefined;
     return notes
-        .map((n) =>
-            n.severity === "structural"
-                ? `⚠️ ${n.key} changed (status/priority/type/assignee/relationship) since it was last read here — ` +
+        .map((n) => {
+            const fields = n.fields.join(", ");
+            return n.severity === "structural"
+                ? `⚠️ ${n.key}'s ${fields} changed since it was last read here — ` +
                   `confirm with the human before proceeding on assumptions that may no longer hold.`
-                : `(note: ${n.key}'s content changed since it was last read here — worth a fresh look.)`
-        )
+                : `(note: ${n.key}'s ${fields} changed since it was last read here — worth a fresh look.)`;
+        })
         .join("\n");
 }
 
