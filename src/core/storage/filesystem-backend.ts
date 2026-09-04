@@ -387,7 +387,11 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 issueType: input.issueType,
                 summary: input.summary,
                 description: input.description,
-                status: Status.ToDo,
+                // Brief §5.3 (rev 27): `Backlog` — not `To Do` — is the default landing
+                // status for a newly created ticket on every backend, including this one.
+                // Found out of sync with the live Jira backend's own default while running
+                // TAI-291's conformance suite against it (TAI-299).
+                status: Status.Backlog,
                 assignee: input.assignee ?? null,
                 persona: input.persona ?? null,
                 parentKey: input.parentKey,

@@ -40,6 +40,9 @@ describe("findReadyWork", () => {
                 summary: "Top-level story",
                 persona: Persona.Pm,
             });
+            // Brief §5.3 rev 27: a fresh ticket lands in Backlog, not To Do -- promote past
+            // it explicitly, same as a persona with the authority would (TAI-292).
+            await backend.workTracker.transition(story.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(result.ready.some((i) => i.key === story.key));
@@ -54,6 +57,8 @@ describe("findReadyWork", () => {
                 summary: "Fresh epic, nothing under it yet",
                 persona: Persona.Pm,
             });
+            // Brief §5.3 rev 27: promote past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(epic.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(result.ready.some((i) => i.key === epic.key));
@@ -101,6 +106,10 @@ describe("findReadyWork", () => {
                 persona: Persona.Developer,
                 parentKey: story.key,
             });
+            // Brief §5.3 rev 27: promote both past the Backlog creation default so this test
+            // exercises the precedence gate specifically, not the (separate) open-status gate.
+            await backend.workTracker.transition(arch.key, Status.ToDo);
+            await backend.workTracker.transition(dev.key, Status.ToDo);
 
             const before = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(!before.ready.some((i) => i.key === dev.key), "Dev should be blocked by ArchitectureDesign");
@@ -126,6 +135,8 @@ describe("findReadyWork", () => {
                     issueType: StoryType.Story,
                     summary: "Depends on the blocker via a real cross-ticket link",
                 });
+                // Brief §5.3 rev 27: promote past the Backlog creation default (TAI-292).
+                await backend.workTracker.transition(dependent.key, Status.ToDo);
                 await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, blocker.key);
 
                 const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
@@ -173,6 +184,8 @@ describe("findReadyWork", () => {
                     issueType: StoryType.Story,
                     summary: "Depends on both",
                 });
+                // Brief §5.3 rev 27: promote past the Backlog creation default (TAI-292).
+                await backend.workTracker.transition(dependent.key, Status.ToDo);
                 await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, openBlocker.key);
                 await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, resolvedBlocker.key);
 
@@ -340,6 +353,8 @@ describe("findReadyWork", () => {
                     persona: Persona.Developer,
                     parentKey: story.key,
                 });
+                // Brief §5.3 rev 27: promote past the Backlog creation default (TAI-292).
+                await backend.workTracker.transition(dev.key, Status.ToDo);
 
                 const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
                 assert.ok(result.ready.some((i) => i.key === dev.key));
@@ -361,6 +376,8 @@ describe("findReadyWork", () => {
                 persona: Persona.Developer,
                 parentKey: story.key,
             });
+            // Brief §5.3 rev 27: promote past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(dev.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(result.ready.some((i) => i.key === dev.key));
@@ -388,6 +405,8 @@ describe("findReadyWork", () => {
                 persona: Persona.CodeReviewer,
                 parentKey: story.key,
             });
+            // Brief §5.3 rev 27: promote past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(dev.key, Status.ToDo);
 
             const result = await findReadyWork(
                 { workTracker: backend.workTracker, taiRoot, projectKey: "TAI" },
@@ -563,6 +582,8 @@ describe("findReadyWork in-progress split", () => {
                 summary: "Fresh epic",
                 persona: Persona.Pm,
             });
+            // Brief §5.3 rev 27: promote past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(epic.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(result.ready.some((i) => i.key === epic.key));
@@ -1295,6 +1316,10 @@ describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
                 summary: "Medium priority",
                 priority: "Medium",
             });
+            // Brief §5.3 rev 27: promote each past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(low.key, Status.ToDo);
+            await backend.workTracker.transition(highest.key, Status.ToDo);
+            await backend.workTracker.transition(medium.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             const order = result.ready.map((i) => i.key);
@@ -1311,6 +1336,9 @@ describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
                 summary: "Lowest priority",
                 priority: "Lowest",
             });
+            // Brief §5.3 rev 27: promote each past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(unset.key, Status.ToDo);
+            await backend.workTracker.transition(lowest.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             const order = result.ready.map((i) => i.key);
@@ -1339,6 +1367,10 @@ describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
                 summary: "Unrelated low-priority story",
                 priority: "Low",
             });
+            // Brief §5.3 rev 27: promote each past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(bug.key, Status.ToDo);
+            await backend.workTracker.transition(triage.key, Status.ToDo);
+            await backend.workTracker.transition(lowPriorityStory.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             const order = result.ready.map((i) => i.key);
@@ -1369,6 +1401,9 @@ describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
                 parentKey: bug.key,
                 priority: "Lowest",
             });
+            // Brief §5.3 rev 27: promote each past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(bug.key, Status.ToDo);
+            await backend.workTracker.transition(triage.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.equal(result.ready.find((i) => i.key === triage.key)?.priority, "Lowest");
@@ -1389,6 +1424,9 @@ describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
                 summary: "Lowest",
                 priority: "Lowest",
             });
+            // Brief §5.3 rev 27: promote each past the Backlog creation default (TAI-292).
+            await backend.workTracker.transition(custom.key, Status.ToDo);
+            await backend.workTracker.transition(lowest.key, Status.ToDo);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             const order = result.ready.map((i) => i.key);

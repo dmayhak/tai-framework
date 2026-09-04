@@ -22,6 +22,9 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { Persona, Status, StoryType, SubtaskType, DependencyRelation } from "../schema/story-schema.js";
 import {
@@ -31,6 +34,9 @@ import {
     type HumanRef,
     StorageConnectivityError,
 } from "./interface.js";
+import { refreshIssue } from "../cache/issue-cache.js";
+import { refreshPage } from "../cache/page-cache.js";
+import { snapshotLinkedKeys } from "../cache/links-snapshot.js";
 
 // ---------- Capabilities: where behavior legitimately differs ----------
 
@@ -175,7 +181,12 @@ export function defineStorageConformance(
                 assert.equal(issue.summary, "Conformance: create+get");
                 assert.equal(issue.description, "original description");
                 assert.equal(issue.persona, Persona.Developer);
-                assert.equal(issue.status, Status.ToDo, "new issues start at To Do on every backend");
+                // Brief §5.3 rev 27: `Backlog`, not `To Do`, is the default landing status
+                // for a newly created ticket -- confirmed live against both the real Jira
+                // backend and this repo's own filesystem-backend.ts (TAI-299, found while
+                // running TAI-291's conformance suite against live Jira for the first time
+                // since rev 27 was decided -- filesystem-backend.ts had drifted).
+                assert.equal(issue.status, Status.Backlog, "new issues start at Backlog on every backend (brief §5.3 rev 27)");
                 assert.deepEqual(issue.comments, []);
 
                 const fetched = await h.backend.workTracker.getIssue(issue.key);
@@ -581,7 +592,11 @@ export function defineStorageConformance(
                 assert.equal(result.ok, true, "a rejected cascade must never block the child's own transition");
 
                 const fetchedStory = await h.backend.workTracker.getIssue(story.key);
-                assert.equal(fetchedStory?.status, Status.ToDo, "the rejected parent cascade must not have applied");
+                assert.equal(
+                    fetchedStory?.status,
+                    Status.Backlog,
+                    "the rejected parent cascade must not have applied -- the Story stays at its Backlog creation default (brief §5.3 rev 27)"
+                );
             });
 
             // TAI-275/276 ADR: visibility, not auto-retry -- the same rejected-cascade
@@ -1258,6 +1273,146 @@ export function defineStorageConformance(
 
                 const links = await h.backend.workTracker.getRemoteLinks(issue.key);
                 assert.deepEqual([...links], []);
+            });
+        });
+
+        // ---------- Out-of-band change detection (TAI-285 ADR, TAI-291) ----------
+        // `refreshIssue`/`cacheIssue` (issue-cache.ts), `refreshPage`/`cachePage`
+        // (page-cache.ts), and `snapshotLinkedKeys` (links-snapshot.ts) are themselves
+        // backend-agnostic — pure field comparisons plus calls through the very
+        // `StorageBackend` methods already exercised elsewhere in this suite. What none of
+        // those other tests confirm: whether `updatedAt` — the signal this entire ADR is
+        // built on (issue-cache.ts's own doc comment) — actually moves, and only moves,
+        // when it should, identically on both backends. A backend that bumped `updatedAt`
+        // on every read (false positives) or failed to bump it on a real field change
+        // (silently swallowed warnings) would satisfy every other test in this file while
+        // breaking the whole mechanism.
+        describe("Cache: out-of-band change detection (TAI-285 ADR)", () => {
+            let taiRoot: string;
+
+            before(async () => {
+                taiRoot = await mkdtemp(path.join(tmpdir(), "tai-conformance-cache-"));
+            });
+
+            after(async () => {
+                await rm(taiRoot, { recursive: true, force: true }).catch(() => {});
+            });
+
+            it('refreshIssue: no prior cache, then no real change, both classify as "none"', async () => {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: sharedParentKey,
+                        allowDuplicate: true,
+                        summary: "Conformance: change detection baseline",
+                    })
+                );
+                const first = await refreshIssue(h.backend.workTracker, taiRoot, h.projectKey, issue.key);
+                assert.equal(first.change.severity, "none", "first-ever cache write has nothing to compare against");
+                assert.deepEqual(first.change.fields, []);
+
+                const second = await refreshIssue(h.backend.workTracker, taiRoot, h.projectKey, issue.key);
+                assert.equal(second.change.severity, "none", "nothing changed between the two refreshes");
+                assert.deepEqual(second.change.fields, []);
+            });
+
+            it('refreshIssue: a content-only edit (summary) classifies as "content", naming the field', async () => {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: sharedParentKey,
+                        allowDuplicate: true,
+                        summary: "Conformance: content change (before)",
+                    })
+                );
+                await refreshIssue(h.backend.workTracker, taiRoot, h.projectKey, issue.key);
+
+                // A tiny real delay, not a race against the clock: the filesystem backend has
+                // no network latency to naturally separate create from edit, so two calls back
+                // to back can otherwise land in the same millisecond and make `updatedAt`
+                // compare equal, masking a real change -- found by actually running this test
+                // (same pattern as the comment-editing test earlier in this file).
+                await new Promise((r) => setTimeout(r, 5));
+                await h.backend.workTracker.updateIssue(issue.key, {
+                    summary: "Conformance: content change (after)",
+                });
+                const refreshed = await refreshIssue(h.backend.workTracker, taiRoot, h.projectKey, issue.key);
+                assert.equal(refreshed.change.severity, "content");
+                assert.ok(refreshed.change.fields.includes("summary"));
+            });
+
+            it('refreshIssue: a structural edit (status via transition) classifies as "structural", naming the field', async () => {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: sharedParentKey,
+                        allowDuplicate: true,
+                        summary: "Conformance: structural change",
+                    })
+                );
+                await h.backend.workTracker.assignIssue(issue.key, h.validAssignee);
+                await refreshIssue(h.backend.workTracker, taiRoot, h.projectKey, issue.key);
+
+                // See the content-only test above for why this delay is needed.
+                await new Promise((r) => setTimeout(r, 5));
+                const transitioned = await h.backend.workTracker.transition(issue.key, Status.InProgress);
+                assert.equal(transitioned.ok, true);
+
+                const refreshed = await refreshIssue(h.backend.workTracker, taiRoot, h.projectKey, issue.key);
+                assert.equal(refreshed.change.severity, "structural");
+                assert.ok(refreshed.change.fields.includes("status"));
+            });
+
+            it('refreshPage: no prior cache, then a content edit classifies as "content", naming the field', async () => {
+                const page = trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: `Conformance: page change detection ${Date.now()}`,
+                        content: "before",
+                    })
+                );
+                const first = await refreshPage(h.backend.docStore, taiRoot, h.projectKey, { id: page.id });
+                assert.equal(first.change.severity, "none", "first-ever cache write has nothing to compare against");
+
+                // See the content-only issue test above for why this delay is needed.
+                await new Promise((r) => setTimeout(r, 5));
+                await h.backend.docStore.updatePage({ id: page.id }, { content: "after" });
+                const refreshed = await refreshPage(h.backend.docStore, taiRoot, h.projectKey, { id: page.id });
+                assert.equal(refreshed.change.severity, "content");
+                assert.ok(refreshed.change.fields.includes("content"));
+            });
+
+            it("snapshotLinkedKeys: no prior snapshot is unchanged; an added link is detected; a stable set is not", async () => {
+                const from = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: link-snapshot source",
+                    })
+                );
+                const to = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: link-snapshot target",
+                    })
+                );
+
+                const beforeLinks = await h.backend.workTracker.getLinkedIssues(from.key, undefined, "outgoing");
+                const first = await snapshotLinkedKeys(taiRoot, h.projectKey, from.key, beforeLinks);
+                assert.equal(first, false, "no prior snapshot -- nothing to have changed from");
+
+                await h.backend.workTracker.createLink(from.key, DependencyRelation.RelatesTo, to.key);
+                const afterLinks = await h.backend.workTracker.getLinkedIssues(from.key, undefined, "outgoing");
+                const second = await snapshotLinkedKeys(taiRoot, h.projectKey, from.key, afterLinks);
+                assert.equal(second, true, "an added outgoing link must be detected");
+
+                const stableLinks = await h.backend.workTracker.getLinkedIssues(from.key, undefined, "outgoing");
+                const third = await snapshotLinkedKeys(taiRoot, h.projectKey, from.key, stableLinks);
+                assert.equal(third, false, "an unchanged link set must not be reported as changed");
             });
         });
     });
