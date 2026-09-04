@@ -181,7 +181,12 @@ export function defineStorageConformance(
                 assert.equal(issue.summary, "Conformance: create+get");
                 assert.equal(issue.description, "original description");
                 assert.equal(issue.persona, Persona.Developer);
-                assert.equal(issue.status, Status.ToDo, "new issues start at To Do on every backend");
+                // Brief §5.3 rev 27: `Backlog`, not `To Do`, is the default landing status
+                // for a newly created ticket -- confirmed live against both the real Jira
+                // backend and this repo's own filesystem-backend.ts (TAI-299, found while
+                // running TAI-291's conformance suite against live Jira for the first time
+                // since rev 27 was decided -- filesystem-backend.ts had drifted).
+                assert.equal(issue.status, Status.Backlog, "new issues start at Backlog on every backend (brief §5.3 rev 27)");
                 assert.deepEqual(issue.comments, []);
 
                 const fetched = await h.backend.workTracker.getIssue(issue.key);
@@ -587,7 +592,11 @@ export function defineStorageConformance(
                 assert.equal(result.ok, true, "a rejected cascade must never block the child's own transition");
 
                 const fetchedStory = await h.backend.workTracker.getIssue(story.key);
-                assert.equal(fetchedStory?.status, Status.ToDo, "the rejected parent cascade must not have applied");
+                assert.equal(
+                    fetchedStory?.status,
+                    Status.Backlog,
+                    "the rejected parent cascade must not have applied -- the Story stays at its Backlog creation default (brief §5.3 rev 27)"
+                );
             });
 
             // TAI-275/276 ADR: visibility, not auto-retry -- the same rejected-cascade

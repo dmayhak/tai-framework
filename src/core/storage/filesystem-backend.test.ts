@@ -139,7 +139,8 @@ describe("issue CRUD", () => {
                 summary: "Build the thing",
             });
             assert.equal(created.key, "TAI-1");
-            assert.equal(created.status, Status.ToDo);
+            // Brief §5.3 rev 27: `Backlog`, not `To Do`, is the default landing status.
+            assert.equal(created.status, Status.Backlog);
             assert.equal(created.assignee, null);
             assert.equal(created.persona, null);
             assert.deepEqual(created.labels, []);
@@ -413,7 +414,7 @@ describe("parent-status cascade gate", () => {
             assert.equal(result.ok, true, "a rejected cascade must never block the child's own transition");
 
             const fetchedStory = await workTracker.getIssue(story.key);
-            assert.equal(fetchedStory?.status, Status.ToDo, "the rejected parent cascade must not have applied");
+            assert.equal(fetchedStory?.status, Status.Backlog, "the rejected parent cascade must not have applied");
         });
     });
 
@@ -433,7 +434,7 @@ describe("parent-status cascade gate", () => {
             await workTracker.transition(dev.key, Status.Done);
 
             const fetchedStory = await workTracker.getIssue(story.key);
-            assert.equal(fetchedStory?.status, Status.ToDo, "Done must never trigger the cascade");
+            assert.equal(fetchedStory?.status, Status.Backlog, "Done must never trigger the cascade");
         });
     });
 });
