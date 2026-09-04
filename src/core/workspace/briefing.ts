@@ -23,17 +23,40 @@
 
 import { DependencyRelation } from "../schema/story-schema.js";
 import type { DocStore, Issue, IssueKey, IssueLink, Page, PageId, WorkTracker } from "../storage/interface.js";
-import { refreshIssue } from "../cache/issue-cache.js";
+import { combineFieldChange, refreshIssue, type FieldChange } from "../cache/issue-cache.js";
 import { refreshPage } from "../cache/page-cache.js";
+import { snapshotLinkedKeys } from "../cache/links-snapshot.js";
 import { briefingPath } from "../cache/paths.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+const NO_CHANGE: FieldChange = { severity: "none", fields: [] };
+/** A `links-snapshot.ts` relationship change, expressed the same `FieldChange` shape an
+ *  `Issue`'s own field change uses, so `combineFieldChange` can merge the two uniformly. */
+const RELATIONSHIP_CHANGED: FieldChange = { severity: "structural", fields: ["relationship"] };
+
+/** TAI-285 ADR: one entry per issue whose content changed since it was last cached here —
+ *  "none"-severity issues are excluded, so an empty array means nothing worth mentioning.
+ *  `fields` (PR #85 review — TAI-290) names exactly which field(s) changed, e.g.
+ *  `["status"]` or `["summary", "description"]`. */
+export interface BriefingChangeNote {
+    readonly key: IssueKey;
+    readonly severity: "content" | "structural";
+    readonly fields: readonly string[];
+}
+
+export interface GenerateBriefingResult {
+    readonly markdown: string;
+    readonly changeNotes: readonly BriefingChangeNote[];
+}
+
 /**
  * Refreshes the subtask, its immediate parent (if any), and every Confluence page linked to
  * either, renders `briefing.md`, writes it to `.tai/work/<project>/<subtaskKey>/briefing.md`,
- * and returns the rendered markdown. Throws if the subtask itself can't be found — there's
- * nothing to brief on.
+ * and returns the rendered markdown plus any out-of-band change notes (TAI-285 ADR) for the
+ * subtask/parent specifically (decision 4 — not linked tickets/pages, one-hop-bounded same
+ * as everywhere else in this function). Throws if the subtask itself can't be found —
+ * there's nothing to brief on.
  */
 export async function generateBriefing(
     workTracker: WorkTracker,
@@ -41,12 +64,14 @@ export async function generateBriefing(
     taiRoot: string,
     projectKey: string,
     subtaskKey: IssueKey
-): Promise<string> {
-    const subtask = await refreshIssue(workTracker, taiRoot, projectKey, subtaskKey);
-    if (!subtask) {
+): Promise<GenerateBriefingResult> {
+    const subtaskRefresh = await refreshIssue(workTracker, taiRoot, projectKey, subtaskKey);
+    if (!subtaskRefresh.issue) {
         throw new Error(`Cannot generate a briefing for ${subtaskKey}: issue not found.`);
     }
-    const parent = subtask.parentKey ? await refreshIssue(workTracker, taiRoot, projectKey, subtask.parentKey) : null;
+    const subtask = subtaskRefresh.issue;
+    const parentRefresh = subtask.parentKey ? await refreshIssue(workTracker, taiRoot, projectKey, subtask.parentKey) : null;
+    const parent = parentRefresh?.issue ?? null;
 
     const pageIds = new Set<PageId>(await workTracker.getLinkedPages(subtask.key));
     if (parent) {
@@ -68,14 +93,29 @@ export async function generateBriefing(
             linkedIssueRelations.set(link.key, relations);
         }
     };
-    collectLinks(await workTracker.getLinkedIssues(subtask.key, undefined, "outgoing"));
+    const subtaskLinks = await workTracker.getLinkedIssues(subtask.key, undefined, "outgoing");
+    collectLinks(subtaskLinks);
+    // TAI-285 ADR decision 3b: diffs the SAME already-fetched links above against the last
+    // snapshot — never a second getLinkedIssues() call just for this (the exact duplicate-
+    // fetch mistake PR #82's review caught elsewhere this session).
+    let subtaskChange = subtaskRefresh.change;
+    if (await snapshotLinkedKeys(taiRoot, projectKey, subtask.key, subtaskLinks)) {
+        subtaskChange = combineFieldChange(subtaskChange, RELATIONSHIP_CHANGED);
+    }
+
+    let parentChange: FieldChange = NO_CHANGE;
     if (parent) {
-        collectLinks(await workTracker.getLinkedIssues(parent.key, undefined, "outgoing"));
+        const parentLinks = await workTracker.getLinkedIssues(parent.key, undefined, "outgoing");
+        collectLinks(parentLinks);
+        parentChange = parentRefresh?.change ?? NO_CHANGE;
+        if (await snapshotLinkedKeys(taiRoot, projectKey, parent.key, parentLinks)) {
+            parentChange = combineFieldChange(parentChange, RELATIONSHIP_CHANGED);
+        }
     }
 
     const linkedIssues: { issue: Issue; relations: ReadonlySet<DependencyRelation> }[] = [];
     for (const [key, relations] of linkedIssueRelations) {
-        const linked = await refreshIssue(workTracker, taiRoot, projectKey, key);
+        const linked = (await refreshIssue(workTracker, taiRoot, projectKey, key)).issue;
         if (!linked) continue;
         linkedIssues.push({ issue: linked, relations });
         // TAI-77 ADR decision 5: a linked ticket's OWN linked pages come along too — its
@@ -86,7 +126,7 @@ export async function generateBriefing(
 
     const pages: Page[] = [];
     for (const pageId of pageIds) {
-        const page = await refreshPage(docStore, taiRoot, projectKey, { id: pageId });
+        const page = (await refreshPage(docStore, taiRoot, projectKey, { id: pageId })).page;
         if (page) pages.push(page);
     }
 
@@ -94,7 +134,16 @@ export async function generateBriefing(
     const filePath = briefingPath(taiRoot, projectKey, subtaskKey);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, markdown, "utf8");
-    return markdown;
+
+    const changeNotes: BriefingChangeNote[] = [];
+    if (subtaskChange.severity !== "none") {
+        changeNotes.push({ key: subtask.key, severity: subtaskChange.severity, fields: subtaskChange.fields });
+    }
+    if (parent && parentChange.severity !== "none") {
+        changeNotes.push({ key: parent.key, severity: parentChange.severity, fields: parentChange.fields });
+    }
+
+    return { markdown, changeNotes };
 }
 
 function renderBriefing(

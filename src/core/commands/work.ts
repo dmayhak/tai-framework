@@ -25,7 +25,7 @@ import { canWorkOn } from "../persona/permission-gate.js";
 import { loadPersonaConfig, type LoadPersonaConfigOptions } from "../persona/config.js";
 import { PersonaScopedWorkTracker, PersonaPermissionError } from "../persona/scoped-work-tracker.js";
 import { ConnectivityQueuedWorkTracker, replayPending, type ReplayOutcome } from "../workspace/connectivity-queue.js";
-import { generateBriefing } from "../workspace/briefing.js";
+import { generateBriefing, type BriefingChangeNote } from "../workspace/briefing.js";
 
 export interface PrepareWorkTurnDeps {
     readonly backend: StorageBackend;
@@ -43,6 +43,10 @@ export interface WorkTurn {
     /** The persona's own `.md` body — unformatted, for the host adapter to assemble. */
     readonly personaPrompt: string;
     readonly briefingMarkdown: string;
+    /** TAI-285 ADR: out-of-band change notes for the subtask/parent, surfaced by the host
+     *  adapter the same way TAI-282's `renderLocalFetchNote` is — mild for "content",
+     *  prominent for "structural". Empty when nothing changed since it was last cached. */
+    readonly changeNotes: readonly BriefingChangeNote[];
     /** Result of replaying this subtask's queued offline writes, if any (step 0). Surfaced,
      *  not swallowed — an `escalated` entry is an unplanned checkpoint (brief §3.3) the host
      *  adapter should show the human, same as any other rejection. */
@@ -91,7 +95,13 @@ export async function prepareWorkTurn(deps: PrepareWorkTurnDeps, key: IssueKey):
     const queued = new ConnectivityQueuedWorkTracker(deps.backend.workTracker, deps.taiRoot, deps.projectKey, key);
     const scoped = new PersonaScopedWorkTracker(queued, config);
 
-    const briefingMarkdown = await generateBriefing(scoped, deps.backend.docStore, deps.taiRoot, deps.projectKey, key);
+    const { markdown: briefingMarkdown, changeNotes } = await generateBriefing(
+        scoped,
+        deps.backend.docStore,
+        deps.taiRoot,
+        deps.projectKey,
+        key
+    );
 
     return {
         issue,
@@ -99,6 +109,7 @@ export async function prepareWorkTurn(deps: PrepareWorkTurnDeps, key: IssueKey):
         personaDisplayName: config.displayName,
         personaPrompt: config.prompt,
         briefingMarkdown,
+        changeNotes,
         replayOutcome,
     };
 }
