@@ -1487,6 +1487,12 @@ async function main(): Promise<void> {
                     if (assignee) {
                         const assigned = await config.backend.workTracker.assignIssue(key, assignee);
                         if (assigned.ok) {
+                            // TAI-303 (PR #88 review): a real assignee change happened here
+                            // regardless of whether the retried transition below succeeds --
+                            // cache it now rather than only on `result.ok` further down,
+                            // which would skip this write if the retry itself is rejected
+                            // for an unrelated reason (e.g. the review gate).
+                            await cacheIssue(config.taiRoot, assigned.issue.projectKey, assigned.issue);
                             result = await config.backend.workTracker.transition(key, status as Status);
                         } else {
                             // Falls through to reporting the ORIGINAL transition rejection
