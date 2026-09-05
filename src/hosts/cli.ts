@@ -32,6 +32,7 @@ import {
     DEFAULT_SEARCH_LIMIT,
     type CreateIssueInput,
     type CreatePageInput,
+    type PagePatch,
     type HumanRef,
     type Issue,
     type IssueFilter,
@@ -1640,12 +1641,31 @@ async function main(): Promise<void> {
             return;
         }
 
-        throw new Error(`Unknown page action "${action}" -- expected "create", "link", or "get".`);
+        // TAI-301: DocStore.updatePage already existed (exercised in conformance.ts) but
+        // had no CLI path -- a persona correcting or refreshing already-published content
+        // (a decision record, a living doc) had no sanctioned way to do so. Mirrors "issue
+        // update"'s <KEY> then key=value-patch shape.
+        if (action === "update") {
+            const [pageId, ...kv] = pageArgs;
+            if (!pageId || kv.length === 0) {
+                throw new Error("Usage: page update <PAGE-ID> [title=<TEXT>] [content=<TEXT>]");
+            }
+            const fields = parseKeyValueArgs(kv);
+            const patch: PagePatch = {
+                ...(fields["title"] !== undefined ? { title: fields["title"] } : {}),
+                ...(fields["content"] !== undefined ? { content: fields["content"] } : {}),
+            };
+            const page = await config.backend.docStore.updatePage({ id: toPageId(pageId) }, patch);
+            console.log(`# Page updated\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}`);
+            return;
+        }
+
+        throw new Error(`Unknown page action "${action}" -- expected "create", "link", "get", or "update".`);
     }
 
     throw new Error(
         `Usage: work <ISSUE-KEY> | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link|search|get ... | page create|link|get ... | install-global [TAI-HOME] ` +
+            `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | install-global [TAI-HOME] ` +
             `| init status|jira|confluence|bitbucket|env|claude-md`
     );
 }
