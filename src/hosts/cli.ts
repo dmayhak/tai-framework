@@ -1461,7 +1461,7 @@ async function main(): Promise<void> {
             // TAI-303: write-through the cache immediately -- without this, the next
             // `work`-time refresh sees this write as an out-of-band change (TAI-285 ADR)
             // and false-positives a warning against the persona's own prior action.
-            await cacheIssue(config.taiRoot, issue.projectKey, issue);
+            await cacheIssue(config.taiRoot, config.projectKey, issue);
             console.log(renderIssueRef(issue));
             return;
         }
@@ -1492,7 +1492,7 @@ async function main(): Promise<void> {
                             // cache it now rather than only on `result.ok` further down,
                             // which would skip this write if the retry itself is rejected
                             // for an unrelated reason (e.g. the review gate).
-                            await cacheIssue(config.taiRoot, assigned.issue.projectKey, assigned.issue);
+                            await cacheIssue(config.taiRoot, config.projectKey, assigned.issue);
                             result = await config.backend.workTracker.transition(key, status as Status);
                         } else {
                             // Falls through to reporting the ORIGINAL transition rejection
@@ -1516,7 +1516,7 @@ async function main(): Promise<void> {
             // TAI-303: write-through the cache on success -- see "issue update"'s own
             // comment above for why. A successful transition changes `status` (a tracked
             // structural field), so this is the case that fires the loudest false positive.
-            if (result.ok) await cacheIssue(config.taiRoot, result.issue.projectKey, result.issue);
+            if (result.ok) await cacheIssue(config.taiRoot, config.projectKey, result.issue);
 
             console.log(
                 result.ok
@@ -1540,7 +1540,7 @@ async function main(): Promise<void> {
             const result = await config.backend.workTracker.assignIssue(toIssueKey(issueKey), human);
             // TAI-303: write-through the cache on success -- see "issue update"'s own
             // comment above. `assignee` is a tracked structural field.
-            if (result.ok) await cacheIssue(config.taiRoot, result.issue.projectKey, result.issue);
+            if (result.ok) await cacheIssue(config.taiRoot, config.projectKey, result.issue);
             console.log(
                 result.ok
                     ? renderIssueRef(result.issue)
