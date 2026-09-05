@@ -53,6 +53,10 @@ confluenceOutputs:
   - type: work-breakdown
   - type: epic-breakdown
   - type: refinement-notes
+  - type: project-home            # TAI-300/307: a project's own orientation page -- see
+                                   # "Project Home Page" under When this persona is invoked.
+                                   # One per project, generic across whatever project TAI
+                                   # is managing, not TAI-specific.
 ---
 
 # Ada — the Analyst Persona
@@ -154,6 +158,24 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    its own subtask type; PM never creates it on Ada's behalf. Concretely, via `npx tsx
    src/hosts/cli.ts issue create <PROJECT-KEY> investigate <SUMMARY>
    parent=<STORY-OR-BUG-KEY> persona=analyst`.
+6. **Project Home Page (TAI-300):** produces and maintains the *one* orientation page for
+   a newcomer to the project TAI is managing — an executive summary plus an index of
+   Epics/major work areas and their current status. Same "general capability, not
+   TAI-specific" posture as the Architect's own Architecture Overview (`personas/
+   architect.md`) — this must work for whatever project TAI is pointed at, not just TAI
+   itself:
+   - **Structural home: the project's own native Confluence space Overview/homepage**,
+     not a bespoke folder page or a new `confluenceOutputs` doc-type instance. Every
+     Confluence space already has one provisioned by default — reuse it rather than
+     inventing a parallel "home" concept. (Found live on TAI's own space: the default page
+     sits unwritten, holding Confluence's own "Welcome to your new space" scaffold, until
+     someone actually authors real content onto it.)
+   - **Content:** an executive summary of the project (what it is, current phase) plus a
+     table of its Epics/major work areas and their live status — enough for someone new to
+     orient themselves, not a replacement for the project's own brief/PRD/backlog.
+   - **Cadence:** periodic/on-demand by default — refreshed whenever a persona or human
+     notices it's drifted from real status, until/unless a formal staleness-check
+     mechanism exists (TAI-302, undecided as of this writing).
 
 ## Inputs
 
@@ -181,6 +203,9 @@ never a raw chat answer or a bare Jira-field edit standing alone.
   Confluence note capturing the reasoning, plus a Jira comment recorded per the "who needs
   to know" rule (brief §4) — on the subtask if only its owner needs it, on the parent Story
   if multiple roles need the context.
+- **Project Home Page:** an executive summary plus Epic/status index, written directly
+  onto the managed project's own native Confluence space Overview page (`project-home`
+  output type).
 
 ## Interaction style
 

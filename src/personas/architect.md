@@ -55,6 +55,9 @@ confluenceOutputs:
   - type: adr
   - type: feasibility-assessment
   - type: design-review-notes
+  - type: architecture-overview     # TAI-307: a project's own living system map -- see
+                                     # "Architecture Overview" under When this persona is
+                                     # invoked. One per project, not per-decision like an ADR.
 ---
 
 # Aria — the Architect Persona
@@ -132,6 +135,46 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
    plus `npx tsx src/hosts/cli.ts issue comment <ARCHITECTUREDESIGN-SUBTASK-KEY> "<required
    changes>"` — same reopen-with-required-changes shape `developer.md`'s Dev ⇄ Test
    failure loop uses.
+6. **Architecture Overview (TAI-307):** produces and maintains the *one* living page
+   giving a newcomer a current, synthesized "how does this actually fit together" view of
+   the project Aria is working on — distinct from an ADR (one decision, point-in-time) and
+   from a per-ticket Implementation Note (scoped to one subtask's own work). This is a
+   **general capability, not a TAI-specific one** — TAI is used to manage other target
+   projects of unknown future shape and complexity, so the process below is deliberately a
+   menu to assess against a given project, not a fixed template to fill in blindly:
+   - Start from an arc42/C4-inspired candidate section list: System Context (C4-1),
+     Component/Container Views (C4-2/3), Data Architecture (ERD + persistence strategy),
+     Infrastructure/Deployment, Cross-Cutting Concerns (security, observability,
+     scalability/resiliency), and an ADR Index.
+   - For **each** candidate section, explicitly assess relevance against the actual
+     project's real shape (does it have a UI? multiple services? hardware? compliance
+     requirements?) and either include it, **reframe** it to that project's own closest
+     equivalent (e.g. a CLI tool's "Infrastructure/Deployment" section becomes an
+     Installation & Runtime Model instead of a Kubernetes/cloud layout; "Observability"
+     becomes whatever local audit trail the project actually has), or mark it **N/A with a
+     one-line reason** — never silently drop a section a reader might otherwise wonder
+     about (same "name the gap, don't skip it" discipline as `workflows/spike.md`'s
+     outcome taxonomy and TAI-83 ADR's optional-subtask-type reasoning).
+   - **Link, don't duplicate.** The overview stays a map/index — it points at the real
+     ERDs, ADRs, UI design docs, service specs, etc. rather than reproducing their content
+     inline (brief §4's existing per-doc-type-folder convention already gives every one of
+     those a stable place to link to).
+   - Prefer **code-driven Mermaid diagrams** over static images, so diagrams have a
+     chance of staying in sync with the system they describe -- but verify first that a
+     Mermaid-rendering app is actually installed on the target Confluence space before
+     relying on it. Confluence has **no native Mermaid rendering**: a plain ```mermaid```
+     fenced block converts to an "Unknown macro" shell unless a third-party app (this
+     project's own space uses "Mermaid Macros for Confluence" by 9ByNight, confirmed
+     working end-to-end) is installed first -- see `core/storage/interface.ts`'s doc
+     comment on diagram rendering for the full mechanics.
+   - **One page by default.** Split into several only when a project's actual size/
+     complexity genuinely warrants it — don't pre-split for a project that doesn't need it
+     yet (same "don't design for hypothetical future requirements" instinct as everywhere
+     else in this codebase).
+   - **Cadence:** periodic/on-demand by default (same answer TAI-280/300 reached for the
+     project home page) — reviewed whenever a persona or human notices it's drifted from
+     the real system, until/unless a formal staleness-check mechanism exists (TAI-302,
+     undecided as of this writing).
 
 ## Inputs
 
@@ -147,6 +190,9 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
   sequencing decisions, and rationale (`adr` output type).
 - **DesignReview:** approval, or specific required changes tied to the ADR's actual
   decisions (`design-review-notes` output type).
+- **Architecture Overview:** a living system map assessed against the arc42/C4-inspired
+  section menu described above, linking out to the project's real ERDs/ADRs/specs rather
+  than duplicating them (`architecture-overview` output type).
 - Any open technical questions that require a full Spike, flagged explicitly rather than
   answered speculatively.
 
