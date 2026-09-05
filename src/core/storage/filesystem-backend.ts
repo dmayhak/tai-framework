@@ -735,6 +735,18 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async updatePage(ref: PageRef, patch: PagePatch): Promise<Page> {
             const existing = await mustResolvePage(rootDir, ref);
+            // TAI-305 (PR #89 review): a cross-space move would silently orphan the page --
+            // this backend stores pages under a per-space directory, so getChildren(newParent)
+            // would never find it there. Reject outright rather than leave that inconsistency.
+            if (patch.parentId !== undefined) {
+                const newParent = await mustResolvePage(rootDir, { id: patch.parentId });
+                if (newParent.spaceKey !== existing.spaceKey) {
+                    throw new Error(
+                        `Cannot move page ${existing.id} to parent ${newParent.id}: different spaces ` +
+                            `(${existing.spaceKey} -> ${newParent.spaceKey}) -- not supported.`
+                    );
+                }
+            }
             const updated: Page = omitUndefined({
                 ...existing,
                 title: patch.title ?? existing.title,
