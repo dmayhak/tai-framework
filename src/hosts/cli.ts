@@ -51,6 +51,8 @@ import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import type { BriefingChangeNote } from "../core/workspace/briefing.js";
+import { cacheIssue } from "../core/cache/issue-cache.js";
+import { cachePage } from "../core/cache/page-cache.js";
 import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
@@ -1456,6 +1458,10 @@ async function main(): Promise<void> {
                 ...(fields["severity"] !== undefined ? { severity: fields["severity"] } : {}),
             };
             const issue = await config.backend.workTracker.updateIssue(toIssueKey(issueKey), patch);
+            // TAI-303: write-through the cache immediately -- without this, the next
+            // `work`-time refresh sees this write as an out-of-band change (TAI-285 ADR)
+            // and false-positives a warning against the persona's own prior action.
+            await cacheIssue(config.taiRoot, issue.projectKey, issue);
             console.log(renderIssueRef(issue));
             return;
         }
@@ -1501,6 +1507,11 @@ async function main(): Promise<void> {
                 }
             }
 
+            // TAI-303: write-through the cache on success -- see "issue update"'s own
+            // comment above for why. A successful transition changes `status` (a tracked
+            // structural field), so this is the case that fires the loudest false positive.
+            if (result.ok) await cacheIssue(config.taiRoot, result.issue.projectKey, result.issue);
+
             console.log(
                 result.ok
                     ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings)
@@ -1521,6 +1532,9 @@ async function main(): Promise<void> {
             const human = await config.backend.workTracker.resolveHuman(email);
             if (!human) throw new Error(`No Jira user found for "${email}" -- cannot assign.`);
             const result = await config.backend.workTracker.assignIssue(toIssueKey(issueKey), human);
+            // TAI-303: write-through the cache on success -- see "issue update"'s own
+            // comment above. `assignee` is a tracked structural field.
+            if (result.ok) await cacheIssue(config.taiRoot, result.issue.projectKey, result.issue);
             console.log(
                 result.ok
                     ? renderIssueRef(result.issue)
@@ -1663,6 +1677,9 @@ async function main(): Promise<void> {
                 ...(fields["content"] !== undefined ? { content: fields["content"] } : {}),
             };
             const page = await config.backend.docStore.updatePage({ id: toPageId(pageId) }, patch);
+            // TAI-303: write-through the cache on success -- same rationale as the issue-
+            // side fixes above ("issue update"'s comment), for `refreshPage`/`cachePage`.
+            await cachePage(config.taiRoot, config.projectKey, page);
             console.log(renderPageRef("Page updated", page));
             return;
         }
