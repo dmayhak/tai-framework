@@ -55,9 +55,10 @@ describe("markdown -> storage", () => {
     it("mermaid macro carries extension-id (ARI-prefixed), not just extension-key (TAI-308)", () => {
         const s = markdownToStorage("```mermaid\ngraph TD;\nA-->B;\n```", TAI_DEV_MERMAID);
         assert.match(s, /key="extension-id">ari:cloud:ecosystem::extension\//);
-        assert.match(
-            s,
-            new RegExp(`key="extension-id">ari:cloud:ecosystem::extension/${TAI_DEV_MERMAID.extensionKey}<`)
+        // Plain substring check, not a RegExp built from extensionKey -- it's per-site,
+        // human-captured config (just a string), not guaranteed regex-metacharacter-free.
+        assert.ok(
+            s.includes(`key="extension-id">ari:cloud:ecosystem::extension/${TAI_DEV_MERMAID.extensionKey}<`)
         );
     });
 

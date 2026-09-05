@@ -202,10 +202,15 @@ function codeBlock(lang: string, body: string, mermaid: MermaidConfig): string {
         // TAI-308: shape verified against a real editor-authored diagram (see this file's
         // header comment) -- an <ac:adf-extension> wrapping an <ac:adf-node type="extension">,
         // source entity-escaped (NOT CDATA-wrapped), plus an <ac:adf-fallback> sibling
-        // duplicating the node. Every node needs a unique local-id, reused as the nested
-        // parameters > local-id. `extension-id` carries the SAME app-id/env-id pair as
+        // duplicating the node. `extension-id` carries the SAME app-id/env-id pair as
         // `extension-key`, just ARI-prefixed -- the earlier version of this function only set
         // `extension-key`, which is exactly what produced "Error loading the extension!" live.
+        // NOTE: `layout` genuinely appears twice with different values, not a copy-paste bug --
+        // the real captured macro has both `parameters > layout` ("extension", an ADF display
+        // hint the macro's own guest-params consumes) and a node-level `layout` ("default", an
+        // unrelated ADF block-layout attribute every extension node carries). Confirmed by
+        // diffing directly against a real editor-authored macro (this file's header comment);
+        // don't "dedupe" this.
         const localId = `tai-${Math.random().toString(36).slice(2, 10)}`;
         const extensionId = `ari:cloud:ecosystem::extension/${mermaid.extensionKey}`;
         const node =
