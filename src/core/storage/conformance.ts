@@ -1092,6 +1092,45 @@ export function defineStorageConformance(
                 assert.equal(updated.content, "after");
             });
 
+            // TAI-305: filing a loose page into its doc-type folder (brief §4 rev 11/14)
+            // needs a real move, not just a create-with-parent -- confirms updatePage's new
+            // parentId patch field actually reparents on both backends.
+            it("updatePage with parentId moves the page under a new parent", async () => {
+                const originalParent = trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: `Conformance: original parent ${Date.now()}`,
+                        content: "x",
+                    })
+                );
+                const newParent = trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: `Conformance: new parent ${Date.now()}`,
+                        content: "x",
+                    })
+                );
+                const page = trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: `Conformance: movable page ${Date.now()}`,
+                        content: "x",
+                        parentId: originalParent.id,
+                    })
+                );
+
+                const moved = await h.backend.docStore.updatePage({ id: page.id }, { parentId: newParent.id });
+                assert.equal(moved.parentId, newParent.id);
+
+                const newParentChildren = await h.backend.docStore.getChildren({ id: newParent.id });
+                assert.ok(newParentChildren.some((c) => c.id === page.id), "must appear under the new parent");
+                const originalParentChildren = await h.backend.docStore.getChildren({ id: originalParent.id });
+                assert.ok(
+                    !originalParentChildren.some((c) => c.id === page.id),
+                    "must no longer appear under the original parent"
+                );
+            });
+
             it("adds and edits a page comment", async () => {
                 const page = trackPage(
                     await h.backend.docStore.createPage({

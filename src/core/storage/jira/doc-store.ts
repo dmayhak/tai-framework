@@ -214,10 +214,26 @@ export function createConfluenceDocStore(
                 `${API}/pages/${id}?body-format=storage`
             );
 
+            // TAI-305 (PR #89 review): same guard as filesystem-backend.ts -- reject a
+            // cross-space move outright rather than leave an inconsistent result (raw
+            // spaceId compare, no need to resolve either side to its space key).
+            if (patch.parentId) {
+                const newParent = await client.request<RawPage>(
+                    "GET",
+                    `${API}/pages/${patch.parentId}`
+                );
+                if (newParent.spaceId !== existing.spaceId) {
+                    throw new Error(
+                        `Cannot move page ${id} to parent ${patch.parentId}: different spaces -- not supported.`
+                    );
+                }
+            }
+
             await client.request("PUT", `${API}/pages/${id}`, {
                 id,
                 status: "current",
                 title: patch.title ?? existing.title,
+                ...(patch.parentId ? { parentId: patch.parentId } : {}),
                 body: {
                     representation: "storage",
                     value:

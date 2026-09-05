@@ -336,6 +336,10 @@ export interface CreatePageInput {
 export interface PagePatch {
     readonly title?: string;
     readonly content?: string;
+    /** TAI-305: move the page under a different parent (e.g. filing a loose page into its
+     *  doc-type folder, brief §4 rev 11/14). No clear-to-root case yet -- undefined leaves
+     *  the current parent alone, same as `title`/`content`. */
+    readonly parentId?: PageId;
 }
 
 export interface DocStore {

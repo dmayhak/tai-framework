@@ -679,6 +679,26 @@ describe("pages", () => {
         });
     });
 
+    // TAI-305 (PR #89 review): a cross-space move would silently orphan the page --
+    // getChildren scans only the target parent's own space directory, so the page would
+    // never be found there despite updatePage reporting success. Covered here (not
+    // conformance.ts) since the shared harness only provisions one space per backend.
+    test("updatePage rejects a cross-space parentId move", async () => {
+        await withBackend(async ({ docStore }) => {
+            const otherSpaceParent = await docStore.createPage({
+                spaceKey: "OTHER",
+                title: "Other space parent",
+                content: "x",
+            });
+            const page = await docStore.createPage({ spaceKey: "TAI", title: "Movable", content: "x" });
+
+            await assert.rejects(
+                () => docStore.updatePage({ id: page.id }, { parentId: otherSpaceParent.id }),
+                /different spaces/i
+            );
+        });
+    });
+
     test("getChildren filters by parentId", async () => {
         await withBackend(async ({ docStore }) => {
             const parent = await docStore.createPage({ spaceKey: "TAI", title: "ADRs", content: "index" });
