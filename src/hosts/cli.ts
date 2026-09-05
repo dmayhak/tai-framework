@@ -32,6 +32,7 @@ import {
     DEFAULT_SEARCH_LIMIT,
     type CreateIssueInput,
     type CreatePageInput,
+    type Page,
     type PagePatch,
     type HumanRef,
     type Issue,
@@ -728,6 +729,12 @@ function renderIssueRef(issue: Issue): string {
         `**${issue.summary}**`,
         `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}`,
     ].join("\n");
+}
+
+/** Shared by `page create`/`page update` -- found duplicated verbatim between the two
+ *  during TAI-301's code review; factored out the same way `renderIssueRef` already is. */
+function renderPageRef(heading: string, page: Page): string {
+    return `# ${heading}\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}`;
 }
 
 /** TAI-275/276 ADR: visibility, not auto-retry -- prints alongside `issue transition`'s own
@@ -1596,7 +1603,7 @@ async function main(): Promise<void> {
                 ...(fields["parent"] !== undefined ? { parentId: toPageId(fields["parent"]) } : {}),
             };
             const page = await config.backend.docStore.createPage(input);
-            console.log(`# Page created\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}`);
+            console.log(renderPageRef("Page created", page));
             return;
         }
 
@@ -1656,7 +1663,7 @@ async function main(): Promise<void> {
                 ...(fields["content"] !== undefined ? { content: fields["content"] } : {}),
             };
             const page = await config.backend.docStore.updatePage({ id: toPageId(pageId) }, patch);
-            console.log(`# Page updated\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}`);
+            console.log(renderPageRef("Page updated", page));
             return;
         }
 
