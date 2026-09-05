@@ -29,12 +29,31 @@
  * `storageToMarkdown` cannot recover a diagram written by the newer app (there is no
  * `source` parameter to read), and will emit an empty ```mermaid fence for it — this is a
  * real, currently-unresolved limitation, not something this file silently papers over.
- * `TAI_DEV_MERMAID`'s `extensionKey` below is a placeholder shape, never confirmed against a
- * real rendered diagram — the two DIFFERENT real extension keys found live are
- * `23392b90-4271-4239-98ca-a3e96c663cbb/63d4d207-ac2f-4273-865c-0240d37f044a/static/mermaid-diagram`
- * (the newer, index-based app) and whatever "Mermaid Macros for Confluence" (the older app
- * interface.ts describes) actually resolves to, which nobody has captured from a real
- * self-contained diagram written by that app. Do not treat this default as verified.
+ *
+ * `TAI_DEV_MERMAID.extensionKey` IS NOW A REAL, VERIFIED VALUE (TAI-308, 2026-09-04) —
+ * captured off a genuine human-authored diagram on this site's "Testing" page (id 12091397)
+ * by fetching its raw storage-format HTML, then confirmed end-to-end by writing a real
+ * diagram through this file's own `markdownToStorage` and checking it rendered live.
+ * **Recommended app: "Mermaid Macros for Confluence" by 9ByNight** — the same app
+ * interface.ts's original recipe comment described, free, confirmed working. If a target
+ * project's Confluence site has no Mermaid app at all, point a human at installing this one
+ * before relying on rendered diagrams — `MermaidConfig.extensionKey` is optional precisely
+ * for the meantime (or the "never going to install one" case): `codeBlock` below degrades
+ * to a plain, readable code block rather than a macro guaranteed to fail.
+ *
+ * Found live that the key alone wasn't the only gap: the ORIGINAL macro shape below was
+ * also missing `extension-id` — Confluence's real editor output carries the app-id/env-id
+ * pair in TWO places, bare (no ARI prefix) in `extension-key`, and ARI-prefixed in a
+ * separate `extension-id` attribute. Rendering with only `extension-key` set (this file's
+ * original shape) is exactly what produced "Error loading the extension!" live — the app
+ * couldn't resolve itself from that alone. The real macro also carries
+ * `layout`/`forge-environment`/`extension-title`/outer `text` attributes and a large
+ * `embedded-macro-context` block (account-id, cloud-id, page id/version, space id/key) that
+ * look like editor-stamped bookkeeping, not render-required data — omitted here
+ * deliberately; if a future site's rendering still fails with just the fields below, that
+ * context block is the next thing to try adding. Still unresolved: the newer, index-based
+ * app's real extension key above (TAI-309: whether TAI ever needs to support writing that
+ * shape too, or whether standardizing on one recommended app is enough, is undecided).
  *
  * FIDELITY, stated honestly: round-trip is exact for content TAI itself wrote (we control
  * both directions over a known subset). For a page a human authored in Confluence's rich
@@ -52,16 +71,28 @@
  */
 
 // The extension key is SITE- and INSTALL-specific (interface.ts is explicit that it must be
-// read off a working diagram on the target site rather than hardcoded). Injected, with a
-// placeholder default — see the file-header warning above; this has not been confirmed
-// against a real rendered diagram written by the "Mermaid Macros for Confluence" app.
+// read off a working diagram on the target site rather than hardcoded) -- Injected, per
+// project/site, not a single global default forever. `extensionKey` is the BARE
+// "<app-id>/<env-id>/static/mermaid-diagram-macro" form (no ARI prefix) exactly as it
+// appears in a real editor-authored macro's own `extension-key` attribute -- codeBlock
+// below derives the ARI-prefixed `extension-id` attribute from it, rather than taking two
+// separate config values for what's really one identity.
+//
+// TAI-308/TAI-309: `extensionKey` is optional -- undefined means "no Mermaid-rendering app
+// configured for this project/site," a real, expected state (not every target project TAI
+// manages will have one installed). codeBlock falls back to a plain fenced code block in
+// that case rather than emitting a macro guaranteed to render "Error loading the
+// extension!" -- a working plain-text diagram beats a broken live one.
 export interface MermaidConfig {
-    readonly extensionKey: string;
+    readonly extensionKey?: string;
 }
 
+// TAI-308: real, verified value for THIS site (TA/TAI) -- captured off a genuine
+// human-authored diagram (see the file-header comment). A different target project's
+// Confluence site will have its own app installation and therefore its own real value;
+// this is a per-site default, not a universal constant.
 export const TAI_DEV_MERMAID: MermaidConfig = {
-    extensionKey:
-        "ari:cloud:ecosystem::extension/9c0b0f6b-1f4e-4e9a-9c2f-000000000000/static/mermaid-diagram-macro",
+    extensionKey: "5bc0f2ac-dc58-48e4-a6f3-72a04868af63/f588a647-291e-4a44-b053-24107662a91c/static/mermaid-diagram-macro",
 };
 
 // ---------- escaping ----------
@@ -163,24 +194,42 @@ function inlineToMarkdown(html: string): string {
 // ---------- markdown -> storage ----------
 
 function codeBlock(lang: string, body: string, mermaid: MermaidConfig): string {
-    if (lang === "mermaid") {
-        // The recipe from interface.ts, verified live: an <ac:adf-extension> wrapping an
-        // <ac:adf-node type="extension">, source entity-escaped (NOT CDATA-wrapped), plus an
-        // <ac:adf-fallback> sibling duplicating the node. Every node needs a unique local-id,
-        // reused as the nested parameters > local-id.
+    // TAI-308/TAI-309: no Mermaid app configured for this project/site -- fall through to
+    // the plain code-macro path below (a readable, working plain-text diagram) rather than
+    // emitting the extension macro, which needs a real extensionKey to have any chance of
+    // rendering.
+    if (lang === "mermaid" && mermaid.extensionKey) {
+        // TAI-308: shape verified against a real editor-authored diagram (see this file's
+        // header comment) -- an <ac:adf-extension> wrapping an <ac:adf-node type="extension">,
+        // source entity-escaped (NOT CDATA-wrapped), plus an <ac:adf-fallback> sibling
+        // duplicating the node. `extension-id` carries the SAME app-id/env-id pair as
+        // `extension-key`, just ARI-prefixed -- the earlier version of this function only set
+        // `extension-key`, which is exactly what produced "Error loading the extension!" live.
+        // NOTE: `layout` genuinely appears twice with different values, not a copy-paste bug --
+        // the real captured macro has both `parameters > layout` ("extension", an ADF display
+        // hint the macro's own guest-params consumes) and a node-level `layout` ("default", an
+        // unrelated ADF block-layout attribute every extension node carries). Confirmed by
+        // diffing directly against a real editor-authored macro (this file's header comment);
+        // don't "dedupe" this.
         const localId = `tai-${Math.random().toString(36).slice(2, 10)}`;
+        const extensionId = `ari:cloud:ecosystem::extension/${mermaid.extensionKey}`;
         const node =
             `<ac:adf-node type="extension">` +
-            `<ac:adf-attribute key="extension-type">com.atlassian.ecosystem</ac:adf-attribute>` +
             `<ac:adf-attribute key="extension-key">${mermaid.extensionKey}</ac:adf-attribute>` +
+            `<ac:adf-attribute key="extension-type">com.atlassian.ecosystem</ac:adf-attribute>` +
             `<ac:adf-attribute key="parameters">` +
-            `<ac:adf-parameter key="local-id">${localId}</ac:adf-parameter>` +
+            `<ac:adf-parameter key="layout">extension</ac:adf-parameter>` +
             `<ac:adf-parameter key="guest-params">` +
-            `<ac:adf-parameter key="source">${esc(body)}</ac:adf-parameter>` +
             `<ac:adf-parameter key="display">diagram</ac:adf-parameter>` +
+            `<ac:adf-parameter key="source">${esc(body)}</ac:adf-parameter>` +
             `</ac:adf-parameter>` +
+            `<ac:adf-parameter key="forge-environment">PRODUCTION</ac:adf-parameter>` +
             `</ac:adf-attribute>` +
             `<ac:adf-attribute key="local-id">${localId}</ac:adf-attribute>` +
+            `<ac:adf-attribute key="extension-id">${extensionId}</ac:adf-attribute>` +
+            `<ac:adf-attribute key="extension-title">Mermaid Diagram</ac:adf-attribute>` +
+            `<ac:adf-attribute key="text">Mermaid Diagram</ac:adf-attribute>` +
+            `<ac:adf-attribute key="layout">default</ac:adf-attribute>` +
             `</ac:adf-node>`;
         return `<ac:adf-extension>${node}<ac:adf-fallback>${node}</ac:adf-fallback></ac:adf-extension>`;
     }

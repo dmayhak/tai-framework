@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { markdownToStorage, storageToMarkdown } from "./storage-format.js";
+import { markdownToStorage, storageToMarkdown, TAI_DEV_MERMAID } from "./storage-format.js";
 
 /** The property that actually matters: content TAI writes must survive a round trip. */
 function roundTrip(md: string): string {
@@ -47,6 +47,34 @@ describe("markdown -> storage", () => {
         // Source must be entity-escaped, never CDATA-wrapped (that's the code macro's rule).
         assert.match(s, /graph TD;/);
         assert.doesNotMatch(s, /<!\[CDATA\[graph/);
+    });
+
+    // TAI-308: found live -- a macro with ONLY extension-key set (no extension-id) rendered
+    // "Error loading the extension!" on the real site, even with a real, correct app-id/env-id
+    // pair. Confluence's own editor always emits both; this pins that we do too.
+    it("mermaid macro carries extension-id (ARI-prefixed), not just extension-key (TAI-308)", () => {
+        const s = markdownToStorage("```mermaid\ngraph TD;\nA-->B;\n```", TAI_DEV_MERMAID);
+        assert.match(s, /key="extension-id">ari:cloud:ecosystem::extension\//);
+        // Plain substring check, not a RegExp built from extensionKey -- it's per-site,
+        // human-captured config (just a string), not guaranteed regex-metacharacter-free.
+        assert.ok(
+            s.includes(`key="extension-id">ari:cloud:ecosystem::extension/${TAI_DEV_MERMAID.extensionKey}<`)
+        );
+    });
+
+    // TAI-308/TAI-309: not every target project's Confluence site has a Mermaid app
+    // installed -- falls back to a plain, readable code block rather than a macro
+    // guaranteed to render "Error loading the extension!" with no real key to point at.
+    it("mermaid fence falls back to a plain code macro when no extensionKey is configured", () => {
+        const s = markdownToStorage("```mermaid\ngraph TD;\nA-->B;\n```", {});
+        assert.doesNotMatch(s, /<ac:adf-extension>/);
+        assert.match(s, /<ac:structured-macro ac:name="code">/);
+        assert.match(s, /<ac:parameter ac:name="language">mermaid<\/ac:parameter>/);
+        assert.match(s, /<!\[CDATA\[graph TD;/);
+
+        // Round-trips back to a real ```mermaid fence on read, same as any other language.
+        const back = storageToMarkdown(s);
+        assert.match(back, /```mermaid\ngraph TD;/);
     });
 
     it("builds tables and lists", () => {
