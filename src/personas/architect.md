@@ -159,10 +159,14 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
      ERDs, ADRs, UI design docs, service specs, etc. rather than reproducing their content
      inline (brief §4's existing per-doc-type-folder convention already gives every one of
      those a stable place to link to).
-   - Prefer **diagrams that render from Confluence's own Mermaid macro support**
-     (confirmed working end-to-end in this project's own Confluence space — see
-     `storage/interface.ts`'s doc comment on diagram rendering) over static images, so
-     diagrams have a chance of staying in sync with the system they describe.
+   - Prefer **code-driven Mermaid diagrams** over static images, so diagrams have a
+     chance of staying in sync with the system they describe -- but verify first that a
+     Mermaid-rendering app is actually installed on the target Confluence space before
+     relying on it. Confluence has **no native Mermaid rendering**: a plain ```mermaid```
+     fenced block converts to an "Unknown macro" shell unless a third-party app (this
+     project's own space uses "Mermaid Macros for Confluence" by 9ByNight, confirmed
+     working end-to-end) is installed first -- see `core/storage/interface.ts`'s doc
+     comment on diagram rendering for the full mechanics.
    - **One page by default.** Split into several only when a project's actual size/
      complexity genuinely warrants it — don't pre-split for a project that doesn't need it
      yet (same "don't design for hypothetical future requirements" instinct as everywhere
