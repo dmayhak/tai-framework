@@ -735,12 +735,13 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async updatePage(ref: PageRef, patch: PagePatch): Promise<Page> {
             const existing = await mustResolvePage(rootDir, ref);
-            const updated: Page = {
+            const updated: Page = omitUndefined({
                 ...existing,
                 title: patch.title ?? existing.title,
                 content: patch.content ?? existing.content,
+                parentId: patch.parentId ?? existing.parentId,
                 updatedAt: new Date().toISOString(),
-            };
+            });
             await writePageFile(rootDir, updated);
             return updated;
         },

@@ -218,6 +218,7 @@ export function createConfluenceDocStore(
                 id,
                 status: "current",
                 title: patch.title ?? existing.title,
+                ...(patch.parentId ? { parentId: patch.parentId } : {}),
                 body: {
                     representation: "storage",
                     value:

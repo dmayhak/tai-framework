@@ -1675,12 +1675,15 @@ async function main(): Promise<void> {
         if (action === "update") {
             const [pageId, ...kv] = pageArgs;
             if (!pageId || kv.length === 0) {
-                throw new Error("Usage: page update <PAGE-ID> [title=<TEXT>] [content=<TEXT>]");
+                throw new Error("Usage: page update <PAGE-ID> [title=<TEXT>] [content=<TEXT>] [parent=<PAGE-ID>]");
             }
             const fields = parseKeyValueArgs(kv);
             const patch: PagePatch = {
                 ...(fields["title"] !== undefined ? { title: fields["title"] } : {}),
                 ...(fields["content"] !== undefined ? { content: fields["content"] } : {}),
+                // TAI-305: move the page under a different parent -- e.g. filing a loose
+                // page into its doc-type folder (brief §4 rev 11/14).
+                ...(fields["parent"] !== undefined ? { parentId: toPageId(fields["parent"]) } : {}),
             };
             const page = await config.backend.docStore.updatePage({ id: toPageId(pageId) }, patch);
             // TAI-303: write-through the cache on success -- same rationale as the issue-
