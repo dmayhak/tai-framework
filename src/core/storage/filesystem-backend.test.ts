@@ -307,6 +307,12 @@ describe("parent-status cascade gate", () => {
             assert.equal(fetchedStory?.status, Status.InProgress, "the parent Story must cascade");
             const fetchedEpic = await workTracker.getIssue(epic.key);
             assert.equal(fetchedEpic?.status, Status.InProgress, "the Epic must cascade one level further up");
+            // TAI-304/311 ADR: affectedIssues carries every OTHER issue the cascade
+            // actually mutated, so a caller (CachingWorkTracker) can cache all of them.
+            if (result.ok) {
+                const affectedKeys = (result.affectedIssues ?? []).map((i) => i.key).sort();
+                assert.deepEqual(affectedKeys, [epic.key, story.key].sort(), "both the Story and the Epic must be reported");
+            }
         });
     });
 

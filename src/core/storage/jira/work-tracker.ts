@@ -126,12 +126,28 @@ export async function discoverPersonaFieldId(
  * just server-side stderr. Every other `asMutation` caller (`assignIssue`, etc.) simply
  * never calls it — TS allows a narrower callback (fewer params) to satisfy a wider
  * function-typed parameter, so their existing `async () => {...}` callbacks are unchanged.
+ *
+ * `addAffected` (TAI-304/311 ADR, Confluence page 39518210) is `warnCascade`'s successful
+ * counterpart, same reasoning: `transition()`'s cascade block calls it with the fresh
+ * `Issue` for every OTHER issue a cascade actually mutated, so a caller (`CachingWorkTracker`)
+ * can write all of them through to the cache, not just the primary `issue`.
  */
-async function asMutation(run: (warnCascade: (w: CascadeWarning) => void) => Promise<Issue>): Promise<MutationResult> {
+async function asMutation(
+    run: (warnCascade: (w: CascadeWarning) => void, addAffected: (issue: Issue) => void) => Promise<Issue>
+): Promise<MutationResult> {
     const cascadeWarnings: CascadeWarning[] = [];
+    const affectedIssues: Issue[] = [];
     try {
-        const issue = await run((w) => cascadeWarnings.push(w));
-        return cascadeWarnings.length > 0 ? { ok: true, issue, cascadeWarnings } : { ok: true, issue };
+        const issue = await run(
+            (w) => cascadeWarnings.push(w),
+            (i) => affectedIssues.push(i)
+        );
+        return {
+            ok: true,
+            issue,
+            ...(cascadeWarnings.length > 0 ? { cascadeWarnings } : {}),
+            ...(affectedIssues.length > 0 ? { affectedIssues } : {}),
+        };
     } catch (err) {
         if (err instanceof JiraRejection) return { ok: false, reason: err.reason };
         throw err; // StorageConnectivityError and genuine bugs both belong upstairs.
@@ -268,7 +284,7 @@ export function createJiraWorkTracker(
          * Returning the reason unaltered is what makes that possible.
          */
         async transition(key: IssueKey, target: Status): Promise<MutationResult> {
-            return asMutation(async (warnCascade) => {
+            return asMutation(async (warnCascade, addAffected) => {
                 // TAI's OWN checkpoints are checked BEFORE calling Jira (§3.3: "We check
                 // conditions *before* ever calling the Jira 'transition' API"). These are two
                 // of them, not Jira rules.
@@ -332,6 +348,10 @@ export function createJiraWorkTracker(
                                     // one level short of the top-level caller (found in
                                     // review, TAI-276 PR).
                                     for (const w of cascadeResult.cascadeWarnings ?? []) warnCascade(w);
+                                    // Successful counterpart -- the parent itself, plus
+                                    // anything ITS own cascade further up affected.
+                                    addAffected(cascadeResult.issue);
+                                    for (const i of cascadeResult.affectedIssues ?? []) addAffected(i);
                                 }
                             }
                         } catch (err) {
@@ -402,6 +422,10 @@ export function createJiraWorkTracker(
                                     // child's own transition() may have cascaded further
                                     // down to a grandchild and hit its own rejection there.
                                     for (const w of cascadeResult.cascadeWarnings ?? []) warnCascade(w);
+                                    // Successful counterpart -- the child itself, plus
+                                    // anything ITS own cascade further down affected.
+                                    addAffected(cascadeResult.issue);
+                                    for (const i of cascadeResult.affectedIssues ?? []) addAffected(i);
                                 }
                             } catch (err) {
                                 const reason = err instanceof Error ? err.message : String(err);
