@@ -196,8 +196,22 @@ export interface CascadeWarning {
 // already carries its own clear `reason`, and cascade noise doesn't belong mixed into
 // that. Only ever populated by `transition()`'s own best-effort cascade handling; never
 // set by any other mutation.
+//
+// `affectedIssues` (TAI-304/311 ADR, Confluence page 39518210): `cascadeWarnings`'
+// successful counterpart — every OTHER issue a cascade actually mutated (upward
+// parent-promote and/or downward cascade-cancel), as the full fresh `Issue`, not just a
+// key, since transition()'s own recursive cascade call already has it in hand
+// (cascadeResult.issue) and a caller (e.g. CachingWorkTracker) needs the real value to
+// write through rather than a pointer to go fetch again. Same placement/optionality
+// posture as cascadeWarnings: only ever populated by transition()'s own cascade
+// handling, never by updateIssue/assignIssue, which have no cascade behavior.
 export type MutationResult =
-    | { readonly ok: true; readonly issue: Issue; readonly cascadeWarnings?: readonly CascadeWarning[] }
+    | {
+          readonly ok: true;
+          readonly issue: Issue;
+          readonly cascadeWarnings?: readonly CascadeWarning[];
+          readonly affectedIssues?: readonly Issue[];
+      }
     | { readonly ok: false; readonly reason: string };
 
 export class StorageConnectivityError extends Error {}

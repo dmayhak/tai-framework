@@ -434,6 +434,12 @@ describe("transition", () => {
             assert.equal(result.ok, true, "the child's own transition must still succeed");
             assert.equal(issues["TAI-1"]?.status, "In Progress", "the Story must have been cascaded");
             assert.equal(issues["TAI-0"]?.status, "In Progress", "the Epic must cascade one level further up");
+            // TAI-304/311 ADR: affectedIssues carries every OTHER issue the cascade
+            // actually mutated, so a caller (CachingWorkTracker) can cache all of them.
+            if (result.ok) {
+                const affectedKeys = (result.affectedIssues ?? []).map((i) => i.key).sort();
+                assert.deepEqual(affectedKeys, ["TAI-0", "TAI-1"], "both the Story and the Epic must be reported");
+            }
         });
 
         it("cascades to a Story and stops cleanly when the Story has no Epic (a legitimate, common shape)", async () => {

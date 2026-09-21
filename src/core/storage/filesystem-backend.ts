@@ -451,6 +451,10 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             // surfaced (never auto-retried) on the final MutationResult -- see interface.ts's
             // CascadeWarning doc comment.
             const cascadeWarnings: CascadeWarning[] = [];
+            // TAI-304/311 ADR (Confluence page 39518210): the successful counterpart --
+            // every OTHER issue a cascade actually mutated, so a caller (CachingWorkTracker)
+            // can write all of them through to the cache, not just this issue's own `updated`.
+            const affectedIssues: Issue[] = [];
             // REVIEW_GATES (§3.3/§5.6, TAI-41 ADR's "hard" checkpoint kind) — same gate the
             // Jira backend enforces (work-tracker.ts), kept identical across backends so this
             // doesn't become another TAI-15-style behavioral divergence.
@@ -484,6 +488,9 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                             // rather than losing it one level short of the top-level caller
                             // (found in review, TAI-276 PR).
                             cascadeWarnings.push(...(cascadeResult.cascadeWarnings ?? []));
+                            // Same bubble-up for the successful counterpart -- the parent
+                            // itself, plus anything ITS own cascade further up affected.
+                            affectedIssues.push(cascadeResult.issue, ...(cascadeResult.affectedIssues ?? []));
                         }
                     }
                 } catch (err) {
@@ -529,6 +536,9 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                                 // own transition() may have cascaded further down to a
                                 // grandchild and hit its own rejection there.
                                 cascadeWarnings.push(...(cascadeResult.cascadeWarnings ?? []));
+                                // Successful counterpart -- the child itself, plus anything
+                                // ITS own cascade further down affected.
+                                affectedIssues.push(cascadeResult.issue, ...(cascadeResult.affectedIssues ?? []));
                             }
                         } catch (err) {
                             const reason = err instanceof Error ? err.message : String(err);
@@ -547,7 +557,12 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 }
             }
 
-            return cascadeWarnings.length > 0 ? { ok: true, issue: updated, cascadeWarnings } : { ok: true, issue: updated };
+            return {
+                ok: true,
+                issue: updated,
+                ...(cascadeWarnings.length > 0 ? { cascadeWarnings } : {}),
+                ...(affectedIssues.length > 0 ? { affectedIssues } : {}),
+            };
         },
 
         async getAvailableTransitions(key: IssueKey): Promise<readonly Status[]> {

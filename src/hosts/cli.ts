@@ -51,8 +51,8 @@ import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
 import type { BriefingChangeNote } from "../core/workspace/briefing.js";
-import { cacheIssue } from "../core/cache/issue-cache.js";
 import { cachePage } from "../core/cache/page-cache.js";
+import { CachingWorkTracker } from "../core/cache/caching-work-tracker.js";
 import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
@@ -179,6 +179,19 @@ function requireEnv(name: string): string {
     return value;
 }
 
+/**
+ * TAI-304/311 ADR (Confluence page 39518210): wraps `backend.workTracker` in
+ * `CachingWorkTracker` here, once, for both backend kinds -- not ad hoc per call site the
+ * way `ConnectivityQueuedWorkTracker`/`PersonaScopedWorkTracker` are composed in
+ * `work.ts`. Every caller starting from `config.backend.workTracker` (this file's own
+ * mutation handlers, `git-pr merge`, `ready.ts`'s sync helpers, `work.ts`'s
+ * further-decorated instance, and `replayPending`'s `inner` argument) is caching-aware as
+ * a result, cascades included, with no changes needed at any of those call sites.
+ */
+function withCachingWorkTracker(backend: StorageBackend, taiRoot: string, projectKey: string): StorageBackend {
+    return { ...backend, workTracker: new CachingWorkTracker(backend.workTracker, taiRoot, projectKey) };
+}
+
 async function resolveConfig(): Promise<ResolvedConfig> {
     const taiRoot = process.env["TAI_ROOT"] ?? ".tai";
     const projectKey = requireEnv("TAI_PROJECT_KEY");
@@ -193,7 +206,13 @@ async function resolveConfig(): Promise<ResolvedConfig> {
             auth: apiTokenAuth(jiraEmail, requireEnv("TAI_JIRA_API_TOKEN")),
         });
         const currentHuman = syntheticHuman(jiraEmail);
-        return { backend, taiRoot, projectKey, spaceKey, currentHuman };
+        return {
+            backend: withCachingWorkTracker(backend, taiRoot, projectKey),
+            taiRoot,
+            projectKey,
+            spaceKey,
+            currentHuman,
+        };
     }
 
     if (backendKind === "filesystem") {
@@ -206,7 +225,13 @@ async function resolveConfig(): Promise<ResolvedConfig> {
             ...(humanEmail ? { email: humanEmail } : {}),
         });
         const currentHuman = humanEmail ? syntheticHuman(humanEmail) : null;
-        return { backend, taiRoot, projectKey, spaceKey: projectKey, currentHuman };
+        return {
+            backend: withCachingWorkTracker(backend, taiRoot, projectKey),
+            taiRoot,
+            projectKey,
+            spaceKey: projectKey,
+            currentHuman,
+        };
     }
 
     throw new Error(`Unknown TAI_BACKEND "${backendKind}" — expected "jira" or "filesystem".`);
@@ -1458,10 +1483,6 @@ async function main(): Promise<void> {
                 ...(fields["severity"] !== undefined ? { severity: fields["severity"] } : {}),
             };
             const issue = await config.backend.workTracker.updateIssue(toIssueKey(issueKey), patch);
-            // TAI-303: write-through the cache immediately -- without this, the next
-            // `work`-time refresh sees this write as an out-of-band change (TAI-285 ADR)
-            // and false-positives a warning against the persona's own prior action.
-            await cacheIssue(config.taiRoot, config.projectKey, issue);
             console.log(renderIssueRef(issue));
             return;
         }
@@ -1487,12 +1508,6 @@ async function main(): Promise<void> {
                     if (assignee) {
                         const assigned = await config.backend.workTracker.assignIssue(key, assignee);
                         if (assigned.ok) {
-                            // TAI-303 (PR #88 review): a real assignee change happened here
-                            // regardless of whether the retried transition below succeeds --
-                            // cache it now rather than only on `result.ok` further down,
-                            // which would skip this write if the retry itself is rejected
-                            // for an unrelated reason (e.g. the review gate).
-                            await cacheIssue(config.taiRoot, config.projectKey, assigned.issue);
                             result = await config.backend.workTracker.transition(key, status as Status);
                         } else {
                             // Falls through to reporting the ORIGINAL transition rejection
@@ -1512,11 +1527,6 @@ async function main(): Promise<void> {
                     }
                 }
             }
-
-            // TAI-303: write-through the cache on success -- see "issue update"'s own
-            // comment above for why. A successful transition changes `status` (a tracked
-            // structural field), so this is the case that fires the loudest false positive.
-            if (result.ok) await cacheIssue(config.taiRoot, config.projectKey, result.issue);
 
             console.log(
                 result.ok
@@ -1538,9 +1548,6 @@ async function main(): Promise<void> {
             const human = await config.backend.workTracker.resolveHuman(email);
             if (!human) throw new Error(`No Jira user found for "${email}" -- cannot assign.`);
             const result = await config.backend.workTracker.assignIssue(toIssueKey(issueKey), human);
-            // TAI-303: write-through the cache on success -- see "issue update"'s own
-            // comment above. `assignee` is a tracked structural field.
-            if (result.ok) await cacheIssue(config.taiRoot, config.projectKey, result.issue);
             console.log(
                 result.ok
                     ? renderIssueRef(result.issue)
