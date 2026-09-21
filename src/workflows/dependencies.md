@@ -193,7 +193,11 @@ actually plausible in practice): Developer often knows, from writing the code it
 which of the relevant test tiers, a `Database`/`Infra` need (the exact
 mid-implementation-discovery case above), or `Deploy`/`PostDeploy` timing apply — see
 `personas/developer.md`'s `create` grant. Architect/PM similarly often recognize
-`Database`/`Infra`/`ArchitectureDesign` needs during design or requirements work. A
+`Database`/`Infra`/`ArchitectureDesign` needs during design or requirements work, and PM
+specifically recognizes `Investigate` needs while querying what's ready (rev 57/TAI-317 —
+see `personas/pm.md`'s `create` grant; this also retired the Investigate-specific
+creation-authority carve-out that used to sit alongside this general exception, brief §8
+item 13). A
 persona that merely *suspects* a need outside what its own work directly surfaces (e.g.
 Developer suspecting `UxDesign` is needed) still flags it to the right owner/PM rather than
 creating it blind — recognizing a need from your own work is different from guessing at
