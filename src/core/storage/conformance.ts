@@ -509,6 +509,17 @@ export function defineStorageConformance(
                 assert.equal(fetchedStory?.status, Status.InProgress, "the parent Story must cascade");
                 const fetchedEpic = await h.backend.workTracker.getIssue(epic.key);
                 assert.equal(fetchedEpic?.status, Status.InProgress, "the Epic must cascade one level further up");
+
+                // TAI-304/311 ADR (Confluence page 39518210): affectedIssues carries every
+                // OTHER issue the cascade actually mutated -- both backends must report the
+                // same shape (both ancestors, matching status), not just one of them.
+                if (result.ok) {
+                    const affected = result.affectedIssues ?? [];
+                    assert.equal(affected.length, 2, "both the Story and the Epic must be reported as affected");
+                    const byKey = new Map(affected.map((i) => [i.key, i]));
+                    assert.equal(byKey.get(story.key)?.status, Status.InProgress);
+                    assert.equal(byKey.get(epic.key)?.status, Status.InProgress);
+                }
             });
 
             // Jira allows a Story to have no Epic (a legitimate, common shape) -- the cascade
@@ -742,6 +753,18 @@ export function defineStorageConformance(
                 assert.equal(fetchedStory?.status, Status.Canceled, "the Story (direct child) must cascade-cancel");
                 const fetchedDev = await h.backend.workTracker.getIssue(dev.key);
                 assert.equal(fetchedDev?.status, Status.Canceled, "the Dev (grandchild) must ALSO cascade-cancel");
+
+                // TAI-304/311 ADR (Confluence page 39518210): the downward cascade's own
+                // affectedIssues must report BOTH the direct child and the grandchild it
+                // cascaded to, on both backends -- the same "successful counterpart to
+                // cascadeWarnings" contract as the upward cascade above.
+                if (result.ok) {
+                    const affected = result.affectedIssues ?? [];
+                    assert.equal(affected.length, 2, "both the Story and the Dev must be reported as affected");
+                    const byKey = new Map(affected.map((i) => [i.key, i]));
+                    assert.equal(byKey.get(story.key)?.status, Status.Canceled);
+                    assert.equal(byKey.get(dev.key)?.status, Status.Canceled);
+                }
             });
 
             it("a Canceled parent cascades too, not just a Done one (ADR decision #1)", async () => {
