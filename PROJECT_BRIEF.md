@@ -4,7 +4,27 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-08-31 (rev 56 — **§8/`personas/pm.md`: the "flagged-live idea
+> **Last updated:** 2026-09-21 (rev 57 — **§8 item 13 fully resolved (TAI-317): subtask-
+> creation authority for `Investigate`/`ArchitectureDesign` now follows the general TAI-83
+> "Eager Subtask Creation" exception (`workflows/dependencies.md`) like every other subtask
+> type — no more type-specific carve-out.** `analyst.md`/`pm.md` previously said "regardless
+> of who flags it, the Analyst always creates `Investigate`," directly contradicting
+> TAI-83's own general rule (already referenced in `pm.md` item 1) that any persona active
+> on a Story/Bug with real in-context judgment may create any subtask type. Found live
+> twice on 2026-09-04 (TAI-280/300, TAI-281) — the human directed PM to create both
+> directly, then flagged the inconsistency for a dedicated persona-review session.
+> Resolved by dropping the carve-out: `analyst.md` item 5 and `pm.md` item 7 now let PM (or
+> Architect/Dev, mid-flight) create the subtask directly under the same dedup-search-first,
+> owner-still-Analyst mechanics every other TAI-83 case uses; `pm.md` gains explicit
+> `Subtask:Investigate`/`Subtask:ArchitectureDesign` `create` grants as the evidenced
+> cases, matching `developer.md`'s existing pattern for its own TAI-83 grants.
+> **§4 also gains a new principle: persona-produced artifacts/output types must be
+> designed to generalize to whatever future target project TAI manages, not left
+> TAI-specific** — raised live during TAI-307's architecture-overview-doc scoping;
+> `analyst.md`'s Project Home Page and `architect.md`'s Architecture Overview (both already
+> written this way) now cross-reference it as the standard to apply when scoping any new
+> output type. Both changes are documentation-only; no code changes.
+> Prior: rev 56 — **§8/`personas/pm.md`: the "flagged-live idea
 > becomes a real Backlog ticket" convention gets written down for the first time
 > (TAI-286).** Rev 55 (immediately below) captured seven open questions and, separately,
 > created real Backlog tickets for them (TAI-279-285) — following the same shape already
@@ -1014,6 +1034,18 @@ These are settled. Change them deliberately and update this file if you do.
   created under it, via a subtask routed to Analyst/Architect/DBA/etc. rather than
   Dev/Review/Merge. Their output is documentation/decisions, not code, and does not itself
   spawn implementation work — that remains a separate human/Orchestrator decision (§3.7).
+- **Persona outputs and processes must generalize to unknown future target projects, not
+  stay TAI-specific (rev 57, TAI-317).** TAI exists to manage *other* projects, not just
+  itself (§1) — when scoping a new persona output type or capability (a new Confluence doc
+  type, a new subtask type, a new checkpoint), the design question is "does this work for
+  whatever project TAI is pointed at," not just "does this work for TAI's own single-repo
+  TypeScript shape." A concrete first-pass mapping onto TAI's own project is fine, but the
+  underlying *process* — which parts of a candidate structure apply, how to reframe or mark
+  N/A the parts that don't for a given project's actual shape — must be captured as
+  reusable persona guidance, not left baked into a one-off TAI-specific doc. Raised live
+  during TAI-307's architecture-overview-doc scoping. `personas/analyst.md`'s Project Home
+  Page and `personas/architect.md`'s Architecture Overview already model this explicitly
+  and are the reference examples for future output types.
 
 ---
 
@@ -1681,12 +1713,21 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     tier.** See §3.7 — decomposition is deliberately scope-relative and repeatable, not a
     fixed level count; where to stop is a human/Orchestrator judgment call per invocation,
     not a formula.
-13. **Refinement subtask triggering:** *Partly resolved.* Three non-exclusive triggers can
-    flag a Story as needing `Investigate`: a human manually, PM (Orchestrator) recognizing
-    insufficient detail while querying what's ready, or the Analyst self-flagging during
-    other work (e.g. decomposition). Regardless of who flags it, the Analyst always
-    creates the actual `Investigate` subtask — the flagging persona never creates it on
-    the Analyst's behalf (see `personas/pm.md`, `personas/analyst.md`). ~~**Still open:**
+13. **Refinement subtask triggering:** *Fully resolved (rev 57).* Three non-exclusive
+    triggers can flag a Story as needing `Investigate`: a human manually, PM (Orchestrator)
+    recognizing insufficient detail while querying what's ready, or the Analyst self-
+    flagging during other work (e.g. decomposition). ~~Regardless of who flags it, the
+    Analyst always creates the actual `Investigate` subtask — the flagging persona never
+    creates it on the Analyst's behalf.~~ — **RESOLVED (rev 57, TAI-317): creation
+    authority follows the general TAI-83 "Eager Subtask Creation" exception**
+    (`workflows/dependencies.md`) like any other subtask type, not a standing carve-out —
+    whichever persona (PM, the Analyst herself, or Architect/Dev mid-flight) has formed the
+    real in-context judgment may create `Investigate` directly, same dedup-search-first
+    mechanics as every other TAI-83 case; `persona=analyst` is still set regardless of
+    creator (see `personas/pm.md`, `personas/analyst.md`). The same generalization applies
+    to `ArchitectureDesign` — no written carve-out existed for it, but PM's practice had
+    informally treated it the same restrictive way (TAI-281 was the live instance).
+    ~~**Still open:**
     what formally marks a Story "ready for implementation" once refinement is done (a
     status transition, a checkpoint, or just Orchestrator judgment)?~~ — **RESOLVED
     (rev 38): no formal marker.** `Investigate` has no entry in `SUBTASK_PRECEDENCE`

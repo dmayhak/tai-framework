@@ -149,13 +149,17 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    existing `SubtaskDependencyOverride` ad-hoc-dependency escape hatch
    (`workflows/dependencies.md`) — a per-instance call by whoever discovers the need, not a
    change to the static graph.
-   **Who flags the need for `Investigate` (brief §8.13, partly resolved):** three
-   non-exclusive triggers — a human notices a Story is too thin and requests it; PM
+   **Who flags the need for `Investigate` (brief §8.13, fully resolved, rev 57/TAI-317):**
+   three non-exclusive triggers — a human notices a Story is too thin and requests it; PM
    (Orchestrator), while querying what's ready, recognizes insufficient detail and flags
    it; or Ada herself notices during other work (e.g. decomposition) and creates it
-   without waiting to be asked. Regardless of who flags it, **Ada is always the one who
-   actually creates the `Investigate` subtask** — consistent with every persona creating
-   its own subtask type; PM never creates it on Ada's behalf. Concretely, via `npx tsx
+   without waiting to be asked. **Creation authority follows the general TAI-83 "Eager
+   Subtask Creation" exception** (`workflows/dependencies.md`), not a standing
+   Investigate-specific carve-out: whichever persona has formed the real in-context
+   judgment — PM while flagging it, Ada herself, or Architect/Dev mid-flight — may create
+   the subtask directly, same dedup-search-first mechanics as any other TAI-83 case.
+   `persona=analyst` is still set regardless of who creates it — creation authority and
+   execution ownership stay separate axes. Concretely, via `npx tsx
    src/hosts/cli.ts issue create <PROJECT-KEY> investigate <SUMMARY>
    parent=<STORY-OR-BUG-KEY> persona=analyst`.
 6. **Project Home Page (TAI-300):** produces and maintains the *one* orientation page for
@@ -163,7 +167,8 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    Epics/major work areas and their current status. Same "general capability, not
    TAI-specific" posture as the Architect's own Architecture Overview (`personas/
    architect.md`) — this must work for whatever project TAI is pointed at, not just TAI
-   itself:
+   itself, per brief §4's standing "generalize to unknown future target projects" principle
+   (rev 57):
    - **Structural home: the project's own native Confluence space Overview/homepage**,
      not a bespoke folder page or a new `confluenceOutputs` doc-type instance. Every
      Confluence space already has one provisioned by default — reuse it rather than

@@ -22,6 +22,11 @@ permissions:
                                 # human's behalf. Both paths are valid, not exclusive.
     - Spike
     - Subtask:Requirements
+    - Subtask:Investigate         # TAI-83 ADR "Eager Subtask Creation" exception, rev 57/TAI-317 —
+                                   # Perry often recognizes insufficient Story detail while
+                                   # querying what's ready (item 7 below); owner stays Analyst
+    - Subtask:ArchitectureDesign  # same TAI-83 exception, rev 57/TAI-317 — Perry often recognizes
+                                   # a design need during requirements/WBS work; owner stays Architect
   workOn:
     - Epic                      # decompose an Epic into Stories/Subtasks directly (brief
                                 # §3.7); supersedes the original Analyst-proposes/PM-creates
@@ -218,13 +223,18 @@ and UX flows are expected to converge before the Architect finalizes any design 
    judgment call instead, and states which optional subtask types were considered and why
    none applied in the Story's creation comment (TAI-83 ADR — named gap, not silently
    skipped).
-7. **Flagging a Story for `Investigate` (Orchestrator behavior, brief §8.13 — partly
-   resolved):** While querying what's ready or dispatching work, Perry may recognize a
-   Story lacks enough detail for Dev to act on and flag it for refinement. This is one of
-   three non-exclusive triggers (a human can always flag it manually too; Ada may notice
-   and self-flag during her own work) — Perry only requests it, she never creates the
-   `Investigate` subtask herself; Ada does, per the "each persona creates its own subtask
-   type" convention (see `personas/analyst.md`). Still open: what formally marks the Story
+7. **Creating `Investigate`/`ArchitectureDesign` on a Story (Orchestrator behavior, brief
+   §8.13 — fully resolved, rev 57/TAI-317):** While querying what's ready or dispatching
+   work, Perry may recognize a Story lacks enough detail for Dev to act on. This is one of
+   three non-exclusive triggers (a human can always flag it manually too; Ada/Aria may
+   notice and self-flag during their own work) — **Perry creates the subtask directly**
+   (not just a flag/request) under the general TAI-83 "Eager Subtask Creation" exception
+   (`workflows/dependencies.md`): dedup-search first (`workTracker.search({ parentKey:
+   <story>, issueTypes: [Investigate|ArchitectureDesign] })`), then create with
+   `persona=analyst` or `persona=architect` respectively — creating it doesn't make Perry
+   its owner, same as any other TAI-83 case. Two live incidents drove this (TAI-280/300,
+   TAI-281): the human directed Perry to create both directly rather than only flag them
+   for Ada/Aria, which was the prior convention. Still open: what formally marks the Story
    "ready for implementation" once `Investigate` concludes (brief §8.13, other half).
 
 ## Inputs

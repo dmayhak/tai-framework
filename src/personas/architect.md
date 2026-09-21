@@ -140,8 +140,9 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
    the project Aria is working on — distinct from an ADR (one decision, point-in-time) and
    from a per-ticket Implementation Note (scoped to one subtask's own work). This is a
    **general capability, not a TAI-specific one** — TAI is used to manage other target
-   projects of unknown future shape and complexity, so the process below is deliberately a
-   menu to assess against a given project, not a fixed template to fill in blindly:
+   projects of unknown future shape and complexity, per brief §4's standing "generalize to
+   unknown future target projects" principle (rev 57), so the process below is deliberately
+   a menu to assess against a given project, not a fixed template to fill in blindly:
    - Start from an arc42/C4-inspired candidate section list: System Context (C4-1),
      Component/Container Views (C4-2/3), Data Architecture (ERD + persistence strategy),
      Infrastructure/Deployment, Cross-Cutting Concerns (security, observability,
