@@ -68,6 +68,14 @@ export function configCacheDir(taiRoot: string, projectKey: string): string {
     return path.join(cacheDir(taiRoot, projectKey), "config");
 }
 
+// TAI-302/319: the last-captured structured summary a living doc (project-home,
+// architecture-overview) was written from — see workspace/living-doc-staleness.ts. Keyed by
+// output type, not a specific Confluence page id, deliberately (that module never reads the
+// page itself).
+export function livingDocSnapshotPath(taiRoot: string, projectKey: string, outputType: string): string {
+    return path.join(cacheDir(taiRoot, projectKey), "living-docs", `${outputType}.json`);
+}
+
 // ---------- work/ tree ----------
 
 export function workRootDir(taiRoot: string): string {

@@ -61,6 +61,14 @@ import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
 import { sameHuman } from "../personas/roster.js";
+import {
+    EPIC_CHILD_ISSUE_TYPES,
+    computeEpicSummary,
+    diffLivingDocSnapshot,
+    readLivingDocSnapshot,
+    type EpicSummary,
+    type StaleEpic,
+} from "../workspace/living-doc-staleness.js";
 
 const OPEN_STATUSES: readonly Status[] = [Status.ToDo, Status.InProgress, Status.InReview];
 
@@ -172,6 +180,11 @@ export interface ReadyWorkResult {
      *  informational (ADR decision #4): never excludes anything from `ready`/`inProgress`,
      *  never blocks `/tai-work`. */
     readonly blockedBy: ReadonlyMap<IssueKey, readonly IssueKey[]>;
+    /** TAI-302/319: Epics whose computed summary (status, child done/total tally) has moved
+     *  since the `project-home` living doc last snapshotted it — see
+     *  `workspace/living-doc-staleness.ts`. Empty whenever no snapshot has ever been taken
+     *  (not itself a staleness signal) or nothing has moved since. */
+    readonly staleLivingDocs: readonly StaleEpic[];
 }
 
 interface ParentPrecedenceContext {
@@ -736,8 +749,35 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     }
 
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
+    const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);
 
-    return { ready, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy };
+    return { ready, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy, staleLivingDocs };
+}
+
+/** TAI-302/319: short-circuits before fetching a single Epic/child when no snapshot has ever
+ *  been taken (the common case until a project actually starts using `doc
+ *  snapshot-living-doc`) — same "only pay for what's configured" posture as the
+ *  gitHost/repos-optional PR sections above. */
+async function computeStaleLivingDocs(
+    workTracker: WorkTracker,
+    taiRoot: string,
+    projectKey: string
+): Promise<readonly StaleEpic[]> {
+    const snapshot = await readLivingDocSnapshot(taiRoot, projectKey, "project-home");
+    if (!snapshot) return [];
+
+    const epics = await workTracker.search({ projectKey, issueTypes: ["epic"], limit: DEFAULT_SEARCH_LIMIT });
+    const summaries: EpicSummary[] = [];
+    for (const epic of epics) {
+        const children = await workTracker.search({
+            projectKey,
+            parentKey: epic.key,
+            issueTypes: EPIC_CHILD_ISSUE_TYPES,
+            limit: DEFAULT_SEARCH_LIMIT,
+        });
+        summaries.push(computeEpicSummary(epic, children));
+    }
+    return diffLivingDocSnapshot(summaries, snapshot);
 }
 
 export interface FindReadyPRWorkDeps {

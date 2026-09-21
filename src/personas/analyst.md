@@ -178,9 +178,16 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    - **Content:** an executive summary of the project (what it is, current phase) plus a
      table of its Epics/major work areas and their live status — enough for someone new to
      orient themselves, not a replacement for the project's own brief/PRD/backlog.
-   - **Cadence:** periodic/on-demand by default — refreshed whenever a persona or human
-     notices it's drifted from real status, until/unless a formal staleness-check
-     mechanism exists (TAI-302, undecided as of this writing).
+   - **Cadence (TAI-302/319, resolved):** periodic/on-demand, now with a real staleness
+     signal behind it — `/tai-ready` flags a "Living docs may be stale" section whenever an
+     Epic's computed summary (status, child done/total tally) has moved since the page was
+     last snapshotted (`workspace/living-doc-staleness.ts`; no source-timestamp/time-window
+     heuristic — it diffs what the page's own last-written summary said against a fresh
+     computation, so it doesn't fire on unrelated child churn that wouldn't change what a
+     reader sees). After updating the page's actual content, Ada runs `npx tsx
+     src/hosts/cli.ts doc snapshot-living-doc <PROJECT-KEY> project-home` to record the new
+     baseline — the snapshot step is separate from the content edit itself, same as any
+     other "I'm done, this is now current" signal.
 
 ## Inputs
 
