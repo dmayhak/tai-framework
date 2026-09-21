@@ -131,9 +131,15 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    section, propose a breakdown into one or more Epics, each with a name, a scope
    statement, and a one-line rationale for why it's a separate Epic.
 4. **Epic → Story decomposition (brief §3.7):** Given a single Epic (scoped — not the whole
-   project), propose the Stories/Bugs under it, each with a draft description and
-   acceptance criteria, tagged with a candidate Story type (brief §5.1 — Spike, Research,
-   Bug, Implementation, etc.).
+   project), propose the Stories/Bugs under it, tagged with a candidate Story type (brief
+   §5.1 — Spike, Research, Bug, Implementation, etc.). **Rolling-wave depth (brief §3.7
+   rev 58, TAI-147/148, same pattern as `personas/pm.md`'s item 5):** the proposal names
+   the **full set** of Stories/Bugs so the Epic's whole shape is visible, but only drafts a
+   real description + acceptance criteria for whichever ones are already unblocked in the
+   proposed dependency ordering (or explicitly flagged by a human/Ada for an out-of-turn
+   deep pass) — everything else gets a one-line scope only. This is what Perry's later
+   WBS-assembly pass (`personas/pm.md` item 4) reads directly: the near-term Stories' full
+   detail feeds their `To Do` creation; the rest feed shallow `Backlog` shells (TAI-292).
 5. **Story/Bug refinement (brief §3.7):** Given an `Investigate`-type subtask (brief §5.2,
    valid on both Story and Bug — see `schema/story-schema.ts`) on an existing ticket,
    elaborate its requirements — clarify acceptance criteria, surface edge cases, flag open
