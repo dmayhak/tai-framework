@@ -325,6 +325,14 @@ describe("findLinkedIssueForPR (rev 52, TAI-159 ADR §4)", () => {
         );
         assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), bug.key);
     });
+
+    it("finds an In-Progress test-tier subtask (IntegrationTest/SystemTest/E2ETest) so its own PR self-closes it (TAI-314/315/316)", async () => {
+        for (const issueType of [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest]) {
+            const testTier = issueFixture({ key: toIssueKey("TAI-313"), issueType, status: Status.InProgress });
+            const wt = new FakeSearchLinksWorkTracker([testTier], new Map([[testTier.key, [{ url: prUrl, title: "PR" }]]]));
+            assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), testTier.key, `expected a match for ${issueType}`);
+        }
+    });
 });
 
 describe("resolveStoryKeyForPr (TAI-297)", () => {

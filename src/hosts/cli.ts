@@ -101,10 +101,10 @@ import {
     DependencyRelation,
     isSubtaskIssueType,
     Status,
+    SubtaskType,
     PERSONA_ROLE_LABEL,
     type Persona,
     type StoryType,
-    type SubtaskType,
 } from "../core/schema/story-schema.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
@@ -303,23 +303,67 @@ async function formatAssignmentCandidates(
     return `Candidates for ${PERSONA_ROLE_LABEL[persona]}:\n${lines.join("\n")}`;
 }
 
+const TEST_TIER_TYPES: ReadonlySet<string> = new Set([
+    SubtaskType.IntegrationTest,
+    SubtaskType.SystemTest,
+    SubtaskType.E2ETest,
+]);
+
+/**
+ * TAI-314/315/316 ADR (Confluence page 40304641): a test-tier subtask's own `persona`
+ * field is `tester`, who has no `mergePullRequest` grant (no self-merge for Tester,
+ * `tester.md`'s own explicit decision) — so MERGING one resolves permission via its
+ * sibling `Dev` subtask's persona instead (normally `developer`), falling back to the
+ * parent Story's own `persona` field if no sibling `Dev` exists. Every other issue type,
+ * and every non-merge action (`create` in particular — Tester's own `createPullRequest`
+ * grant is exactly what should apply there), resolves via its own `persona` field
+ * unchanged; this is why the caller only sets `forMerge` for the `merge` action.
+ */
+export async function resolveMergePersona(
+    workTracker: Pick<WorkTracker, "search" | "getIssue">,
+    projectKey: string,
+    issue: Issue
+): Promise<Persona | null | undefined> {
+    if (!TEST_TIER_TYPES.has(issue.issueType) || !issue.parentKey) return issue.persona;
+
+    const siblings = await workTracker.search({
+        projectKey,
+        parentKey: issue.parentKey,
+        issueTypes: [SubtaskType.Dev],
+    });
+    if (siblings[0]?.persona) return siblings[0].persona;
+
+    const parent = await workTracker.getIssue(issue.parentKey);
+    return parent?.persona ?? issue.persona;
+}
+
 /**
  * Resolves a `PersonaScopedGitHost` for `issueKey`'s owning persona (TAI-73) — same
  * identity-resolution shape `prepareWorkTurn` already uses for `WorkTracker` (the issue's
  * own `persona` field, brief §5.6), applied to the git-hosting sibling interface. Requires
  * `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` — only demanded here, not in `resolveConfig`, so
  * `work`/`ready` never need Bitbucket credentials at all.
+ *
+ * `forMerge` (TAI-314/315/316): set only for the `merge` action — redirects a test-tier
+ * subtask's permission resolution to its sibling `Dev`'s persona (see
+ * `resolveMergePersona`). `issue` in the returned value is always the ORIGINAL
+ * `issueKey`'s own issue, regardless of which persona actually granted permission.
  */
 async function resolveGitHost(
     config: ResolvedConfig,
-    issueKey: string
+    issueKey: string,
+    options: { readonly forMerge?: boolean } = {}
 ): Promise<{ readonly gitHost: PersonaScopedGitHost; readonly personaId: string; readonly issue: Issue }> {
     const key = toIssueKey(issueKey);
     const issue = await config.backend.workTracker.getIssue(key);
     if (!issue) throw new Error(`${key}: no such issue.`);
-    if (!issue.persona) throw new NoOwningPersonaError(key);
 
-    const personaConfig = await loadPersonaConfig(config.backend.docStore, issue.persona, {
+    const persona = options.forMerge
+        ? await resolveMergePersona(config.backend.workTracker, config.projectKey, issue)
+        : issue.persona;
+    if (!persona) throw new NoOwningPersonaError(key);
+
+    const personaConfig = await loadPersonaConfig(config.backend.docStore, persona, {
         spaceKey: config.spaceKey,
     });
 
@@ -1198,7 +1242,7 @@ async function main(): Promise<void> {
 
         const [issueKey, repoArg, ...gitArgs] = actionArgs;
         if (!action || !issueKey || !repoArg) throw new Error(usage);
-        const { gitHost, personaId, issue } = await resolveGitHost(config, issueKey);
+        const { gitHost, personaId, issue } = await resolveGitHost(config, issueKey, { forMerge: action === "merge" });
         const repo = toRepoId(repoArg);
 
         if (action === "create") {

@@ -17,12 +17,14 @@ import {
     parseIssueSearchFilter,
     parsePageGetRef,
     resolveCreatePriority,
+    resolveMergePersona,
     renderChangeNotes,
     renderIssueSearchResults,
     renderLinkedIssues,
     renderIssueDetail,
     renderCascadeWarnings,
 } from "./cli.js";
+import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 
 const AUTHOR: HumanRef = { id: toHumanId("del@example.com"), displayName: "Del", email: "del@example.com" };
 
@@ -324,5 +326,78 @@ describe("renderCascadeWarnings", () => {
         const out = renderCascadeWarnings(warnings);
         assert.match(out, /⚠️ Cascade warning: TAI-253 — TAI-253 has no Assignee\./);
         assert.match(out, /⚠️ Cascade warning: TAI-9 — some other rejection/);
+    });
+});
+
+describe("resolveMergePersona (TAI-314/315/316)", () => {
+    class FakeWorkTracker implements Pick<WorkTracker, "search" | "getIssue"> {
+        constructor(
+            private readonly issues: readonly Issue[]
+        ) {}
+
+        async search(filter: IssueFilter): Promise<readonly Issue[]> {
+            return this.issues.filter(
+                (i) =>
+                    (!filter.parentKey || i.parentKey === filter.parentKey) &&
+                    (!filter.issueTypes || filter.issueTypes.includes(i.issueType))
+            );
+        }
+
+        async getIssue(key: IssueKey): Promise<Issue | null> {
+            return this.issues.find((i) => i.key === key) ?? null;
+        }
+    }
+
+    it("a non-test-tier issue resolves via its own persona field, unchanged", async () => {
+        const dev = makeIssue({ key: toIssueKey("TAI-312"), issueType: SubtaskType.Dev, persona: Persona.Developer });
+        const wt = new FakeWorkTracker([dev]);
+        assert.equal(await resolveMergePersona(wt, "TAI", dev), Persona.Developer);
+    });
+
+    it("a test-tier subtask with no parentKey resolves via its own persona field (defensive)", async () => {
+        const testTier = makeIssue({ key: toIssueKey("TAI-313"), issueType: SubtaskType.IntegrationTest, persona: Persona.Tester });
+        const wt = new FakeWorkTracker([testTier]);
+        assert.equal(await resolveMergePersona(wt, "TAI", testTier), Persona.Tester);
+    });
+
+    it("a test-tier subtask resolves via its sibling Dev subtask's persona, not its own", async () => {
+        const story = makeIssue({ key: toIssueKey("TAI-304"), issueType: StoryType.Bug, persona: Persona.Pm });
+        const dev = makeIssue({
+            key: toIssueKey("TAI-312"),
+            issueType: SubtaskType.Dev,
+            persona: Persona.Developer,
+            parentKey: story.key,
+        });
+        const testTier = makeIssue({
+            key: toIssueKey("TAI-313"),
+            issueType: SubtaskType.IntegrationTest,
+            persona: Persona.Tester,
+            parentKey: story.key,
+        });
+        const wt = new FakeWorkTracker([story, dev, testTier]);
+        assert.equal(await resolveMergePersona(wt, "TAI", testTier), Persona.Developer);
+    });
+
+    it("falls back to the parent Story's own persona when no sibling Dev subtask exists", async () => {
+        const story = makeIssue({ key: toIssueKey("TAI-304"), issueType: StoryType.Bug, persona: Persona.Pm });
+        const testTier = makeIssue({
+            key: toIssueKey("TAI-313"),
+            issueType: SubtaskType.SystemTest,
+            persona: Persona.Tester,
+            parentKey: story.key,
+        });
+        const wt = new FakeWorkTracker([story, testTier]);
+        assert.equal(await resolveMergePersona(wt, "TAI", testTier), Persona.Pm);
+    });
+
+    it("falls back to the test-tier subtask's own persona when neither a sibling Dev nor the parent resolves one", async () => {
+        const testTier = makeIssue({
+            key: toIssueKey("TAI-313"),
+            issueType: SubtaskType.E2ETest,
+            persona: Persona.Tester,
+            parentKey: toIssueKey("TAI-999"), // parent not in the fake's issue set at all
+        });
+        const wt = new FakeWorkTracker([testTier]);
+        assert.equal(await resolveMergePersona(wt, "TAI", testTier), Persona.Tester);
     });
 });

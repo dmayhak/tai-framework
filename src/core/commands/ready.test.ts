@@ -672,6 +672,27 @@ async function inProgressBug(backend: StorageBackend, summary: string): Promise<
     return bug;
 }
 
+/** TAI-314/315/316: an In-Progress test-tier subtask (IntegrationTest by default) with
+ *  its own PR -- mirrors `inProgressDev` above, but persona `tester` and `issueType`
+ *  parameterized so the same helper covers all three test tiers. */
+async function inProgressTestTier(
+    backend: StorageBackend,
+    summary: string,
+    issueType: SubtaskType = SubtaskType.IntegrationTest
+): Promise<{ key: import("../storage/interface.js").IssueKey }> {
+    const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
+    const testTier = await backend.workTracker.createIssue({
+        projectKey: "TAI",
+        issueType,
+        summary,
+        persona: Persona.Tester,
+        parentKey: story.key,
+        assignee: CURRENT_USER,
+    });
+    await backend.workTracker.transition(testTier.key, Status.InProgress);
+    return testTier;
+}
+
 describe("findReadyWork readyToTest / readyToMerge", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 
@@ -970,6 +991,108 @@ describe("findReadyWork readyToMerge — governance-content PRs (TAI-293)", () =
 
             assert.equal(result.readyToMerge.length, 1);
             assert.equal(result.readyToMerge[0]?.issueKey, epic.key);
+        });
+    });
+});
+
+describe("findReadyWork readyToMerge — test-tier PRs (TAI-314/315/316)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+
+    test("an In-Progress IntegrationTest subtask with a linked, approved, green PR surfaces in readyToMerge but NOT readyToTest", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const testTier = await inProgressTestTier(backend, "Cascade conformance coverage");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(testTier.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.deepEqual(result.readyToTest, [], "testing your own test-tier PR is meaningless");
+            assert.equal(result.readyToMerge.length, 1);
+            assert.equal(result.readyToMerge[0]?.issueKey, testTier.key);
+        });
+    });
+
+    test("SystemTest and E2ETest subtasks are recognized the same way as IntegrationTest", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const systemTest = await inProgressTestTier(backend, "System test", SubtaskType.SystemTest);
+            const systemPr = prFixture({ id: toPullRequestId("20"), reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(systemTest.key, systemPr.url, "PR");
+
+            const e2eTest = await inProgressTestTier(backend, "E2E test", SubtaskType.E2ETest);
+            const e2ePr = prFixture({
+                id: toPullRequestId("21"),
+                url: "https://bitbucket.org/dmayhak/tai-framework/pull-requests/21",
+                reviewers: [{ human: REVIEWER_A, status: "approved" }],
+            });
+            await backend.workTracker.createRemoteLink(e2eTest.key, e2ePr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [systemPr, e2ePr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            const mergeKeys = result.readyToMerge.map((c) => c.issueKey).sort();
+            assert.deepEqual(mergeKeys, [e2eTest.key, systemTest.key].sort());
+        });
+    });
+
+    test("a Dev subtask's PR and a test-tier subtask's PR both surface in readyToMerge, each with the correct issueKey", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const devPr = prFixture({ id: toPullRequestId("30"), reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, devPr.url, "PR");
+
+            const testTier = await inProgressTestTier(backend, "Integration test");
+            const testPr = prFixture({
+                id: toPullRequestId("31"),
+                url: "https://bitbucket.org/dmayhak/tai-framework/pull-requests/31",
+                reviewers: [{ human: REVIEWER_A, status: "approved" }],
+            });
+            await backend.workTracker.createRemoteLink(testTier.key, testPr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [devPr, testPr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.equal(result.readyToTest.length, 1, "only the Dev subtask's PR is a test candidate");
+            assert.equal(result.readyToTest[0]?.devSubtaskKey, dev.key);
+            const mergeKeys = result.readyToMerge.map((c) => c.issueKey).sort();
+            assert.deepEqual(mergeKeys, [dev.key, testTier.key].sort());
+        });
+    });
+
+    test("a test-tier subtask not yet approved is not surfaced in readyToMerge, same approval-count gate as everything else", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const testTier = await inProgressTestTier(backend, "Integration test");
+            const pr = prFixture({ reviewers: [] });
+            await backend.workTracker.createRemoteLink(testTier.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            assert.deepEqual(result.readyToMerge, []);
         });
     });
 });
