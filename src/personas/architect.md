@@ -174,8 +174,11 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
      else in this codebase).
    - **Cadence:** periodic/on-demand by default (same answer TAI-280/300 reached for the
      project home page) — reviewed whenever a persona or human notices it's drifted from
-     the real system, until/unless a formal staleness-check mechanism exists (TAI-302,
-     undecided as of this writing).
+     the real system. TAI-302/319 built a real staleness signal for the Home Page's
+     Epic-status table (`personas/analyst.md`), but deliberately did **not** extend it
+     here: this doc's own staleness is "has the codebase materially changed" — a different
+     signal (code/commit activity, not Jira-issue state) that Epic-summary diffing can't
+     answer. Still genuinely undecided for this doc specifically.
 
 ## Inputs
 

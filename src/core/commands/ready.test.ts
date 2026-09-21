@@ -19,6 +19,7 @@ import {
 } from "../git/interface.js";
 import { findReadyWork, findReadyPRWork } from "./ready.js";
 import { writeWorkStatus } from "../workspace/status.js";
+import { writeLivingDocSnapshot } from "../workspace/living-doc-staleness.js";
 
 const CURRENT_USER: HumanRef = { id: toHumanId("del@example.com"), displayName: "Del", email: "del@example.com" };
 
@@ -1729,6 +1730,104 @@ describe("findReadyPRWork", () => {
 
             const synced = await backend.workTracker.getIssue(dev.key);
             assert.equal(synced?.status, Status.Done);
+        });
+    });
+});
+
+describe("findReadyWork staleLivingDocs (TAI-302/319)", () => {
+    test("empty with no snapshot ever taken -- absence isn't a staleness signal", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "An epic" });
+            await backend.workTracker.transition(epic.key, Status.ToDo);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.staleLivingDocs, []);
+        });
+    });
+
+    test("empty when nothing has moved since the last snapshot", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "An epic" });
+            await writeLivingDocSnapshot(taiRoot, "TAI", "project-home", [
+                { epicKey: epic.key, status: epic.status, childTotal: 0, childDone: 0 },
+            ]);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.staleLivingDocs, []);
+        });
+    });
+
+    test("flags an Epic whose status moved since the snapshot", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: "epic",
+                summary: "An epic",
+                assignee: CURRENT_USER,
+            });
+            await writeLivingDocSnapshot(taiRoot, "TAI", "project-home", [
+                { epicKey: epic.key, status: Status.ToDo, childTotal: 0, childDone: 0 },
+            ]);
+            await backend.workTracker.transition(epic.key, Status.ToDo);
+            await backend.workTracker.transition(epic.key, Status.InProgress);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.staleLivingDocs, [{ epicKey: epic.key, reason: "status: To Do → In Progress" }]);
+        });
+    });
+
+    test("flags an Epic whose child completion tally moved since the snapshot, even with the Epic's own status unchanged", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "An epic" });
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "A story under it",
+                parentKey: epic.key,
+            });
+            await writeLivingDocSnapshot(taiRoot, "TAI", "project-home", [
+                { epicKey: epic.key, status: epic.status, childTotal: 1, childDone: 0 },
+            ]);
+            await backend.workTracker.transition(story.key, Status.ToDo);
+            await backend.workTracker.transition(story.key, Status.Done);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.staleLivingDocs, [{ epicKey: epic.key, reason: "0/1 → 1/1 stories done" }]);
+        });
+    });
+
+    test("a child that merely moves between open statuses (no completion change) does NOT flag the Epic", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: "epic",
+                summary: "An epic",
+                assignee: CURRENT_USER,
+            });
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "A story under it",
+                parentKey: epic.key,
+                assignee: CURRENT_USER,
+            });
+            // Settle the story's first "work started" transition BEFORE snapshotting -- this
+            // is what the upward parent-cascade (TAI-220/221/222) promotes the Epic on, and
+            // that cascade only fires once (idempotently skipped once the parent's already
+            // past ToDo/Backlog) -- so the snapshot below captures the Epic's real
+            // post-cascade status, and the second story transition after it genuinely has no
+            // further effect on the Epic to detect.
+            await backend.workTracker.transition(story.key, Status.ToDo);
+            await backend.workTracker.transition(story.key, Status.InProgress);
+            const settledEpic = await backend.workTracker.getIssue(epic.key);
+
+            await writeLivingDocSnapshot(taiRoot, "TAI", "project-home", [
+                { epicKey: epic.key, status: settledEpic!.status, childTotal: 1, childDone: 0 },
+            ]);
+            await backend.workTracker.transition(story.key, Status.InReview);
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.staleLivingDocs, []);
         });
     });
 });

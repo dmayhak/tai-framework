@@ -54,6 +54,13 @@ import type { BriefingChangeNote } from "../core/workspace/briefing.js";
 import { cachePage } from "../core/cache/page-cache.js";
 import { CachingWorkTracker } from "../core/cache/caching-work-tracker.js";
 import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
+import {
+    EPIC_CHILD_ISSUE_TYPES,
+    EPIC_SUMMARY_LIVING_DOC_TYPES,
+    computeEpicSummary,
+    writeLivingDocSnapshot,
+    type EpicSummary,
+} from "../core/workspace/living-doc-staleness.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
 import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
 import {
@@ -708,6 +715,20 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             );
             actionableCount++;
         }
+    }
+    // TAI-302/319: informational, not numbered -- the action isn't "pick one," it's "go
+    // refresh the doc" once, covering every Epic named below (same non-numbered treatment
+    // as the blockedFlag annotation above, not a new pickable-line kind).
+    if (result.staleLivingDocs.length > 0) {
+        lines.push("", "## Living docs may be stale", "");
+        lines.push("Project Home Page — Epic summary has moved since last snapshotted:");
+        for (const s of result.staleLivingDocs) {
+            lines.push(`  - **${s.epicKey}**: ${s.reason}`);
+        }
+        lines.push(
+            "",
+            "Refresh the page's content, then `doc snapshot-living-doc <PROJECT-KEY> project-home` to mark it fresh."
+        );
     }
     if (actionableCount > 0) {
         lines.push(
@@ -1442,6 +1463,49 @@ async function main(): Promise<void> {
         return;
     }
 
+    if (subcommand === "doc") {
+        const [action, ...docArgs] = [arg, ...rest];
+
+        // TAI-302/319: run by whichever persona just finished updating a living doc's actual
+        // page content (Analyst for project-home) -- records "this is now the truth as of
+        // now," the baseline `tai-ready`'s staleness check diffs future runs against. Never
+        // reads or writes the Confluence page itself -- see living-doc-staleness.ts's header.
+        if (action === "snapshot-living-doc") {
+            const [projectKey, outputType] = docArgs;
+            if (!projectKey || !outputType) {
+                throw new Error("Usage: doc snapshot-living-doc <PROJECT-KEY> <OUTPUT-TYPE>");
+            }
+            if (!EPIC_SUMMARY_LIVING_DOC_TYPES.includes(outputType)) {
+                throw new Error(
+                    `Unknown living-doc output type "${outputType}" -- expected one of: ${EPIC_SUMMARY_LIVING_DOC_TYPES.join(", ")}. ` +
+                        `A snapshot for a type not checked here would never be read by \`ready\`'s staleness check.`
+                );
+            }
+            const epics = await config.backend.workTracker.search({
+                projectKey,
+                issueTypes: ["epic"],
+                limit: DEFAULT_SEARCH_LIMIT,
+            });
+            const summaries: EpicSummary[] = [];
+            for (const epic of epics) {
+                const children = await config.backend.workTracker.search({
+                    projectKey,
+                    parentKey: epic.key,
+                    issueTypes: EPIC_CHILD_ISSUE_TYPES,
+                    limit: DEFAULT_SEARCH_LIMIT,
+                });
+                summaries.push(computeEpicSummary(epic, children));
+            }
+            const snapshot = await writeLivingDocSnapshot(config.taiRoot, projectKey, outputType, summaries);
+            console.log(
+                `# Living doc snapshot recorded\n\n${outputType} (${projectKey}): ${summaries.length} Epic(s) captured at ${snapshot.generatedAt}.`
+            );
+            return;
+        }
+
+        throw new Error(`Unknown doc action "${action}" -- expected "snapshot-living-doc".`);
+    }
+
     if (subcommand === "issue") {
         const [action, ...issueArgs] = [arg, ...rest];
 
@@ -1749,8 +1813,8 @@ async function main(): Promise<void> {
 
     throw new Error(
         `Usage: work <ISSUE-KEY> | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | install-global [TAI-HOME] ` +
-            `| init status|jira|confluence|bitbucket|env|claude-md`
+            `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
+            `| install-global [TAI-HOME] | init status|jira|confluence|bitbucket|env|claude-md`
     );
 }
 
