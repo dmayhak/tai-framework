@@ -51,9 +51,17 @@
  * `embedded-macro-context` block (account-id, cloud-id, page id/version, space id/key) that
  * look like editor-stamped bookkeeping, not render-required data — omitted here
  * deliberately; if a future site's rendering still fails with just the fields below, that
- * context block is the next thing to try adding. Still unresolved: the newer, index-based
- * app's real extension key above (TAI-309: whether TAI ever needs to support writing that
- * shape too, or whether standardizing on one recommended app is enough, is undecided).
+ * context block is the next thing to try adding.
+ *
+ * **TAI-309 RESOLVED (2026-09-21, Feasibility TAI-318, Confluence page 40370177): Go — no
+ * pluggable embedding-strategy abstraction.** The newer, index-based app's real shape was
+ * recovered (from Confluence page version history, since overwritten on the live page it
+ * was first found on) — its `guest-params` carries only a positional `index`, no `source`,
+ * correlated with a separate `code` macro elsewhere on the page. That can't be made
+ * round-trip-safe without a fundamentally different, document-order-dependent reader, so
+ * TAI standardizes on the one self-contained app above instead of supporting both.
+ * `MermaidConfig.extensionKey` (below) already is the full per-project config surface this
+ * needed — no further design work here.
  *
  * FIDELITY, stated honestly: round-trip is exact for content TAI itself wrote (we control
  * both directions over a known subset). For a page a human authored in Confluence's rich
