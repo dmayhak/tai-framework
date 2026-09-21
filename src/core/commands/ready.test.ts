@@ -1229,6 +1229,26 @@ describe("findReadyWork out-of-band merge sync (rev 52, TAI-159 ADR)", () => {
         });
     });
 
+    test("TAI-314/315/316: an In-Progress test-tier subtask whose linked PR is now merged out-of-band is synced to Done too", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const testTier = await inProgressTestTier(backend, "Integration test");
+            const pr = prFixture({ state: "merged" });
+            await backend.workTracker.createRemoteLink(testTier.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+            });
+
+            const synced = await backend.workTracker.getIssue(testTier.key);
+            assert.equal(synced?.status, Status.Done);
+        });
+    });
+
     test("a just-synced Dev subtask doesn't spuriously appear in readyToTest/readyToMerge from the same refresh", async () => {
         await withBackend(async (backend, taiRoot) => {
             const dev = await inProgressDev(backend, "Dev");

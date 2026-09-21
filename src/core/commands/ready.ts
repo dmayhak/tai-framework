@@ -400,16 +400,17 @@ async function findStoryLinkedOpenPRs(
 
 /**
  * Detects an In-Progress `Dev` subtask, OR (TAI-293) an In-Progress governance-content
- * Story/Bug/Spike/Epic ticket, whose linked PR has already merged out-of-band — a human
- * merging directly on Bitbucket, or any process outside TAI's own `git-pr merge` (which
- * already self-closes whichever issue it can correlate, `git-pr.ts`'s
- * `findLinkedIssueForPR`) — and syncs it to `Done` here instead. Same principle
- * TAI-34 §2 already established for out-of-band reviews (a human acting directly on the
- * git host is authoritative, detected and reflected at the next refresh point, never
- * fought), just extended from reviews to merges (rev 52, TAI-159 ADR), and now to
- * governance-content tickets too (TAI-293) — this is the realistic path a governance PR
- * actually merges through: this session's own precedent merged PRs #78/#79/#81 directly
- * via Bitbucket, never through `git-pr merge` at all.
+ * Story/Bug/Spike/Epic ticket, OR (TAI-314/315/316) an In-Progress test-tier subtask,
+ * whose linked PR has already merged out-of-band — a human merging directly on Bitbucket,
+ * or any process outside TAI's own `git-pr merge` (which already self-closes whichever
+ * issue it can correlate, `git-pr.ts`'s `findLinkedIssueForPR`) — and syncs it to `Done`
+ * here instead. Same principle TAI-34 §2 already established for out-of-band reviews (a
+ * human acting directly on the git host is authoritative, detected and reflected at the
+ * next refresh point, never fought), just extended from reviews to merges (rev 52,
+ * TAI-159 ADR), to governance-content tickets (TAI-293), and now to test-tier subtasks
+ * too — this is the realistic path a PR actually merges through: this session's own
+ * precedent merged PRs #78/#79/#81 directly via Bitbucket, never through `git-pr merge`
+ * at all.
  *
  * Runs at the start of `findReadyWork` so an issue synced to `Done` here doesn't then
  * spuriously appear in `readyToTest`/`readyToMerge` below, computed from the same refresh.
@@ -422,7 +423,13 @@ async function syncMergedIssues(
 ): Promise<readonly IssueKey[]> {
     const inProgressCandidates = await workTracker.search({
         projectKey,
-        issueTypes: [SubtaskType.Dev, ...GOVERNANCE_ISSUE_TYPES],
+        issueTypes: [
+            SubtaskType.Dev,
+            SubtaskType.IntegrationTest,
+            SubtaskType.SystemTest,
+            SubtaskType.E2ETest,
+            ...GOVERNANCE_ISSUE_TYPES,
+        ],
         statuses: [Status.InProgress],
         limit: DEFAULT_SEARCH_LIMIT,
     });
