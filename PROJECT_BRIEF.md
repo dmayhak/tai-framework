@@ -4,7 +4,19 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-21 (rev 57 — **§8 item 13 fully resolved (TAI-317): subtask-
+> **Last updated:** 2026-09-21 (rev 58 — **§3.7 gains a new "Rolling-wave decomposition
+> depth: 'done' vs. 'done enough'" principle (TAI-147/148), the first concrete output of a
+> dedicated persona-by-persona review (TAI-6/138-155).** For a large Epic, decomposition
+> creates the full set of next-level shells immediately (visible shape end to end) but only
+> takes a subset to full depth right now — whatever the real dependency/readiness graph
+> shows as unblocked, not a fixed lookahead count TAI can't calibrate to a team's actual
+> capacity. Explicit pull-forward stays available (same posture as TAI-83's Eager Subtask
+> Creation), and a shallow item already known to need a refinement pass gets that subtask
+> created now too, parked in `Backlog` for visibility. No new status machinery — this is an
+> application of the existing `Backlog`/`To Do` split (TAI-292) as a deliberate
+> decomposition-depth strategy, previously undescribed as such. `personas/pm.md` (items
+> 4/5) and `personas/analyst.md` (item 4) both updated to the concrete mechanics.
+> Prior: rev 57 — **§8 item 13 fully resolved (TAI-317): subtask-
 > creation authority for `Investigate`/`ArchitectureDesign` now follows the general TAI-83
 > "Eager Subtask Creation" exception (`workflows/dependencies.md`) like every other subtask
 > type — no more type-specific carve-out.** `analyst.md`/`pm.md` previously said "regardless
@@ -856,6 +868,47 @@ further refinement subtasks (e.g. an Architect's `Design` raises a question that
 DBA's `Data Design`) but do not spawn implementation chains directly — turning refined
 output into actual implementation subtasks is a separate decision (human or Orchestrator,
 per §3.8), made once the Story is judged ready.
+
+**Rolling-wave decomposition depth: "done" vs. "done enough" (rev 58, TAI-147/148).**
+Decomposition/refinement personas (Analyst, PM; potentially Architect for system-level
+design, still to be worked out in that persona's own review) don't uniformly flesh out
+every scope-relative pass to full detail. For a large Epic, taking every eventual Story to
+fully-specified acceptance criteria before any of them can start would be wasted,
+premature effort — the later ones will likely need revisiting anyway once earlier work
+informs them — and would delay getting started at all. Instead, decomposition follows a
+**rolling-wave** pattern (a real, established project-management term for exactly this):
+the full set of next-level items is created immediately, so the whole shape of the work is
+visible end to end — but only a **subset is taken to full depth** right now, with the rest
+landing genuinely shallow (a name and a one-line scope only) rather than either being
+skipped (invisible, no board presence) or forced to premature full detail.
+
+- **What decides which items get full depth now is not a fixed lookahead count** — not
+  "the next one," not "the next N." TAI cannot know a team's real capacity/parallelism in
+  advance, so a hard-coded count would either starve a team that could handle more in
+  parallel or over-commit one that can't. Instead: whatever the real dependency/readiness
+  graph (§5.3, `workflows/dependencies.md`) already shows as unblocked gets full depth,
+  however many that turns out to be for a given Epic's actual shape — the same "compute
+  readiness live, don't guess at it" posture `/tai-ready` itself already uses.
+- **Explicit pull-forward stays available**, same as TAI-83's "Eager Subtask Creation"
+  exception elsewhere in this brief: a persona or human with a real, concrete reason (e.g.
+  requirements overlap with another in-flight project) can take a not-yet-unblocked item to
+  full depth ahead of its turn — the same "any persona/human with real in-context judgment
+  may act outside the default ordering" principle already established, not a new mechanism.
+- **A shallow item already known to need a refinement pass before it's actionable gets
+  that refinement subtask created now too**, sitting in `Backlog` alongside the shallow
+  parent, not deferred until the parent's own turn comes up — board visibility for
+  anticipated work, not just work already starting. This is the Story-level application of
+  the same "front-load the whole anticipated chain, not just the first step" principle
+  `workflows/dependencies.md`'s Eager Subtask Creation section already establishes at the
+  subtask level, extended one level up.
+- **No new status machinery needed** — the existing `Backlog`/`To Do` split (TAI-292, §5.3:
+  `To Do` iff fully actionable as written, `Backlog` otherwise) already models exactly
+  this. Rolling-wave decomposition is an application of status machinery that already
+  existed, previously undescribed as a deliberate decomposition-depth strategy.
+
+Concrete instances: `personas/pm.md`'s Epic decomposition (item 5) and Kickoff-time WBS/
+issue-creation (item 4), and `personas/analyst.md`'s Epic → Story decomposition proposal
+(item 4) — see those files for the persona-specific mechanics.
 
 ### 3.8 Interaction Modes
 - A human can **initiate a persona** and interact with it (e.g. "what's ready for you to
