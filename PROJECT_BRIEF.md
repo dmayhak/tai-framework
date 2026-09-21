@@ -1155,7 +1155,7 @@ These are settled. Change them deliberately and update this file if you do.
   whether they want to explore future-direction thoughts here at all, rather than deciding
   unilaterally to raise or skip it. Reserved for Analyst's and Architect's own persona
   reviews to work out the concrete mechanics (rev 57/58 handoff note) — `personas/
-  analyst.md` is the first to land this (items 2/4/5); `personas/architect.md` still to
+  analyst.md` is the first to land this (items 2/3/4/5); `personas/architect.md` still to
   come.
 
 ---
