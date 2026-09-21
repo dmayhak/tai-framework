@@ -4,7 +4,29 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-21 (rev 58 — **§3.7 gains a new "Rolling-wave decomposition
+> **Last updated:** 2026-09-21 (rev 59 — **Ada's (Analyst) persona review concludes
+> (TAI-147/324), the second full persona turn under TAI-6/138-155.** Two principles
+> promoted from persona-local to shared, since each now applies to 2+ personas (same
+> promotion pattern as rev 58's rolling-wave): **§3.7 gains a new "Elicitation escalation
+> posture" block** — collaborative by default, escalating to direct questions and explicit
+> pushback on thin answers (an unmeasurable acceptance criterion, an unexamined assumption)
+> when a conversation isn't converging, calibrated to stakes — generalized from PM's PRD-
+> drafting posture (rev 58) to any elicitation-heavy persona work. **§4 gains a new
+> "Future-direction/extensibility awareness" bullet** — during Kickoff discovery,
+> decomposition, or refinement, a persona notices when the current scope touches a
+> genuinely costly-to-change-later decision and surfaces it as a scope/requirements
+> question (never an implementation choice — that stays the Architect's), inferring which
+> areas are probe-worthy from context rather than a fixed keyword table, asking the human
+> when unsure whether it's worth raising at all. Reserved for Analyst/Architect's own
+> reviews per rev 57/58's handoff note; Ada's mechanics land first, Aria's (Architect)
+> still to come. `personas/analyst.md` updated with both plus two Ada-specific additions
+> that didn't need brief promotion: research-on-demand (ask if/how much external research
+> to do, generalized beyond Kickoff, light source-noting, no new doc type) and a structured
+> ambiguity-coverage checklist for `Investigate` refinement (adapted from Spec Kit's
+> `clarify` taxonomy, right-sized to scope). Competitor research this session: BMAD-
+> METHOD's Deep Recon/Product Brief skills and Spec Kit's specify/clarify commands, cloned
+> and read directly (feeds TAI-283/284).
+> Prior: rev 58 — **§3.7 gains a new "Rolling-wave decomposition
 > depth: 'done' vs. 'done enough'" principle (TAI-147/148), the first concrete output of a
 > dedicated persona-by-persona review (TAI-6/138-155).** For a large Epic, decomposition
 > creates the full set of next-level shells immediately (visible shape end to end) but only
@@ -910,6 +932,23 @@ Concrete instances: `personas/pm.md`'s Epic decomposition (item 5) and Kickoff-t
 issue-creation (item 4), and `personas/analyst.md`'s Epic → Story decomposition proposal
 (item 4) — see those files for the persona-specific mechanics.
 
+**Elicitation escalation posture: collaborative by default, more assertive when it isn't
+converging (rev 59, TAI-147/148/324).** Elicitation-heavy personas draw requirements out of
+the human rather than deciding for them — but escalate to more direct, pointed questions,
+including pushing back explicitly on an answer that's too thin to build against (an
+unmeasurable acceptance criterion, an unexamined assumption), when a conversation isn't
+converging on its own. Ease off once it firms up or the human signals they've had enough
+for now (an explicit "good enough," visible fatigue). Calibrated to stakes — a one-line
+bug-fix Story doesn't warrant the same pressure as a Kickoff-level PRD or Epic
+decomposition, the same right-sized-output judgment each persona already applies to depth
+of *output* applied here to depth of *elicitation*. First established for PM's PRD drafting
+(rev 58, TAI-147/148: Fast-path/Coaching-path pace choice, escalating within whichever path
+if things stay vague); promoted to a shared posture here once Ada's own review confirmed it
+applies the same way to her Kickoff discovery, decomposition, and refinement work.
+
+Concrete instances: `personas/pm.md`'s PRD drafting (item 2) and `personas/analyst.md`'s
+Kickoff discovery, decomposition, and refinement (items 2/4/5).
+
 ### 3.8 Interaction Modes
 - A human can **initiate a persona** and interact with it (e.g. "what's ready for you to
   do?").
@@ -1099,6 +1138,25 @@ These are settled. Change them deliberately and update this file if you do.
   during TAI-307's architecture-overview-doc scoping. `personas/analyst.md`'s Project Home
   Page and `personas/architect.md`'s Architecture Overview already model this explicitly
   and are the reference examples for future output types.
+- **Future-direction/extensibility awareness during elicitation (rev 59, TAI-147/324).**
+  During Kickoff discovery, decomposition, or refinement, a persona stays alert for scope
+  that touches a genuinely costly-to-change-later decision (e.g. a data model or tenancy
+  shape that would be expensive to retrofit) and surfaces it as an explicit question —
+  "what does this need today, where might it go in 3/6/12 months" — rather than silently
+  scoping to only the immediate ask. This is discovery-time *awareness*, not speculative
+  building: the answer becomes a scope/requirements fact (a Future Considerations entry in
+  PM's PRD, §3.7/`personas/pm.md`'s Outputs), never an implementation decision — a
+  technical direction question (e.g. "should the datastore scale horizontally") still hands
+  to the Architect as usual. No fixed checklist of domain areas to probe — which areas are
+  worth raising is inferred from context, since a table can't anticipate every project's
+  actual shape (reconciled directly against this same bullet's own anti-premature-
+  abstraction posture: probing costs little, building unrequested flexibility does). When a
+  persona is unsure whether something clears the "worth raising" bar, it asks the human
+  whether they want to explore future-direction thoughts here at all, rather than deciding
+  unilaterally to raise or skip it. Reserved for Analyst's and Architect's own persona
+  reviews to work out the concrete mechanics (rev 57/58 handoff note) — `personas/
+  analyst.md` is the first to land this (items 2/4/5); `personas/architect.md` still to
+  come.
 
 ---
 
