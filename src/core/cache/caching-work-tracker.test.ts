@@ -11,6 +11,7 @@ import {
     type CreateIssueInput,
     type HumanRef,
     type Issue,
+    type IssueKey,
     type IssuePatch,
     type MutationResult,
     type WorkTracker,
@@ -45,16 +46,16 @@ class FakeWorkTracker implements Partial<WorkTracker> {
         private readonly assignIssueResult: MutationResult = { ok: true, issue: issue() }
     ) {}
 
-    async updateIssue(key: string, _patch: IssuePatch): Promise<Issue> {
+    async updateIssue(key: IssueKey, _patch: IssuePatch): Promise<Issue> {
         this.calls.push(`updateIssue(${key})`);
         if (this.updateIssueResult instanceof Error) throw this.updateIssueResult;
         return this.updateIssueResult;
     }
-    async transition(key: string): Promise<MutationResult> {
+    async transition(key: IssueKey): Promise<MutationResult> {
         this.calls.push(`transition(${key})`);
         return this.transitionResult;
     }
-    async assignIssue(key: string): Promise<MutationResult> {
+    async assignIssue(key: IssueKey): Promise<MutationResult> {
         this.calls.push(`assignIssue(${key})`);
         return this.assignIssueResult;
     }
