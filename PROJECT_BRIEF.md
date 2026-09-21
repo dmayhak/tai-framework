@@ -1145,7 +1145,7 @@ These are settled. Change them deliberately and update this file if you do.
   "what does this need today, where might it go in 3/6/12 months" — rather than silently
   scoping to only the immediate ask. This is discovery-time *awareness*, not speculative
   building: the answer becomes a scope/requirements fact (a Future Considerations entry in
-  PM's PRD, §3.7/`personas/pm.md`'s Outputs), never an implementation decision — a
+  PM's PRD, `personas/pm.md`'s Outputs), never an implementation decision — a
   technical direction question (e.g. "should the datastore scale horizontally") still hands
   to the Architect as usual. No fixed checklist of domain areas to probe — which areas are
   worth raising is inferred from context, since a table can't anticipate every project's
