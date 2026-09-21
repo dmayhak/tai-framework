@@ -32,6 +32,14 @@ import { livingDocSnapshotPath, readJsonFile, writeJsonFile } from "../cache/pat
 const STORY_LEVEL_TYPES: readonly StoryType[] = [StoryType.Kickoff, StoryType.Spike, StoryType.Story, StoryType.Bug];
 export const EPIC_CHILD_ISSUE_TYPES = STORY_LEVEL_TYPES;
 
+/** Output types this module actually knows how to compute an `EpicSummary` for — currently
+ *  just the Home Page (TAI-302/319 ADR: Architecture Overview's own staleness is a
+ *  different, not-yet-built signal — codebase change, not Jira-issue change). Single source
+ *  of truth for both `doc snapshot-living-doc`'s input validation (`cli.ts`) and `ready.ts`'s
+ *  own check — a typo'd or premature output-type argument fails loudly instead of silently
+ *  writing a snapshot nothing ever reads. */
+export const EPIC_SUMMARY_LIVING_DOC_TYPES: readonly string[] = ["project-home"];
+
 /** Status.Canceled counts as satisfied for this tally too — same "terminal, not still open"
  *  treatment `story-schema.ts` already gives it for SUBTASK_PRECEDENCE purposes. */
 function isChildDone(status: Status): boolean {

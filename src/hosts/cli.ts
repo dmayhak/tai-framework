@@ -56,6 +56,7 @@ import { CachingWorkTracker } from "../core/cache/caching-work-tracker.js";
 import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
 import {
     EPIC_CHILD_ISSUE_TYPES,
+    EPIC_SUMMARY_LIVING_DOC_TYPES,
     computeEpicSummary,
     writeLivingDocSnapshot,
     type EpicSummary,
@@ -1473,6 +1474,12 @@ async function main(): Promise<void> {
             const [projectKey, outputType] = docArgs;
             if (!projectKey || !outputType) {
                 throw new Error("Usage: doc snapshot-living-doc <PROJECT-KEY> <OUTPUT-TYPE>");
+            }
+            if (!EPIC_SUMMARY_LIVING_DOC_TYPES.includes(outputType)) {
+                throw new Error(
+                    `Unknown living-doc output type "${outputType}" -- expected one of: ${EPIC_SUMMARY_LIVING_DOC_TYPES.join(", ")}. ` +
+                        `A snapshot for a type not checked here would never be read by \`ready\`'s staleness check.`
+                );
             }
             const epics = await config.backend.workTracker.search({
                 projectKey,

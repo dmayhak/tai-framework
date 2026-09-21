@@ -63,6 +63,7 @@ import { isEligibleReviewer } from "../git/pr-reviewers.js";
 import { sameHuman } from "../personas/roster.js";
 import {
     EPIC_CHILD_ISSUE_TYPES,
+    EPIC_SUMMARY_LIVING_DOC_TYPES,
     computeEpicSummary,
     diffLivingDocSnapshot,
     readLivingDocSnapshot,
@@ -763,7 +764,10 @@ async function computeStaleLivingDocs(
     taiRoot: string,
     projectKey: string
 ): Promise<readonly StaleEpic[]> {
-    const snapshot = await readLivingDocSnapshot(taiRoot, projectKey, "project-home");
+    // TAI-302/319 ADR: only the Home Page's Epic-summary case is wired up -- see
+    // EPIC_SUMMARY_LIVING_DOC_TYPES's own doc comment for why "project-home" specifically,
+    // and why Architecture Overview isn't checked here too.
+    const snapshot = await readLivingDocSnapshot(taiRoot, projectKey, EPIC_SUMMARY_LIVING_DOC_TYPES[0]!);
     if (!snapshot) return [];
 
     const epics = await workTracker.search({ projectKey, issueTypes: ["epic"], limit: DEFAULT_SEARCH_LIMIT });
