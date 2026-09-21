@@ -947,7 +947,7 @@ if things stay vague); promoted to a shared posture here once Ada's own review c
 applies the same way to her Kickoff discovery, decomposition, and refinement work.
 
 Concrete instances: `personas/pm.md`'s PRD drafting (item 2) and `personas/analyst.md`'s
-Kickoff discovery, decomposition, and refinement (items 2/4/5).
+Kickoff discovery, decomposition, and refinement (items 2/3/4/5).
 
 ### 3.8 Interaction Modes
 - A human can **initiate a persona** and interact with it (e.g. "what's ready for you to

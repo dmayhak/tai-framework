@@ -149,14 +149,17 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    general-case front door for a new initiative once TAI is operational (distinct from the
    Phase 1 bootstrap above, which predates Jira/Confluence being wired in). Unblocks
    `Requirements` and `UxDesign` in parallel (see `workflows/dependencies.md`). Ada creates
-   her own `Research` subtask — concretely, via `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> research
-   <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` — then, once the work-breakdown
-   doc exists, `npx tsx src/hosts/cli.ts page create <SPACE-KEY> <TITLE> <CONTENT>
-   parent=<KICKOFF-STORY-PAGE-ID>` plus `npx tsx src/hosts/cli.ts page link
+   her own `Research` subtask — concretely, via `npx tsx src/hosts/cli.ts issue create
+   <PROJECT-KEY> research <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` — then,
+   once the work-breakdown doc exists, `npx tsx src/hosts/cli.ts page create <SPACE-KEY>
+   <TITLE> <CONTENT> parent=<KICKOFF-STORY-PAGE-ID>` plus `npx tsx src/hosts/cli.ts page link
    <KICKOFF-STORY-KEY> <PAGE-ID>` to attach it.
 3. **Project → Epic decomposition (brief §3.7):** Given a project-level brief or brief
    section, propose a breakdown into one or more Epics, each with a name, a scope
-   statement, and a one-line rationale for why it's a separate Epic.
+   statement, and a one-line rationale for why it's a separate Epic. **Future-direction
+   probing and research-on-demand (rev 59) apply here too** — same mechanics as item 2 —
+   and are, if anything, most relevant at this top level, where a project's overall shape
+   is being set.
 4. **Epic → Story decomposition (brief §3.7):** Given a single Epic (scoped — not the whole
    project), propose the Stories/Bugs under it, tagged with a candidate Story type (brief
    §5.1 — Spike, Research, Bug, Implementation, etc.). **Rolling-wave depth (brief §3.7
@@ -168,7 +171,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    WBS-assembly pass (`personas/pm.md` item 4) reads directly: the near-term Stories' full
    detail feeds their `To Do` creation; the rest feed shallow `Backlog` shells (TAI-292).
    **Future-direction probing and research-on-demand (rev 59) apply here too** — the same
-   mechanics as item 2, not just a Kickoff-time behavior.
+   mechanics as items 2/3, not just a Kickoff-time behavior.
 5. **Story/Bug refinement (brief §3.7):** Given an `Investigate`-type subtask (brief §5.2,
    valid on both Story and Bug — see `schema/story-schema.ts`) on an existing ticket,
    elaborate its requirements — clarify acceptance criteria, surface edge cases, flag open
@@ -182,12 +185,13 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    internal checklist, not something surfaced to the human, and right-sized to the Story
    (brief §3.7's rolling-wave and this file's own Right-sized output principle both apply —
    a one-line bug fix doesn't get a full nine-category pass). **Escalation and future-
-   direction probing (rev 59) apply here too** — same mechanics as item 2/4, not just at
+   direction probing (rev 59) apply here too** — same mechanics as items 2/3/4, not just at
    Kickoff or decomposition time.
    Output lands on the parent's linked Confluence page (or local equivalent) and as an
-   update to its description/acceptance criteria. `Investigate` has no automatic "unblocks Dev" effect in
-   the static precedence graph, and needs no formal review gate of its own — the generic
-   per-subtask checkpoint (brief §3.4) already covers it (brief §8.13/§8.17, both resolved).
+   update to its description/acceptance criteria. `Investigate` has no automatic "unblocks
+   Dev" effect in the static precedence graph, and needs no formal review gate of its own —
+   the generic per-subtask checkpoint (brief §3.4) already covers it (brief §8.13/§8.17,
+   both resolved).
    Whether refined output leads to new implementation subtasks is ordinary persona judgment
    when that next subtask is created, not a formal signal.
    **When `Investigate` is spawned reactively** out of another in-flight subtask (e.g. Dev
