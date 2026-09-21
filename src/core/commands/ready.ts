@@ -107,11 +107,14 @@ export interface ReadyToTestCandidate {
     readonly pullRequest: PullRequestRef;
 }
 
-/** TAI-293: `issueKey` is a `Dev` subtask for ordinary Story/Bug work, OR a Story/Bug/
- *  Spike/Epic ticket directly for a governance-content PR with no Dev subtask at all
- *  (PM/Architect-authored — see `findStoryLinkedOpenPRs`). `git-pr merge` doesn't care
- *  which — it resolves merge permission from whichever issue's own `persona` field, the
- *  same mechanism either way. */
+/** TAI-293/314/315/316: `issueKey` is a `Dev` subtask for ordinary Story/Bug work, a
+ *  Story/Bug/Spike/Epic ticket directly for a governance-content PR with no Dev subtask
+ *  at all (PM/Architect-authored — see `findStoryLinkedOpenPRs`), or a test-tier subtask
+ *  (`IntegrationTest`/`SystemTest`/`E2ETest`) for Tester's own PR (see
+ *  `findTestTierLinkedOpenPRs`). `git-pr merge` doesn't care which — it resolves merge
+ *  permission from whichever issue's own `persona` field, EXCEPT a test-tier subtask,
+ *  which resolves via its sibling `Dev`'s `persona` instead (`resolveGitHost`, `cli.ts`,
+ *  since Tester herself has no `mergePullRequest` grant). */
 export interface ReadyToMergeCandidate {
     readonly issueKey: IssueKey;
     readonly pullRequest: PullRequestRef;
@@ -278,45 +281,84 @@ async function fetchOpenPRsByRepo(
 }
 
 /**
+ * Shared correlation logic underneath `findDevLinkedOpenPRs`/`findTestTierLinkedOpenPRs`
+ * below: searches `In Progress` issues of the given `issueTypes`, then correlates each
+ * one's `WorkTracker.getRemoteLinks` against every configured repo's open PRs — the same
+ * mechanism TAI-107/108's original `findReadyToMergePRs` used for `CodeReview` subtasks,
+ * generalized. Live-queried every call, same "readiness is computed live, per brief
+ * §3.6's refresh-point rule" philosophy as the rest of this file — no persisted
+ * "awaiting review/merge" flag (TAI-107 ADR decision 5).
+ *
+ * KNOWN SCALING CAVEAT (documented, not silently accepted, same as the pre-rev-52
+ * version): this does one `getRemoteLinks` call per matching `In Progress` issue found
+ * (bounded by `DEFAULT_SEARCH_LIMIT`) — fine at this project's current scale, revisit if a
+ * large volume of concurrently-in-progress work ever makes this real.
+ */
+async function findSubtaskLinkedOpenPRs(
+    workTracker: WorkTracker,
+    projectKey: string,
+    issueTypes: readonly SubtaskType[],
+    openPRsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>
+): Promise<readonly { readonly issueKey: IssueKey; readonly pullRequest: PullRequestRef }[]> {
+    const inProgress = await workTracker.search({
+        projectKey,
+        issueTypes,
+        statuses: [Status.InProgress],
+        limit: DEFAULT_SEARCH_LIMIT,
+    });
+    if (inProgress.length === 0) return [];
+
+    const candidates: { issueKey: IssueKey; pullRequest: PullRequestRef }[] = [];
+    for (const issue of inProgress) {
+        const links = await workTracker.getRemoteLinks(issue.key);
+        if (links.length === 0) continue;
+
+        for (const openPRs of openPRsByRepo.values()) {
+            const match = openPRs.find((pr) => links.some((l) => l.url === pr.url));
+            if (!match) continue;
+            candidates.push({ issueKey: issue.key, pullRequest: match });
+            break;
+        }
+    }
+    return candidates;
+}
+
+/**
  * Finds `Dev` subtasks that are `In Progress` (rev 52: `Dev` stays open until its PR
  * merges, not until the PR opens — see story-schema.ts) with a linked open PR (`git-pr
  * create` now links directly to the `Dev` subtask, not a `CodeReview` sibling — TAI-159
- * ADR §4), correlated via `WorkTracker.getRemoteLinks` the same way TAI-107/108's original
- * `findReadyToMergePRs` correlated `CodeReview` subtasks. Live-queried every call, same
- * "readiness is computed live, per brief §3.6's refresh-point rule" philosophy as the rest
- * of this file — no persisted "awaiting review/merge" flag (TAI-107 ADR decision 5).
- *
- * KNOWN SCALING CAVEAT (documented, not silently accepted, same as the pre-rev-52
- * version): this does one `getRemoteLinks` call per In-Progress `Dev` subtask found
- * (bounded by `DEFAULT_SEARCH_LIMIT`) — fine at this project's current scale, revisit if a
- * large volume of concurrently-in-progress `Dev` work ever makes this real.
+ * ADR §4). Feeds BOTH `readyToTest` and `readyToMerge` (see `computePRSections`) — unlike
+ * `findTestTierLinkedOpenPRs` below, which feeds `readyToMerge` only.
  */
 async function findDevLinkedOpenPRs(
     workTracker: WorkTracker,
     projectKey: string,
     openPRsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>
 ): Promise<readonly { readonly devSubtaskKey: IssueKey; readonly pullRequest: PullRequestRef }[]> {
-    const inProgressDevs = await workTracker.search({
+    const found = await findSubtaskLinkedOpenPRs(workTracker, projectKey, [SubtaskType.Dev], openPRsByRepo);
+    return found.map((c) => ({ devSubtaskKey: c.issueKey, pullRequest: c.pullRequest }));
+}
+
+/**
+ * TAI-314/315/316 (Confluence page 40304641): the test-tier counterpart to
+ * `findDevLinkedOpenPRs` above — an `IntegrationTest`/`SystemTest`/`E2ETest` subtask that
+ * opened its own PR to land test code (Tester's `TAI-100` `createPullRequest` grant), now
+ * staying `In Progress` after a pass instead of going straight to `Done` (`tester.md`
+ * revision, this same ADR) so it can be found here the same way `Dev` already is. Feeds
+ * `readyToMerge` ONLY, never `readyToTest` — testing your own test-tier PR is meaningless
+ * (same posture `findStoryLinkedOpenPRs` already established for governance-content PRs).
+ */
+async function findTestTierLinkedOpenPRs(
+    workTracker: WorkTracker,
+    projectKey: string,
+    openPRsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>
+): Promise<readonly { readonly issueKey: IssueKey; readonly pullRequest: PullRequestRef }[]> {
+    return findSubtaskLinkedOpenPRs(
+        workTracker,
         projectKey,
-        issueTypes: [SubtaskType.Dev],
-        statuses: [Status.InProgress],
-        limit: DEFAULT_SEARCH_LIMIT,
-    });
-    if (inProgressDevs.length === 0) return [];
-
-    const candidates: { devSubtaskKey: IssueKey; pullRequest: PullRequestRef }[] = [];
-    for (const dev of inProgressDevs) {
-        const links = await workTracker.getRemoteLinks(dev.key);
-        if (links.length === 0) continue;
-
-        for (const openPRs of openPRsByRepo.values()) {
-            const match = openPRs.find((pr) => links.some((l) => l.url === pr.url));
-            if (!match) continue;
-            candidates.push({ devSubtaskKey: dev.key, pullRequest: match });
-            break;
-        }
-    }
-    return candidates;
+        [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest],
+        openPRsByRepo
+    );
 }
 
 /**
@@ -358,16 +400,17 @@ async function findStoryLinkedOpenPRs(
 
 /**
  * Detects an In-Progress `Dev` subtask, OR (TAI-293) an In-Progress governance-content
- * Story/Bug/Spike/Epic ticket, whose linked PR has already merged out-of-band — a human
- * merging directly on Bitbucket, or any process outside TAI's own `git-pr merge` (which
- * already self-closes whichever issue it can correlate, `git-pr.ts`'s
- * `findLinkedIssueForPR`) — and syncs it to `Done` here instead. Same principle
- * TAI-34 §2 already established for out-of-band reviews (a human acting directly on the
- * git host is authoritative, detected and reflected at the next refresh point, never
- * fought), just extended from reviews to merges (rev 52, TAI-159 ADR), and now to
- * governance-content tickets too (TAI-293) — this is the realistic path a governance PR
- * actually merges through: this session's own precedent merged PRs #78/#79/#81 directly
- * via Bitbucket, never through `git-pr merge` at all.
+ * Story/Bug/Spike/Epic ticket, OR (TAI-314/315/316) an In-Progress test-tier subtask,
+ * whose linked PR has already merged out-of-band — a human merging directly on Bitbucket,
+ * or any process outside TAI's own `git-pr merge` (which already self-closes whichever
+ * issue it can correlate, `git-pr.ts`'s `findLinkedIssueForPR`) — and syncs it to `Done`
+ * here instead. Same principle TAI-34 §2 already established for out-of-band reviews (a
+ * human acting directly on the git host is authoritative, detected and reflected at the
+ * next refresh point, never fought), just extended from reviews to merges (rev 52,
+ * TAI-159 ADR), to governance-content tickets (TAI-293), and now to test-tier subtasks
+ * too — this is the realistic path a PR actually merges through: this session's own
+ * precedent merged PRs #78/#79/#81 directly via Bitbucket, never through `git-pr merge`
+ * at all.
  *
  * Runs at the start of `findReadyWork` so an issue synced to `Done` here doesn't then
  * spuriously appear in `readyToTest`/`readyToMerge` below, computed from the same refresh.
@@ -380,7 +423,13 @@ async function syncMergedIssues(
 ): Promise<readonly IssueKey[]> {
     const inProgressCandidates = await workTracker.search({
         projectKey,
-        issueTypes: [SubtaskType.Dev, ...GOVERNANCE_ISSUE_TYPES],
+        issueTypes: [
+            SubtaskType.Dev,
+            SubtaskType.IntegrationTest,
+            SubtaskType.SystemTest,
+            SubtaskType.E2ETest,
+            ...GOVERNANCE_ISSUE_TYPES,
+        ],
         statuses: [Status.InProgress],
         limit: DEFAULT_SEARCH_LIMIT,
     });
@@ -485,14 +534,18 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         // content.
         readyToTest = devLinked;
 
-        // TAI-293: readyToMerge draws from BOTH sources — an ordinary Dev subtask's PR,
-        // or a governance-content PR linked directly to a Story/Bug/Spike/Epic ticket.
-        // Same approval-count + CI-green gating either way; `git-pr merge` resolves
-        // permission from whichever issue's `persona` field, not from which source found it.
+        // TAI-293/314/315/316: readyToMerge draws from THREE sources — an ordinary Dev
+        // subtask's PR, a governance-content PR linked directly to a Story/Bug/Spike/Epic
+        // ticket, or a test-tier subtask's own PR. Same approval-count + CI-green gating
+        // either way; `git-pr merge` resolves permission from whichever issue's `persona`
+        // field (or, for a test-tier subtask, its sibling `Dev`'s — see `resolveGitHost`,
+        // `cli.ts`), not from which source found it.
         const storyLinked = await findStoryLinkedOpenPRs(deps.workTracker, deps.projectKey, openPRsByRepo);
+        const testTierLinked = await findTestTierLinkedOpenPRs(deps.workTracker, deps.projectKey, openPRsByRepo);
         const mergeCandidates: readonly ReadyToMergeCandidate[] = [
             ...devLinked.map((c) => ({ issueKey: c.devSubtaskKey, pullRequest: c.pullRequest })),
             ...storyLinked,
+            ...testTierLinked,
         ];
 
         const approved = mergeCandidates.filter((c) => approvalCount(c.pullRequest) >= requiredApprovals);

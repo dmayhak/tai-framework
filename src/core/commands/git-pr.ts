@@ -92,11 +92,12 @@ export function isMergeConflict(reason: string): boolean {
 
 /**
  * Finds the `In Progress` issue linked to a just-merged PR — a `Dev` subtask for ordinary
- * Story/Bug work, OR (TAI-293) a governance-content Story/Bug/Spike/Epic ticket with no
+ * Story/Bug work, (TAI-293) a governance-content Story/Bug/Spike/Epic ticket with no
  * `Dev` subtask at all (PM/Architect-authored, e.g. `PROJECT_BRIEF.md`/persona-doc
- * content) — so `git-pr merge` can transition it to `Done` as a second write in the same
- * call. Same "one command, two writes" shape `git-pr create` already has (PR create +
- * remote link).
+ * content), or (TAI-314/315/316) a test-tier subtask (`IntegrationTest`/`SystemTest`/
+ * `E2ETest`) that opened its own PR — so `git-pr merge` can transition it to `Done` as a
+ * second write in the same call. Same "one command, two writes" shape `git-pr create`
+ * already has (PR create + remote link).
  *
  * Doesn't assume the `<ISSUE-KEY>` the merge was invoked with IS the linked issue — before
  * TAI-293 granted PM/Architect their own `mergePullRequest`, that key was sometimes
@@ -120,7 +121,16 @@ export async function findLinkedIssueForPR(
 ): Promise<IssueKey | null> {
     const inProgressCandidates = await workTracker.search({
         projectKey,
-        issueTypes: [SubtaskType.Dev, StoryType.Story, StoryType.Bug, StoryType.Spike, "epic"],
+        issueTypes: [
+            SubtaskType.Dev,
+            SubtaskType.IntegrationTest,
+            SubtaskType.SystemTest,
+            SubtaskType.E2ETest,
+            StoryType.Story,
+            StoryType.Bug,
+            StoryType.Spike,
+            "epic",
+        ],
         statuses: [Status.InProgress],
     });
     for (const issue of inProgressCandidates) {

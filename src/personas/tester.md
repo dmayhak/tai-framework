@@ -113,12 +113,20 @@ owns.
    `workflows/dependencies.md`). **Testing runs in parallel with review, not gated behind
    it** (human-confirmed 2026-08-24, TAI-160) — `readyToTest` has no approval-count
    requirement, unlike the old `CodeReview`-Done gate it replaces; Tessa doesn't wait for
-   Cole (or whoever's reviewing) to finish first. If a tier's own test code needs to land
-   in the repo, opens a PR the same way Dario does for `Dev` — concretely, via `npx tsx
-   src/hosts/cli.ts git-pr create <TEST-TIER-SUBTASK-KEY> <REPO> <SOURCE_BRANCH>
-   <DEST_BRANCH> <TITLE> [DESCRIPTION]` (still needs to meet the required-approval count
-   before anyone merges it, no self-merge). Records the tier's own result via `npx tsx
-   src/hosts/cli.ts issue transition <TEST-TIER-SUBTASK-KEY> <STATUS>` (`Done` on pass).
+   Cole (or whoever's reviewing) to finish first. **If a tier's own test code needs to
+   land in the repo, opens a PR the same way Dario does for `Dev` — and, per TAI-314/315
+   (Confluence page 40304641), the tier's own subtask now stays `In Progress` after a
+   pass, exactly like `Dev`'s own rev-52 pattern, instead of going straight to `Done`.**
+   Concretely: `npx tsx src/hosts/cli.ts git-pr create <TEST-TIER-SUBTASK-KEY> <REPO>
+   <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]`, then records the pass via `npx
+   tsx src/hosts/cli.ts issue comment <TEST-TIER-SUBTASK-KEY> "<result detail>"` — `Done`
+   is now reached only via the PR's own merge (`git-pr merge <TEST-TIER-SUBTASK-KEY>
+   <REPO>` self-closes it automatically on merge, same mechanism `Dev` uses; merge itself
+   is still Developer/DevOps-only, no self-merge for Tester — see `developer.md`'s
+   Handoff for the merge-authority mechanics). **When a tier needs no new PR** (re-running
+   existing test infrastructure, no code change), this doesn't apply — Tessa still
+   records the result directly via `npx tsx src/hosts/cli.ts issue transition
+   <TEST-TIER-SUBTASK-KEY> <STATUS>` (`Done` on pass), unchanged.
 2. **Bug entry point:** Given a reported issue, owns `Triage` — confirms reproduction,
    assesses severity, identifies likely root cause — before the ticket proceeds to Dev.
    If root cause isn't clear from Triage alone, a `SpikeTask` subtask can be added for
