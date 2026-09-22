@@ -24,9 +24,11 @@
 > "investigates before deciding" brownfield instinct (read the real code/conventions first,
 > don't invent fresh ones) — relevant since TAI is brownfield for anyone dogfooding it.
 > **§8 gets one stale-gap fix** (item 33: "Architect-owned architectural overview doc" was
-> still marked open, pointing only at Backlog TAI-281, though `architect.md`'s TAI-307
-> Architecture Overview section already fully resolved it — caught during this session's
-> own read, not previously closed out) and **one new deferred item** (item 38: scaling
+> still marked open in the brief's own prose — and misnamed the persona "Dario" instead of
+> "Aria" — even though its tracking ticket, TAI-281, was already closed Done back on
+> 2026-09-04 once TAI-307's `architect.md` Architecture Overview section shipped; the brief
+> entry itself was never updated to match, caught during this session's own read) and
+> **one new deferred item** (item 38: scaling
 > `DesignReview`'s gate depth to stakes, BMAD-style multi-lens review — explicitly punted to
 > v2/v3, **see TAI-327**, Story, Backlog). Competitor research this session reused the prior
 > session's BMAD-METHOD/Spec Kit clones (Winston the Architect's `customize.toml` and
