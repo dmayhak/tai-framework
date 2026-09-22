@@ -4,7 +4,37 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-21 (rev 59 — **Ada's (Analyst) persona review concludes
+> **Last updated:** 2026-09-22 (rev 60 — **Aria's (Architect) persona review concludes
+> (TAI-149/328), the third full persona turn under TAI-6/138-155.** Closes the
+> future-direction-awareness thread §4/rev 59 explicitly reserved for Architect: her own
+> version fires only during Kickoff-early or Story-level `ArchitectureDesign` (not
+> Feasibility's time-box, not the WBS batch scan), she asks the human directly rather than
+> routing through PM/Ada, and the answer dual-records — grounding context in her own ADR,
+> plus a `Requirements` subtask handed to PM (TAI-83 exception, since the PRD isn't her own
+> output type) for the Future Considerations entry. Also resolves §3.7's other open
+> parenthetical (Architect + rolling-wave for system-level design): a Kickoff/Epic-level
+> `ArchitectureDesign` is her "full shape now" pass, and each Story's own
+> `ArchitectureDesign` inherits its decisions as **binding, read-only constraints** rather
+> than re-deciding them — a real conflict escalates to the human, never a silent override
+> (adapted from BMAD-METHOD's architecture-spine altitude-inheritance model). Three more
+> changes landed persona-local, no brief promotion needed: a concrete "is this actually
+> load-bearing" bar for when a design decision earns `ArchitectureDesign`/`Feasibility` at
+> all (adapted from BMAD's architecture-spine test), principle TAI-107 sharpened to require
+> showing alternatives + a stated lean rather than just posing an open question, and a new
+> "investigates before deciding" brownfield instinct (read the real code/conventions first,
+> don't invent fresh ones) — relevant since TAI is brownfield for anyone dogfooding it.
+> **§8 gets one stale-gap fix** (item 33: "Architect-owned architectural overview doc" was
+> still marked open in the brief's own prose — and misnamed the persona "Dario" instead of
+> "Aria" — even though its tracking ticket, TAI-281, was already closed Done back on
+> 2026-09-04 once TAI-307's `architect.md` Architecture Overview section shipped; the brief
+> entry itself was never updated to match, caught during this session's own read) and
+> **one new deferred item** (item 38: scaling
+> `DesignReview`'s gate depth to stakes, BMAD-style multi-lens review — explicitly punted to
+> v2/v3, **see TAI-327**, Story, Backlog). Competitor research this session reused the prior
+> session's BMAD-METHOD/Spec Kit clones (Winston the Architect's `customize.toml` and
+> `bmad-architecture` skill; Spec Kit's `plan` command/constitution-check gate) — read
+> directly again, feeding TAI-283/284.
+> Prior: rev 59 — **Ada's (Analyst) persona review concludes
 > (TAI-147/324), the second full persona turn under TAI-6/138-155.** Two principles
 > promoted from persona-local to shared, since each now applies to 2+ personas (same
 > promotion pattern as rev 58's rolling-wave): **§3.7 gains a new "Elicitation escalation
@@ -892,8 +922,7 @@ output into actual implementation subtasks is a separate decision (human or Orch
 per §3.8), made once the Story is judged ready.
 
 **Rolling-wave decomposition depth: "done" vs. "done enough" (rev 58, TAI-147/148).**
-Decomposition/refinement personas (Analyst, PM; potentially Architect for system-level
-design, still to be worked out in that persona's own review) don't uniformly flesh out
+Decomposition/refinement personas (Analyst, PM, Architect) don't uniformly flesh out
 every scope-relative pass to full detail. For a large Epic, taking every eventual Story to
 fully-specified acceptance criteria before any of them can start would be wasted,
 premature effort — the later ones will likely need revisiting anyway once earlier work
@@ -929,8 +958,14 @@ skipped (invisible, no board presence) or forced to premature full detail.
   existed, previously undescribed as a deliberate decomposition-depth strategy.
 
 Concrete instances: `personas/pm.md`'s Epic decomposition (item 5) and Kickoff-time WBS/
-issue-creation (item 4), and `personas/analyst.md`'s Epic → Story decomposition proposal
-(item 4) — see those files for the persona-specific mechanics.
+issue-creation (item 4), `personas/analyst.md`'s Epic → Story decomposition proposal
+(item 4), and `personas/architect.md`'s altitude-inheritance answer (rev 60, TAI-149/328,
+Core Principles: "Higher-altitude decisions are binding on lower-altitude work") — a
+Kickoff/Epic-level `ArchitectureDesign` is Architect's "full shape now" pass (system-level
+invariants, kept minimal), and each Story's own `ArchitectureDesign` is the later,
+full-depth pass that inherits it as a binding constraint rather than re-deciding it; a
+genuine conflict escalates to the human rather than being silently overridden — see those
+files for the persona-specific mechanics.
 
 **Elicitation escalation posture: collaborative by default, more assertive when it isn't
 converging (rev 59, TAI-147/148/324).** Elicitation-heavy personas draw requirements out of
@@ -1153,10 +1188,15 @@ These are settled. Change them deliberately and update this file if you do.
   abstraction posture: probing costs little, building unrequested flexibility does). When a
   persona is unsure whether something clears the "worth raising" bar, it asks the human
   whether they want to explore future-direction thoughts here at all, rather than deciding
-  unilaterally to raise or skip it. Reserved for Analyst's and Architect's own persona
-  reviews to work out the concrete mechanics (rev 57/58 handoff note) — `personas/
-  analyst.md` is the first to land this (items 2/3/4/5); `personas/architect.md` still to
-  come.
+  unilaterally to raise or skip it. Reserved at rev 57/58 for Analyst's and Architect's own
+  persona reviews to work out the concrete mechanics — `personas/analyst.md` landed it
+  first (rev 59, items 2/3/4/5); `personas/architect.md`'s own version (rev 60,
+  TAI-149/328) differs where the two personas' work differs: Aria's trigger fires only
+  during Kickoff-early or Story-level `ArchitectureDesign` (not Feasibility's time-boxed
+  scope, not the WBS batch scan), she asks the human directly rather than routing through
+  PM/Ada, and the answer gets dual-recorded — grounding context in her own ADR, plus a
+  `Requirements` subtask handed to PM (TAI-83 exception) for the PRD's Future
+  Considerations entry, since that document isn't Aria's own output type.
 
 ---
 
@@ -2061,12 +2101,17 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     Epic? periodically?), and whether it's a new `confluenceOutputs` doc type or folds into
     the existing project-level `Config` folder (§4 rev 13, which already holds untyped,
     non-ticket-tied content). **See TAI-280 (Story, Backlog).**
-33. **Architect-owned architectural overview doc (rev 55, 2026-08-31, open, possible new
-    skill).** Same shape as item 32 but for Dario (Architect): a living doc describing the
-    codebase's actual structure/design — content (code layout? ERD? API reference? some
-    mix?), page count (one doc or several), and update cadence are all undecided. Likely
-    wants the same home as item 32 once designed, but not decided together here. **See
-    TAI-281 (Story, Backlog).**
+33. **Architect-owned architectural overview doc (rev 55, 2026-08-31; underlying work
+    shipped rev 57, this §8 entry itself only closed out now, rev 60).** Same shape as
+    item 32 but for Aria (Architect): a living doc describing the codebase's actual
+    structure/design. **Shipped:** TAI-281 (Story, Done) via TAI-307's ArchitectureDesign —
+    `personas/architect.md`'s Architecture Overview section, an arc42/C4-inspired candidate
+    section menu assessed against each project's real shape (include/reframe/N/A-with-
+    reason, never silently dropped), linking out to real ERDs/ADRs/specs rather than
+    duplicating them, one page by default, code-driven Mermaid diagrams, periodic/on-demand
+    cadence (Confluence page 34963485). This entry itself went unclosed against TAI-281/307
+    actually landing — caught as a stale brief-gap during Aria's own persona review
+    (TAI-6/149/328), not resolved in real time the way item 34's rev 57 close-out was.
 34. **Keep local master/main fresh across multiple machines/checkouts (rev 55, 2026-08-31;
     resolved rev 57, 2026-09-03).** Distinct from §8 item 8's worktree-swap-on-ticket-switch
     design (resolved, not yet implemented) and TAI-115's worktree-concurrency Story
@@ -2104,6 +2149,13 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     ticket/page changed since its own last read (a diff against the cache/`lastUpdated`,
     §7?), and what reconciliation looks like once noticed. **See TAI-285 (Story,
     Backlog).**
+38. **Scale DesignReview gate depth to stakes (rev 60, 2026-09-22, deliberately deferred to
+    v2/v3).** Raised live during Aria's (Architect) persona review (TAI-6/149/328):
+    BMAD-METHOD's architecture-spine reviewer gate is a deterministic lint pass plus a
+    rubric-walker plus multiple review-lens subagents, scaled to stakes — richer than
+    `DesignReview`'s current simple pass/fail-with-one-retry (`workflows/story.md`).
+    Explicitly **not** a v1 change — the human's own call, same "real investigation, not a
+    brief edit" posture as items 35/36. **See TAI-327 (Story, Backlog).**
 
 ---
 
