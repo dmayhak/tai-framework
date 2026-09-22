@@ -2099,16 +2099,17 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     Epic? periodically?), and whether it's a new `confluenceOutputs` doc type or folds into
     the existing project-level `Config` folder (§4 rev 13, which already holds untyped,
     non-ticket-tied content). **See TAI-280 (Story, Backlog).**
-33. **Architect-owned architectural overview doc (rev 55, 2026-08-31; resolved rev 57).**
-    Same shape as item 32 but for Aria (Architect): a living doc describing the codebase's
-    actual structure/design. **Shipped:** TAI-281 (Story, Done) via TAI-307's
-    ArchitectureDesign — `personas/architect.md`'s Architecture Overview section, an
-    arc42/C4-inspired candidate section menu assessed against each project's real shape
-    (include/reframe/N/A-with-reason, never silently dropped), linking out to real
-    ERDs/ADRs/specs rather than duplicating them, one page by default, code-driven Mermaid
-    diagrams, periodic/on-demand cadence (Confluence page 34963485). This item went
-    unclosed against TAI-281/307 landing — caught as a stale brief-gap during Aria's own
-    persona review (TAI-6/149/328).
+33. **Architect-owned architectural overview doc (rev 55, 2026-08-31; underlying work
+    shipped rev 57, this §8 entry itself only closed out now, rev 60).** Same shape as
+    item 32 but for Aria (Architect): a living doc describing the codebase's actual
+    structure/design. **Shipped:** TAI-281 (Story, Done) via TAI-307's ArchitectureDesign —
+    `personas/architect.md`'s Architecture Overview section, an arc42/C4-inspired candidate
+    section menu assessed against each project's real shape (include/reframe/N/A-with-
+    reason, never silently dropped), linking out to real ERDs/ADRs/specs rather than
+    duplicating them, one page by default, code-driven Mermaid diagrams, periodic/on-demand
+    cadence (Confluence page 34963485). This entry itself went unclosed against TAI-281/307
+    actually landing — caught as a stale brief-gap during Aria's own persona review
+    (TAI-6/149/328), not resolved in real time the way item 34's rev 57 close-out was.
 34. **Keep local master/main fresh across multiple machines/checkouts (rev 55, 2026-08-31;
     resolved rev 57, 2026-09-03).** Distinct from §8 item 8's worktree-swap-on-ticket-switch
     design (resolved, not yet implemented) and TAI-115's worktree-concurrency Story
