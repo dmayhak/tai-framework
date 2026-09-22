@@ -4,7 +4,50 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-22 (rev 60 — **Aria's (Architect) persona review concludes
+> **Last updated:** 2026-09-22 (rev 61 — **Uma's (UX Designer) persona review concludes
+> (TAI-150/331), the fourth full persona turn under TAI-6/138-155.** All changes landed
+> persona-local in `personas/ux-designer.md`; §3.7's shared elicitation-escalation posture
+> gains a third confirmed instance (no new brief-level mechanics needed, since Uma's version
+> is the same shape PM's/Ada's already established). Four changes:
+> - **New Design System capability** (living doc, may be scoped): establishes the project's
+>   baseline visual-identity/design-token reference (Brand & Style, Colors, Typography,
+>   Layout & Spacing, Elevation & Depth, Shapes, Components, Do's and Don'ts), assessed
+>   against the target project's real shape the same way Architect's Architecture Overview
+>   is (include/reframe/N/A-with-reason). Adapted from BMAD-METHOD's DESIGN.md/EXPERIENCE.md
+>   split — Uma's existing `ux-flow`/`story-ux-detail` outputs already covered the
+>   EXPERIENCE (behavior) side; `design-system` is the new DESIGN (visual identity) side.
+>   Deliberately **not** forced into a single global doc the way Architecture Overview/
+>   Project Home Page are — a genuinely distinct sub-area (e.g. an admin section with its
+>   own deliberately different look) gets its own scoped doc that links to and states what
+>   it overrides from its parent; this actually restores the framework's own *default*
+>   multi-instance granularity (brief §4 rev 11) rather than importing the "one per project"
+>   exception. First checks for a business-supplied design-system extension before creating
+>   her own. Genuine undeclared drift is a conflict, resolved via the same TAI-83
+>   dedup-search-then-comment-or-subtask mechanic Architect's altitude-inheritance principle
+>   uses — reused, not reinvented.
+> - **"Elicits, doesn't impose"** — new Core Principle, same shape as `personas/pm.md`'s
+>   "Elicitation, not direction": never volunteers a color, pattern, or visual direction
+>   unprompted, the vision being drawn out is the human's. Shares §3.7's elicitation-
+>   escalation posture, now confirmed for a third persona.
+> - **Concern-scan broadened**: the old "empty/error/loading states" check widens into a
+>   fuller UX-carrying-concerns scan (accessibility, i18n, dark mode, offline, input
+>   modalities, notifications, …), adapted from BMAD's concern-scan list, inferred from
+>   context rather than force-applied to every screen (same right-sizing instinct as Ada's
+>   ambiguity-coverage checklist).
+> - **Surface closure** — new completeness bar, adapted from BMAD's IA-closure test: every
+>   stated need has a surface, every surface has a journey; when closure fails, probe, never
+>   invent. Same role Aria's load-bearing bar and Ada's ambiguity checklist play for their
+>   own personas.
+> **Future-direction/extensibility awareness (brief §4) was explicitly considered and
+> declined for Uma** — her own new surface-closure bar and the design-system parent/child
+> override pattern already give her a way to flag "this assumes single-item only" without a
+> separate mechanic, and the brief already frames this as a scope/requirements question that
+> stays Ada's/Perry's call, not something UX flow work should re-raise on its own. One real
+> stale-wording bug caught and fixed pre-review: the Extension point section still said
+> "missing-state discipline" after the underlying principle was renamed/broadened.
+> Competitor research this session: BMAD-METHOD's Sally (UX Designer) skill and GSD's
+> UI-phase workflow/UI-SPEC template, read directly — feeds TAI-283/284.
+> Prior: rev 60 — **Aria's (Architect) persona review concludes
 > (TAI-149/328), the third full persona turn under TAI-6/138-155.** Closes the
 > future-direction-awareness thread §4/rev 59 explicitly reserved for Architect: her own
 > version fires only during Kickoff-early or Story-level `ArchitectureDesign` (not
@@ -979,10 +1022,15 @@ decomposition, the same right-sized-output judgment each persona already applies
 of *output* applied here to depth of *elicitation*. First established for PM's PRD drafting
 (rev 58, TAI-147/148: Fast-path/Coaching-path pace choice, escalating within whichever path
 if things stay vague); promoted to a shared posture here once Ada's own review confirmed it
-applies the same way to her Kickoff discovery, decomposition, and refinement work.
+applies the same way to her Kickoff discovery, decomposition, and refinement work — and
+Uma's own review (rev 61) confirmed the same for her Kickoff-time flow/wireframe
+elicitation, alongside a sharper "elicits, doesn't impose" principle (never volunteers a
+color, pattern, or visual direction unprompted — the vision being drawn out is the human's,
+not Uma's).
 
-Concrete instances: `personas/pm.md`'s PRD drafting (item 2) and `personas/analyst.md`'s
-Kickoff discovery, decomposition, and refinement (items 2/3/4/5).
+Concrete instances: `personas/pm.md`'s PRD drafting (item 2), `personas/analyst.md`'s
+Kickoff discovery, decomposition, and refinement (items 2/3/4/5), and
+`personas/ux-designer.md`'s Kickoff flow/wireframe development (item 1).
 
 ### 3.8 Interaction Modes
 - A human can **initiate a persona** and interact with it (e.g. "what's ready for you to
