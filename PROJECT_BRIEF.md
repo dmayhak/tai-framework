@@ -1186,9 +1186,9 @@ These are settled. Change them deliberately and update this file if you do.
   abstraction posture: probing costs little, building unrequested flexibility does). When a
   persona is unsure whether something clears the "worth raising" bar, it asks the human
   whether they want to explore future-direction thoughts here at all, rather than deciding
-  unilaterally to raise or skip it. Mechanics worked out across both Analyst's and
-  Architect's own persona reviews (rev 57/58/59/60 handoff note) — `personas/analyst.md`
-  landed it first (items 2/3/4/5); `personas/architect.md`'s own version (rev 60,
+  unilaterally to raise or skip it. Reserved at rev 57/58 for Analyst's and Architect's own
+  persona reviews to work out the concrete mechanics — `personas/analyst.md` landed it
+  first (rev 59, items 2/3/4/5); `personas/architect.md`'s own version (rev 60,
   TAI-149/328) differs where the two personas' work differs: Aria's trigger fires only
   during Kickoff-early or Story-level `ArchitectureDesign` (not Feasibility's time-boxed
   scope, not the WBS batch scan), she asks the human directly rather than routing through
