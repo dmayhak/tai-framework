@@ -356,7 +356,9 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts init status\n` +
         "```\n\n" +
-        'If it reports "Fully initialized," nothing further is needed. Otherwise — including a ' +
+        'If it reports "Fully initialized," relay its next-step hint to the human verbatim ' +
+        "(TAI-349) — don't just say \"done\" and stop, since a genuinely fresh project has no " +
+        "obvious next action otherwise. Otherwise — including a " +
         "fresh project with no state file at all — read the full checklist yourself " +
         `(\`${taiHome}/docs/target-project-setup-checklist.md\`) and walk the human through it ` +
         "step by step, in this order: Jira setup (issue types, the `Persona` field, workflow " +

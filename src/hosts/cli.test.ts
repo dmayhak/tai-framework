@@ -23,8 +23,11 @@ import {
     renderLinkedIssues,
     renderIssueDetail,
     renderCascadeWarnings,
+    renderInitStepResult,
+    renderInitStatus,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
+import type { InitState } from "../core/commands/target-init.js";
 
 const AUTHOR: HumanRef = { id: toHumanId("del@example.com"), displayName: "Del", email: "del@example.com" };
 
@@ -399,5 +402,44 @@ describe("resolveMergePersona (TAI-314/315/316)", () => {
         });
         const wt = new FakeWorkTracker([testTier]);
         assert.equal(await resolveMergePersona(wt, "TAI", testTier), Persona.Tester);
+    });
+});
+
+describe("renderInitStepResult / renderInitStatus (TAI-349)", () => {
+    it("renderInitStepResult appends the next-step hint only when ok AND fullyInitialized", () => {
+        const bare = renderInitStepResult("env", true, "Wrote .env.");
+        assert.doesNotMatch(bare, /Perry/);
+
+        const midway = renderInitStepResult("claude-md", true, "Wrote CLAUDE.md.", false);
+        assert.doesNotMatch(midway, /Perry/);
+
+        const done = renderInitStepResult("claude-md", true, "Wrote CLAUDE.md.", true);
+        assert.match(done, /Perry/);
+        assert.match(done, /Kickoff Story/);
+    });
+
+    it("renderInitStepResult never appends the hint on failure, even if fullyInitialized is somehow true", () => {
+        const failed = renderInitStepResult("jira", false, "Missing issue types.", true);
+        assert.doesNotMatch(failed, /Perry/);
+    });
+
+    it("renderInitStatus appends the next-step hint only once every step is done", () => {
+        const incomplete: InitState = {
+            version: 1,
+            steps: { jira: { at: "2026-01-01T00:00:00Z", detail: "ok" } },
+        };
+        assert.doesNotMatch(renderInitStatus(incomplete), /Perry/);
+
+        const complete: InitState = {
+            version: 1,
+            steps: {
+                jira: { at: "2026-01-01T00:00:00Z", detail: "ok" },
+                confluence: { at: "2026-01-01T00:00:00Z", detail: "ok" },
+                bitbucket: { at: "2026-01-01T00:00:00Z", detail: "ok" },
+                env: { at: "2026-01-01T00:00:00Z", detail: "ok" },
+                "claude-md": { at: "2026-01-01T00:00:00Z", detail: "ok" },
+            },
+        };
+        assert.match(renderInitStatus(complete), /Perry/);
     });
 });

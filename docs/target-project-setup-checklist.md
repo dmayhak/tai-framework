@@ -152,6 +152,16 @@ Shows which of the five steps (`jira`, `confluence`, `bitbucket`, `env`, `claude
 already recorded done. Safe to run `/tai-init` again after any interruption — it picks up
 wherever this list leaves off rather than restarting.
 
+## What's next once "Fully initialized" (TAI-349)
+
+`init status`/`init claude-md` print a next-step hint once every step is done. For a
+genuinely fresh project (nothing in Jira yet): there's no dedicated command for this today
+(TAI-348, open design question) — ask your assistant directly to act as Perry (PM) and
+kick off the project, per `personas/pm.md`'s "Project initiation" behavior. She creates the
+initial Epic + Kickoff Story and decides which subtasks to start with. For a re-run against
+an already-active project, ignore the hint — it's worded to apply either way since this
+step has no live check for whether an Epic already exists.
+
 ## Out of scope (TAI-90 ADR, TAI-116)
 
 - Full automation of Jira/Confluence admin-level provisioning (issue-type/workflow/screen
