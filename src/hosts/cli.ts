@@ -62,7 +62,7 @@ import {
     type EpicSummary,
 } from "../core/workspace/living-doc-staleness.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
-import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
+import { installGlobal, defaultTaiHome, PM_KICKOFF_HINT } from "../core/commands/install-global.js";
 import {
     INIT_STEPS,
     readInitState,
@@ -1004,13 +1004,12 @@ export async function renderIssueDetail(
 // re-run against an already-active one. Deliberately does NOT say "run /tai-work" --
 // found live the same day that /tai-work always requires an existing <ISSUE-KEY> (brief
 // §3.8), which doesn't exist yet on a genuinely fresh project; there is no dedicated
-// command for this bootstrap step today (see TAI-348), so this points at the only thing
-// that actually works right now -- a plain-language ask.
-const NEXT_STEP_HINT =
-    "If this is a fresh project with nothing in it yet: there's no dedicated command for " +
-    "this yet (TAI-348) -- ask your assistant directly to act as Perry (PM) and kick off " +
-    "the project, per personas/pm.md's \"Project initiation\" behavior. She creates the " +
-    "initial Epic + Kickoff Story and decides which subtasks to start with.";
+// command for this bootstrap step today (see TAI-348 -- a one-time-use `tai-kickoff`
+// command and extending `/tai-work` to accept no key were both considered and rejected,
+// see PM_KICKOFF_HINT's own comment for why). Shares its actual wording with
+// `/tai-ready`'s empty-list fallback (`readySkillBody`) via `PM_KICKOFF_HINT` rather than
+// duplicating it, so the two surfaces can't drift apart.
+const NEXT_STEP_HINT = `If this is a fresh project with nothing in it yet: there's no dedicated command for this yet (TAI-348) -- ${PM_KICKOFF_HINT}.`;
 
 export function renderInitStepResult(step: InitStep, ok: boolean, detail: string, fullyInitialized = false): string {
     const hint = ok && fullyInitialized ? `\n\n${NEXT_STEP_HINT}` : "";

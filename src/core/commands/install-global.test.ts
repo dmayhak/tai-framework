@@ -45,6 +45,18 @@ describe("renderGlobalSkillFiles", () => {
             assert.ok(!f.content.includes("!{"), `${f.relativePath} should not use !{...} auto-exec`);
         }
     });
+
+    test("tai-ready's skill tells the invoking session what to say when the backlog is genuinely empty (TAI-348/349)", () => {
+        const readyFile = files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!;
+        assert.match(readyFile.content, /both sections come back empty/i);
+        assert.match(readyFile.content, /Perry/);
+        assert.match(readyFile.content, /genuinely fresh project/i);
+    });
+
+    test("tai-init's skill relays the /tai-init completion hint rather than just saying \"done\" (TAI-349)", () => {
+        const initFile = files.find((f) => f.relativePath === ".claude/skills/tai-init/SKILL.md")!;
+        assert.match(initFile.content, /relay its next-step hint/);
+    });
 });
 
 describe("defaultTaiHome", () => {
