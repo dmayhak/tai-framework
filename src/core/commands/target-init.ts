@@ -332,9 +332,65 @@ export function renderEnvFile(input: EnvInput): string {
     return lines.join("\n") + "\n";
 }
 
+/** Matches `renderEnvFile`'s own leading key on a real `KEY=value` line — never comments,
+ *  blanks, or a malformed line, so anything TAI doesn't understand is left untouched by
+ *  `mergeEnvContent` below rather than risk misinterpreting it as a key to overwrite. */
+const ENV_KEY_LINE = /^([A-Za-z_][A-Za-z0-9_]*)=/;
+
+/** TAI-346-adjacent bug (found live 2026-09-24 on a real target project): `writeEnvFile`
+ *  used to overwrite `.env` wholesale with `renderEnvFile`'s output, silently destroying
+ *  every line TAI's own template doesn't know about — the target app's own config
+ *  (`DATABASE_URL`, `HTTP_ADDR`), and even TAI's own optional `TAI_GIT_WORKSPACE`, which
+ *  isn't part of `EnvInput`/`renderEnvFile` at all. A real `.env` almost always carries a
+ *  target project's own app config alongside whatever TAI adds — this is the normal case
+ *  for onboarding an *existing* project, not an edge case. Fixed the same way
+ *  `writeClaudeMdPointer` below already handles `CLAUDE.md`: read what's there first,
+ *  update TAI's own keys in place (by key, not by line position, since `renderEnvFile`'s
+ *  field order doesn't have to match whatever order a human's `.env` happens to be in),
+ *  and leave every other line — including ones TAI doesn't recognize — completely
+ *  untouched. Genuinely new TAI keys (nothing to update in place) get appended once, under
+ *  a fresh header comment, rather than inserted mid-file. Pure and independently testable,
+ *  same "kept separate from the `write` wrapper" reasoning as `renderEnvFile` itself. */
+export function mergeEnvContent(existing: string, generated: string): string {
+    if (existing.trim().length === 0) return generated;
+
+    const genEntries = generated
+        .split("\n")
+        .map((line) => ({ line, match: ENV_KEY_LINE.exec(line) }))
+        .filter((e): e is { line: string; match: RegExpExecArray } => e.match !== null)
+        .map((e) => ({ key: e.match[1] as string, line: e.line }));
+
+    const existingLines = existing.split("\n");
+    const existingKeyLineIdx = new Map<string, number>();
+    existingLines.forEach((line, i) => {
+        const m = ENV_KEY_LINE.exec(line);
+        if (m) existingKeyLineIdx.set(m[1] as string, i);
+    });
+
+    const resultLines = [...existingLines];
+    const newEntries: string[] = [];
+    for (const { key, line } of genEntries) {
+        const idx = existingKeyLineIdx.get(key);
+        if (idx !== undefined) {
+            resultLines[idx] = line;
+        } else {
+            newEntries.push(line);
+        }
+    }
+
+    let result = resultLines.join("\n");
+    if (newEntries.length > 0) {
+        if (!result.endsWith("\n")) result += "\n";
+        result += "\n" + newEntries.join("\n") + "\n";
+    }
+    return result;
+}
+
 /** Refuses to run ahead of the `jira`/`confluence` steps (and `bitbucket`, if Bitbucket
  *  fields are supplied) — this is what makes the step sequence self-enforcing rather than
- *  relying on the skill prose alone to get the order right. */
+ *  relying on the skill prose alone to get the order right. Merges into any pre-existing
+ *  `.env` via `mergeEnvContent` rather than overwriting it — see that function's own
+ *  comment for why this matters. */
 export async function writeEnvFile(cwd: string, taiRoot: string, input: EnvInput): Promise<string> {
     const state = await readInitState(taiRoot);
     const needsBitbucket = Boolean(input.bitbucketEmail && input.bitbucketApiToken);
@@ -346,7 +402,14 @@ export async function writeEnvFile(cwd: string, taiRoot: string, input: EnvInput
     }
 
     const filePath = path.join(cwd, ".env");
-    await writeFile(filePath, renderEnvFile(input), "utf-8");
+    let existing = "";
+    try {
+        existing = await readFile(filePath, "utf-8");
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+
+    await writeFile(filePath, mergeEnvContent(existing, renderEnvFile(input)), "utf-8");
     return filePath;
 }
 
