@@ -21,6 +21,8 @@ export TAI_JIRA_SITE_URL=https://<your-site>.atlassian.net
 export TAI_JIRA_EMAIL=<you@example.com>
 export TAI_JIRA_API_TOKEN=<token>
 # Only if this project also needs git-pr support:
+# BITBUCKET_EMAIL/BITBUCKET_API_TOKEN are deliberately unprefixed, unlike everything else
+# here (TAI-346) -- matches a Bitbucket MCP server's own naming convention, if you use one.
 export BITBUCKET_EMAIL=<you@example.com>
 export BITBUCKET_API_TOKEN=<token>
 export TAI_GIT_REPOS=<workspace/repo>
