@@ -4,7 +4,53 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-22 (rev 62 — **Dario's (Developer) persona review concludes
+> **Last updated:** 2026-09-23 (rev 63 — **Dana's (DBA) persona review concludes
+> (TAI-152/338), the sixth full persona turn under TAI-6/138-155.** Mechanical audit
+> came back clean again (no stale prose, all `confluenceOutputs` described, concrete
+> `cli.ts` invocations already present in Handoff). Unlike every prior turn, neither
+> competitor has a DBA equivalent to compare against — BMAD-METHOD folds database/schema/
+> migration decisions into a one-time Architecture solutioning pass with no specialized
+> reviewer; GSD has no dedicated agent either. Decisions instead came from real DBA
+> practice. Four changes:
+> - **Reversibility stated as explicitly as compatibility — two different axes.**
+>   Compatibility is whether old application code still works against the new schema;
+>   reversibility is whether the migration itself can be undone. A change can be one
+>   without the other (backwards-compatible but irreversible is a common, non-
+>   contradictory shape, e.g. a destructive backfill). Dana now states both, flagging the
+>   exact point past which rollback isn't possible, feeding `personas/devops.md`'s
+>   rollback runbook (already non-optional there) with information it previously had no
+>   guaranteed source for.
+> - **Blocking vs. parallel sharpened from "judgment call" into a concrete default**:
+>   backwards-compatible → parallel by default (old and new code both work against it);
+>   backwards-incompatible → blocks, because it structurally needs the expand-contract
+>   sequence (add → backfill → cut over → drop), which `Dev` must be sequenced against.
+>   Stated as a default, not an absolute — Dana still states her reasoning since deploy
+>   topology can change what "parallel" means.
+> - **New costed-option-package discipline for schema forks tied to unstated future
+>   business direction** — **more ownership than Aria's/Uma's version of this same brief
+>   §4 pattern:** rather than just flagging the fork, Dana proposes each realistic option
+>   with its cost/effort now vs. the cost/risk of retrofitting later, plus a stated lean —
+>   schema mistakes are unusually expensive to unwind compared to most code, which is why
+>   this turn's version goes further than Architect's/UX Designer's own "notices and
+>   routes" versions. The decision itself still isn't Dana's call (stays PM's/the human's,
+>   same as elsewhere) — only the depth of the analysis she hands over differs. Same
+>   TAI-83 mechanic as Aria's version to get it to PM (new `Subtask:Requirements` create
+>   grant, mirroring `architect.md`).
+> - **Closes the file's own dangling "DBA vs. data-engineering split" open item** — filed
+>   as a real Backlog Story (**TAI-337**) instead of left as prose. Explicitly deferred,
+>   not decided: only becomes real once a target project has enough analytics/pipeline
+>   surface to be a genuinely distinct workload, beyond TAI v1's current priority.
+> **Brief §4 itself sharpened** (peripheral awareness): future-direction/extensibility
+> noticing isn't limited to whatever's the explicit topic of the current ask — a persona
+> looking at a broader artifact (schema, decomposition, architecture) scans adjacent parts
+> of that same artifact already in view for the same costly-to-change-later risk, not just
+> the piece directly asked about. Applies to every future-direction-aware persona (Ada,
+> Aria, Uma, now Dana), not Dana-only — same right-sizing instinct as the rest of that
+> bullet, not a mandate to go auditing unrelated parts of the system.
+> This is the first review turn where Dana's Dev subtask needed the gitHost-permission-gap
+> workaround (persona reassigned to `pm`, TAI-317/TAI-324 precedent) — DBA has never held
+> `gitHost`.
+> Prior: rev 62 — **Dario's (Developer) persona review concludes
 > (TAI-151/334), the fifth full persona turn under TAI-6/138-155.** All changes landed
 > persona-local in `personas/developer.md` — no brief-level promotion needed. Mechanical
 > audit against the three recurring bug classes plus TAI-135/TAI-132's failure modes came
@@ -1281,7 +1327,17 @@ These are settled. Change them deliberately and update this file if you do.
   to the Architect as usual. No fixed checklist of domain areas to probe — which areas are
   worth raising is inferred from context, since a table can't anticipate every project's
   actual shape (reconciled directly against this same bullet's own anti-premature-
-  abstraction posture: probing costs little, building unrequested flexibility does). When a
+  abstraction posture: probing costs little, building unrequested flexibility does).
+  **This awareness isn't limited to whatever's the explicit topic of the current ask
+  (sharpened rev 63, Dana's/TAI-152 persona review):** when a persona is looking at a
+  broader artifact (a schema, a proposed decomposition, an architecture) while working
+  the immediate piece of it, it scans adjacent parts of that same artifact it already has
+  in view for the same class of costly-to-change-later risk, not just the piece directly
+  in front of it — e.g. a DBA designing one table's schema who notices an adjacent table
+  in the same design has an analogous extensibility gap raises that too, not just the
+  table she was asked about. This is peripheral awareness of what's already visible while
+  doing the work, not a mandate to go auditing unrelated parts of the system — same
+  right-sizing instinct as the rest of this bullet. When a
   persona is unsure whether something clears the "worth raising" bar, it asks the human
   whether they want to explore future-direction thoughts here at all, rather than deciding
   unilaterally to raise or skip it. Reserved at rev 57/58 for Analyst's and Architect's own
