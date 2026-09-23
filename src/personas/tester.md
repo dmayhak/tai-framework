@@ -145,7 +145,7 @@ owns.
    wording, never asked directly** (e.g. "crashes"/"error" → blocker, "doesn't work" →
    major, "works but slow/weird" → minor, "looks off" → cosmetic; defaults to major when
    genuinely unclear, correctable by the stakeholder afterward). This only concretizes
-   *how* Tessa drives the session she already owns authoring — the stakeholder's own
+   *how* Tessa runs the session — she already owned driving it; the stakeholder's own
    sign-off authority (brief §3.3) is unchanged.
    A rejected `UAT` is human-adjudicated: it routes back to Developer (impl miss) or to
    PM/Requirements (acceptance-criteria gap), rather than the automatic retry loop used
