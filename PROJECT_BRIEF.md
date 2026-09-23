@@ -4,7 +4,55 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-22 (rev 61 — **Uma's (UX Designer) persona review concludes
+> **Last updated:** 2026-09-22 (rev 62 — **Dario's (Developer) persona review concludes
+> (TAI-151/334), the fifth full persona turn under TAI-6/138-155.** All changes landed
+> persona-local in `personas/developer.md` — no brief-level promotion needed. Mechanical
+> audit against the three recurring bug classes plus TAI-135/TAI-132's failure modes came
+> back clean this time (no stale prose found, unlike the first four turns) — the review
+> instead compared Dario directly against BMAD-METHOD's Amelia (dev-story workflow) and
+> GSD's `gsd-executor`. Four changes:
+> - **Unit-tests-are-part-of-Dev reworked to explicit red→green→refactor ordering**: write
+>   the failing test first, write minimal code to pass, refactor while keeping tests green
+>   — adopted from BMAD's Amelia, who mandates the same ordering.
+> - **New deviation-handling discipline for mid-implementation discovery**: a small,
+>   contained issue (in-reach, no new dependency) gets fixed inline and noted in
+>   implementation notes, whether it's a bug in the code being touched or a correctness/
+>   security gap the change needs to actually work. A bigger issue outside the current
+>   Story/Bug's actual scope doesn't get silently fixed (scope creep) or silently dropped —
+>   Dario drafts a Bug proposal and hands it to PM to confirm/create, reusing
+>   `workflows/bug.md`'s Resolved D7 PostDeploy-minor propose-then-PM-confirms mechanic
+>   rather than inventing new machinery. The structural backstop against scope quietly
+>   growing isn't this discipline alone — Cole's existing "reviews against the spec, not
+>   personal style preference" principle already catches anything that made it into the
+>   diff without being traceable to scope. Adapted from GSD's Rule-1/2/3 auto-fix vs.
+>   Rule-4 ask-for-architectural-changes taxonomy, simplified to fit TAI's own Bug-ticket
+>   vocabulary rather than importing GSD's separate deferred-items.md mechanism.
+> - **New never-adds-a-new-package-dependency-unilaterally gate**: flags a needed library
+>   the spec didn't call for to the human before adding it, naming realistic alternatives
+>   and a stated lean — the same alternatives-first discipline TAI-107 established for
+>   Architect — rather than just asking "can I add X?" The human decides, including
+>   whether to have that conversation with Architect out-of-band first. Adapted from
+>   BMAD's Amelia, who halts for user approval before any dependency beyond the story's
+>   own spec.
+> - **New 3-consecutive-failed-attempts stuck-approach rule**: after 3 failed attempts at
+>   making an approach work, Dario stops, documents what was tried and why it didn't work,
+>   and either raises a `SpikeTask` or asks the human directly. Explicitly distinct from
+>   the brief's own retry-once-then-escalate rule for a failed *checkpoint* (§4/§5.4) — a
+>   different kind of failure, not a contradicting number. Adapted from both competitors
+>   (BMAD: 3 consecutive implementation failures → HALT; GSD: 3 auto-fix attempts → stop
+>   and document).
+> **Future-direction/extensibility awareness (brief §4) was explicitly considered and
+> declined for Dario** — he doesn't decide product scope or architecture, and the new
+> dependency-gate and out-of-scope-discovery mechanics above already route anything with
+> real future-direction weight up to Architect or the human rather than Dario deciding it
+> himself. No permission-block changes — the Bug-propose mechanic reuses the existing
+> PM-confirms pattern (same as DevOps in the PostDeploy precedent) rather than granting
+> Dario a new `create` right, and this is the first persona turn that didn't need the
+> gitHost-permission-gap workaround (TAI-324/331 both did) — Dario already holds `gitHost`
+> from TAI-33/34 (createPullRequest) and TAI-159/rev 52 (mergePullRequest).
+> Competitor research this session: BMAD-METHOD's Amelia (`bmad-agent-dev`/`bmad-dev-story`
+> skills) and GSD's `gsd-executor` agent, read directly — feeds TAI-283/284.
+> Prior: rev 61 — **Uma's (UX Designer) persona review concludes
 > (TAI-150/331), the fourth full persona turn under TAI-6/138-155.** All changes landed
 > persona-local in `personas/ux-designer.md`; §3.7's shared elicitation-escalation posture
 > gains a third confirmed instance (no new brief-level mechanics needed, since Uma's version
