@@ -1616,10 +1616,10 @@ operates on a real git PR, not Jira transitions alone —
   reopening rule.
 
 **Revised (rev 52 design, TAI-159 ADR — supersedes the CodeReview-subtask flow above).
-Implemented (rev 52, TAI-160):** a real, near-term requirement for N-of-M PR approvals surfaced a
-structural gap the design above didn't anticipate — a Jira subtask needs exactly one
-`Assignee` (§5.5's hard gate), and there's no honest single assignee for "the" review
-under a multi-approver policy. Revised chain —
+Implemented (rev 52, TAI-160):** a real, near-term requirement for N-of-M PR approvals
+surfaced a structural gap the design above didn't anticipate — a Jira subtask needs
+exactly one `Assignee` (§5.5's hard gate), and there's no honest single assignee for
+"the" review under a multi-approver policy. Revised chain —
 ```
 [Dev subtask, stays In Progress] --opens PR--> [reviewed live on the git host] --merges PR--> [Dev subtask -> Done]
 ```
