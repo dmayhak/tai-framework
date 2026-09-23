@@ -4,7 +4,27 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-23 (rev 65 — **Tessa's (Tester) persona review concludes
+> **Last updated:** 2026-09-23 (rev 66 — **§8 items 35/36 resolved: TAI-283/284 (the
+> aggregate competitor-comparison Spikes) shipped.** Synthesized from all nine
+> TAI-6/138-155 persona-review discussions' own competitor research (each turn already
+> read the relevant BMAD-METHOD/GSD/Spec Kit source directly) rather than a fresh
+> investigation. TAI-283: per-persona job/scope audit with an explicit like/dislike call
+> per competitor (Confluence page 41123841). TAI-284: whole-system comparison — where TAI
+> excels (Jira/Confluence/git-host as the real system of record vs. both competitors'
+> local-file state; the explicit permission/checkpoint model; the two-axis owner model;
+> rolling-wave decomposition vs. Spec Kit's rejected clarification cap; structured
+> git-host-native review findings), where it falls short (adversarial review discipline
+> was missing until this review effort itself; no AI/LLM-feature-building support,
+> genuinely out of v1 scope; quality-gate/NFR-assessment depth for testing is a shared
+> gap, not TAI-specific; heavier ticket-creation ceremony than a single-developer tool,
+> an honest trade-off not a flaw; the whole review's designs are reasoned but not yet
+> battle-tested) — and four ranked improvement candidates, the top one being simply to
+> execute the 14 deferred clean-session test spike-tasks (Confluence page 41156609). Both
+> Spikes transitioned Done, PM-confirmed Confluence-only outcome per `workflows/spike.md`
+> — no new Story spawned, since actionable findings already landed persona-by-persona
+> during the review itself.
+>
+> Prior: rev 65 — **Tessa's (Tester) persona review concludes
 > (TAI-154/343), the eighth full persona turn under TAI-6/138-155.** Mechanical audit
 > came back clean (no stale prose, all `confluenceOutputs` described, rev-52/TAI-314/315/
 > 316 test-tier-stays-open behavior consistent across `developer.md`/`story.md`/
@@ -2330,21 +2350,18 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     now fetch `origin` and auto-fast-forward the local default branch when safe (clean
     fast-forward only, never merge/rebase/force), debounced ~10min via
     `.tai/last-fetch.json`.
-35. **Systematic per-persona job/scope audit against competitor frameworks (rev 55,
-    2026-08-31, open, sized as a real investigation).** For each of the 9 personas: what
-    tickets do they actually touch, what marks their work "done," how deep do they dig,
-    and what's their focus — compared against GSD/BMAD-METHOD/Spec Kit's equivalent agent
-    roles, with an explicit likes/dislikes call on each competitor. The rev 22 survey (§8
-    items 21-26) compared specific mechanisms (uncertainty markers, completion markers,
-    checkpoint taxonomy, …), not full per-persona scope — this is a different, broader
-    pass. Scale suggests a dedicated Spike or Analyst-led investigation, not a quick brief
-    edit. **See TAI-283 (Spike, Backlog).**
-36. **Overall TAI-vs-competition comparison (rev 55, 2026-08-31, open, sized as a real
-    investigation).** Follow-on to item 35: once the per-persona comparison exists, do a
-    "real" comparison of TAI against GSD/BMAD-METHOD/Spec Kit as whole systems — where TAI
-    wins, where it falls short, concrete improvement candidates. Same "real investigation,
-    not a brief edit" scale note as item 35; likely shares its Spike. **See TAI-284 (Spike,
-    Backlog).**
+35. ~~**Systematic per-persona job/scope audit against competitor frameworks**~~ — **RESOLVED
+    (rev 55 → rev 66, 2026-09-23).** For each of the 9 personas: what tickets they actually
+    touch, what marks their work "done," how deep they dig, and what's their focus —
+    compared against GSD/BMAD-METHOD/Spec Kit's equivalent agent roles, with an explicit
+    likes/dislikes call on each competitor. Delivered as a synthesis of all nine
+    TAI-6/138-155 persona-review discussions' own competitor research, not a separate
+    investigation — each turn already read the relevant competitor source directly.
+    **Shipped:** TAI-283 (Spike, Done), Confluence page 41123841.
+36. ~~**Overall TAI-vs-competition comparison**~~ — **RESOLVED (rev 55 → rev 66,
+    2026-09-23).** Follow-on to item 35: a "real" comparison of TAI against GSD/BMAD-
+    METHOD/Spec Kit as whole systems — where TAI wins, where it falls short, concrete
+    improvement candidates. **Shipped:** TAI-284 (Spike, Done), Confluence page 41156609.
 37. **Extend the out-of-band-human-edit posture from git hosts to Jira/Confluence directly
     (rev 55, 2026-08-31, open).** §6/the TAI-34 ADR already establish that a human acting
     directly on the git host (reviewing, merging) is treated as authoritative, not fought —
