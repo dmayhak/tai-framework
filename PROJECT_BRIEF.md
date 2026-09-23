@@ -49,7 +49,7 @@
 > PM-confirms pattern (same as DevOps in the PostDeploy precedent) rather than granting
 > Dario a new `create` right, and this is the first persona turn that didn't need the
 > gitHost-permission-gap workaround (TAI-324/331 both did) — Dario already holds `gitHost`
-> from TAI-112/159.
+> from TAI-33/34 (createPullRequest) and TAI-159/rev 52 (mergePullRequest).
 > Competitor research this session: BMAD-METHOD's Amelia (`bmad-agent-dev`/`bmad-dev-story`
 > skills) and GSD's `gsd-executor` agent, read directly — feeds TAI-283/284.
 > Prior: rev 61 — **Uma's (UX Designer) persona review concludes
