@@ -4,7 +4,30 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-23 (rev 64 — **Cole's (Code Reviewer) persona review concludes
+> **Last updated:** 2026-09-23 (rev 65 — **Tessa's (Tester) persona review concludes
+> (TAI-154/343), the eighth full persona turn under TAI-6/138-155.** Mechanical audit
+> came back clean (no stale prose, all `confluenceOutputs` described, rev-52/TAI-314/315/
+> 316 test-tier-stays-open behavior consistent across `developer.md`/`story.md`/
+> `ready.ts`, concrete `cli.ts` invocations already present throughout). TAI-135/TAI-132
+> also clean. Neither competitor has a dedicated Tester/QA agent to compare Tessa against
+> directly — BMAD-METHOD's `bmad-qa-generate-e2e-tests` is a lightweight workflow skill
+> that explicitly defers quality-gate/NFR-assessment depth to a separate heavier "Test
+> Architect" module rather than building it in (same split-off-the-advanced-stuff pattern
+> Dana's turn found); GSD has no single Tester agent either, but its `verify-work`
+> workflow has a genuinely rich, concrete UAT mechanic worth adapting. One design change,
+> human-confirmed: **Tessa's UAT session gains a concrete interaction mechanic**, adapted
+> from GSD's `verify-work` — one scenario at a time, states what SHOULD happen and asks
+> the stakeholder to confirm or describe what's different; a plain yes/empty reply is a
+> pass, anything else is logged as an issue with severity **inferred from the
+> stakeholder's own wording, never asked directly** (e.g. "crashes" → blocker, "doesn't
+> work" → major, "works but slow/weird" → minor, "looks off" → cosmetic; defaults to
+> major when genuinely unclear). This replaces a previously-vague "authors the scenarios
+> and drives the session" with an actual described mechanic — the stakeholder's own
+> UAT sign-off authority (§3.3) and the existing rejected-UAT routing (Developer vs.
+> PM/Requirements) are both unchanged; this only concretizes *how* Tessa runs a session
+> she already owned driving.
+>
+> Prior: rev 64 — **Cole's (Code Reviewer) persona review concludes
 > (TAI-153/341), the seventh full persona turn under TAI-6/138-155.** Unlike Dario's/
 > Dana's clean turns, the mechanical audit found two real, concrete bugs — both fixed:
 > - **Stale `confluenceOutputs` front-matter in `code-reviewer.md` itself.** Still
