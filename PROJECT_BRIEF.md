@@ -4,7 +4,39 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-23 (rev 63 — **Dana's (DBA) persona review concludes
+> **Last updated:** 2026-09-23 (rev 64 — **Cole's (Code Reviewer) persona review concludes
+> (TAI-153/341), the seventh full persona turn under TAI-6/138-155.** Unlike Dario's/
+> Dana's clean turns, the mechanical audit found two real, concrete bugs — both fixed:
+> - **Stale `confluenceOutputs` front-matter in `code-reviewer.md` itself.** Still
+>   declared `review-notes` as a Confluence output type, contradicting the body's own
+>   rev-52 (TAI-159 ADR) rewrite, which routes review notes to a real PR comment via
+>   `comment-findings`, never Confluence — the rev-52 rewrite (TAI-160) updated the rest
+>   of the file but missed this one block. Fixed: `confluenceOutputs: []`, with a comment
+>   explaining why.
+> - **Three stale "not yet built" annotations in this brief** (§5.4, §8 item 20), all
+>   describing the same rev-52/TAI-159 CodeReview-retirement redesign as unimplemented —
+>   it has actually been fully live in code since TAI-160 shipped (`ready.ts`'s
+>   `readyToReview`/`readyToTest`/`readyToMerge`, `cli.ts`'s `git-pr review`,
+>   `git/pr-reviewers.ts`). 11 revs stale (52→63); missed by TAI-171/177's earlier
+>   doc-staleness pass, which touched `story.md`/`bug.md`/`dependencies.md` but not this
+>   file. Fixed: reworded to "Implemented (rev 52, TAI-160)".
+>
+> TAI-135/TAI-132's failure modes both came back clean (concrete `cli.ts` commands already
+> present; cross-references in `developer.md`/`story.md`/`pm.md` already consistent with
+> rev 52).
+>
+> One design change, human-confirmed after comparing against competitors: **Cole gains an
+> explicit adversarial default stance.** Both BMAD-METHOD's `bmad-code-review` (parallel
+> Blind Hunter/Edge Case Hunter/Acceptance Auditor layers) and GSD's `gsd-code-reviewer`
+> ("FORCE stance: assume every submitted implementation contains defects," named
+> anti-patterns for going soft) independently converge on this — Cole's prior framing was
+> neutral/collaborative ("verify... is sound") with no explicit instruction to resist the
+> pull toward rubber-stamping. New Core principle: assumes the diff has a defect until
+> traced through and ruled out; names concrete anti-patterns to resist (stopping at
+> surface issues, treating passing tests/compiling as evidence of correctness, softening a
+> finding's `severity` to avoid seeming harsh).
+>
+> Prior: rev 63 — **Dana's (DBA) persona review concludes
 > (TAI-152/338), the sixth full persona turn under TAI-6/138-155.** Mechanical audit
 > came back clean again (no stale prose, all `confluenceOutputs` described, concrete
 > `cli.ts` invocations already present in Handoff). Unlike every prior turn, neither
@@ -1583,8 +1615,8 @@ operates on a real git PR, not Jira transitions alone —
   next refresh and reflected, never fought — same stance as §4's Confluence-gate-
   reopening rule.
 
-**Revised (rev 52 design, TAI-159 ADR — supersedes the CodeReview-subtask flow above;
-not yet built):** a real, near-term requirement for N-of-M PR approvals surfaced a
+**Revised (rev 52 design, TAI-159 ADR — supersedes the CodeReview-subtask flow above).
+Implemented (rev 52, TAI-160):** a real, near-term requirement for N-of-M PR approvals surfaced a
 structural gap the design above didn't anticipate — a Jira subtask needs exactly one
 `Assignee` (§5.5's hard gate), and there's no honest single assignee for "the" review
 under a multi-approver policy. Revised chain —
@@ -1782,9 +1814,9 @@ comment's content.
   is treated as authoritative, not fought — same principle as this section's own
   human-authority stance and §4's Confluence-gate-reopening rule. See the TAI-34 ADR.
   **Implemented (rev 25, TAI-38/39/40)**, verified against the live TAIT scratch repo.
-  **Superseded (rev 52, TAI-159 ADR, not yet built):** the `CodeReview` subtask is
-  retired going forward in favor of querying Bitbucket's own PR approval state live —
-  see §5.4's "Revised (rev 52 design)" block. The one-way-sync and human-authority
+  **Superseded (rev 52, TAI-159 ADR). Implemented (rev 52, TAI-160):** the `CodeReview`
+  subtask is retired going forward in favor of querying Bitbucket's own PR approval state
+  live — see §5.4's "Revised (rev 52 design)" block. The one-way-sync and human-authority
   principles stated above are kept and extended, not replaced.
 - **Branch unit:** parent Story/Bug. Name = parent issue key + very short slug
   (e.g. `PROJ-123-user-login`).
@@ -2110,9 +2142,9 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     §5.4 and the TAI-34 ADR (Confluence, TA space). **Implemented (rev 25, TAI-38/39/40):**
     Develop opens a real PR, CodeReview acts on it, Merge/Deploy merges it gated on commit
     status; verified against the live TAIT scratch repo (TAI-40 integration test).
-    **Further revised (rev 52, TAI-159 ADR, not yet built):** the `CodeReview` subtask
-    itself is retired in favor of querying the git host's PR approval state live — see
-    §5.4's "Revised (rev 52 design)" block.
+    **Further revised (rev 52, TAI-159 ADR). Implemented (rev 52, TAI-160):** the
+    `CodeReview` subtask itself is retired in favor of querying the git host's PR approval
+    state live — see §5.4's "Revised (rev 52 design)" block.
 21. ~~**Explicit uncertainty markers in generated artifacts**~~ (rev 22, inspired by
     GitHub Spec Kit's `NEEDS CLARIFICATION` convention) — **RESOLVED (rev 23), narrow:**
     adopted, but scoped to **Kickoff-stage docs only** (PRD/UX flows, `workflows/kickoff.md`)
