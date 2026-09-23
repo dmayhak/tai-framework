@@ -11,6 +11,7 @@ import {
     isInitComplete,
     checkInitCompletion,
     renderEnvFile,
+    mergeEnvContent,
     writeEnvFile,
     writeClaudeMdPointer,
     verifyJiraSetup,
@@ -390,6 +391,74 @@ describe("writeEnvFile — sequencing", () => {
             const content = await readFile(filePath, "utf-8");
             assert.match(content, /TAI_PROJECT_KEY=PROJ/);
         });
+    });
+
+    it("preserves a pre-existing .env's own content instead of overwriting it (regression: found live on a real target project)", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "jira", "ok");
+            await markStepDone(taiRoot, "confluence", "ok");
+            const filePath = path.join(dir, ".env");
+            await writeFile(
+                filePath,
+                "DATABASE_URL=postgres://user:pass@localhost:5432/app\nHTTP_ADDR=:8080\nTAI_GIT_WORKSPACE=dmayhak\n",
+                "utf-8"
+            );
+
+            await writeEnvFile(dir, taiRoot, {
+                projectKey: "PROJ",
+                spaceKey: "SPC",
+                siteUrl: "https://x",
+                email: "a@b.c",
+                apiToken: "tok",
+            });
+
+            const content = await readFile(filePath, "utf-8");
+            assert.match(content, /DATABASE_URL=postgres:\/\/user:pass@localhost:5432\/app/);
+            assert.match(content, /HTTP_ADDR=:8080/);
+            assert.match(content, /TAI_GIT_WORKSPACE=dmayhak/);
+            assert.match(content, /TAI_PROJECT_KEY=PROJ/);
+        });
+    });
+
+    it("updates an already-TAI-managed key in place on re-run rather than duplicating it", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "jira", "ok");
+            await markStepDone(taiRoot, "confluence", "ok");
+            const filePath = path.join(dir, ".env");
+            await writeFile(filePath, "TAI_PROJECT_KEY=OLD\nDATABASE_URL=postgres://x\n", "utf-8");
+
+            await writeEnvFile(dir, taiRoot, {
+                projectKey: "NEW",
+                spaceKey: "SPC",
+                siteUrl: "https://x",
+                email: "a@b.c",
+                apiToken: "tok",
+            });
+
+            const content = await readFile(filePath, "utf-8");
+            assert.match(content, /TAI_PROJECT_KEY=NEW/);
+            assert.doesNotMatch(content, /TAI_PROJECT_KEY=OLD/);
+            assert.match(content, /DATABASE_URL=postgres:\/\/x/);
+            assert.equal(content.match(/TAI_PROJECT_KEY=/g)?.length, 1);
+        });
+    });
+});
+
+describe("mergeEnvContent", () => {
+    it("returns the generated content verbatim when there's nothing existing to preserve", () => {
+        const generated = "TAI_PROJECT_KEY=PROJ\n";
+        assert.equal(mergeEnvContent("", generated), generated);
+        assert.equal(mergeEnvContent("   \n", generated), generated);
+    });
+
+    it("leaves comments and blank lines in the existing file untouched", () => {
+        const existing = "# my app's own config\n\nDATABASE_URL=postgres://x\n";
+        const merged = mergeEnvContent(existing, "TAI_PROJECT_KEY=PROJ\n");
+        assert.match(merged, /# my app's own config/);
+        assert.match(merged, /DATABASE_URL=postgres:\/\/x/);
+        assert.match(merged, /TAI_PROJECT_KEY=PROJ/);
     });
 });
 
