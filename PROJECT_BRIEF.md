@@ -4,7 +4,30 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-24 (rev 67 — **TAI-351: PM's Kickoff subtask-creation
+> **Last updated:** 2026-09-24 (rev 68 — **TAI-352: Ada's Kickoff discovery now does real
+> elicitation, and creates the project's Confluence home page.** Found live on the same
+> second target project: Ada read the project's own pre-existing rough design docs, did
+> external research, and produced a full Epic decomposition — all without ever having an
+> actual conversation with the human about purpose, requirements, or scope. Root cause:
+> `analyst.md` item 2 named "requirements elicitation" as something Ada performs, but
+> only the *separate* market/competitive/domain research activity had an explicit
+> opt-in ask-first gate (rev 59) — elicitation itself had no equivalent mandate for when
+> or how rigorously it happens. Fixed: Ada's first move at Kickoff discovery is now a
+> real conversation about purpose/requirements/scope, explicit and prior to synthesis.
+> **New Core principle: pre-existing project docs are a discussion-facilitation device,
+> not settled input** — human-confirmed nuance: such docs may reflect a prior version of
+> the project's thinking, not what's actually being built now; Ada reads them first only
+> to ground good questions, never as a substitute for confirming current intent.
+> Right-sized output still applies — not a mandate for exhaustive interrogation on every
+> Kickoff, just that real elicitation happens before analysis is finalized.
+> Market/competitive/domain research stays a separate, unchanged opt-in gate. Second,
+> related fix (human direction): Ada's existing Project Home Page capability (TAI-300)
+> was purely periodic/on-demand with no explicit trigger — a brand-new project's
+> Confluence space would sit on the default scaffold indefinitely. Now created during
+> Kickoff discovery itself, the natural first moment enough is known to make it
+> meaningful; ongoing refresh cadence is unchanged.
+>
+> Prior: rev 67 — **TAI-351: PM's Kickoff subtask-creation
 > authority fixed — same contradiction shape TAI-317/rev-57 already fixed once, just
 > missed for Kickoff's `Research`/`UxDesign` case.** Found live setting up a second
 > target project: Perry created the Epic + Kickoff Story, then explicitly deferred
