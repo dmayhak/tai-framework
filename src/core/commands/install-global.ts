@@ -41,6 +41,21 @@ function skillFrontmatter(name: string, description: string): string {
     return `---\nname: ${name}\ndescription: ${description}\n---\n`;
 }
 
+/** TAI-348/349: the one sentence shared between every place a human might be told what to
+ *  do about a genuinely fresh project (nothing in Jira yet) -- `/tai-ready`'s own
+ *  empty-list fallback below, and `/tai-init`'s completion hint (`NEXT_STEP_HINT`,
+ *  `src/hosts/cli.ts`, imported from here rather than duplicated). Kept in one place so the
+ *  two surfaces can't drift apart the way they would if each wrote its own version. There
+ *  is no dedicated command for this yet (TAI-348, open design question) -- considered and
+ *  explicitly rejected: a one-time-use `tai-kickoff` command (real overhead for something
+ *  invoked once per project's whole lifetime) and extending `/tai-work` to accept no
+ *  `<ISSUE-KEY>` (changes an established contract, brief §3.8). This plain-language
+ *  fallback is what actually works today. */
+export const PM_KICKOFF_HINT =
+    "ask your assistant directly to act as Perry (PM) and kick off the project, per " +
+    'personas/pm.md\'s "Project initiation" behavior. She creates the initial Epic + ' +
+    "Kickoff Story and decides which subtasks to start with";
+
 function workSkillBody(taiHome: string): string {
     return (
         `Before doing anything else, make sure <ISSUE-KEY> is assigned and already ` +
@@ -90,6 +105,15 @@ function readySkillBody(taiHome: string): string {
         "separate action needed.\n" +
         "- **Ready Work** — genuinely not-yet-started (open, and — for a subtask — with every " +
         "precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`).\n\n" +
+        "**If both sections come back empty (TAI-348/349, found live 2026-09-24)** — no error, " +
+        "just genuinely nothing to show — don't end on a vague \"want to handle that another " +
+        "way?\". If this looks like a genuinely fresh project (no Epics/Stories exist at all, not " +
+        "just none currently unblocked), say so and concretely suggest the human " +
+        `${PM_KICKOFF_HINT}. If Epics/Stories DO exist but nothing's unblocked yet (e.g. ` +
+        "everything's sitting in Backlog), that's a different, ordinary state — say that instead, " +
+        "don't suggest a fresh-project kickoff that doesn't apply. Still end your turn afterward " +
+        "either way — same stop-and-wait rule as a non-empty list, just with a real answer " +
+        "instead of a shrug.\n\n" +
         "Both sections sort Highest-priority tickets to the top and display each line's priority " +
         "(TAI-195/199; extended to In Progress 2026-08-26 — the original decision predates that " +
         "section existing). A subtask with no `Priority` of its own inherits its parent Story/" +
@@ -356,7 +380,9 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts init status\n` +
         "```\n\n" +
-        'If it reports "Fully initialized," nothing further is needed. Otherwise — including a ' +
+        'If it reports "Fully initialized," relay its next-step hint to the human verbatim ' +
+        "(TAI-349) — don't just say \"done\" and stop, since a genuinely fresh project has no " +
+        "obvious next action otherwise. Otherwise — including a " +
         "fresh project with no state file at all — read the full checklist yourself " +
         `(\`${taiHome}/docs/target-project-setup-checklist.md\`) and walk the human through it ` +
         "step by step, in this order: Jira setup (issue types, the `Persona` field, workflow " +

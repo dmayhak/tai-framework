@@ -62,7 +62,7 @@ import {
     type EpicSummary,
 } from "../core/workspace/living-doc-staleness.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
-import { installGlobal, defaultTaiHome } from "../core/commands/install-global.js";
+import { installGlobal, defaultTaiHome, PM_KICKOFF_HINT } from "../core/commands/install-global.js";
 import {
     INIT_STEPS,
     readInitState,
@@ -997,17 +997,34 @@ export async function renderIssueDetail(
 
 // ---------- init subcommand (TAI-116 piece 3, TAI-130) ----------
 
-function renderInitStepResult(step: InitStep, ok: boolean, detail: string): string {
-    return `# init ${step}\n\n${ok ? "Done." : "Not done."} ${detail}`;
+// TAI-349: /tai-init used to just stop here with no pointer to what happens next -- a real
+// gap the human found live (2026-09-24). Deliberately does NOT check whether an Epic
+// already exists (would need a live Jira query this step never otherwise makes) -- worded
+// conditionally instead, so it reads correctly whether this is a fresh project or a
+// re-run against an already-active one. Deliberately does NOT say "run /tai-work" --
+// found live the same day that /tai-work always requires an existing <ISSUE-KEY> (brief
+// §3.8), which doesn't exist yet on a genuinely fresh project; there is no dedicated
+// command for this bootstrap step today (see TAI-348 -- a one-time-use `tai-kickoff`
+// command and extending `/tai-work` to accept no key were both considered and rejected,
+// see PM_KICKOFF_HINT's own comment for why). Shares its actual wording with
+// `/tai-ready`'s empty-list fallback (`readySkillBody`) via `PM_KICKOFF_HINT` rather than
+// duplicating it, so the two surfaces can't drift apart.
+const NEXT_STEP_HINT = `If this is a fresh project with nothing in it yet: there's no dedicated command for this yet (TAI-348) -- ${PM_KICKOFF_HINT}.`;
+
+export function renderInitStepResult(step: InitStep, ok: boolean, detail: string, fullyInitialized = false): string {
+    const hint = ok && fullyInitialized ? `\n\n${NEXT_STEP_HINT}` : "";
+    return `# init ${step}\n\n${ok ? "Done." : "Not done."} ${detail}${hint}`;
 }
 
-function renderInitStatus(state: InitState): string {
+export function renderInitStatus(state: InitState): string {
     const lines = ["# /tai-init status", ""];
     for (const step of INIT_STEPS) {
         const s = state.steps[step];
         lines.push(s ? `- [x] ${step} — ${s.detail}` : `- [ ] ${step}`);
     }
-    lines.push("", isInitComplete(state) ? "**Fully initialized.**" : "**Not yet fully initialized.**");
+    const complete = isInitComplete(state);
+    lines.push("", complete ? "**Fully initialized.**" : "**Not yet fully initialized.**");
+    if (complete) lines.push("", NEXT_STEP_HINT);
     return lines.join("\n");
 }
 
@@ -1108,8 +1125,8 @@ async function main(): Promise<void> {
         if (action === "claude-md") {
             const taiHome = initArgs[0] ?? defaultTaiHome();
             const filePath = await writeClaudeMdPointer(process.cwd(), taiRoot, taiHome);
-            await markStepDone(taiRoot, "claude-md", `Wrote ${filePath}.`);
-            console.log(renderInitStepResult("claude-md", true, `Wrote ${filePath}.`));
+            const nextState = await markStepDone(taiRoot, "claude-md", `Wrote ${filePath}.`);
+            console.log(renderInitStepResult("claude-md", true, `Wrote ${filePath}.`, isInitComplete(nextState)));
             return;
         }
 
