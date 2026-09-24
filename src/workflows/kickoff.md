@@ -11,10 +11,22 @@ implementation work is scheduled.
 
 ## Who creates it
 **PM** creates the initial Jira shell for a new initiative — an Epic plus this
-Kickoff Story — then identifies which of the subtasks below are appropriate to
-start (typically at least `Research`). Each subtask is created by its owning
-persona once invoked, same as everywhere else — PM creates the container, not
-the subtasks (see `personas/pm.md`, `personas/analyst.md`).
+Kickoff Story — then, per the general TAI-83 "Eager Subtask Creation" exception
+(`workflows/dependencies.md`), creates whichever of the subtasks below she's already
+judged appropriate to start (rev 66, found live 2026-09-24 — supersedes the prior
+"PM creates the container, not the subtasks" framing, which contradicted TAI-83's own
+rule the same way TAI-317/rev-57 already fixed once for `Investigate`/
+`ArchitectureDesign`). `Research` and `UxDesign` are typically both immediately
+startable, so Perry usually creates both directly once she judges them needed — creation
+authority and execution ownership stay separate axes, so `Research` still routes to
+Analyst and `UxDesign` to UX Designer regardless of who created the ticket. `Requirements`
+is Perry's own type but precedence-blocked behind `Research`, so it's created naturally
+when she starts PRD drafting, not at this initial moment. `ArchitectureDesign` stays a
+later, situational call (see `personas/pm.md` item 7) — judging whether it's warranted
+this early, before any real discovery has happened, would be speculation, not the real
+judgment TAI-83 requires. Each subtask type's owning persona can still create its own if
+Perry hasn't already, same dedup-search-first mechanics as any other TAI-83 case (see
+`personas/pm.md`, `personas/analyst.md`, `personas/ux-designer.md`).
 
 ## Who owns it (story-level)
 **PM is the default owner/driver of the Kickoff Story itself**, distinct from each
