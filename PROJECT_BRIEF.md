@@ -4,7 +4,23 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-24 (rev 68 — **TAI-352: Ada's Kickoff discovery now does real
+> **Last updated:** 2026-09-24 (rev 69 — **TAI-353: Ada creates `ArchitectureDesign`
+> herself when she recognizes the need, instead of leaving it as an unticketed
+> question.** Found live on the same second target project, same day as rev 68: Ada,
+> doing Kickoff-adjacent discussion-prep research, surfaced a genuine design trade-off
+> (a hierarchy-representation decision) and explicitly named "the Architect-level
+> conversation this doc was built to ground" as the next step — but never created a
+> ticket for it. `analyst.md` item 5 already had the general TAI-83 mechanic for Ada
+> creating `Investigate` herself (rev 57/TAI-317); it just never got generalized to
+> `ArchitectureDesign`, even though it's a valid Kickoff-level subtask type and her own
+> analysis showed she'd already formed the real, non-speculative judgment TAI-83
+> requires. Added the missing `Subtask:ArchitectureDesign` create grant (create only,
+> not `workOn`/`complete` — ownership stays Architect's, mirroring `pm.md`'s identical
+> grant), generalized item 5's language to cover both subtask types with the concrete
+> command, and cross-referenced from item 2 (Kickoff discovery) where the triggering
+> scenario actually happened.
+>
+> Prior: rev 68 — **TAI-352: Ada's Kickoff discovery now does real
 > elicitation, and creates the project's Confluence home page.** Found live on the same
 > second target project: Ada read the project's own pre-existing rough design docs, did
 > external research, and produced a full Epic decomposition — all without ever having an
