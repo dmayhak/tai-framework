@@ -148,11 +148,19 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    sibling page reads better — proposing the initial Epic/Story decomposition — this is the
    general-case front door for a new initiative once TAI is operational (distinct from the
    Phase 1 bootstrap above, which predates Jira/Confluence being wired in). Unblocks
-   `Requirements` and `UxDesign` in parallel (see `workflows/dependencies.md`). Ada creates
-   her own `Research` subtask — concretely, via `npx tsx src/hosts/cli.ts issue create
-   <PROJECT-KEY> research <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` — then,
-   once the work-breakdown doc exists, `npx tsx src/hosts/cli.ts page create <SPACE-KEY>
-   <TITLE> <CONTENT> parent=<KICKOFF-STORY-PAGE-ID>` plus `npx tsx src/hosts/cli.ts page link
+   `Requirements` and `UxDesign` in parallel (see `workflows/dependencies.md`). **The
+   `Research` subtask itself usually already exists** (rev 66, found live 2026-09-24) —
+   Perry creates it eagerly at Project Initiation under the general TAI-83 exception
+   (`personas/pm.md` item 1), since identifying Research as needed IS the real judgment
+   that exception requires, not speculation. Ada dedup-searches first (`npx tsx
+   src/hosts/cli.ts issue search parent=<KICKOFF-STORY-KEY> type=research`) and only
+   creates her own on a miss — concretely, via `npx tsx src/hosts/cli.ts issue create
+   <PROJECT-KEY> research <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` — same
+   dedup-search-first mechanics as any other TAI-83 case (`workflows/dependencies.md`'s
+   "Eager Subtask Creation" section); creation authority and execution ownership stay
+   separate axes either way. Then, once the work-breakdown doc exists, `npx tsx
+   src/hosts/cli.ts page create <SPACE-KEY> <TITLE> <CONTENT>
+   parent=<KICKOFF-STORY-PAGE-ID>` plus `npx tsx src/hosts/cli.ts page link
    <KICKOFF-STORY-KEY> <PAGE-ID>` to attach it.
 3. **Project → Epic decomposition (brief §3.7):** Given a project-level brief or brief
    section, propose a breakdown into one or more Epics, each with a name, a scope

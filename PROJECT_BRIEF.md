@@ -4,7 +4,28 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-23 (rev 66 — **§8 items 35/36 resolved: TAI-283/284 (the
+> **Last updated:** 2026-09-24 (rev 67 — **TAI-351: PM's Kickoff subtask-creation
+> authority fixed — same contradiction shape TAI-317/rev-57 already fixed once, just
+> missed for Kickoff's `Research`/`UxDesign` case.** Found live setting up a second
+> target project: Perry created the Epic + Kickoff Story, then explicitly deferred
+> creating `Research` to a separate Ada invocation — even though her own reasoning had
+> already named it as needed, and the prior text cited TAI-83 as the rule in the same
+> sentence that described doing the opposite of it. `personas/pm.md` item 1 now has Perry
+> create `Research`/`UxDesign` directly once she's judged them needed (both immediately
+> startable, no precedence blocking either), under the same TAI-83 dedup-search-first
+> mechanics as item 7's `Investigate`/`ArchitectureDesign` case — new `Subtask:Research`/
+> `Subtask:UxDesign` create grants added to match. `Requirements` stays different (Perry's
+> own type, but precedence-blocked behind `Research`, so created naturally at PRD-drafting
+> time instead); `ArchitectureDesign` stays a later, situational call (judging it this
+> early would be speculation, not real judgment) — already covered by the existing item 7
+> language. `personas/analyst.md`/`personas/ux-designer.md`/`workflows/kickoff.md` updated
+> to match (dedup-search-first fallback if Perry hasn't already created it, same pattern
+> `analyst.md`'s own `Investigate` handling already uses). One real bug caught in
+> self-review: the actual `issue create` vocabulary for `UxDesign` is `ux-design`
+> (hyphenated), not `uxdesign` — a wrong value would have been a TAI-135-class bug
+> (a command that can't actually run) if shipped uncaught.
+>
+> Prior: rev 66 — **§8 items 35/36 resolved: TAI-283/284 (the
 > aggregate competitor-comparison Spikes) shipped.** Synthesized from all nine
 > TAI-6/138-155 persona-review discussions' own competitor research (each turn already
 > read the relevant BMAD-METHOD/GSD/Spec Kit source directly) rather than a fresh
