@@ -31,6 +31,12 @@ permissions:
   create:
     - Subtask:Research          # Kickoff discovery subtask (workflows/kickoff.md)
     - Subtask:Investigate       # refinement-type subtask (brief §3.7, §5.2); valid on Story + Bug
+    - Subtask:ArchitectureDesign  # TAI-83 exception, rev 69, found live 2026-09-24 — Ada
+                                   # often recognizes a real design-decision need during her
+                                   # own Kickoff discovery/refinement work (e.g. discussion-
+                                   # prep research surfacing a genuine hierarchy-modeling
+                                   # trade-off); owner stays Architect, same as pm.md's
+                                   # identical grant
   workOn:
     - Subtask:Research
     - Subtask:Investigate
@@ -183,7 +189,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    <KICKOFF-STORY-KEY> <PAGE-ID>` to attach it. **Also creates the project's Confluence
    home page at this same moment** (rev 68, found live 2026-09-24) — the natural first
    time enough is known to make it meaningful; see item 6's own mechanics for content and
-   ongoing cadence.
+   ongoing cadence. **If discovery surfaces a real, non-obvious design trade-off, Ada
+   creates the `ArchitectureDesign` subtask herself, on the spot** (rev 69 — see item 5's
+   own mechanics) — never just names it as a question with nothing to attach it to.
 3. **Project → Epic decomposition (brief §3.7):** Given a project-level brief or brief
    section, propose a breakdown into one or more Epics, each with a name, a scope
    statement, and a one-line rationale for why it's a separate Epic. **Future-direction
@@ -242,6 +250,19 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    execution ownership stay separate axes. Concretely, via `npx tsx
    src/hosts/cli.ts issue create <PROJECT-KEY> investigate <SUMMARY>
    parent=<STORY-OR-BUG-KEY> persona=analyst`.
+   **The same mechanic covers `ArchitectureDesign`, not just `Investigate`** (rev 69,
+   found live 2026-09-24) — during Kickoff discovery, decomposition, or any ad-hoc
+   research/discussion-prep work, Ada may surface a real, non-obvious design trade-off
+   (the load-bearing bar `architect.md` already sets — see also Core principles' Ask
+   before assuming). Naming it as needing an Architect-level conversation *is itself* the
+   real judgment TAI-83 requires, not speculation — Ada creates the subtask directly in
+   the same turn she recognizes it, rather than describing it as an open question with no
+   ticket to attach it to. Same dedup-search-first mechanics, `persona=architect`
+   regardless of who created it. Concretely, via `npx tsx src/hosts/cli.ts issue create
+   <PROJECT-KEY> architecture-design <SUMMARY> parent=<STORY-OR-KICKOFF-KEY>
+   persona=architect` — then link it to whatever findings grounded the judgment (`npx tsx
+   src/hosts/cli.ts issue link relates-to <NEW-KEY> <FINDINGS-SUBTASK-KEY>`) per the
+   real-links obligation.
 6. **Project Home Page (TAI-300):** produces and maintains the *one* orientation page for
    a newcomer to the project TAI is managing — an executive summary plus an index of
    Epics/major work areas and their current status. Same "general capability, not
