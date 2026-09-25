@@ -236,9 +236,11 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    probing and research-on-demand (rev 59) apply here too** — same mechanics as item 2 —
    and are, if anything, most relevant at this top level, where a project's overall shape
    is being set.
-5. **Epic → Story decomposition (brief §3.7):** Given a single Epic (scoped — not the whole
-   project), propose the Stories/Bugs under it, tagged with a candidate Story type (brief
-   §5.1 — Spike, Research, Bug, Implementation, etc.). **Rolling-wave depth (brief §3.7
+5. **Epic → Story decomposition (brief §3.7; invoked as the `Research` subtask of a
+   per-Epic Kickoff Story, `personas/pm.md` item 5, TAI-354):** Given a single Epic
+   (scoped — not the whole project), propose the Stories/Bugs under it, tagged with a
+   candidate Story type (brief §5.1 — Spike, Research, Bug, Implementation, etc.).
+   **Rolling-wave depth (brief §3.7
    rev 58, TAI-147/148, same pattern as `personas/pm.md`'s item 5):** the proposal names
    the **full set** of Stories/Bugs so the Epic's whole shape is visible, but only drafts a
    real description + acceptance criteria for whichever ones are already unblocked in the
