@@ -91,6 +91,7 @@ export enum Status {
 
 export enum SubtaskType {
     Research = "research",                   // Analyst
+    EpicReview = "epic-review",               // Analyst drives; a human stakeholder must sign off (TAI-354) — inherently human-gated (see ALWAYS_HUMAN_GATED_SUBTASKS), gates Requirements/UxDesign
     Investigate = "investigate",             // Analyst — Story/Bug refinement (brief §3.7); no fixed unblock effect (brief §8.13)
     Requirements = "requirements",           // PM
     UxDesign = "ux-design",                  // UX Designer
@@ -147,6 +148,7 @@ export function isSubtaskIssueType(issueType: StoryType | SubtaskType | "epic"):
 // even for the fixed-owner types above.
 export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
     [SubtaskType.Research]: Persona.Analyst,
+    [SubtaskType.EpicReview]: Persona.Analyst, // drives the discussion; a human stakeholder co-signs (see ALWAYS_HUMAN_GATED_SUBTASKS)
     [SubtaskType.Investigate]: Persona.Analyst,
     [SubtaskType.Requirements]: Persona.Pm,
     [SubtaskType.UxDesign]: Persona.UxDesigner,
@@ -174,6 +176,7 @@ export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
 export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
     [StoryType.Kickoff]: [
         SubtaskType.Research,
+        SubtaskType.EpicReview, // TAI-354 — human-gated per-Epic discussion/probing of Research's proposed breakdown, before Requirements/UxDesign start
         SubtaskType.Requirements,
         SubtaskType.UxDesign,
         SubtaskType.ArchitectureDesign,
@@ -233,6 +236,7 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
 // human-gated checkpoint takes priority over all autocompletion settings.
 export const ALWAYS_HUMAN_GATED_SUBTASKS: SubtaskType[] = [
     SubtaskType.Uat, // Tester drives the run; a human stakeholder must sign off
+    SubtaskType.EpicReview, // TAI-354 — Analyst drives the discussion; a human stakeholder must sign off
 ];
 
 // ---------- Story-Level Dependencies (discovered, not derivable) ----------
@@ -319,8 +323,12 @@ export interface SubtaskPrecedenceRule {
 
 export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
     [StoryType.Kickoff]: [
-        { before: SubtaskType.Research, after: SubtaskType.Requirements },
-        { before: SubtaskType.Research, after: SubtaskType.UxDesign },
+        { before: SubtaskType.Research, after: SubtaskType.EpicReview },
+        // TAI-354: EpicReview (human-gated per-Epic discussion of Research's proposed
+        // breakdown) sits between Research and Requirements/UxDesign — PRD/UX-flow work
+        // shouldn't start against an epic shape that's still being probed/revised.
+        { before: SubtaskType.EpicReview, after: SubtaskType.Requirements },
+        { before: SubtaskType.EpicReview, after: SubtaskType.UxDesign },
         { before: SubtaskType.Requirements, after: SubtaskType.ArchitectureDesign },
         // Flows and requirements are expected to converge before the Architect
         // finalizes any design (personas/ux-designer.md) — ArchitectureDesign

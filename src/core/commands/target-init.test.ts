@@ -141,6 +141,7 @@ describe("verifyJiraSetup", () => {
                                 "Kickoff",
                                 "Spike",
                                 "Research",
+                                "EpicReview",
                                 "Requirements",
                                 "UxDesign",
                                 "Investigate",

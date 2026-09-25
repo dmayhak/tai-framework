@@ -20,13 +20,17 @@ rule the same way TAI-317/rev-57 already fixed once for `Investigate`/
 startable, so Perry usually creates both directly once she judges them needed — creation
 authority and execution ownership stay separate axes, so `Research` still routes to
 Analyst and `UxDesign` to UX Designer regardless of who created the ticket. `Requirements`
-is Perry's own type but precedence-blocked behind `Research`, so it's created naturally
-when she starts PRD drafting, not at this initial moment. `ArchitectureDesign` stays a
-later, situational call (see `personas/pm.md` item 7) — judging whether it's warranted
-this early, before any real discovery has happened, would be speculation, not the real
-judgment TAI-83 requires. Each subtask type's owning persona can still create its own if
-Perry hasn't already, same dedup-search-first mechanics as any other TAI-83 case (see
-`personas/pm.md`, `personas/analyst.md`, `personas/ux-designer.md`).
+is Perry's own type but precedence-blocked behind `Research` and `EpicReview`, so it's
+created naturally when she starts PRD drafting, not at this initial moment.
+`ArchitectureDesign` stays a later, situational call (see `personas/pm.md` item 7) —
+judging whether it's warranted this early, before any real discovery has happened, would
+be speculation, not the real judgment TAI-83 requires. **`EpicReview` is different from
+all of these: Perry never creates it.** Ada creates it herself the moment her Research
+proposal exists (`personas/analyst.md` item 3, TAI-354) — it isn't a judgment call Perry
+is positioned to make this early, and it only ever makes sense once there's a proposal to
+review. Each other subtask type's owning persona can still create its own if Perry hasn't
+already, same dedup-search-first mechanics as any other TAI-83 case (see `personas/pm.md`,
+`personas/analyst.md`, `personas/ux-designer.md`).
 
 ## Who owns it (story-level)
 **PM is the default owner/driver of the Kickoff Story itself**, distinct from each
@@ -43,16 +47,55 @@ real human holding the PM Project Role, picked via the assignment-helper (brief 
 | Subtask | Owner (default) | Notes |
 |---|---|---|
 | `Research` | Analyst | Market/competitive research, requirements elicitation |
+| `EpicReview` | Analyst + human stakeholder | Mandatory, **inherently human-gated** (never autocompletes, TAI-354) — a real, per-Epic probing discussion of Research's proposed breakdown, not a rubber-stamp read of the doc; gates `Requirements`/`UxDesign` |
 | `Requirements` | PM | PRD drafting |
 | `UxDesign` | UX Designer | Flows, wireframes, mockups |
 | `ArchitectureDesign` | Architect | Optional — only when the initiative has enough technical risk to warrant early design input |
 
 ## Subtask Precedence
 
-`Research` unblocks `Requirements` and `UxDesign` in parallel. When `ArchitectureDesign`
-is used, it waits on **both** `Requirements` and `UxDesign` being Done, not just
-`Requirements` — flows and requirements are expected to converge before the Architect
-finalizes any design (see `personas/ux-designer.md`).
+`Research` unblocks `EpicReview`. `EpicReview` — not `Research` directly — unblocks
+`Requirements` and `UxDesign` in parallel (TAI-354): PRD/UX-flow work shouldn't start
+against an epic shape that's still being probed and potentially revised. When
+`ArchitectureDesign` is used, it waits on **both** `Requirements` and `UxDesign` being
+Done, not just `Requirements` — flows and requirements are expected to converge before the
+Architect finalizes any design (see `personas/ux-designer.md`).
+
+## EpicReview gate (mandatory, human-gated, TAI-354)
+
+Found live (2026-09-25, EXA): Ada's proposed Epic/Story breakdown was written to
+Confluence and immediately treated as settled — the very next thing surfaced as ready to
+work was a Kickoff-subtask-level `ArchitectureDesign` deep-dive, with no step in between
+where a human had actually discussed the breakdown itself. A human reading the doc and
+clicking "looks good, approve" isn't rigorous enough on its own; real issues surface later
+that genuine probing, epic by epic, would have caught up front.
+
+**Mechanism (mirrors `workflows/story.md`'s `UAT` gate exactly):** Ada drives the
+conversation — goes through the proposed breakdown one entry at a time, probes for
+missing/incorrectly-scoped/incorrectly-sequenced epics, and revises the *same*
+work-breakdown Confluence doc in place as questions resolve — but **cannot complete or
+sign off `EpicReview` herself**. Only the human stakeholder can transition the subtask to
+Done; the transition itself is the signal, no `Approved:` comment marker needed. This is
+`ALWAYS_HUMAN_GATED_SUBTASKS` (`story-schema.ts`), same enforcement class as `UAT` —
+never autocompletes, regardless of any autocompletion setting.
+
+**Out-of-band actions are detected and reflected, never fought** — same TAI-34 principle
+already applied to PR reviews/merges (`workflows/story.md`) and `UAT`. However the Done
+transition actually happens — the CLI command below, a human clicking the transition
+directly in Jira, or another AI session with its own Jira access acting on the human's
+behalf — TAI reads the resulting Jira state, not the mechanism that produced it. Nothing
+here requires the transition to come from `npx tsx src/hosts/cli.ts issue transition`
+specifically; that's one concrete way to do it, not the only valid one.
+
+**Not the same gate as the PM+UX Kickoff Review Gate below.** That gate converges the PRD
+and UX-flow *artifacts* once they exist; `EpicReview` is upstream of both — it settles the
+epic/Story *shape* itself, before PRD/UX-flow work is built against it.
+
+**Reused at the Epic level, not just this initial project-level Kickoff (TAI-354):** when
+Perry later decomposes a specific Epic into Stories (`personas/pm.md` item 5), that pass
+now creates its own Kickoff-type Story under that Epic rather than deciding the breakdown
+solo — the same `Research` → `EpicReview` sequence applies there too, scoped to one Epic
+instead of the whole project.
 
 ## Review Gate
 **Required reviewers:** PM + UX Designer
@@ -95,8 +138,11 @@ blocks *further* gate-dependent steps, not work already spawned.
 
 ## Output
 - **Work-breakdown doc** (owned by Analyst) — a Confluence page attached to the Kickoff
-  Story from the `Research` subtask, proposing the initial Epic/Story decomposition; feeds
-  the PRD and UX work below.
+  Story from the `Research` subtask, proposing the initial Epic/Story decomposition;
+  revised in place during `EpicReview`; feeds the PRD and UX work below only once
+  `EpicReview` is Done.
+- **EpicReview sign-off** — no doc of its own; the human stakeholder's own transition of
+  the subtask to Done (TAI-354).
 - PRD (owned by PM)
 - UX flows/mockups (owned by UX Designer)
 - Optional early architecture notes (if `ArchitectureDesign` was used)
@@ -143,8 +189,8 @@ reachable from `To Do`, `In Progress`, or `In Review` (brief §5.3 rev 16) — e
 initiative itself gets deprioritized before discovery concludes.
 
 - **To Do:** PM has created the shell; no subtask work has started.
-- **In Progress:** at least one of `Research`/`Requirements`/`UxDesign`/`ArchitectureDesign`
-  is underway.
+- **In Progress:** at least one of
+  `Research`/`EpicReview`/`Requirements`/`UxDesign`/`ArchitectureDesign` is underway.
 - **In Review:** all present subtasks are Done; waiting on the PM+UX `Approved:` gate
   (see Review Gate above).
 - **Done:** gate passed, Story/Spike tickets created from the WBS.
