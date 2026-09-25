@@ -22,7 +22,7 @@
   "private": true,
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "type": "module",
   "allowScripts": {
     "esbuild@0.28.1": true
