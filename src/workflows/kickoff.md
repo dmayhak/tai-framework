@@ -79,6 +79,14 @@ Done; the transition itself is the signal, no `Approved:` comment marker needed.
 `ALWAYS_HUMAN_GATED_SUBTASKS` (`story-schema.ts`), same enforcement class as `UAT` —
 never autocompletes, regardless of any autocompletion setting.
 
+**Out-of-band actions are detected and reflected, never fought** — same TAI-34 principle
+already applied to PR reviews/merges (`workflows/story.md`) and `UAT`. However the Done
+transition actually happens — the CLI command below, a human clicking the transition
+directly in Jira, or another AI session with its own Jira access acting on the human's
+behalf — TAI reads the resulting Jira state, not the mechanism that produced it. Nothing
+here requires the transition to come from `npx tsx src/hosts/cli.ts issue transition`
+specifically; that's one concrete way to do it, not the only valid one.
+
 **Not the same gate as the PM+UX Kickoff Review Gate below.** That gate converges the PRD
 and UX-flow *artifacts* once they exist; `EpicReview` is upstream of both — it settles the
 epic/Story *shape* itself, before PRD/UX-flow work is built against it.
