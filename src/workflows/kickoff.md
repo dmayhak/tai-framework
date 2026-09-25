@@ -61,6 +61,11 @@ against an epic shape that's still being probed and potentially revised. When
 Done, not just `Requirements` — flows and requirements are expected to converge before the
 Architect finalizes any design (see `personas/ux-designer.md`).
 
+**Satisfying an edge above doesn't trigger anything on its own** — see
+`workflows/dependencies.md`'s Layer 2 note (TAI-354): the next `/tai-work`/`/tai-ready`
+invocation is what actually re-engages a persona to continue, same as everywhere else in
+TAI.
+
 ## EpicReview gate (mandatory, human-gated, TAI-354)
 
 Found live (2026-09-25, EXA): Ada's proposed Epic/Story breakdown was written to

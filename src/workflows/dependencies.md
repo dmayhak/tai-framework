@@ -73,6 +73,23 @@ than each other without needing a different rule set per story.
 `before` rules are all satisfied — a subtask with no applicable rules is
 a root and is always ready.
 
+**Satisfying a precedence edge changes what CAN be reported as ready — it never triggers
+anything on its own (found live, TAI-354, 2026-09-25).** TAI has no event-driven
+automation or background daemon watching Jira for status changes; nothing "fires" just
+because a subtask transitions to Done, however that transition happened (see the
+out-of-band note in `workflows/kickoff.md`'s `EpicReview` gate). `findReadyWork`
+(`ready.ts`) only ever surfaces **already-existing** tickets whose precedence is already
+satisfied — it never creates or invents a ticket just because an edge opened up. If the
+next subtask in the chain doesn't exist yet (e.g. it's one a persona creates "naturally
+when needed" rather than eagerly, brief §3.7), satisfying its precedence produces no
+visible change at all until someone acts. The actual next step, every time, is the same
+general mechanism brief §3.8 already describes: a human (or an AI session on their
+behalf) explicitly runs `/tai-work <KEY>` on the parent Story/Bug/Kickoff, or queries
+`/tai-ready` — that invocation is what re-engages the owning persona, who then checks
+precedence and continues. This has always been true of every edge in this graph, not
+just the ones added most recently; it's stated here once, generally, rather than
+repeated at each individual gate.
+
 ### Current default shape (Story/Bug)
 ```
 ArchitectureDesign ─> DesignReview ─┐
