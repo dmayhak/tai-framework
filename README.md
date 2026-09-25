@@ -256,7 +256,7 @@ npm run build      # compiles to dist/
 Internally, every change to this repo ships through TAI's own real Jira ticket → branch →
 PR → structured-findings review → merge pipeline (tracked in `PROJECT_BRIEF.md`'s
 changelog) — that's this project dogfooding itself, not something external contributors
-need access to. From the outside, a normal GitHub flow works fine:
+need access to. From the outside, a normal fork → branch → PR flow works fine:
 
 1. **Read [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) first.** It's the single source of truth
    for TAI's design, decisions, and open questions — including the reasoning behind
