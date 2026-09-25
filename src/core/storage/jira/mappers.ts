@@ -46,6 +46,7 @@ export const JIRA_ISSUE_TYPE: Record<IssueType, string> = {
     [StoryType.Bug]: "Bug",
 
     [SubtaskType.Research]: "Research",
+    [SubtaskType.EpicReview]: "EpicReview",
     [SubtaskType.Investigate]: "Investigate",
     [SubtaskType.Requirements]: "Requirements",
     [SubtaskType.UxDesign]: "UxDesign",

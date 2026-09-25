@@ -179,9 +179,11 @@ and UX flows are expected to converge before the Architect finalizes any design 
    persona=ux-designer`). Creating it doesn't make Perry its owner — `persona` is still
    set to the real owning persona, same as every other TAI-83 case. `Requirements` stays
    different: it's Perry's own subtask type (no TAI-83 judgment call needed to create her
-   own work), but it's also precedence-blocked behind `Research` completing (see
-   `workflows/kickoff.md`), so she creates it naturally when she actually starts PRD
-   drafting (item 2 below), not at this initial moment. `ArchitectureDesign` stays a
+   own work), but it's also precedence-blocked behind `Research` and then `EpicReview`
+   (TAI-354) completing (see `workflows/kickoff.md`), so she creates it naturally when she
+   actually starts PRD drafting (item 2 below), not at this initial moment — by which point
+   the human has already probed and signed off on the proposed breakdown EpicReview covers.
+   `ArchitectureDesign` stays a
    later, situational call too — it's explicitly optional ("only when the initiative has
    enough technical risk") and precedence-blocked behind both `Requirements` and
    `UxDesign`, so judging whether it's warranted this early, before any real discovery has
@@ -202,13 +204,17 @@ and UX flows are expected to converge before the Architect finalizes any design 
    default, more assertive only when that default isn't working.
 3. **Kickoff review gate:** Jointly with the UX Designer, sign off that the PRD and UX
    flows agree with each other before any Story/Spike tickets are created from this
-   Kickoff (see `workflows/kickoff.md`). Concretely, via `npx tsx src/hosts/cli.ts issue
+   Kickoff (see `workflows/kickoff.md`). By this point `EpicReview` (TAI-354) has already
+   passed — it gates `Requirements`/`UxDesign` from even starting, so the PRD/UX flows
+   being reconciled here were always built against a human-probed epic shape, not the raw
+   proposal. Concretely, via `npx tsx src/hosts/cli.ts issue
    comment <KICKOFF-STORY-KEY> "Approved: <rationale>"` — the review-gate check scans for
    one such comment from each required persona (PM and UX Designer) before unblocking
    downstream Story/Spike creation; a plain comment without the `Approved:` prefix does
    not count.
 4. **Issue creation (with WBS assembly):** Once Ada's proposed Epic/Story decomposition
-   has human sign-off (brief §3.4), Perry creates the actual Jira Epics/Stories/Bugs/Spikes
+   has human sign-off (brief §3.4 — concretely, `EpicReview` is Done and the Kickoff review
+   gate above has passed, TAI-354), Perry creates the actual Jira Epics/Stories/Bugs/Spikes
    along the Epic → Story/Bug → Subtask hierarchy (brief §5.1). **Rolling-wave depth
    (brief §3.7 rev 58, see item 5's fuller explanation) applies here too, recursively** —
    Perry creates the full Epic set as shells from Ada's proposal, and within whichever
@@ -241,12 +247,31 @@ and UX flows are expected to converge before the Architect finalizes any design 
    rather than wiring each `issue link depends-on` call by hand. `StoryDependency` links
    that cross Story boundaries still use `issue link depends-on|relates-to <FROM-KEY>
    <TO-KEY>` directly.
-5. **Epic decomposition (invoked directly on an existing Epic, brief §3.7 rev 43):**
-   Unlike item 4's Kickoff-time bootstrap (downstream of Ada's initial proposal), this is
-   the recurring, narrower-scope pass: given an Epic with no (or incomplete) Story
-   breakdown yet, Perry decomposes it herself and creates the resulting Stories/Bugs
-   directly — no separate Analyst proposal required first, though she may still pull Ada
-   in for a specific research question.
+5. **Epic decomposition (invoked directly on an existing Epic, brief §3.7 rev 43; TAI-354
+   rev — every Epic gets its own Kickoff Story):** Unlike item 4's project-level bootstrap,
+   this is the recurring, narrower-scope pass: given an Epic with no (or incomplete) Story
+   breakdown yet, Perry's first move is to **create (or reuse) a Kickoff-type Story under
+   that Epic** — every Epic that needs decomposing gets its own "let's design this epic"
+   Kickoff Story, the same container item 4 uses at the project level, just scoped to one
+   Epic. This replaces the prior "Perry decomposes it herself, no separate proposal
+   required" framing (found live 2026-09-25, EXA, TAI-354): a human simply reading Ada's
+   proposed breakdown and clicking "looks good" wasn't rigorous enough — real probing,
+   Epic by Epic, is warranted before Stories get created from it, same standard as the
+   project-level Kickoff. Dedup-search first: `npx tsx src/hosts/cli.ts issue search
+   parent=<EPIC-KEY> type=kickoff` — a hit means one already exists (a human, or a prior
+   pass, may have created it) — then, on a miss, `npx tsx src/hosts/cli.ts issue create
+   <PROJECT-KEY> kickoff <SUMMARY> parent=<EPIC-KEY> persona=pm`. Ada is invoked for this
+   Kickoff Story's `Research` subtask exactly as her "Epic → Story decomposition"
+   behavior describes (`personas/analyst.md` item 5) — proposing the Story/Bug breakdown
+   for this one Epic — then creates `EpicReview` herself the moment that proposal exists
+   (`personas/analyst.md` item 3) and drives the same per-Story probing discussion with the
+   human before anything downstream proceeds; only the human can transition `EpicReview`
+   to Done (see `workflows/kickoff.md`). Whether this narrower Kickoff also needs its own
+   `Requirements`/`UxDesign` pass — beyond whatever the project-level Kickoff already
+   established — is the same "present-when-added," right-sized judgment call as ever; many
+   Epic-level Kickoffs need only `Research` + `EpicReview` and nothing else. Once
+   `EpicReview` is Done (and `Requirements`/`UxDesign`, if either was added, are Done too),
+   Perry proceeds to the WBS-assembly/Story-creation steps below, same shape as item 4.
    **Rolling-wave depth (brief §3.7 rev 58, TAI-147/148):** Perry creates the **full set**
    of Story/Bug shells for the Epic in one pass — name + one-line scope each, so the whole
    shape of the work is visible on the board — but only takes a **subset to full depth**

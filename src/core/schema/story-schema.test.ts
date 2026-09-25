@@ -98,6 +98,56 @@ describe("DesignReview gate (optional)", () => {
     });
 });
 
+describe("EpicReview gate (Kickoff, mandatory, human-gated, TAI-354)", () => {
+    const kickoffSubtasks = [
+        SubtaskType.Research,
+        SubtaskType.EpicReview,
+        SubtaskType.Requirements,
+        SubtaskType.UxDesign,
+    ];
+
+    it("inserts Research -> EpicReview -> {Requirements, UxDesign}", () => {
+        const rules = resolveApplicablePrecedence(StoryType.Kickoff, kickoffSubtasks);
+        assert.ok(hasEdge(rules, SubtaskType.Research, SubtaskType.EpicReview));
+        assert.ok(hasEdge(rules, SubtaskType.EpicReview, SubtaskType.Requirements));
+        assert.ok(hasEdge(rules, SubtaskType.EpicReview, SubtaskType.UxDesign));
+        // Research no longer unblocks Requirements/UxDesign directly.
+        assert.ok(!hasEdge(rules, SubtaskType.Research, SubtaskType.Requirements));
+        assert.ok(!hasEdge(rules, SubtaskType.Research, SubtaskType.UxDesign));
+    });
+
+    it("blocks Requirements/UxDesign until EpicReview is done, not just Research", () => {
+        // Research done but EpicReview not yet -> both still blocked.
+        assert.equal(
+            isSubtaskReady(SubtaskType.Requirements, StoryType.Kickoff, kickoffSubtasks, done(SubtaskType.Research)),
+            false
+        );
+        assert.equal(
+            isSubtaskReady(SubtaskType.UxDesign, StoryType.Kickoff, kickoffSubtasks, done(SubtaskType.Research)),
+            false
+        );
+        // EpicReview done too -> both ready.
+        const bothDone = done(SubtaskType.Research, SubtaskType.EpicReview);
+        assert.equal(isSubtaskReady(SubtaskType.Requirements, StoryType.Kickoff, kickoffSubtasks, bothDone), true);
+        assert.equal(isSubtaskReady(SubtaskType.UxDesign, StoryType.Kickoff, kickoffSubtasks, bothDone), true);
+    });
+
+    it("EpicReview itself waits on Research", () => {
+        assert.equal(
+            isSubtaskReady(SubtaskType.EpicReview, StoryType.Kickoff, kickoffSubtasks, done()),
+            false
+        );
+        assert.equal(
+            isSubtaskReady(SubtaskType.EpicReview, StoryType.Kickoff, kickoffSubtasks, done(SubtaskType.Research)),
+            true
+        );
+    });
+
+    it("is registered as inherently human-gated -- Ada drives it, but only a human can complete it", () => {
+        assert.ok(ALWAYS_HUMAN_GATED_SUBTASKS.includes(SubtaskType.EpicReview));
+    });
+});
+
 describe("UAT gate (optional, human-gated)", () => {
     // rev 52 (TAI-159 ADR): CodeReview retired going forward — Dev anchors UAT's
     // fallback edge instead (see the "test tiers" describe block above for the full

@@ -4,7 +4,53 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-24 (rev 69 — **TAI-353: Ada creates `ArchitectureDesign`
+> **Last updated:** 2026-09-25 (rev 70 — **TAI-354: Kickoff gains a mandatory,
+> human-gated `EpicReview` step — Ada's proposed Epic breakdown is probed with the
+> human, epic by epic, not rubber-stamped.** Found live on the same EXA stress-test as
+> revs 67–69: after Ada's `Research` subtask produced the work-breakdown doc (proposing
+> EXA's Epic breakdown) and was marked Done, the very next thing surfaced as ready to
+> work was a Kickoff-subtask-level `ArchitectureDesign` deep-dive (rev 69's own
+> mechanism) — with no step in between where the human actually discussed the proposed
+> breakdown itself. The only mechanically enforced Kickoff checkpoint (the PM+UX
+> Designer Review Gate, rev 11) converges the PRD/UX-flow *artifacts*, not the epic
+> list; nothing stopped deeper subtasks from being created and surfaced before that
+> big-picture conversation happened. Human-confirmed: reading the Confluence doc and
+> clicking "looks good, approve" isn't rigorous enough on its own — real probing, epic
+> by epic, catches issues a rubber-stamp read misses.
+>
+> Fixed: added a new, mandatory `EpicReview` subtask to Kickoff (`story-schema.ts`),
+> sitting between `Research` and `Requirements`/`UxDesign` in the precedence graph
+> (`Research` no longer unblocks either directly). Owned by Analyst, but registered in
+> `ALWAYS_HUMAN_GATED_SUBTASKS` — same mechanism as `UAT` (`personas/tester.md`): Ada
+> drives the actual discussion, going through the proposed breakdown one epic at a time
+> and revising the *same* work-breakdown doc in place, but only a human stakeholder can
+> transition the subtask to Done — no `Approved:` comment convention, the transition
+> itself is the signal. Deliberately a *different* gate from the existing PM+UX Kickoff
+> Review Gate: that one converges PRD/UX-flow content once it exists; `EpicReview` is
+> upstream of both, settling the epic/Story shape itself before PRD/UX work is built
+> against it.
+>
+> **Generalized to every Epic decomposition, not just the initial project-level
+> Kickoff (human direction, discussed live):** `personas/pm.md` item 5 ("Epic
+> decomposition, invoked directly on an existing Epic") previously had Perry decompose
+> an Epic into Stories solo, no separate proposal required. Since Epics can't hold
+> subtasks in TAI's schema, the human's own proposed resolution was adopted over
+> extending that schema: **every Epic that needs decomposing gets its own Kickoff-type
+> Story** — the same container the project-level bootstrap uses, just scoped to one
+> Epic — reusing the `Research` → `EpicReview` → optional `Requirements`/`UxDesign`
+> sequence above rather than inventing a second mechanism for the narrower pass.
+>
+> New Jira sub-task issue type `EpicReview` provisioned on both TAI's and EXA's Jira
+> projects (brief §5.2's "one native sub-task issue type per `SubtaskType`"
+> convention). `analyst.md` gained a new item 3 (renumbering items 3–6 to 4–7) plus
+> `create`/`workOn`/`alwaysHumanGated` grants — deliberately excluded from `complete`,
+> mirroring `tester.md`'s UAT exclusion; `pm.md` item 5 rewritten; `workflows/kickoff.md`
+> gained the `EpicReview` gate section and updated precedence/output/status-transition
+> text. Five new tests (`story-schema.test.ts`, `autocompletion.test.ts`) lock down the
+> new precedence edges and `hard` checkpoint classification; 758/758 passing, `tsc
+> --noEmit` clean.
+>
+> Prior: rev 69 — **TAI-353: Ada creates `ArchitectureDesign`
 > herself when she recognizes the need, instead of leaving it as an unticketed
 > question.** Found live on the same second target project, same day as rev 68: Ada,
 > doing Kickoff-adjacent discussion-prep research, surfaced a genuine design trade-off
