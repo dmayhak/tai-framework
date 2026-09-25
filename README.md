@@ -30,6 +30,7 @@ here and the brief ever disagree, the brief wins.
 - [Workflow types](#workflow-types)
 - [Project structure](#project-structure)
 - [Developing TAI itself](#developing-tai-itself)
+- [Contributing](#contributing)
 - [Further reading](#further-reading)
 - [License](#license)
 
@@ -249,6 +250,34 @@ npm test           # full test suite (node's own test runner)
 npm run typecheck  # tsc --noEmit
 npm run build      # compiles to dist/
 ```
+
+## Contributing
+
+Internally, every change to this repo ships through TAI's own real Jira ticket → branch →
+PR → structured-findings review → merge pipeline (tracked in `PROJECT_BRIEF.md`'s
+changelog) — that's this project dogfooding itself, not something external contributors
+need access to. From the outside, a normal GitHub flow works fine:
+
+1. **Read [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) first.** It's the single source of truth
+   for TAI's design, decisions, and open questions — including the reasoning behind
+   anything that looks surprising (its changelog explains the *why*, not just the *what*).
+   A change that contradicts an already-settled decision needs to either follow it or open
+   the discussion to revisit it, not quietly work around it.
+2. **For anything beyond a small fix, open an issue first** to discuss the approach —
+   especially for anything touching [`src/personas/*.md`](src/personas/) or
+   [`src/workflows/*.md`](src/workflows/), since those files are the actual behavioral
+   contract an AI CLI reads at runtime, not just documentation.
+3. **Fork the repo, branch, and make your change.**
+4. **Before opening a PR, make sure both of these pass clean:**
+   ```bash
+   npm test
+   npm run typecheck
+   ```
+5. **Open a PR against `master`** with a clear description of what changed and why,
+   referencing the issue it addresses if there is one.
+
+By contributing, you agree your contribution is licensed under this project's
+[Apache License 2.0](#license).
 
 ## Further reading
 
