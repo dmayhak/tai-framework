@@ -74,7 +74,8 @@ than each other without needing a different rule set per story.
 a root and is always ready.
 
 **Satisfying a precedence edge changes what CAN be reported as ready — it never triggers
-anything on its own (found live, TAI-354, 2026-09-25).** TAI has no event-driven
+anything on its own (found live immediately after TAI-354 shipped, TAI-355,
+2026-09-25).** TAI has no event-driven
 automation or background daemon watching Jira for status changes; nothing "fires" just
 because a subtask transitions to Done, however that transition happened (see the
 out-of-band note in `workflows/kickoff.md`'s `EpicReview` gate). `findReadyWork`

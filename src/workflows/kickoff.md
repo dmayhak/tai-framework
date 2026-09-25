@@ -62,7 +62,7 @@ Done, not just `Requirements` — flows and requirements are expected to converg
 Architect finalizes any design (see `personas/ux-designer.md`).
 
 **Satisfying an edge above doesn't trigger anything on its own** — see
-`workflows/dependencies.md`'s Layer 2 note (TAI-354): the next `/tai-work`/`/tai-ready`
+`workflows/dependencies.md`'s Layer 2 note (TAI-355): the next `/tai-work`/`/tai-ready`
 invocation is what actually re-engages a persona to continue, same as everywhere else in
 TAI.
 
