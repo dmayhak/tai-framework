@@ -118,6 +118,11 @@ run ahead of them, so the generated file is never built from an unverified setup
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init env
 ```
 
+**`.gitignore` (automatic, TAI-358):** every `init` action above (except `status`) also
+idempotently ensures `.gitignore` covers `.tai/` (or `$TAI_ROOT`, if overridden), `.env`,
+`.env.local`, and `.handoff/` (the global `sess-handoff` skill's convention) — nothing to
+do here, but if you're wondering why these are already excluded, that's why.
+
 ## 5. Generate a `CLAUDE.md` pointer
 
 Requires the `env` step above. Idempotent — re-running replaces TAI's own section (found

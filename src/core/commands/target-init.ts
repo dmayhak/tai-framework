@@ -462,3 +462,70 @@ export async function writeClaudeMdPointer(cwd: string, taiRoot: string, taiHome
     await writeFile(filePath, next, "utf-8");
     return filePath;
 }
+
+// ---------- .gitignore hygiene ----------
+
+/** Entries every target project needs so `/tai-init` never leaves its own generated files
+ *  (or the global `sess-handoff` skill's `.handoff/`, which every project uses the same
+ *  way) sitting unignored in the working tree. `.env`/`.env.local` are the serious one --
+ *  `writeEnvFile` above writes real Jira/Bitbucket API tokens there. `taiRoot` is passed
+ *  through rather than hardcoded ".tai/" since it's overridable via `TAI_ROOT`. */
+export function gitignoreEntries(taiRoot: string): string[] {
+    const normalized = taiRoot.replace(/^\.\//, "").replace(/\/+$/, "");
+    return [`/${normalized}/`, ".env", ".env.local", "/.handoff/"];
+}
+
+/** Pure, mirrors `mergeEnvContent`'s "read what's there, only append what's missing" shape:
+ *  never rewrites or reorders a target project's existing `.gitignore`, and never
+ *  duplicates an entry already present anywhere in the file (matched by exact trimmed
+ *  line, same as how git itself matches a plain non-glob ignore entry). */
+export function mergeGitignoreContent(existing: string, entries: readonly string[]): string {
+    const existingLines = new Set(
+        existing
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+    );
+    const missing = entries.filter((e) => !existingLines.has(e));
+    if (missing.length === 0) return existing;
+
+    const block =
+        ["# Added by /tai-init (TAI-358) -- TAI's own local state + credentials, never commit these", ...missing].join(
+            "\n"
+        ) + "\n";
+    if (existing.trim().length === 0) return block;
+    return (existing.endsWith("\n") ? existing : existing + "\n") + "\n" + block;
+}
+
+/** Idempotent side effect, deliberately NOT a named `InitStep` (design fork resolved with
+ *  the human, 2026-09-26, TAI-358): a new required step would change the "fully
+ *  initialized" contract and retroactively mark every already-onboarded project (this repo
+ *  included) as incomplete until re-run. Called eagerly from every `init <action>`
+ *  dispatch instead (`cli.ts`) -- cheap, safe to call every time, and protects `.tai/`
+ *  from the very first `init jira`/`init confluence` call, before `.env`/`CLAUDE.md` even
+ *  exist. */
+export async function ensureGitignore(
+    cwd: string,
+    taiRoot: string
+): Promise<{ path: string; added: readonly string[] }> {
+    const filePath = path.join(cwd, ".gitignore");
+    let existing = "";
+    try {
+        existing = await readFile(filePath, "utf-8");
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+
+    const existingLines = new Set(
+        existing
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+    );
+    const entries = gitignoreEntries(taiRoot);
+    const added = entries.filter((e) => !existingLines.has(e));
+    if (added.length === 0) return { path: filePath, added };
+
+    await writeFile(filePath, mergeGitignoreContent(existing, entries), "utf-8");
+    return { path: filePath, added };
+}

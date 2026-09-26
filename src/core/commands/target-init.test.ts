@@ -17,6 +17,9 @@ import {
     verifyJiraSetup,
     setupConfluence,
     verifyBitbucketSetup,
+    gitignoreEntries,
+    mergeGitignoreContent,
+    ensureGitignore,
     type InitState,
 } from "./target-init.js";
 import { markdownToStorage } from "../storage/jira/storage-format.js";
@@ -493,6 +496,88 @@ describe("writeClaudeMdPointer", () => {
             assert.match(content, /Some existing notes\./);
             assert.match(content, /\.tai-framework-v2/);
             assert.ok(!content.includes("/home/x/.tai-framework\`"), "stale pointer should be replaced, not duplicated");
+        });
+    });
+});
+
+describe("gitignoreEntries", () => {
+    it("anchors the default .tai root", () => {
+        assert.deepEqual(gitignoreEntries(".tai"), ["/.tai/", ".env", ".env.local", "/.handoff/"]);
+    });
+
+    it("respects an overridden TAI_ROOT instead of hardcoding .tai", () => {
+        assert.deepEqual(gitignoreEntries("state/tai"), ["/state/tai/", ".env", ".env.local", "/.handoff/"]);
+    });
+});
+
+describe("mergeGitignoreContent", () => {
+    const entries = gitignoreEntries(".tai");
+
+    it("returns the input unchanged when every entry is already present", () => {
+        const existing = "/node_modules/\n/.tai/\n.env\n.env.local\n/.handoff/\n";
+        assert.equal(mergeGitignoreContent(existing, entries), existing);
+    });
+
+    it("appends only the missing entries, leaving existing content untouched", () => {
+        const existing = "# my app\n/node_modules/\n.env\n";
+        const merged = mergeGitignoreContent(existing, entries);
+        assert.match(merged, /# my app/);
+        assert.match(merged, /\/node_modules\//);
+        assert.match(merged, /\/\.tai\//);
+        assert.match(merged, /\/\.handoff\//);
+        // .env was already present -- shouldn't be duplicated.
+        assert.equal(merged.match(/^\.env$/gm)?.length, 1);
+    });
+
+    it("creates a fresh block when there's no existing .gitignore", () => {
+        const merged = mergeGitignoreContent("", entries);
+        for (const entry of entries) assert.match(merged, new RegExp(`^${entry.replace(/[/.]/g, "\\$&")}$`, "m"));
+    });
+
+    it("is idempotent -- re-merging its own output changes nothing further", () => {
+        const once = mergeGitignoreContent("/node_modules/\n", entries);
+        const twice = mergeGitignoreContent(once, entries);
+        assert.equal(once, twice);
+    });
+});
+
+describe("ensureGitignore", () => {
+    it("creates .gitignore with all entries when none exists", async () => {
+        await withTempDir(async (dir) => {
+            const result = await ensureGitignore(dir, ".tai");
+            assert.deepEqual(result.added, gitignoreEntries(".tai"));
+            const content = await readFile(result.path, "utf-8");
+            for (const entry of gitignoreEntries(".tai")) assert.ok(content.includes(entry));
+        });
+    });
+
+    it("reports no entries added and leaves the file untouched on a second call", async () => {
+        await withTempDir(async (dir) => {
+            await ensureGitignore(dir, ".tai");
+            const before = await readFile(path.join(dir, ".gitignore"), "utf-8");
+            const second = await ensureGitignore(dir, ".tai");
+            assert.deepEqual(second.added, []);
+            const after = await readFile(path.join(dir, ".gitignore"), "utf-8");
+            assert.equal(after, before);
+        });
+    });
+
+    it("reports only the entries actually missing, not the whole list, when .gitignore is partially set up", async () => {
+        await withTempDir(async (dir) => {
+            await writeFile(path.join(dir, ".gitignore"), "/.tai/\n.env\n.env.local\n", "utf-8");
+            const result = await ensureGitignore(dir, ".tai");
+            assert.deepEqual(result.added, ["/.handoff/"]);
+        });
+    });
+
+    it("preserves a pre-existing .gitignore's own content", async () => {
+        await withTempDir(async (dir) => {
+            await writeFile(path.join(dir, ".gitignore"), "/node_modules/\n/dist/\n", "utf-8");
+            const result = await ensureGitignore(dir, ".tai");
+            const content = await readFile(result.path, "utf-8");
+            assert.match(content, /\/node_modules\//);
+            assert.match(content, /\/dist\//);
+            assert.match(content, /\/\.tai\//);
         });
     });
 });
