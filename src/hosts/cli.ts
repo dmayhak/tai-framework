@@ -74,6 +74,7 @@ import {
     verifyBitbucketSetup,
     writeEnvFile,
     writeClaudeMdPointer,
+    ensureGitignore,
     type InitState,
     type InitStep,
 } from "../core/commands/target-init.js";
@@ -1058,6 +1059,17 @@ async function main(): Promise<void> {
         if (action === "status") {
             console.log(renderInitStatus(await readInitState(taiRoot)));
             return;
+        }
+
+        // TAI-358: eager, idempotent .gitignore hygiene for every mutating init action --
+        // see ensureGitignore's own comment for why this isn't a named InitStep. Runs
+        // before the action itself so .tai/'s very first write (markStepDone, inside each
+        // branch below) is already covered.
+        const gitignoreResult = await ensureGitignore(process.cwd(), taiRoot);
+        if (gitignoreResult.added.length > 0) {
+            console.log(
+                `(Added to ${gitignoreResult.path}: ${gitignoreResult.added.join(", ")}.)\n`
+            );
         }
 
         if (action === "jira") {
