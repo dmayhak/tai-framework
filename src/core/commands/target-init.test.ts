@@ -800,13 +800,16 @@ describe("gitignore ordering and behavior (TAI-366)", () => {
 
     it("real git agrees: secrets and swap files ignored, .env.example not ignored", { skip: !hasGit }, async () => {
         await withTempDir(async (dir) => {
-            execFileSync("git", ["init", "-q"], { cwd: dir });
+            // Hermetic: drop every ambient GIT_* variable (a git hook sets GIT_DIR, which would
+            // redirect git away from this temp repo) and ignore the developer's own
+            // global/system git config, so only this repo's .gitignore decides.
+            const env: NodeJS.ProcessEnv = { ...process.env };
+            for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+            Object.assign(env, { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" });
+            execFileSync("git", ["init", "-q"], { cwd: dir, env });
             // The hard case: the negation already sits ABOVE where .env.* will be appended.
             await writeFile(path.join(dir, ".gitignore"), "!.env.example\n", "utf-8");
             await ensureGitignore(dir, ".tai");
-            // Hermetic: ignore the developer's own global/system git config (e.g. a global
-            // core.excludesFile), so only this repo's .gitignore decides.
-            const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
             const ignored = (file: string): boolean => {
                 try {
                     execFileSync("git", ["check-ignore", "-q", file], { cwd: dir, env });
