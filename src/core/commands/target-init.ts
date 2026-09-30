@@ -441,7 +441,8 @@ export async function writeEnvFile(cwd: string, taiRoot: string, input: EnvInput
 
     await writeFile(filePath, mergeEnvContent(existing, renderEnvFile(input)), "utf-8");
     // TAI-363: this file holds real tokens -- owner-only, including when it already existed
-    // (writeFile's mode only applies on creation).
+    // (writeFile's mode only applies on creation). Best-effort on Windows, where chmod only
+    // toggles the read-only attribute and real protection comes from the profile dir's ACL.
     await chmod(filePath, 0o600);
     return filePath;
 }

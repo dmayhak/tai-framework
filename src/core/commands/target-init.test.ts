@@ -50,6 +50,13 @@ function stubFetch(routes: Record<string, () => Response>): typeof fetch {
     }) as unknown as typeof fetch;
 }
 
+/** POSIX permission bits don't exist on Windows (fs.chmod there only toggles the read-only
+ *  attribute and stat reports 0o666), so the owner-only assertion is a no-op on win32. */
+async function assertOwnerOnly(filePath: string): Promise<void> {
+    if (process.platform === "win32") return;
+    assert.equal((await stat(filePath)).mode & 0o777, 0o600);
+}
+
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-target-init-"));
     try {
@@ -562,7 +569,7 @@ describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
         await withTempDir(async (dir) => {
             const filePath = await writeEnvSkeleton(dir, { siteUrl: "https://x.atlassian.net" });
             assert.match(await readFile(filePath, "utf-8"), /TAI_JIRA_EMAIL=/);
-            assert.equal((await stat(filePath)).mode & 0o777, 0o600);
+            await assertOwnerOnly(filePath);
         });
     });
 
@@ -582,7 +589,7 @@ describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
             assert.match(content, /^TAI_JIRA_API_TOKEN=secret$/m);
             assert.match(content, /^TAI_JIRA_SITE_URL=https:\/\/x\.atlassian\.net$/m);
             assert.match(content, /^BITBUCKET_API_TOKEN=$/m);
-            assert.equal((await stat(envPath)).mode & 0o777, 0o600);
+            await assertOwnerOnly(envPath);
         });
     });
 
@@ -595,7 +602,7 @@ describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
             assert.match(content, /^TAI_PROJECT_KEY=NEW$/m);
             assert.match(content, /^TAI_SPACE_KEY=SP$/m);
             assert.match(content, /^TAI_JIRA_API_TOKEN=secret$/m);
-            assert.equal((await stat(envPath)).mode & 0o777, 0o600);
+            await assertOwnerOnly(envPath);
         });
     });
 
@@ -618,7 +625,7 @@ describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
                 email: "a@b.c",
                 apiToken: "t",
             });
-            assert.equal((await stat(filePath)).mode & 0o777, 0o600);
+            await assertOwnerOnly(filePath);
         });
     });
 });
