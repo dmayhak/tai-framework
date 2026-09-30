@@ -118,9 +118,13 @@ run ahead of them, so the generated file is never built from an unverified setup
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init env
 ```
 
-**`.gitignore` (automatic, TAI-358):** every `init` action above (except `status`) also
-idempotently ensures `.gitignore` covers `.tai/` (or `$TAI_ROOT`, if overridden), `.env`,
-`.env.local`, and `.handoff/` (the global `sess-handoff` skill's convention) — nothing to
+**`.gitignore` (automatic, TAI-358, TAI-366):** every `init` action above (except `status`)
+also idempotently ensures `.gitignore` covers `.tai/` (or `$TAI_ROOT`, if overridden), `.env`,
+`.env.local`, `.env.*` (every variant, including editor swap files like `.env.swp` that can
+hold tokens you just typed) with a `!.env.example` exception so the template stays
+committable, `*~` (editor backup files), and `.handoff/` (the global `sess-handoff` skill's
+convention). Order matters in a `.gitignore` — the last matching rule wins — so TAI keeps
+`!.env.example` after `.env.*`, re-appending it if an existing file has it above. Nothing to
 do here, but if you're wondering why these are already excluded, that's why.
 
 ## 5. Generate a `CLAUDE.md` pointer
