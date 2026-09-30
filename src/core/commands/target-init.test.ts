@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -14,6 +14,7 @@ import {
     mergeEnvContent,
     writeEnvFile,
     writeClaudeMdPointer,
+    portableTaiHome,
     verifyJiraSetup,
     setupConfluence,
     verifyBitbucketSetup,
@@ -484,6 +485,17 @@ describe("writeClaudeMdPointer", () => {
         });
     });
 
+    it("never embeds the current home directory in the committed file (TAI-359)", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "env", "ok");
+            const taiHome = path.join(homedir(), ".tai-framework");
+            const content = await readFile(await writeClaudeMdPointer(dir, taiRoot, taiHome), "utf-8");
+            assert.ok(!content.includes(homedir()), "home dir leaked into CLAUDE.md");
+            assert.match(content, /~\/\.tai-framework/);
+        });
+    });
+
     it("replaces its own section on re-run without touching the rest of an existing CLAUDE.md", async () => {
         await withTempDir(async (dir) => {
             const taiRoot = path.join(dir, ".tai");
@@ -497,6 +509,21 @@ describe("writeClaudeMdPointer", () => {
             assert.match(content, /\.tai-framework-v2/);
             assert.ok(!content.includes("/home/x/.tai-framework\`"), "stale pointer should be replaced, not duplicated");
         });
+    });
+});
+
+describe("portableTaiHome", () => {
+    it("renders a path under home as ~-relative", () => {
+        assert.equal(portableTaiHome("/home/x/.tai-framework", "/home/x"), "~/.tai-framework");
+    });
+
+    it("renders home itself as ~", () => {
+        assert.equal(portableTaiHome("/home/x", "/home/x"), "~");
+    });
+
+    it("keeps a path outside home absolute", () => {
+        assert.equal(portableTaiHome("/opt/tai", "/home/x"), "/opt/tai");
+        assert.equal(portableTaiHome("/home/xy/tai", "/home/x"), "/home/xy/tai");
     });
 });
 
