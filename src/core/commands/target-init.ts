@@ -615,26 +615,52 @@ export async function writeClaudeMdPointer(cwd: string, taiRoot: string, taiHome
 
 /** Entries every target project needs so `/tai-init` never leaves its own generated files
  *  (or the global `sess-handoff` skill's `.handoff/`, which every project uses the same
- *  way) sitting unignored in the working tree. `.env`/`.env.local` are the serious one --
- *  `writeEnvFile` above writes real Jira/Bitbucket API tokens there. `taiRoot` is passed
+ *  way) sitting unignored in the working tree. `.env` and its variants (`.env.local`,
+ *  `.env.*`, and editor swap/backup files like `.env.swp`/`.env~`, caught by `.env.*` and
+ *  `*~`) are the serious ones -- `writeEnvFile` above writes real Jira/Bitbucket API
+ *  tokens there, and an editor can leave a copy next to it. `taiRoot` is passed
  *  through rather than hardcoded ".tai/" since it's overridable via `TAI_ROOT`. */
 export function gitignoreEntries(taiRoot: string): string[] {
     const normalized = taiRoot.replace(/^\.\//, "").replace(/\/+$/, "");
-    return [`/${normalized}/`, ".env", ".env.local", "/.handoff/"];
+    // TAI-366: `.env.*` + `!.env.example` catch every variant (`.env.prod`, editor swap files
+    // like `.env.swp`) while keeping the committed template; `*~` catches editor backup files
+    // (`.env~`) that can hold the tokens a user just typed. `.env.local` is redundant once
+    // `.env.*` is present but stays for projects that already list it. ORDER MATTERS: a
+    // later gitignore rule wins, so `!.env.example` must come after `.env.*`
+    // (see NEGATION_AFTER_PATTERN).
+    return [`/${normalized}/`, ".env", ".env.local", ".env.*", "!.env.example", "*~", "/.handoff/"];
+}
+
+/** A negation rule only works if it comes AFTER the pattern it carves an exception out of
+ *  (gitignore: the last matching rule wins). Maps each such negation to its pattern. */
+const NEGATION_AFTER_PATTERN: Readonly<Record<string, string>> = { "!.env.example": ".env.*" };
+
+/** Pure: which of `entries` a merge has to (re-)append to `existing`. Normally the ones
+ *  not already present as an exact line; additionally a negation that IS present but would
+ *  not come after its pattern -- because the pattern is being appended below it, or both
+ *  were already there in the wrong order -- is re-appended so it follows the pattern. A
+ *  duplicate negation line is harmless, and once it is last the next call finds nothing
+ *  to do. Order follows `entries`, so a pattern always precedes its negation. */
+export function gitignoreEntriesToAppend(existing: string, entries: readonly string[]): string[] {
+    const lines = existing.split("\n").map((line) => line.trim());
+    const present = new Set(lines.filter((line) => line.length > 0));
+    const toAppend = new Set(entries.filter((e) => !present.has(e)));
+    for (const [negation, pattern] of Object.entries(NEGATION_AFTER_PATTERN)) {
+        if (!entries.includes(negation) || !entries.includes(pattern) || toAppend.has(negation)) continue;
+        const patternWillBeAfter = toAppend.has(pattern) || lines.lastIndexOf(pattern) > lines.lastIndexOf(negation);
+        if (patternWillBeAfter) toAppend.add(negation);
+    }
+    return entries.filter((e) => toAppend.has(e));
 }
 
 /** Pure, mirrors `mergeEnvContent`'s "read what's there, only append what's missing" shape:
- *  never rewrites or reorders a target project's existing `.gitignore`, and never
- *  duplicates an entry already present anywhere in the file (matched by exact trimmed
- *  line, same as how git itself matches a plain non-glob ignore entry). */
+ *  never rewrites or reorders a target project's existing `.gitignore`, and does not
+ *  duplicate an entry already present anywhere in the file (matched by exact trimmed
+ *  line, same as how git itself matches a plain non-glob ignore entry) -- with one
+ *  deliberate exception: a negation (see `NEGATION_AFTER_PATTERN`) is re-appended when it
+ *  would not otherwise come after the pattern it carves an exception out of. */
 export function mergeGitignoreContent(existing: string, entries: readonly string[]): string {
-    const existingLines = new Set(
-        existing
-            .split("\n")
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0)
-    );
-    const missing = entries.filter((e) => !existingLines.has(e));
+    const missing = gitignoreEntriesToAppend(existing, entries);
     if (missing.length === 0) return existing;
 
     const block =
@@ -664,14 +690,8 @@ export async function ensureGitignore(
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
 
-    const existingLines = new Set(
-        existing
-            .split("\n")
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0)
-    );
     const entries = gitignoreEntries(taiRoot);
-    const added = entries.filter((e) => !existingLines.has(e));
+    const added = gitignoreEntriesToAppend(existing, entries);
     if (added.length === 0) return { path: filePath, added };
 
     await writeFile(filePath, mergeGitignoreContent(existing, entries), "utf-8");

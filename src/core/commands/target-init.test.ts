@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
@@ -692,11 +693,27 @@ describe("portableTaiHome", () => {
 
 describe("gitignoreEntries", () => {
     it("anchors the default .tai root", () => {
-        assert.deepEqual(gitignoreEntries(".tai"), ["/.tai/", ".env", ".env.local", "/.handoff/"]);
+        assert.deepEqual(gitignoreEntries(".tai"), [
+            "/.tai/",
+            ".env",
+            ".env.local",
+            ".env.*",
+            "!.env.example",
+            "*~",
+            "/.handoff/",
+        ]);
     });
 
     it("respects an overridden TAI_ROOT instead of hardcoding .tai", () => {
-        assert.deepEqual(gitignoreEntries("state/tai"), ["/state/tai/", ".env", ".env.local", "/.handoff/"]);
+        assert.deepEqual(gitignoreEntries("state/tai"), [
+            "/state/tai/",
+            ".env",
+            ".env.local",
+            ".env.*",
+            "!.env.example",
+            "*~",
+            "/.handoff/",
+        ]);
     });
 });
 
@@ -704,7 +721,7 @@ describe("mergeGitignoreContent", () => {
     const entries = gitignoreEntries(".tai");
 
     it("returns the input unchanged when every entry is already present", () => {
-        const existing = "/node_modules/\n/.tai/\n.env\n.env.local\n/.handoff/\n";
+        const existing = "/node_modules/\n/.tai/\n.env\n.env.local\n.env.*\n!.env.example\n*~\n/.handoff/\n";
         assert.equal(mergeGitignoreContent(existing, entries), existing);
     });
 
@@ -721,13 +738,89 @@ describe("mergeGitignoreContent", () => {
 
     it("creates a fresh block when there's no existing .gitignore", () => {
         const merged = mergeGitignoreContent("", entries);
-        for (const entry of entries) assert.match(merged, new RegExp(`^${entry.replace(/[/.]/g, "\\$&")}$`, "m"));
+        for (const entry of entries) assert.match(merged, new RegExp(`^${entry.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}$`, "m"));
     });
 
     it("is idempotent -- re-merging its own output changes nothing further", () => {
         const once = mergeGitignoreContent("/node_modules/\n", entries);
         const twice = mergeGitignoreContent(once, entries);
         assert.equal(once, twice);
+    });
+});
+
+describe("gitignore ordering and behavior (TAI-366)", () => {
+    const entries = gitignoreEntries(".tai");
+    const lastIndexOfLine = (content: string, line: string): number =>
+        content.split("\n").map((l) => l.trim()).lastIndexOf(line);
+
+    it("writes .env.* before its !.env.example negation in a fresh file", () => {
+        const merged = mergeGitignoreContent("", entries);
+        assert.ok(lastIndexOfLine(merged, "!.env.example") > lastIndexOfLine(merged, ".env.*"));
+    });
+
+    it("re-appends !.env.example AFTER a newly appended .env.* when an earlier copy already exists", () => {
+        const existing = "/node_modules/\n!.env.example\n";
+        const merged = mergeGitignoreContent(existing, entries);
+        assert.ok(lastIndexOfLine(merged, "!.env.example") > lastIndexOfLine(merged, ".env.*"));
+        assert.ok(merged.startsWith(existing), "existing content stays untouched, only appended to");
+    });
+
+    it("re-asserts the negation when both are present but in the wrong order", () => {
+        const existing = "!.env.example\n.env.*\n";
+        const merged = mergeGitignoreContent(existing, entries);
+        assert.ok(lastIndexOfLine(merged, "!.env.example") > lastIndexOfLine(merged, ".env.*"));
+    });
+
+    it("leaves an already-correct order alone, and is idempotent after re-asserting", () => {
+        const correct = ".env.*\n!.env.example\n";
+        assert.ok(mergeGitignoreContent(correct, entries).startsWith(correct));
+        const once = mergeGitignoreContent("!.env.example\n", entries);
+        assert.equal(mergeGitignoreContent(once, entries), once);
+    });
+
+    it("ensureGitignore reports a re-asserted negation as added and fixes a wrong order on disk", async () => {
+        await withTempDir(async (dir) => {
+            await writeFile(path.join(dir, ".gitignore"), "!.env.example\n.env.*\n", "utf-8");
+            const result = await ensureGitignore(dir, ".tai");
+            assert.ok(result.added.includes("!.env.example"));
+            const content = await readFile(result.path, "utf-8");
+            assert.ok(lastIndexOfLine(content, "!.env.example") > lastIndexOfLine(content, ".env.*"));
+            assert.deepEqual((await ensureGitignore(dir, ".tai")).added, []);
+        });
+    });
+
+    const hasGit = (() => {
+        try {
+            execFileSync("git", ["--version"], { stdio: "ignore" });
+            return true;
+        } catch {
+            return false;
+        }
+    })();
+
+    it("real git agrees: secrets and swap files ignored, .env.example not ignored", { skip: !hasGit }, async () => {
+        await withTempDir(async (dir) => {
+            execFileSync("git", ["init", "-q"], { cwd: dir });
+            // The hard case: the negation already sits ABOVE where .env.* will be appended.
+            await writeFile(path.join(dir, ".gitignore"), "!.env.example\n", "utf-8");
+            await ensureGitignore(dir, ".tai");
+            // Hermetic: ignore the developer's own global/system git config (e.g. a global
+            // core.excludesFile), so only this repo's .gitignore decides.
+            const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+            const ignored = (file: string): boolean => {
+                try {
+                    execFileSync("git", ["check-ignore", "-q", file], { cwd: dir, env });
+                    return true;
+                } catch {
+                    return false;
+                }
+            };
+            for (const f of [".env", ".env.local", ".env.swp", ".env.prod", ".env~", "notes.txt~", ".tai/init-state.json", ".handoff/x.md"]) {
+                assert.ok(ignored(f), `${f} should be ignored`);
+            }
+            assert.ok(!ignored(".env.example"), ".env.example must stay committable");
+            assert.ok(!ignored("src/main.ts"));
+        });
     });
 });
 
@@ -756,7 +849,7 @@ describe("ensureGitignore", () => {
         await withTempDir(async (dir) => {
             await writeFile(path.join(dir, ".gitignore"), "/.tai/\n.env\n.env.local\n", "utf-8");
             const result = await ensureGitignore(dir, ".tai");
-            assert.deepEqual(result.added, ["/.handoff/"]);
+            assert.deepEqual(result.added, [".env.*", "!.env.example", "*~", "/.handoff/"]);
         });
     });
 
