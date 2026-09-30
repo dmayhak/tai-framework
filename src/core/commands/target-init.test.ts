@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
@@ -13,6 +13,11 @@ import {
     renderEnvFile,
     mergeEnvContent,
     writeEnvFile,
+    renderEnvSkeleton,
+    writeEnvSkeleton,
+    writeEnvValues,
+    requiredEnvSecretKeys,
+    missingEnvSecrets,
     writeClaudeMdPointer,
     portableTaiHome,
     verifyJiraSetup,
@@ -43,6 +48,13 @@ function stubFetch(routes: Record<string, () => Response>): typeof fetch {
         if (!route) throw new Error(`Unstubbed request: ${key}`);
         return route();
     }) as unknown as typeof fetch;
+}
+
+/** POSIX permission bits don't exist on Windows (fs.chmod there only toggles the read-only
+ *  attribute and stat reports 0o666), so the owner-only assertion is a no-op on win32. */
+async function assertOwnerOnly(filePath: string): Promise<void> {
+    if (process.platform === "win32") return;
+    assert.equal((await stat(filePath)).mode & 0o777, 0o600);
 }
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
@@ -464,6 +476,157 @@ describe("mergeEnvContent", () => {
         assert.match(merged, /# my app's own config/);
         assert.match(merged, /DATABASE_URL=postgres:\/\/x/);
         assert.match(merged, /TAI_PROJECT_KEY=PROJ/);
+    });
+});
+
+describe("mergeEnvContent — fill-if-empty mode (TAI-363)", () => {
+    it("fills an existing EMPTY line but never replaces a non-empty value", () => {
+        const existing = "TAI_JIRA_EMAIL=\nTAI_JIRA_API_TOKEN=real-token\n";
+        const generated = "TAI_JIRA_EMAIL=me@x.com\nTAI_JIRA_API_TOKEN=other\n";
+        const merged = mergeEnvContent(existing, generated, "fill-if-empty");
+        assert.match(merged, /^TAI_JIRA_EMAIL=me@x\.com$/m);
+        assert.match(merged, /^TAI_JIRA_API_TOKEN=real-token$/m);
+    });
+
+    it("never replaces a non-empty value with an empty one, and keeps an empty line empty", () => {
+        const existing = "TAI_JIRA_API_TOKEN=typed\nBITBUCKET_API_TOKEN=\n";
+        const generated = "TAI_JIRA_API_TOKEN=\nBITBUCKET_API_TOKEN=\n";
+        assert.equal(mergeEnvContent(existing, generated, "fill-if-empty"), existing);
+    });
+
+    it("treats a quoted-empty or whitespace-only value as empty", () => {
+        const existing = 'TAI_JIRA_EMAIL=""\nTAI_JIRA_API_TOKEN=  \n';
+        const merged = mergeEnvContent(existing, "TAI_JIRA_EMAIL=a@b.c\nTAI_JIRA_API_TOKEN=tok\n", "fill-if-empty");
+        assert.match(merged, /^TAI_JIRA_EMAIL=a@b\.c$/m);
+        assert.match(merged, /^TAI_JIRA_API_TOKEN=tok$/m);
+    });
+
+    it("appends missing keys WITH their preceding comment lines, leaving unrelated lines untouched", () => {
+        const existing = "# my app\nDATABASE_URL=postgres://x\n";
+        const generated = "# header\n\n# Your email.\nTAI_JIRA_EMAIL=\n";
+        const merged = mergeEnvContent(existing, generated, "fill-if-empty");
+        assert.match(merged, /# my app\nDATABASE_URL=postgres:\/\/x\n/);
+        assert.match(merged, /# Your email\.\nTAI_JIRA_EMAIL=\n/);
+        assert.ok(!merged.includes("# header"), "a detached header comment must not be attached to a key");
+    });
+
+    it("default 'replace' mode is unchanged: a generated line still replaces a non-empty one", () => {
+        const merged = mergeEnvContent("TAI_PROJECT_KEY=OLD\n", "TAI_PROJECT_KEY=NEW\n");
+        assert.match(merged, /^TAI_PROJECT_KEY=NEW$/m);
+    });
+});
+
+describe("renderEnvSkeleton (TAI-363)", () => {
+    it("fills the site URL and leaves every secret line empty under an explanatory comment", () => {
+        const out = renderEnvSkeleton({ siteUrl: "https://x.atlassian.net" });
+        assert.match(out, /^TAI_JIRA_SITE_URL=https:\/\/x\.atlassian\.net$/m);
+        assert.match(out, /# [^\n]*email[^\n]*\nTAI_JIRA_EMAIL=\n/i);
+        assert.match(out, /# [^\n]*API token[^\n]*\nTAI_JIRA_API_TOKEN=\n/i);
+        assert.ok(!out.includes("BITBUCKET"), "Bitbucket lines only when asked for");
+    });
+
+    it("includes the Bitbucket secret lines, also empty and commented, when requested", () => {
+        const out = renderEnvSkeleton({ siteUrl: "https://x.atlassian.net", includeBitbucket: true });
+        assert.match(out, /# [^\n]*\nBITBUCKET_EMAIL=\n/);
+        assert.match(out, /# [^\n]*\nBITBUCKET_API_TOKEN=\n/);
+    });
+
+    it("includes project/space keys only when already known", () => {
+        assert.ok(!renderEnvSkeleton({ siteUrl: "https://x.atlassian.net" }).includes("TAI_PROJECT_KEY"));
+        const out = renderEnvSkeleton({ siteUrl: "https://x.atlassian.net", projectKey: "P", spaceKey: "S" });
+        assert.match(out, /^TAI_PROJECT_KEY=P$/m);
+        assert.match(out, /^TAI_SPACE_KEY=S$/m);
+    });
+});
+
+describe("missingEnvSecrets / requiredEnvSecretKeys (TAI-363)", () => {
+    it("lists required secret keys, Bitbucket ones only when included", () => {
+        assert.deepEqual(requiredEnvSecretKeys(false), ["TAI_JIRA_EMAIL", "TAI_JIRA_API_TOKEN"]);
+        assert.deepEqual(requiredEnvSecretKeys(true), [
+            "TAI_JIRA_EMAIL",
+            "TAI_JIRA_API_TOKEN",
+            "BITBUCKET_EMAIL",
+            "BITBUCKET_API_TOKEN",
+        ]);
+    });
+
+    it("reports empty, absent and whitespace-only secrets, and nothing once filled", () => {
+        assert.deepEqual(missingEnvSecrets("TAI_JIRA_EMAIL=\nTAI_JIRA_API_TOKEN=  \n", false), [
+            "TAI_JIRA_EMAIL",
+            "TAI_JIRA_API_TOKEN",
+        ]);
+        assert.deepEqual(missingEnvSecrets("TAI_JIRA_EMAIL=a@b.c\n", false), ["TAI_JIRA_API_TOKEN"]);
+        assert.deepEqual(missingEnvSecrets("TAI_JIRA_EMAIL=a@b.c\nTAI_JIRA_API_TOKEN=t\n", false), []);
+    });
+
+    it("ignores commented-out lines", () => {
+        assert.deepEqual(missingEnvSecrets("# TAI_JIRA_EMAIL=a@b.c\nTAI_JIRA_API_TOKEN=t\n", false), ["TAI_JIRA_EMAIL"]);
+    });
+});
+
+describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
+    it("creates .env with the skeleton at mode 0600", async () => {
+        await withTempDir(async (dir) => {
+            const filePath = await writeEnvSkeleton(dir, { siteUrl: "https://x.atlassian.net" });
+            assert.match(await readFile(filePath, "utf-8"), /TAI_JIRA_EMAIL=/);
+            await assertOwnerOnly(filePath);
+        });
+    });
+
+    it("never blanks typed secrets when re-run against an existing .env, and fixes a loose mode", async () => {
+        await withTempDir(async (dir) => {
+            const envPath = path.join(dir, ".env");
+            await writeFile(
+                envPath,
+                "DATABASE_URL=postgres://x\nTAI_JIRA_EMAIL=me@x.com\nTAI_JIRA_API_TOKEN=secret\n",
+                "utf-8"
+            );
+            await chmod(envPath, 0o644);
+            await writeEnvSkeleton(dir, { siteUrl: "https://x.atlassian.net", includeBitbucket: true });
+            const content = await readFile(envPath, "utf-8");
+            assert.match(content, /^DATABASE_URL=postgres:\/\/x$/m);
+            assert.match(content, /^TAI_JIRA_EMAIL=me@x\.com$/m);
+            assert.match(content, /^TAI_JIRA_API_TOKEN=secret$/m);
+            assert.match(content, /^TAI_JIRA_SITE_URL=https:\/\/x\.atlassian\.net$/m);
+            assert.match(content, /^BITBUCKET_API_TOKEN=$/m);
+            await assertOwnerOnly(envPath);
+        });
+    });
+
+    it("writeEnvValues writes only the given keys (replacing them) and leaves secrets untouched", async () => {
+        await withTempDir(async (dir) => {
+            const envPath = path.join(dir, ".env");
+            await writeFile(envPath, "TAI_PROJECT_KEY=OLD\nTAI_JIRA_API_TOKEN=secret\n", "utf-8");
+            await writeEnvValues(dir, { TAI_PROJECT_KEY: "NEW", TAI_SPACE_KEY: "SP" });
+            const content = await readFile(envPath, "utf-8");
+            assert.match(content, /^TAI_PROJECT_KEY=NEW$/m);
+            assert.match(content, /^TAI_SPACE_KEY=SP$/m);
+            assert.match(content, /^TAI_JIRA_API_TOKEN=secret$/m);
+            await assertOwnerOnly(envPath);
+        });
+    });
+
+    it("writeEnvValues rejects a value that would inject another line, and an invalid key", async () => {
+        await withTempDir(async (dir) => {
+            await assert.rejects(() => writeEnvValues(dir, { TAI_SPACE_KEY: "S\nTAI_JIRA_API_TOKEN=evil" }), /single line/);
+            await assert.rejects(() => writeEnvValues(dir, { "BAD KEY": "x" }), /Invalid/);
+        });
+    });
+
+    it("writeEnvFile (the existing step writer) now also leaves .env at mode 0600", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "jira", "ok");
+            await markStepDone(taiRoot, "confluence", "ok");
+            const filePath = await writeEnvFile(dir, taiRoot, {
+                projectKey: "P",
+                spaceKey: "S",
+                siteUrl: "https://x.atlassian.net",
+                email: "a@b.c",
+                apiToken: "t",
+            });
+            await assertOwnerOnly(filePath);
+        });
     });
 });
 

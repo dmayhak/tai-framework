@@ -35,7 +35,7 @@
  * template's rows.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -338,6 +338,19 @@ export function renderEnvFile(input: EnvInput): string {
  *  `mergeEnvContent` below rather than risk misinterpreting it as a key to overwrite. */
 const ENV_KEY_LINE = /^([A-Za-z_][A-Za-z0-9_]*)=/;
 
+/** How `mergeEnvContent` treats a key TAI generates that the existing file already has.
+ *  `replace` (the original behavior): the generated line wins. `fill-if-empty` (TAI-363,
+ *  ADR for TAI-360 decision 2): the generated line only fills an existing EMPTY value and
+ *  never replaces a non-empty one, so a re-run can never blank a secret the user typed. */
+export type EnvMergeMode = "replace" | "fill-if-empty";
+
+/** The value part of a real `KEY=value` line, trimmed and with one pair of surrounding
+ *  quotes removed — so `KEY=`, `KEY=  ` and `KEY=""` all read as empty. */
+function envLineValue(line: string): string {
+    const raw = line.slice(line.indexOf("=") + 1).trim();
+    return raw.replace(/^(["'])(.*)\1$/, "$2").trim();
+}
+
 /** TAI-346-adjacent bug (found live 2026-09-24 on a real target project): `writeEnvFile`
  *  used to overwrite `.env` wholesale with `renderEnvFile`'s output, silently destroying
  *  every line TAI's own template doesn't know about — the target app's own config
@@ -352,14 +365,26 @@ const ENV_KEY_LINE = /^([A-Za-z_][A-Za-z0-9_]*)=/;
  *  untouched. Genuinely new TAI keys (nothing to update in place) get appended once, under
  *  a fresh header comment, rather than inserted mid-file. Pure and independently testable,
  *  same "kept separate from the `write` wrapper" reasoning as `renderEnvFile` itself. */
-export function mergeEnvContent(existing: string, generated: string): string {
+export function mergeEnvContent(existing: string, generated: string, mode: EnvMergeMode = "replace"): string {
     if (existing.trim().length === 0) return generated;
 
-    const genEntries = generated
-        .split("\n")
-        .map((line) => ({ line, match: ENV_KEY_LINE.exec(line) }))
-        .filter((e): e is { line: string; match: RegExpExecArray } => e.match !== null)
-        .map((e) => ({ key: e.match[1] as string, line: e.line }));
+    // In fill-if-empty mode a key appended to an existing file carries the comment lines
+    // directly above it in `generated` (a blank line detaches a comment, so a file-level
+    // header never gets glued onto its first key). Replace mode appends bare lines, as it
+    // always has.
+    const genEntries: { key: string; line: string; comments: string[] }[] = [];
+    let pendingComments: string[] = [];
+    for (const line of generated.split("\n")) {
+        const match = ENV_KEY_LINE.exec(line);
+        if (match) {
+            genEntries.push({ key: match[1] as string, line, comments: pendingComments });
+            pendingComments = [];
+        } else if (line.trimStart().startsWith("#")) {
+            pendingComments.push(line);
+        } else {
+            pendingComments = [];
+        }
+    }
 
     const existingLines = existing.split("\n");
     const existingKeyLineIdx = new Map<string, number>();
@@ -370,12 +395,16 @@ export function mergeEnvContent(existing: string, generated: string): string {
 
     const resultLines = [...existingLines];
     const newEntries: string[] = [];
-    for (const { key, line } of genEntries) {
+    for (const { key, line, comments } of genEntries) {
         const idx = existingKeyLineIdx.get(key);
         if (idx !== undefined) {
-            resultLines[idx] = line;
+            if (mode === "replace") {
+                resultLines[idx] = line;
+            } else if (envLineValue(resultLines[idx] as string) === "" && envLineValue(line) !== "") {
+                resultLines[idx] = line;
+            }
         } else {
-            newEntries.push(line);
+            newEntries.push(...(mode === "fill-if-empty" ? comments : []), line);
         }
     }
 
@@ -411,6 +440,111 @@ export async function writeEnvFile(cwd: string, taiRoot: string, input: EnvInput
     }
 
     await writeFile(filePath, mergeEnvContent(existing, renderEnvFile(input)), "utf-8");
+    // TAI-363: this file holds real tokens -- owner-only, including when it already existed
+    // (writeFile's mode only applies on creation). Best-effort on Windows, where chmod only
+    // toggles the read-only attribute and real protection comes from the profile dir's ACL.
+    await chmod(filePath, 0o600);
+    return filePath;
+}
+
+// ---------- .env primitives for the guided `init run` flow (TAI-363) ----------
+
+const JIRA_SECRET_KEYS = ["TAI_JIRA_EMAIL", "TAI_JIRA_API_TOKEN"] as const;
+const BITBUCKET_SECRET_KEYS = ["BITBUCKET_EMAIL", "BITBUCKET_API_TOKEN"] as const;
+
+/** The secret keys a user must fill in by hand; Bitbucket's only when git-pr support is wanted. */
+export function requiredEnvSecretKeys(includeBitbucket: boolean): string[] {
+    return [...JIRA_SECRET_KEYS, ...(includeBitbucket ? BITBUCKET_SECRET_KEYS : [])];
+}
+
+/** Which required secret keys are absent or empty in `.env` content. A commented-out line
+ *  never counts as set (`ENV_KEY_LINE` only matches real `KEY=` lines). */
+export function missingEnvSecrets(content: string, includeBitbucket: boolean): string[] {
+    const values = new Map<string, string>();
+    for (const line of content.split("\n")) {
+        const m = ENV_KEY_LINE.exec(line);
+        if (m) values.set(m[1] as string, envLineValue(line));
+    }
+    return requiredEnvSecretKeys(includeBitbucket).filter((key) => (values.get(key) ?? "") === "");
+}
+
+export interface EnvSkeletonInput {
+    readonly siteUrl: string;
+    /** Only written when already known (existing `.env`, or chosen via discovery). */
+    readonly projectKey?: string;
+    readonly spaceKey?: string;
+    readonly includeBitbucket?: boolean;
+}
+
+/** Pure: the `.env` a user finishes by hand. Non-secret values are filled in; every secret
+ *  line is left EMPTY under a comment saying what belongs there, so the editor step is a
+ *  fill-in-the-blanks pass. The blank line after the header keeps it from being attached
+ *  to the first key when this is merged into an existing file. */
+export function renderEnvSkeleton(input: EnvSkeletonInput): string {
+    const lines = [
+        "# Generated by /tai-init -- fill in the empty secret lines below, save, and close your editor.",
+        "# This file is gitignored; never commit it.",
+        "",
+        "TAI_BACKEND=jira",
+        `TAI_JIRA_SITE_URL=${input.siteUrl}`,
+    ];
+    if (input.projectKey) lines.push(`TAI_PROJECT_KEY=${input.projectKey}`);
+    if (input.spaceKey) lines.push(`TAI_SPACE_KEY=${input.spaceKey}`);
+    lines.push(
+        "",
+        "# Your Atlassian account email (the one you log in to Jira with).",
+        "TAI_JIRA_EMAIL=",
+        "# An Atlassian API token: create one at https://id.atlassian.com/manage-profile/security/api-tokens",
+        "TAI_JIRA_API_TOKEN="
+    );
+    if (input.includeBitbucket) {
+        lines.push(
+            "",
+            "# Your Bitbucket account email (only needed for git-pr support).",
+            "BITBUCKET_EMAIL=",
+            "# A Bitbucket API token with repository and pull-request read/write scopes.",
+            "BITBUCKET_API_TOKEN="
+        );
+    }
+    return lines.join("\n") + "\n";
+}
+
+async function readEnvIfPresent(filePath: string): Promise<string> {
+    try {
+        return await readFile(filePath, "utf-8");
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        return "";
+    }
+}
+
+/** Writes the skeleton into `<cwd>/.env` in fill-if-empty mode -- safe to run against an
+ *  existing `.env`: typed secrets and unrelated lines survive, only missing keys (with
+ *  their comments) and empty values are filled -- then forces mode 0600. */
+export async function writeEnvSkeleton(cwd: string, input: EnvSkeletonInput): Promise<string> {
+    const filePath = path.join(cwd, ".env");
+    const existing = await readEnvIfPresent(filePath);
+    await writeFile(filePath, mergeEnvContent(existing, renderEnvSkeleton(input), "fill-if-empty"), "utf-8");
+    await chmod(filePath, 0o600);
+    return filePath;
+}
+
+/** Writes ONLY the given keys into `<cwd>/.env`, replacing their current values (replace
+ *  mode) and leaving every other line -- secrets included -- untouched. This is the
+ *  post-discovery write: callers pass the newly chosen project/space/repo keys, never the
+ *  secret keys. Values must be single-line so one value can never inject another key. */
+export async function writeEnvValues(cwd: string, values: Readonly<Record<string, string>>): Promise<string> {
+    for (const [key, value] of Object.entries(values)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error(`Invalid .env key "${key}".`);
+        if (/[\r\n]/.test(value)) throw new Error(`Value for ${key} must be a single line.`);
+    }
+    const filePath = path.join(cwd, ".env");
+    const existing = await readEnvIfPresent(filePath);
+    const generated = Object.entries(values)
+        .map(([key, value]) => `${key}=${value}`)
+        .join("\n");
+    await writeFile(filePath, mergeEnvContent(existing, generated.length > 0 ? generated + "\n" : ""), "utf-8");
+    await chmod(filePath, 0o600);
     return filePath;
 }
 
