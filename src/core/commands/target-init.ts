@@ -36,6 +36,7 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { RestClient as JiraRestClient, apiTokenAuth as jiraApiTokenAuth } from "../storage/jira/rest-client.js";
@@ -418,7 +419,20 @@ export async function writeEnvFile(cwd: string, taiRoot: string, input: EnvInput
 const CLAUDE_MD_BEGIN = "<!-- TAI-INIT:BEGIN -->";
 const CLAUDE_MD_END = "<!-- TAI-INIT:END -->";
 
-function claudeMdSection(taiHome: string): string {
+/** TAI-359: `CLAUDE.md` is committed and shared, so it must not embed this machine's home
+ *  directory (`/home/<user>/...`). A path under the current home dir is rendered
+ *  `~`-relative, which stays true for every teammate/PC that follows the README's fixed
+ *  `~/.tai-framework` install location; a path outside home stays absolute (nothing
+ *  portable to say about it). */
+export function portableTaiHome(taiHome: string, homeDir: string = os.homedir()): string {
+    const rel = path.relative(homeDir, taiHome);
+    if (rel === "") return "~";
+    if (rel.startsWith("..") || path.isAbsolute(rel)) return taiHome;
+    return `~/${rel.split(path.sep).join("/")}`;
+}
+
+function claudeMdSection(rawTaiHome: string): string {
+    const taiHome = portableTaiHome(rawTaiHome);
     return (
         `${CLAUDE_MD_BEGIN}\n` +
         `## Team AI (TAI)\n\n` +

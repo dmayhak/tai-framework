@@ -132,6 +132,11 @@ by an HTML-comment marker) without touching the rest of an existing `CLAUDE.md`.
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init claude-md [TAI-HOME]
 ```
 
+`CLAUDE.md` is committed and shared, so the pointer renders a path under your home directory
+as `~/...` (e.g. `~/.tai-framework`) rather than `/home/<you>/...` (TAI-359). A project
+onboarded before that fix has the old absolute path committed — re-run this step and commit
+the diff.
+
 ## Suggested team rituals (not a verified `init` step)
 
 TAI deliberately doesn't build or tickle any of this itself (human-decided 2026-08-25) —
