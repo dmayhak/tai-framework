@@ -615,8 +615,10 @@ export async function writeClaudeMdPointer(cwd: string, taiRoot: string, taiHome
 
 /** Entries every target project needs so `/tai-init` never leaves its own generated files
  *  (or the global `sess-handoff` skill's `.handoff/`, which every project uses the same
- *  way) sitting unignored in the working tree. `.env`/`.env.local` are the serious one --
- *  `writeEnvFile` above writes real Jira/Bitbucket API tokens there. `taiRoot` is passed
+ *  way) sitting unignored in the working tree. `.env` and its variants (`.env.local`,
+ *  `.env.*`, and editor swap/backup files like `.env.swp`/`.env~`, caught by `.env.*` and
+ *  `*~`) are the serious ones -- `writeEnvFile` above writes real Jira/Bitbucket API
+ *  tokens there, and an editor can leave a copy next to it. `taiRoot` is passed
  *  through rather than hardcoded ".tai/" since it's overridable via `TAI_ROOT`. */
 export function gitignoreEntries(taiRoot: string): string[] {
     const normalized = taiRoot.replace(/^\.\//, "").replace(/\/+$/, "");
@@ -652,9 +654,11 @@ export function gitignoreEntriesToAppend(existing: string, entries: readonly str
 }
 
 /** Pure, mirrors `mergeEnvContent`'s "read what's there, only append what's missing" shape:
- *  never rewrites or reorders a target project's existing `.gitignore`, and never
- *  duplicates an entry already present anywhere in the file (matched by exact trimmed
- *  line, same as how git itself matches a plain non-glob ignore entry). */
+ *  never rewrites or reorders a target project's existing `.gitignore`, and does not
+ *  duplicate an entry already present anywhere in the file (matched by exact trimmed
+ *  line, same as how git itself matches a plain non-glob ignore entry) -- with one
+ *  deliberate exception: a negation (see `NEGATION_AFTER_PATTERN`) is re-appended when it
+ *  would not otherwise come after the pattern it carves an exception out of. */
 export function mergeGitignoreContent(existing: string, entries: readonly string[]): string {
     const missing = gitignoreEntriesToAppend(existing, entries);
     if (missing.length === 0) return existing;
