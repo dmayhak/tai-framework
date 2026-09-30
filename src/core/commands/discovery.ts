@@ -19,6 +19,15 @@
  * `TAI_SPACE_KEY=TAI` is an alias of the space whose real key is `TA` — a picker that
  * blindly offered `TA` (or replaced `TAI` with it) would break a working setup.
  *
+ * **Why the alias is what gets written (human decision, 2026-09-30):** both forms resolve
+ * today — verified live, `?keys=TA` and `?keys=TAI` return the same space — so this is a
+ * readability choice, not a technical necessity. The alias is the space's common name (what
+ * a person sees and types, and what a working setup already holds), so a user is never left
+ * working out that `TA` and `TAI` are the same place. Trade-off, stated plainly: an alias can
+ * be changed in Confluence while a real key cannot; that is caught, not silent — a stored
+ * alias that later stops appearing in the live list makes `planCoordinate` return `pick`
+ * with the stale value surfaced, so re-running `init run` fixes it.
+ *
  * Endpoints verified live against a real site (2026-09-30): Jira `GET
  * /rest/api/2/project/search` (paginated by `startAt`/`isLast`; `/rest/api/2` like the rest
  * of the Jira backend, rest-client.ts) and Confluence `GET /wiki/api/v2/spaces` (cursor
@@ -35,6 +44,23 @@ const execFileAsync = promisify(execFile);
 /** Hard stop on pagination so a misbehaving endpoint can never loop forever. */
 const MAX_PAGES = 100;
 
+/** A list result that says whether it is the WHOLE list. `truncated` is true when paging
+ *  stopped early (page cap, or a cursor that pointed back at a page already read), so a
+ *  caller can tell the user a project may be missing instead of silently showing a partial
+ *  list. Manual entry stays the escape hatch either way. */
+export interface Listing<T> {
+    readonly items: T[];
+    readonly truncated: boolean;
+}
+
+export interface ListOptions {
+    /** Page size requested from the API. Injectable so tests (and live probes) can force
+     *  multiple pages from a small tenant. */
+    readonly pageSize?: number;
+    /** Page cap. Injectable for the same reason; defaults to `MAX_PAGES`. */
+    readonly maxPages?: number;
+}
+
 // ---------- Jira projects ----------
 
 export interface DiscoveredProject {
@@ -50,21 +76,23 @@ interface ProjectSearchResponse {
 const JIRA_PAGE_SIZE = 50;
 
 /** Every project the token can browse, across all pages. */
-export async function listJiraProjects(client: RestClient): Promise<DiscoveredProject[]> {
-    const out: DiscoveredProject[] = [];
+export async function listJiraProjects(client: RestClient, opts: ListOptions = {}): Promise<Listing<DiscoveredProject>> {
+    const pageSize = opts.pageSize ?? JIRA_PAGE_SIZE;
+    const maxPages = opts.maxPages ?? MAX_PAGES;
+    const items: DiscoveredProject[] = [];
     let startAt = 0;
-    for (let page = 0; page < MAX_PAGES; page++) {
+    for (let page = 0; page < maxPages; page++) {
         const res = await client.request<ProjectSearchResponse>(
             "GET",
-            `/rest/api/2/project/search?startAt=${startAt}&maxResults=${JIRA_PAGE_SIZE}`
+            `/rest/api/2/project/search?startAt=${startAt}&maxResults=${pageSize}`
         );
         const values = res.values ?? [];
-        for (const v of values) out.push({ key: v.key, name: v.name });
+        for (const v of values) items.push({ key: v.key, name: v.name });
         // An empty page ends it even when `isLast` is absent — never loop on a stuck cursor.
-        if (res.isLast === true || values.length === 0) break;
+        if (res.isLast === true || values.length === 0) return { items, truncated: false };
         startAt += values.length;
     }
-    return out;
+    return { items, truncated: true };
 }
 
 // ---------- Confluence spaces ----------
@@ -92,24 +120,40 @@ interface SpacesResponse {
     readonly _links?: { readonly next?: string };
 }
 
+/** `RestClient.request` prepends the site URL to whatever it is given, so an ABSOLUTE
+ *  `_links.next` (Confluence documents a site-relative path, but don't rely on it) would
+ *  produce a garbage URL. Keep only the path and query. */
+function toSitePath(next: string): string {
+    if (!/^https?:\/\//i.test(next)) return next;
+    const url = new URL(next);
+    return `${url.pathname}${url.search}`;
+}
+
+const CONFLUENCE_PAGE_SIZE = 250;
+
 /** Every current, non-personal space the token can see, across all pages. Personal spaces
  *  (`type: "personal"`, keyed `~<hash>`) are never a project's space, so they are dropped
  *  rather than cluttering the picker. */
-export async function listConfluenceSpaces(client: RestClient): Promise<DiscoveredSpace[]> {
-    const out: DiscoveredSpace[] = [];
+export async function listConfluenceSpaces(client: RestClient, opts: ListOptions = {}): Promise<Listing<DiscoveredSpace>> {
+    const pageSize = opts.pageSize ?? CONFLUENCE_PAGE_SIZE;
+    const maxPages = opts.maxPages ?? MAX_PAGES;
+    const items: DiscoveredSpace[] = [];
     const seen = new Set<string>();
-    let next: string | undefined = "/wiki/api/v2/spaces?limit=250&status=current";
-    for (let page = 0; page < MAX_PAGES && next !== undefined && !seen.has(next); page++) {
+    let next: string | undefined = `/wiki/api/v2/spaces?limit=${pageSize}&status=current`;
+    for (let page = 0; page < maxPages; page++) {
+        if (next === undefined) return { items, truncated: false };
+        // A cursor that points back at a page already read is a stuck cursor: stop, and say so.
+        if (seen.has(next)) return { items, truncated: true };
         seen.add(next);
         const res: SpacesResponse = await client.request<SpacesResponse>("GET", next);
         for (const s of res.results ?? []) {
             if (s.type === "personal") continue;
             const alias = s.currentActiveAlias && s.currentActiveAlias.length > 0 ? s.currentActiveAlias : s.key;
-            out.push({ key: s.key, alias, name: s.name, type: s.type, value: alias });
+            items.push({ key: s.key, alias, name: s.name, type: s.type, value: alias });
         }
-        next = res._links?.next;
+        next = res._links?.next !== undefined ? toSitePath(res._links.next) : undefined;
     }
-    return out;
+    return { items, truncated: next !== undefined };
 }
 
 // ---------- Bitbucket remote ----------
@@ -130,9 +174,9 @@ export function parseBitbucketRemote(url: string): string | null {
 /** The clone's own Bitbucket `workspace/repo`, read from `origin`'s configured URL, or
  *  `null` (not a repo, no origin, not Bitbucket). Uses `git config` for the RAW value, not
  *  `git remote get-url`, which would apply the user's own `url.<base>.insteadOf` rewrites. */
-export async function detectBitbucketRepo(cwd: string): Promise<string | null> {
+export async function detectBitbucketRepo(cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
     try {
-        const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd });
+        const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd, env });
         return parseBitbucketRemote(stdout);
     } catch {
         return null;
