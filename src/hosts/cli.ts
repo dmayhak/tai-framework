@@ -78,6 +78,8 @@ import {
     type InitState,
     type InitStep,
 } from "../core/commands/target-init.js";
+import { runInit, unpushedChangesReminder } from "../core/commands/init-run.js";
+import { createRealServices, createTerminalIO, gitStatusPorcelain } from "../core/commands/init-run-io.js";
 import {
     resolvePullRequestId,
     parseReviewArgs,
@@ -1139,11 +1141,33 @@ async function main(): Promise<void> {
             const filePath = await writeClaudeMdPointer(process.cwd(), taiRoot, taiHome);
             const nextState = await markStepDone(taiRoot, "claude-md", `Wrote ${filePath}.`);
             console.log(renderInitStepResult("claude-md", true, `Wrote ${filePath}.`, isInitComplete(nextState)));
+            // TAI-367: a plain reminder, never an action -- TAI does not commit or push for you.
+            const reminder = unpushedChangesReminder(await gitStatusPorcelain(process.cwd()));
+            if (reminder !== null) console.log(`\n${reminder}`);
+            return;
+        }
+
+        // TAI-367 (ADR for TAI-360): the guided, idempotent flow for a brand-new project OR
+        // joining an already-onboarded one -- run it in your own terminal. It prompts for the
+        // site URL, writes the .env skeleton, opens your editor for the secret lines, discovers
+        // project/space/repo live, then verifies every step against the real APIs.
+        if (action === "run") {
+            const result = await runInit({
+                cwd: process.cwd(),
+                taiRoot,
+                taiHome: initArgs[0] ?? defaultTaiHome(),
+                env: process.env,
+                interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+                io: createTerminalIO(),
+                renderStepResult: renderInitStepResult,
+                services: createRealServices(),
+            });
+            process.exitCode = result.exitCode;
             return;
         }
 
         throw new Error(
-            `Unknown init action "${action}" -- expected "status", "jira", "confluence", "bitbucket", "env", or "claude-md".`
+            `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "env", or "claude-md".`
         );
     }
 
@@ -1843,7 +1867,7 @@ async function main(): Promise<void> {
     throw new Error(
         `Usage: work <ISSUE-KEY> | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
-            `| install-global [TAI-HOME] | init status|jira|confluence|bitbucket|env|claude-md`
+            `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md`
     );
 }
 

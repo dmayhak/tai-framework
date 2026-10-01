@@ -9,6 +9,8 @@ import {
     INIT_STEPS,
     readInitState,
     markStepDone,
+    clearStep,
+    parseEnvContent,
     isInitComplete,
     checkInitCompletion,
     renderEnvFile,
@@ -140,6 +142,7 @@ describe("verifyJiraSetup", () => {
         });
         assert.equal(result.ok, false);
         assert.equal(result.personaFieldFound, false);
+        assert.equal(result.projectFound, true, "the project exists; what is missing is provisioning");
         assert.ok(result.missingIssueTypes.includes("Dev"));
         assert.ok(result.missingIssueTypes.includes("CodeReview"));
         assert.ok(!result.missingIssueTypes.includes("Story"));
@@ -193,6 +196,7 @@ describe("verifyJiraSetup", () => {
         assert.equal(result.ok, true);
         assert.deepEqual(result.missingIssueTypes, []);
         assert.equal(result.personaFieldFound, true);
+        assert.equal(result.projectFound, true);
     });
 
     it("reports the project itself as not found rather than throwing", async () => {
@@ -209,6 +213,7 @@ describe("verifyJiraSetup", () => {
         });
         assert.equal(result.ok, false);
         assert.match(result.detail, /not found/);
+        assert.equal(result.projectFound, false, "lets a caller tell a wrong key from missing provisioning (TAI-367 review)");
     });
 
     it("treats an aliased native issue-type name as satisfying provisioning (TAI-116 piece 4, TAI-178 ADR)", async () => {
@@ -628,6 +633,41 @@ describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
             });
             await assertOwnerOnly(filePath);
         });
+    });
+});
+
+describe("clearStep (TAI-367)", () => {
+    it("removes one recorded step and leaves the others, so the state tracks the last live result", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "jira", "ok");
+            await markStepDone(taiRoot, "confluence", "ok");
+            const next = await clearStep(taiRoot, "jira");
+            assert.equal(next.steps.jira, undefined);
+            assert.notEqual(next.steps.confluence, undefined);
+            assert.equal((await readInitState(taiRoot)).steps.jira, undefined);
+        });
+    });
+
+    it("is a no-op for a step that was never recorded", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            assert.deepEqual((await clearStep(taiRoot, "env")).steps, {});
+        });
+    });
+});
+
+describe("parseEnvContent (TAI-367)", () => {
+    it("reads KEY=value lines, strips surrounding quotes, ignores comments and blanks", () => {
+        assert.deepEqual(parseEnvContent('# c\n\nA=1\nB="two"\nC=\n  # D=4\n'), { A: "1", B: "two", C: "" });
+    });
+
+    it("the last occurrence of a key wins", () => {
+        assert.deepEqual(parseEnvContent("A=1\nA=2\n"), { A: "2" });
+    });
+
+    it("tolerates CRLF line endings", () => {
+        assert.deepEqual(parseEnvContent("A=1\r\nB=2\r\n"), { A: "1", B: "2" });
     });
 });
 
