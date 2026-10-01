@@ -172,6 +172,7 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
     const processEnv = opts.env ?? (opts.envFile !== undefined ? parseEnvContent(opts.envFile) : {});
     let jiraInput: unknown;
     let bitbucketInput: unknown;
+    const bitbucketRepos: unknown[] = [];
 
     const deps: InitRunDeps = {
         cwd: dir,
@@ -234,6 +235,7 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
             verifyBitbucket: async (input) => {
                 calls.push("verifyBitbucket");
                 bitbucketInput = input;
+                bitbucketRepos.push(input.repo);
                 const ok = opts.goodRepo === undefined || input.repo === opts.goodRepo;
                 return ok
                     ? { ok: true, detail: "Repository reachable." }
@@ -242,7 +244,7 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
             gitStatusPorcelain: async () => opts.porcelain ?? null,
         },
     };
-    return { deps, calls, said, asked, envPath, jiraInput: () => jiraInput, bitbucketInput: () => bitbucketInput, all: () => said.join("\n") };
+    return { deps, calls, said, asked, bitbucketRepos, envPath, jiraInput: () => jiraInput, bitbucketInput: () => bitbucketInput, all: () => said.join("\n") };
 }
 
 const STEP_CALLS = ["listProjects", "listSpaces", "verifyJira", "setupConfluence", "verifyBitbucket"];
@@ -778,6 +780,105 @@ describe("runInit — correcting one repo keeps the rest of TAI_GIT_REPOS (TAI-3
             const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/other", answers: ["", "dmayhak/other"] });
             await runInit(h.deps);
             assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/other");
+        });
+    });
+});
+
+describe("runInit — correction prompts reject answers that mean nothing and name things correctly (TAI-367 review, round 3)", () => {
+    const BB = COMPLETE_ENV + "BITBUCKET_EMAIL=a@b.c\nBITBUCKET_API_TOKEN=bt\nTAI_GIT_REPOS=dmayhak/typo,dmayhak/other\n";
+    const TRUNC_PROJECTS: Listing<DiscoveredProject> = { items: [{ key: "TAI", name: "TAI" }, { key: "OTHER", name: "o" }], truncated: true };
+
+    it("a lone comma re-prompts instead of wiping the repo list, and nothing is verified for it", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/proj", answers: ["", ",", "dmayhak/proj"] });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /didn't contain a repository/);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/proj,dmayhak/other");
+            assert.deepEqual(h.bitbucketRepos, ["dmayhak/typo", "dmayhak/proj"], "no verification of an empty/undefined repo");
+        });
+    });
+
+    it("pressing Enter retries the same repo unchanged (the default), q still stops, and the list is never touched", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/proj", answers: ["", "", "q"] });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "bitbucket");
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/typo,dmayhak/other", "the list was never touched");
+        });
+    });
+
+    it("the retype prompts name a Jira project and a Confluence space correctly", async () => {
+        await withTempDir(async (dir) => {
+            const proj = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE"),
+                projects: TRUNC_PROJECTS,
+                goodProject: "TAI",
+                answers: ["", "q"],
+            });
+            await runInit(proj.deps);
+            assert.ok(proj.asked.some((q) => q.startsWith("Jira project key to try instead")), proj.asked.join(" | "));
+        });
+        await withTempDir(async (dir) => {
+            const space = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_SPACE_KEY=TAI", "TAI_SPACE_KEY=WRONG"),
+                listSpacesThrows: "403",
+                goodSpace: "TAI",
+                answers: ["", "q"],
+            });
+            await runInit(space.deps);
+            assert.ok(space.asked.some((q) => q.startsWith("Confluence space key to try instead")), space.asked.join(" | "));
+            assert.ok(!space.asked.some((q) => /Jira space/.test(q)));
+        });
+    });
+
+    it("a retyped space key is resolved against the list when there is one: the real key TA is stored as the alias TAI", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_SPACE_KEY=TAI", "TAI_SPACE_KEY=WRONG"),
+                spaces: {
+                    items: [{ key: "TA", alias: "TAI", name: "TAI", type: "global", value: "TAI" }],
+                    truncated: true,
+                },
+                goodSpace: "TAI",
+                answers: ["", "TA"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_SPACE_KEY"], "TAI");
+        });
+    });
+
+    it("a retyped project key takes the list's own spelling (tai -> TAI)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE"),
+                projects: TRUNC_PROJECTS,
+                goodProject: "TAI",
+                answers: ["", "tai"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_PROJECT_KEY"], "TAI");
+        });
+    });
+
+    it("with NO list available a retyped key is written as typed", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE"),
+                listProjectsThrows: "403",
+                goodProject: "TAI",
+                answers: ["", "TAI"],
+            });
+            assert.equal((await runInit(h.deps)).exitCode, 0, h.all());
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_PROJECT_KEY"], "TAI");
         });
     });
 });

@@ -272,6 +272,15 @@ async function pickCoordinate(
     return null;
 }
 
+/** `typed` as the live list spells it (matched case-insensitively on any key or alias), or `typed`
+ *  unchanged when there is no usable list or no match. */
+function canonicalFromList(typed: string, listed: Listing<unknown> | { error: string }, choices: () => Choice[]): string {
+    if ("error" in listed) return typed;
+    const wanted = typed.toLowerCase();
+    const hit = choices().find((c) => c.keys.some((k) => k.toLowerCase() === wanted));
+    return hit ? hit.value : typed;
+}
+
 /** The whole flow. Never throws for an expected failure -- those come back as `exitCode`. */
 export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     const { cwd, taiRoot, taiHome, io, services, renderStepResult } = deps;
@@ -522,9 +531,20 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         const keyName = wrong === "project" ? "TAI_PROJECT_KEY" : "TAI_SPACE_KEY";
         io.say(`Check ${keyName} (and TAI_PROJECT_KEY / TAI_SPACE_KEY generally) in ${envPath}.`);
         if (!deps.interactive || tries >= MAX_KEY_TRIES) return stop(1, "jira");
-        const answer = await io.ask(`Jira ${wrong} key to try instead (it is ${wrong === "project" ? projectKey : spaceKey} now), or q to stop`);
-        const replacement = answer.trim();
-        if (replacement === "" || /^q$/i.test(replacement)) return stop(1, "jira");
+        const noun = wrong === "project" ? "Jira project" : "Confluence space";
+        const answer = await io.ask(`${noun} key to try instead (it is ${wrong === "project" ? projectKey : spaceKey} now), or q to stop`);
+        const typedKey = answer.trim();
+        if (typedKey === "" || /^q$/i.test(typedKey)) return stop(1, "jira");
+        // Where a list is available, take ITS spelling: tai -> TAI, and a space's real key TA ->
+        // its alias TAI (the common name, per the human's decision). With no list, as typed.
+        const replacement = canonicalFromList(
+            typedKey,
+            wrong === "project" ? projectsListed : spacesListed,
+            () =>
+                wrong === "project"
+                    ? projectChoices((projectsListed as Listing<DiscoveredProject>).items)
+                    : spaceChoices((spacesListed as Listing<DiscoveredSpace>).items)
+        );
         await writeEnvValues(cwd, { [keyName]: replacement });
         if (wrong === "project") projectKey = replacement;
         else spaceKey = replacement;
@@ -558,16 +578,23 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
                 return stop(1, "bitbucket");
             }
             io.say(hint);
-            const answer = await io.ask(
-                `Bitbucket repository (workspace/repo) to use instead of ${currentRepo}, or q to stop`,
-                detectedRepo ?? currentRepo
-            );
-            if (/^q/i.test(answer.trim())) return stop(1, "bitbucket");
-            const replacement = (answer === "" ? (detectedRepo ?? currentRepo) : answer).trim();
-            if (replacement === "") return stop(1, "bitbucket");
+            // An answer must contain at least one repository once parsed: a lone "," or blanks mean
+            // nothing, and must never reach .env (it would wipe the rest of the list).
+            let replacement = "";
+            let typed: string[] = [];
+            for (let ask = 0; ask < MAX_LOOPS && typed.length === 0; ask++) {
+                const answer = await io.ask(
+                    `Bitbucket repository (workspace/repo) to use instead of ${currentRepo}, or q to stop`,
+                    detectedRepo ?? currentRepo
+                );
+                if (/^q/i.test(answer.trim())) return stop(1, "bitbucket");
+                replacement = (answer === "" ? (detectedRepo ?? currentRepo) : answer).trim();
+                typed = replacement.split(",").map((r) => r.trim()).filter((r) => r !== "");
+                if (typed.length === 0) io.say("That didn't contain a repository -- type workspace/repo (or a comma-separated list), or q to stop.");
+            }
+            if (typed.length === 0) return stop(1, "bitbucket");
             // One repo replaces only the failing FIRST entry and keeps the rest of the list; typing
             // a comma list is an explicit full replacement. Never silently drop the user's others.
-            const typed = replacement.split(",").map((r) => r.trim()).filter((r) => r !== "");
             const next = replacement.includes(",") ? typed : [typed[0] as string, ...repoList.slice(1)];
             repoList = [...new Set(next)];
             await writeEnvValues(cwd, { TAI_GIT_REPOS: repoList.join(",") });
