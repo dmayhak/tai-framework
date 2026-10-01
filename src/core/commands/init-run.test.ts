@@ -11,6 +11,7 @@ import {
     buildEditorCommand,
     normalizeSiteUrl,
     renderFillInstructions,
+    renderRunInstructions,
     type InitRunDeps,
 } from "./init-run.js";
 import { parseEnvContent, readInitState, markStepDone, isInitComplete } from "./target-init.js";
@@ -87,6 +88,21 @@ describe("normalizeSiteUrl", () => {
         assert.equal(normalizeSiteUrl(""), null);
         assert.equal(normalizeSiteUrl("not a url"), null);
         assert.equal(normalizeSiteUrl("http://x.atlassian.net"), null);
+    });
+});
+
+describe("renderRunInstructions", () => {
+    it("gives a copy-paste command for a separate terminal: cd into the project, run init run from TAI's install", () => {
+        const text = renderRunInstructions("/projects/my app", "/home/u/.tai-framework");
+        assert.match(text, /separate terminal/i);
+        assert.ok(text.includes("cd '/projects/my app'"), "a path with a space is quoted");
+        assert.ok(text.includes("npx --prefix /home/u/.tai-framework tsx /home/u/.tai-framework/src/hosts/cli.ts init run"));
+    });
+
+    it("leaves a plain path unquoted, and warns that piping or redirecting disables the prompts", () => {
+        const text = renderRunInstructions("/work/proj", "/opt/tai");
+        assert.ok(text.includes("cd /work/proj"));
+        assert.match(text, /pip|redirect/i);
     });
 });
 
@@ -222,6 +238,7 @@ describe("runInit — non-interactive (no TTY)", () => {
             const env = await readFile(h.envPath, "utf-8");
             assert.match(env, /^TAI_JIRA_EMAIL=$/m);
             assert.match(h.all(), /needs a human at a terminal/i);
+            assert.ok(h.all().includes(`cd ${dir}`) && h.all().includes("/opt/tai/src/hosts/cli.ts init run"), "the exact command to run is printed");
             for (const key of ["TAI_JIRA_SITE_URL", "TAI_JIRA_EMAIL", "TAI_JIRA_API_TOKEN"]) assert.ok(h.all().includes(key), key);
             assert.deepEqual((await readInitState(h.deps.taiRoot)).steps, {});
         });

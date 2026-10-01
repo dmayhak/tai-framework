@@ -117,6 +117,26 @@ export function normalizeSiteUrl(input: string): string | null {
     }
 }
 
+/** Quotes a path for a POSIX shell only when it needs it, so the common case stays readable. */
+function shellQuote(value: string): string {
+    return /^[\w@%+=:,./~-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** What to tell a human whose assistant's shell can't prompt or open an editor: a command to
+ *  paste into a separate terminal. `init run` needs a real TTY, and neither host's
+ *  assistant shell reliably has one (Claude Code's `!` has none; Gemini CLI's has one but the
+ *  editor hand-off there is unverified), so the safe default is always a separate terminal. */
+export function renderRunInstructions(cwd: string, taiHome: string): string {
+    return [
+        "Open a separate terminal and run:",
+        "",
+        `  cd ${shellQuote(cwd)}`,
+        `  npx --prefix ${shellQuote(taiHome)} tsx ${shellQuote(`${taiHome}/src/hosts/cli.ts`)} init run`,
+        "",
+        "Run it directly in the terminal -- piping or redirecting its output also disables the prompts. Then come back and carry on.",
+    ].join("\n");
+}
+
 export function renderFillInstructions(missingKeys: readonly string[], envPath: string): string {
     return [
         `Almost there -- these lines in ${envPath} still need your own values:`,
@@ -250,7 +270,10 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     const envPath = path.join(cwd, ".env");
     const stop = (exitCode: 1 | 2, stoppedAt: string): InitRunResult => ({ ok: false, exitCode, stoppedAt });
     const needsHuman = (stoppedAt: string): InitRunResult => {
-        io.say("This step needs a human at a terminal: run `init run` yourself (not through an assistant's shell) to finish it.");
+        io.say(
+            "This step needs a human at a terminal -- an assistant's shell can't prompt you or open your editor.\n\n" +
+                renderRunInstructions(cwd, taiHome)
+        );
         return stop(2, stoppedAt);
     };
 
