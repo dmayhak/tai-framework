@@ -393,7 +393,7 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts init run\n` +
         "```\n\n" +
-        "Without a terminal it never prompts; it writes a `.env` skeleton, exits with code 2 and " +
+        "Without a terminal it never prompts; it writes a `.env` skeleton and updates `.gitignore`, exits with code 2 and " +
         "prints a command. Relay that output to the human verbatim and ask them to open a " +
         "**separate terminal** and run exactly that command (it is safe to re-run any time), " +
         "then come back and tell you when it finishes. Never suggest the `!` prefix instead — it " +

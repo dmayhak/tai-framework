@@ -68,6 +68,10 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(body(), /verbatim/i);
         });
 
+        test("says the assistant-side run also touches .gitignore, so the human isn't surprised by the diff", () => {
+            assert.match(body(), /`\.env` skeleton and updates `\.gitignore`/);
+        });
+
         test("covers joining an already-onboarded project on a new folder or PC with the same command", () => {
             assert.match(body(), /already-onboarded/i);
             assert.match(body(), /new folder or onto a new PC/i);
