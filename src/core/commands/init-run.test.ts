@@ -144,6 +144,9 @@ interface HarnessOptions {
     repo?: string | null;
     jiraOk?: boolean;
     listProjectsThrows?: string;
+    listSpacesThrows?: string;
+    /** verifyBitbucket succeeds only for this repo (default: any). */
+    goodRepo?: string;
     porcelain?: string | null;
     /** Edits the .env the way a human would in the editor. */
     editor?: (envPath: string) => Promise<void>;
@@ -192,6 +195,7 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
             },
             listSpaces: async () => {
                 calls.push("listSpaces");
+                if (opts.listSpacesThrows) throw new Error(opts.listSpacesThrows);
                 return opts.spaces ?? SPACES;
             },
             detectBitbucketRepo: async () => opts.repo ?? null,
@@ -209,7 +213,10 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
             verifyBitbucket: async (input) => {
                 calls.push("verifyBitbucket");
                 bitbucketInput = input;
-                return { ok: true, detail: "Repository reachable." };
+                const ok = opts.goodRepo === undefined || input.repo === opts.goodRepo;
+                return ok
+                    ? { ok: true, detail: "Repository reachable." }
+                    : { ok: false, detail: `Repository "${input.repo}" not found (or these credentials can't see it).` };
             },
             gitStatusPorcelain: async () => opts.porcelain ?? null,
         },
@@ -380,14 +387,66 @@ describe("runInit — failures stop at the failing step", () => {
         });
     });
 
-    it("a discovery call that throws stops before any verification and explains why", async () => {
+    it("a failed discovery call stops before verification when the value it would have found is MISSING, and says why", async () => {
         await withTempDir(async (dir) => {
-            const h = await harness(dir, { envFile: COMPLETE_ENV, listProjectsThrows: "401 Unauthorized" });
+            const env = COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI\n", "");
+            const h = await harness(dir, { envFile: env, listProjectsThrows: "401 Unauthorized" });
             const result = await runInit(h.deps);
             assert.equal(result.exitCode, 1);
             assert.equal(result.stoppedAt, "discovery");
             assert.match(h.all(), /401 Unauthorized/);
+            assert.match(h.all(), /TAI_PROJECT_KEY/, "tells the user which value to set themselves");
             assert.ok(!h.calls.includes("verifyJira"));
+        });
+    });
+
+    it("a failed LIST call does not block a join whose value is already in .env: it warns and lets verification decide", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, listSpacesThrows: "403 Forbidden: scope missing read:space" });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /couldn't list Confluence spaces[^\n]*403 Forbidden[^\n]*keeping TAI/);
+            assert.ok(h.calls.includes("verifyJira") && h.calls.includes("setupConfluence"), "live verification still runs");
+        });
+    });
+
+    it("interactive: a failed list for a MISSING value falls back to typing the key by hand", async () => {
+        await withTempDir(async (dir) => {
+            const env = COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI\n", "");
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: env,
+                listProjectsThrows: "403 Forbidden",
+                answers: ["", "TAI", "y"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_PROJECT_KEY"], "TAI");
+            assert.match(h.all(), /403 Forbidden/);
+        });
+    });
+
+    it("a TRUNCATED list is not proof an existing key is stale: it is kept and verification decides (non-interactive)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, projects: { items: [{ key: "OTHER", name: "o" }], truncated: true } });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /incomplete/i);
+            assert.equal((h.jiraInput() as { projectKey: string }).projectKey, "TAI");
+            assert.deepEqual(h.asked, []);
+        });
+    });
+
+    it("a truncated list also does not nag an interactive user about an existing value", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV,
+                projects: { items: [{ key: "OTHER", name: "o" }], truncated: true },
+                answers: [""],
+            });
+            assert.equal((await runInit(h.deps)).exitCode, 0, h.all());
+            assert.deepEqual(h.asked.length, 1, "only the site URL was asked");
         });
     });
 });
@@ -488,6 +547,83 @@ describe("runInit — interactive", () => {
             assert.equal(result.exitCode, 0, h.all());
             assert.match(h.all(), /GONE is set in \.env but wasn't found/, "the stale value is surfaced to the user");
             assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_PROJECT_KEY"], "GONE", "Enter accepted it unchanged");
+        });
+    });
+});
+
+describe("runInit — a wrong Bitbucket repo can always be corrected (TAI-367 review)", () => {
+    const BB_ENV = COMPLETE_ENV + "BITBUCKET_EMAIL=a@b.c\nBITBUCKET_API_TOKEN=bt\n";
+
+    it("a typo at the prompt is offered for correction on the spot, and the fix is written", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: BB_ENV,
+                repo: "dmayhak/proj",
+                goodRepo: "dmayhak/proj",
+                answers: ["", "dmayhak/typo", "dmayhak/proj"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /\[FAIL\] bitbucket: Repository "dmayhak\/typo" not found/);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/proj");
+            assert.ok(!/^N\/A/.test((await readInitState(h.deps.taiRoot)).steps.bitbucket?.detail ?? "N/A"));
+        });
+    });
+
+    it("a wrong repo ALREADY saved in .env from an earlier run is also offered for correction (the re-run case)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: BB_ENV + "TAI_GIT_REPOS=dmayhak/typo\n",
+                repo: "dmayhak/proj",
+                goodRepo: "dmayhak/proj",
+                answers: ["", "dmayhak/proj"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/proj");
+        });
+    });
+
+    it("quitting at the correction prompt stops cleanly and clears the stale 'done' record", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: BB_ENV + "TAI_GIT_REPOS=dmayhak/typo\n",
+                goodRepo: "dmayhak/proj",
+                answers: ["", "q"],
+            });
+            await markStepDone(h.deps.taiRoot, "bitbucket", "old success");
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "bitbucket");
+            assert.equal((await readInitState(h.deps.taiRoot)).steps.bitbucket, undefined);
+        });
+    });
+
+    it("gives up after a few wrong answers instead of looping forever", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: BB_ENV + "TAI_GIT_REPOS=dmayhak/typo\n",
+                goodRepo: "dmayhak/proj",
+                answers: ["", "dmayhak/a", "dmayhak/b", "dmayhak/c", "dmayhak/d"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "bitbucket");
+        });
+    });
+
+    it("non-interactive: fails, and the message says where the value lives and that credentials can cause it too", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: BB_ENV + "TAI_GIT_REPOS=dmayhak/typo\n", goodRepo: "dmayhak/proj" });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "bitbucket");
+            assert.match(h.all(), /TAI_GIT_REPOS[^\n]*BITBUCKET_EMAIL[^\n]*BITBUCKET_API_TOKEN/);
+            assert.ok(h.all().includes(h.envPath));
         });
     });
 });

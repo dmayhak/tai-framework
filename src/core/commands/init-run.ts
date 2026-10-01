@@ -190,6 +190,7 @@ export interface InitRunResult {
 
 const MAX_LOOPS = 25;
 const MAX_ROWS_SHOWN = 20;
+const MAX_REPO_TRIES = 3;
 
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -383,49 +384,80 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     siteUrl = normalizeSiteUrl(env["TAI_JIRA_SITE_URL"] ?? "") as string;
 
     // ----- 4. Discovery: keep what works, ask only about what's missing or stale -----
-    let projectKey: string | null;
-    let spaceKey: string | null;
-    try {
-        const projects = await services.listProjects(siteUrl, email, apiToken);
-        const spaces = await services.listSpaces(siteUrl, email, apiToken);
+    // A list call is a convenience for FINDING a missing value, not a precondition for using one
+    // already in .env: a token without list scope can still pass the live verification below
+    // (TAI-367 review). So a failed list is carried as data, not thrown.
+    const tryList = async <T,>(run: () => Promise<Listing<T>>): Promise<Listing<T> | { error: string }> => {
+        try {
+            return await run();
+        } catch (err) {
+            return { error: errorMessage(err) };
+        }
+    };
+    const projectsListed = await tryList(() => services.listProjects(siteUrl, email, apiToken));
+    const spacesListed = await tryList(() => services.listSpaces(siteUrl, email, apiToken));
 
-        const resolve = async (
-            noun: string,
-            envKey: string,
-            choices: Choice[],
-            truncated: boolean
-        ): Promise<string | "needs-human" | null> => {
-            const plan = planCoordinate(env[envKey], choices);
-            if (plan.kind === "keep") {
-                io.say(`${noun}: ${plan.value} (confirmed live)`);
-                return plan.value;
+    type Resolved = { readonly kind: "value"; readonly value: string } | { readonly kind: "needs-human" } | { readonly kind: "abandoned" };
+    const resolve = async (
+        noun: string,
+        envKey: string,
+        listed: Listing<unknown> | { error: string },
+        toChoices: () => Choice[]
+    ): Promise<Resolved> => {
+        const existing = (env[envKey] ?? "").trim();
+        let choices: Choice[] = [];
+        let truncated = false;
+        if ("error" in listed) {
+            if (existing !== "") {
+                io.say(`Note: couldn't list ${noun}s to cross-check ${envKey} (${listed.error}) -- keeping ${existing}; live verification below will confirm it.`);
+                return { kind: "value", value: existing };
             }
-            if (!deps.interactive) {
-                io.say(`${envKey} is ${plan.unverifiedExisting ? `set to ${plan.unverifiedExisting} but not found in the live ${noun} list` : "not set"}.`);
-                return "needs-human";
-            }
-            return pickCoordinate(io, {
-                noun,
-                choices,
-                truncated,
-                ...(plan.unverifiedExisting !== undefined ? { unverifiedExisting: plan.unverifiedExisting } : {}),
-            });
-        };
+            io.say(
+                `Could not list your ${noun}s: ${listed.error}\n` +
+                    `Check TAI_JIRA_EMAIL and TAI_JIRA_API_TOKEN in ${envPath}${deps.interactive ? "" : `, or set ${envKey} there yourself`}, then run \`init run\` again.`
+            );
+            if (!deps.interactive) return { kind: "abandoned" };
+            // Interactive: nothing to pick from, so fall through to typing the key by hand.
+        } else {
+            choices = toChoices();
+            truncated = listed.truncated;
+        }
 
-        const p = await resolve("Jira project", "TAI_PROJECT_KEY", projectChoices(projects.items), projects.truncated);
-        if (p === "needs-human") return needsHuman("discovery");
-        projectKey = p;
-        const s = await resolve("Confluence space", "TAI_SPACE_KEY", spaceChoices(spaces.items), spaces.truncated);
-        if (s === "needs-human") return needsHuman("discovery");
-        spaceKey = s;
-    } catch (err) {
-        io.say(
-            `Could not list your Jira projects / Confluence spaces: ${errorMessage(err)}\n` +
-                `Check TAI_JIRA_EMAIL and TAI_JIRA_API_TOKEN in ${envPath}, then run \`init run\` again.`
-        );
-        return stop(1, "discovery");
-    }
-    if (projectKey === null || spaceKey === null) return stop(1, "discovery");
+        const plan = planCoordinate(existing, choices);
+        if (plan.kind === "keep") {
+            io.say(`${noun}: ${plan.value} (confirmed live)`);
+            return { kind: "value", value: plan.value };
+        }
+        if (plan.unverifiedExisting !== undefined && truncated) {
+            // Not found in a list we know is partial: absence is not evidence, verification decides.
+            io.say(`Note: the ${noun} list was incomplete, so ${plan.unverifiedExisting} couldn't be cross-checked -- keeping it; live verification below will confirm it.`);
+            return { kind: "value", value: plan.unverifiedExisting };
+        }
+        if (!deps.interactive) {
+            io.say(`${envKey} is ${plan.unverifiedExisting ? `set to ${plan.unverifiedExisting} but not found in the live ${noun} list` : "not set"}.`);
+            return { kind: "needs-human" };
+        }
+        const picked = await pickCoordinate(io, {
+            noun,
+            choices,
+            truncated,
+            ...(plan.unverifiedExisting !== undefined ? { unverifiedExisting: plan.unverifiedExisting } : {}),
+        });
+        return picked === null ? { kind: "abandoned" } : { kind: "value", value: picked };
+    };
+
+    const resolvedProject = await resolve("Jira project", "TAI_PROJECT_KEY", projectsListed, () =>
+        projectChoices((projectsListed as Listing<DiscoveredProject>).items)
+    );
+    if (resolvedProject.kind === "needs-human") return needsHuman("discovery");
+    if (resolvedProject.kind === "abandoned") return stop(1, "discovery");
+    const resolvedSpace = await resolve("Confluence space", "TAI_SPACE_KEY", spacesListed, () =>
+        spaceChoices((spacesListed as Listing<DiscoveredSpace>).items)
+    );
+    if (resolvedSpace.kind === "needs-human") return needsHuman("discovery");
+    if (resolvedSpace.kind === "abandoned") return stop(1, "discovery");
+    const projectKey = resolvedProject.value;
+    const spaceKey = resolvedSpace.value;
 
     // Bitbucket repository
     let repos = (env["TAI_GIT_REPOS"] ?? "").trim();
@@ -475,9 +507,32 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     const bitbucketToken = (env["BITBUCKET_API_TOKEN"] ?? "").trim();
     const repo = repos.split(",")[0]?.trim() ?? "";
     if (includeBitbucket && repo !== "" && bitbucketEmail !== "" && bitbucketToken !== "") {
-        const bitbucket = await attempt(() => services.verifyBitbucket({ email: bitbucketEmail, apiToken: bitbucketToken, repo }));
-        await record("bitbucket", bitbucket.ok, bitbucket.detail);
-        if (!bitbucket.ok) return stop(1, "bitbucket");
+        // The repo is hand-typed (or saved by an earlier run), so a failure here is most often a
+        // typo -- and because the value is already in .env, a plain re-run would skip the prompt
+        // and fail identically. So in a terminal, offer the correction right here (TAI-367 review).
+        let currentRepo = repo;
+        for (let tries = 1; ; tries++) {
+            const bitbucket = await attempt(() =>
+                services.verifyBitbucket({ email: bitbucketEmail, apiToken: bitbucketToken, repo: currentRepo })
+            );
+            if (bitbucket.ok) {
+                await record("bitbucket", true, bitbucket.detail);
+                break;
+            }
+            await record("bitbucket", false, bitbucket.detail);
+            const hint = `Check TAI_GIT_REPOS, BITBUCKET_EMAIL and BITBUCKET_API_TOKEN in ${envPath}.`;
+            if (!deps.interactive || tries >= MAX_REPO_TRIES) {
+                io.say(hint);
+                return stop(1, "bitbucket");
+            }
+            io.say(hint);
+            const answer = await io.ask("Bitbucket repository (workspace/repo), or q to stop", detectedRepo ?? currentRepo);
+            if (/^q/i.test(answer.trim())) return stop(1, "bitbucket");
+            const replacement = (answer === "" ? (detectedRepo ?? currentRepo) : answer).trim();
+            if (replacement === "") return stop(1, "bitbucket");
+            await writeEnvValues(cwd, { TAI_GIT_REPOS: replacement });
+            currentRepo = replacement.split(",")[0]?.trim() ?? replacement;
+        }
     } else {
         // TAI-350: a project that never uses git-pr must still be able to reach "fully
         // initialized", without isInitComplete having to know whether Bitbucket was needed.
