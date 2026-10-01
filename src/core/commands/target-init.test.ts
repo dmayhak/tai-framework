@@ -740,6 +740,35 @@ describe("pointer files are byte-identical on re-run (TAI-376)", () => {
     }
 });
 
+describe("pointer writers: CRLF files and the refusal message (TAI-376 review)", () => {
+    for (const [name, write] of [
+        ["CLAUDE.md", writeClaudeMdPointer],
+        ["GEMINI.md", writeGeminiMdPointer],
+    ] as const) {
+        it(`${name}: a CRLF-edited file does not grow by a line on each re-run`, async () => {
+            await withTempDir(async (dir) => {
+                const taiRoot = path.join(dir, ".tai");
+                await markStepDone(taiRoot, "env", "ok");
+                await write(dir, taiRoot, "/home/x/.tai-framework");
+                const lf = await readFile(path.join(dir, name), "utf-8");
+                await writeFile(path.join(dir, name), `# Mine\r\n\r\n${lf.replace(/\n/g, "\r\n")}\r\n## After\r\n`, "utf-8");
+                await write(dir, taiRoot, "/home/x/.tai-framework");
+                const once = await readFile(path.join(dir, name), "utf-8");
+                // Exactly the one blank line the file had after the marker, not an extra one.
+                assert.equal(once.slice(once.indexOf("TAI-INIT:END -->") + "TAI-INIT:END -->".length), "\n\r\n## After\r\n");
+                await write(dir, taiRoot, "/home/x/.tai-framework");
+                assert.equal(await readFile(path.join(dir, name), "utf-8"), once);
+            });
+        });
+
+        it(`${name}: refusing without the env step points a fresh clone at \`init run\``, async () => {
+            await withTempDir(async (dir) => {
+                await assert.rejects(() => write(dir, path.join(dir, ".tai"), "/home/x/.tai-framework"), /init run/);
+            });
+        });
+    }
+});
+
 describe("writeGeminiMdPointer (TAI-376)", () => {
     it("refuses to run before the env step is done", async () => {
         await withTempDir(async (dir) => {

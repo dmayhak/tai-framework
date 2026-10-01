@@ -211,15 +211,18 @@ the diff.
 ### `GEMINI.md` pointer (TAI-376)
 
 Gemini CLI reads `GEMINI.md`, not `CLAUDE.md`, so a project used from Gemini needs its own
-pointer. `init run` writes it; to add it to an already-onboarded project without re-running
-everything, or to refresh it:
+pointer. `init run` writes it, so on a fresh clone (no `.tai/`) or a project that was never
+set up on this machine, just run `init run`. To add it to a project already initialized here
+without re-running everything, or to refresh it:
 
 ```bash
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init gemini-md [TAI-HOME]
 ```
 
 Same marker-based idempotent merge as `CLAUDE.md` (only TAI's own section is replaced) and
-the same `env`-step prerequisite, but it records no step, so `init status` is unaffected.
+the same prerequisite: an `env` step already recorded in `.tai/init-state.json`, which a fresh
+clone doesn't have (the command refuses and points you at `init run`). It records no step of
+its own, so `init status` is unaffected.
 
 ## Suggested team rituals (not a verified `init` step)
 

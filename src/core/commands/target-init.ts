@@ -615,7 +615,10 @@ function pointerSection(rawTaiHome: string): string {
 async function writePointerFile(fileName: string, cwd: string, taiRoot: string, taiHome: string): Promise<string> {
     const state = await readInitState(taiRoot);
     if (state.steps["env"] === undefined) {
-        throw new Error(`Run the /tai-init "env" step first.`);
+        // A fresh clone has no `.tai/` (gitignored), so name the command that rebuilds it.
+        throw new Error(
+            `Run the /tai-init "env" step first -- on a fresh clone, run \`init run\` instead: it sets up .env and writes this file.`
+        );
     }
 
     const filePath = path.join(cwd, fileName);
@@ -634,8 +637,8 @@ async function writePointerFile(fileName: string, cwd: string, taiRoot: string, 
             ? existing.slice(0, beginIdx) +
               section +
               // `section` already ends with its own newline; drop the one that followed the old END
-              // marker, or every re-run grows the file by a blank line.
-              existing.slice(endIdx + CLAUDE_MD_END.length).replace(/^\n/, "")
+              // marker (LF or CRLF), or every re-run grows the file by a blank line.
+              existing.slice(endIdx + CLAUDE_MD_END.length).replace(/^\r?\n/, "")
             : existing.trim().length > 0
               ? `${existing.trim()}\n\n${section}`
               : section;
