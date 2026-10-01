@@ -12,9 +12,12 @@ import {
     normalizeSiteUrl,
     renderFillInstructions,
     renderRunInstructions,
+    SPACE_NOT_FOUND,
     type InitRunDeps,
 } from "./init-run.js";
 import { parseEnvContent, readInitState, markStepDone, isInitComplete } from "./target-init.js";
+import { RestClient, apiTokenAuth } from "../storage/jira/rest-client.js";
+import { createConfluenceDocStore } from "../storage/jira/doc-store.js";
 import type { Listing, DiscoveredProject, DiscoveredSpace } from "./discovery.js";
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
@@ -147,6 +150,10 @@ interface HarnessOptions {
     listSpacesThrows?: string;
     /** verifyBitbucket succeeds only for this repo (default: any). */
     goodRepo?: string;
+    /** verifyJira reports the project as not found unless projectKey equals this. */
+    goodProject?: string;
+    /** verifyJira throws the doc-store's space-not-found error unless spaceKey equals this. */
+    goodSpace?: string;
     porcelain?: string | null;
     /** Edits the .env the way a human would in the editor. */
     editor?: (envPath: string) => Promise<void>;
@@ -202,9 +209,23 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
             verifyJira: async (input) => {
                 calls.push("verifyJira");
                 jiraInput = input;
+                if (opts.goodSpace !== undefined && input.spaceKey !== opts.goodSpace) {
+                    throw new Error(
+                        `Confluence space "${input.spaceKey}" not found (checked by system key and by current alias). Space key and Jira project key are never safely derivable from each other.`
+                    );
+                }
+                if (opts.goodProject !== undefined && input.projectKey !== opts.goodProject) {
+                    return {
+                        ok: false,
+                        projectFound: false,
+                        missingIssueTypes: [],
+                        personaFieldFound: false,
+                        detail: `Project "${input.projectKey}" not found (or this API token can't see it) at ${input.siteUrl}.`,
+                    };
+                }
                 return opts.jiraOk === false
-                    ? { ok: false, missingIssueTypes: ["Dev"], personaFieldFound: true, detail: "Missing issue type(s): Dev." }
-                    : { ok: true, missingIssueTypes: [], personaFieldFound: true, detail: "All required issue types present." };
+                    ? { ok: false, projectFound: true, missingIssueTypes: ["Dev"], personaFieldFound: true, detail: "Missing issue type(s): Dev." }
+                    : { ok: true, projectFound: true, missingIssueTypes: [], personaFieldFound: true, detail: "All required issue types present." };
             },
             setupConfluence: async () => {
                 calls.push("setupConfluence");
@@ -624,6 +645,139 @@ describe("runInit — a wrong Bitbucket repo can always be corrected (TAI-367 re
             assert.equal(result.stoppedAt, "bitbucket");
             assert.match(h.all(), /TAI_GIT_REPOS[^\n]*BITBUCKET_EMAIL[^\n]*BITBUCKET_API_TOKEN/);
             assert.ok(h.all().includes(h.envPath));
+        });
+    });
+});
+
+describe("SPACE_NOT_FOUND drift guard (TAI-367 review)", () => {
+    it("matches the error the real Confluence doc store throws for an unknown space", async () => {
+        const fetchImpl = (async (input: string | URL | Request) => {
+            const url = new URL(String(input));
+            if (url.pathname === "/wiki/api/v2/spaces") return new Response(JSON.stringify({ results: [] }), { status: 200 });
+            throw new Error(`Unstubbed request: ${url.pathname}`);
+        }) as unknown as typeof fetch;
+        const client = new RestClient({ siteUrl: "https://x.atlassian.net", auth: apiTokenAuth("a@b.c", "t"), fetchImpl });
+        const store = createConfluenceDocStore(client, { spaceKey: "NOPE" });
+        await assert.rejects(
+            () => store.getPage({ spaceKey: "NOPE", title: "Config" }),
+            (err: Error) => SPACE_NOT_FOUND.test(err.message)
+        );
+    });
+});
+
+describe("runInit — a wrong project or space key can always be corrected (TAI-367 review)", () => {
+    const TRUNC: Listing<DiscoveredProject> = { items: [{ key: "OTHER", name: "o" }], truncated: true };
+
+    it("a stale project key the list could not confirm (truncated) is offered for retyping when verification fails", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE"),
+                projects: TRUNC,
+                goodProject: "TAI",
+                answers: ["", "TAI"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /\[FAIL\] jira: Project "GONE" not found/);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_PROJECT_KEY"], "TAI");
+        });
+    });
+
+    it("a wrong space key, with a list that could not confirm it, surfaces at the Jira step and is offered for retyping", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_SPACE_KEY=TAI", "TAI_SPACE_KEY=WRONG"),
+                listSpacesThrows: "403 Forbidden",
+                goodSpace: "TAI",
+                answers: ["", "TAI"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_SPACE_KEY"], "TAI");
+        });
+    });
+
+    it("non-interactive: fails with the key names and the .env path, and no prompt", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                envFile: COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE"),
+                projects: TRUNC,
+                goodProject: "TAI",
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "jira");
+            assert.match(h.all(), /TAI_PROJECT_KEY[^\n]*TAI_SPACE_KEY/);
+            assert.ok(h.all().includes(h.envPath));
+            assert.deepEqual(h.asked, []);
+        });
+    });
+
+    it("a failure that is NOT a key problem (missing issue types) does not prompt for a key", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: COMPLETE_ENV, jiraOk: false, answers: [""] });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(h.asked.length, 1, "only the site URL was asked");
+        });
+    });
+
+    it("quitting at the retype prompt stops cleanly and clears the stale record; repeated wrong keys give up", async () => {
+        await withTempDir(async (dir) => {
+            const quit = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE"),
+                projects: TRUNC,
+                goodProject: "TAI",
+                answers: ["", "q"],
+            });
+            await markStepDone(quit.deps.taiRoot, "jira", "old success");
+            const r1 = await runInit(quit.deps);
+            assert.equal(r1.exitCode, 1);
+            assert.equal((await readInitState(quit.deps.taiRoot)).steps.jira, undefined);
+        });
+        await withTempDir(async (dir) => {
+            const loop = await harness(dir, {
+                interactive: true,
+                envFile: COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE"),
+                projects: TRUNC,
+                goodProject: "TAI",
+                answers: ["", "BAD1", "BAD2", "BAD3"],
+            });
+            const r2 = await runInit(loop.deps);
+            assert.equal(r2.exitCode, 1);
+            assert.equal(r2.stoppedAt, "jira");
+        });
+    });
+});
+
+describe("runInit — correcting one repo keeps the rest of TAI_GIT_REPOS (TAI-367 review)", () => {
+    const BB = COMPLETE_ENV + "BITBUCKET_EMAIL=a@b.c\nBITBUCKET_API_TOKEN=bt\nTAI_GIT_REPOS=dmayhak/typo,dmayhak/other\n";
+
+    it("replaces only the failing first entry", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/proj", answers: ["", "dmayhak/proj"] });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/proj,dmayhak/other");
+        });
+    });
+
+    it("typing a comma list is an explicit full replacement", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/proj", answers: ["", "dmayhak/proj,dmayhak/new"] });
+            await runInit(h.deps);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/proj,dmayhak/new");
+        });
+    });
+
+    it("does not duplicate an entry the list already has", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/other", answers: ["", "dmayhak/other"] });
+            await runInit(h.deps);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"], "dmayhak/other");
         });
     });
 });

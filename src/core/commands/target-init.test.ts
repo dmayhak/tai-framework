@@ -142,6 +142,7 @@ describe("verifyJiraSetup", () => {
         });
         assert.equal(result.ok, false);
         assert.equal(result.personaFieldFound, false);
+        assert.equal(result.projectFound, true, "the project exists; what is missing is provisioning");
         assert.ok(result.missingIssueTypes.includes("Dev"));
         assert.ok(result.missingIssueTypes.includes("CodeReview"));
         assert.ok(!result.missingIssueTypes.includes("Story"));
@@ -195,6 +196,7 @@ describe("verifyJiraSetup", () => {
         assert.equal(result.ok, true);
         assert.deepEqual(result.missingIssueTypes, []);
         assert.equal(result.personaFieldFound, true);
+        assert.equal(result.projectFound, true);
     });
 
     it("reports the project itself as not found rather than throwing", async () => {
@@ -211,6 +213,7 @@ describe("verifyJiraSetup", () => {
         });
         assert.equal(result.ok, false);
         assert.match(result.detail, /not found/);
+        assert.equal(result.projectFound, false, "lets a caller tell a wrong key from missing provisioning (TAI-367 review)");
     });
 
     it("treats an aliased native issue-type name as satisfying provisioning (TAI-116 piece 4, TAI-178 ADR)", async () => {

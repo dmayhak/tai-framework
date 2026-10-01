@@ -188,9 +188,16 @@ export interface InitRunResult {
     readonly stoppedAt?: string;
 }
 
+/** The message `createConfluenceDocStore` throws for a space key it cannot resolve (doc-store.ts,
+ *  `resolveSpaceId`). A wrong space key surfaces at the JIRA step, not the Confluence one,
+ *  because Jira verification loads the Type Aliases page from that space. Guarded against
+ *  drifting from the real message by a test that runs the real doc store. */
+export const SPACE_NOT_FOUND = /Confluence space ".*?" not found/;
+
 const MAX_LOOPS = 25;
 const MAX_ROWS_SHOWN = 20;
 const MAX_REPO_TRIES = 3;
+const MAX_KEY_TRIES = 3;
 
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -456,8 +463,8 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     );
     if (resolvedSpace.kind === "needs-human") return needsHuman("discovery");
     if (resolvedSpace.kind === "abandoned") return stop(1, "discovery");
-    const projectKey = resolvedProject.value;
-    const spaceKey = resolvedSpace.value;
+    let projectKey = resolvedProject.value;
+    let spaceKey = resolvedSpace.value;
 
     // Bitbucket repository
     let repos = (env["TAI_GIT_REPOS"] ?? "").trim();
@@ -493,11 +500,35 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         }
     };
 
-    const jira = await attempt(() =>
-        services.verifyJira({ siteUrl, email, apiToken, projectKey: projectKey as string, spaceKey: spaceKey as string })
-    );
-    await record("jira", jira.ok, jira.detail);
-    if (!jira.ok) return stop(1, "jira");
+    // A wrong project key or space key is most often a typo -- and a value kept because the list
+    // could not confirm it (failed or truncated list) would otherwise fail identically on every
+    // re-run. So in a terminal, offer the retype right here, as for the Bitbucket repo.
+    for (let tries = 1; ; tries++) {
+        let jira: { ok: boolean; detail: string; projectFound?: boolean };
+        try {
+            const result = await services.verifyJira({ siteUrl, email, apiToken, projectKey, spaceKey });
+            jira = { ok: result.ok, detail: result.detail, projectFound: result.projectFound };
+        } catch (err) {
+            jira = { ok: false, detail: `Could not verify: ${errorMessage(err)}` };
+        }
+        if (jira.ok) {
+            await record("jira", true, jira.detail);
+            break;
+        }
+        await record("jira", false, jira.detail);
+        const wrong: "project" | "space" | null =
+            jira.projectFound === false ? "project" : SPACE_NOT_FOUND.test(jira.detail) ? "space" : null;
+        if (wrong === null) return stop(1, "jira");
+        const keyName = wrong === "project" ? "TAI_PROJECT_KEY" : "TAI_SPACE_KEY";
+        io.say(`Check ${keyName} (and TAI_PROJECT_KEY / TAI_SPACE_KEY generally) in ${envPath}.`);
+        if (!deps.interactive || tries >= MAX_KEY_TRIES) return stop(1, "jira");
+        const answer = await io.ask(`Jira ${wrong} key to try instead (it is ${wrong === "project" ? projectKey : spaceKey} now), or q to stop`);
+        const replacement = answer.trim();
+        if (replacement === "" || /^q$/i.test(replacement)) return stop(1, "jira");
+        await writeEnvValues(cwd, { [keyName]: replacement });
+        if (wrong === "project") projectKey = replacement;
+        else spaceKey = replacement;
+    }
 
     const confluence = await attempt(() => services.setupConfluence({ siteUrl, email, apiToken, spaceKey: spaceKey as string }));
     await record("confluence", confluence.ok, confluence.detail);
@@ -510,6 +541,7 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         // The repo is hand-typed (or saved by an earlier run), so a failure here is most often a
         // typo -- and because the value is already in .env, a plain re-run would skip the prompt
         // and fail identically. So in a terminal, offer the correction right here (TAI-367 review).
+        let repoList = repos.split(",").map((r) => r.trim()).filter((r) => r !== "");
         let currentRepo = repo;
         for (let tries = 1; ; tries++) {
             const bitbucket = await attempt(() =>
@@ -526,12 +558,20 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
                 return stop(1, "bitbucket");
             }
             io.say(hint);
-            const answer = await io.ask("Bitbucket repository (workspace/repo), or q to stop", detectedRepo ?? currentRepo);
+            const answer = await io.ask(
+                `Bitbucket repository (workspace/repo) to use instead of ${currentRepo}, or q to stop`,
+                detectedRepo ?? currentRepo
+            );
             if (/^q/i.test(answer.trim())) return stop(1, "bitbucket");
             const replacement = (answer === "" ? (detectedRepo ?? currentRepo) : answer).trim();
             if (replacement === "") return stop(1, "bitbucket");
-            await writeEnvValues(cwd, { TAI_GIT_REPOS: replacement });
-            currentRepo = replacement.split(",")[0]?.trim() ?? replacement;
+            // One repo replaces only the failing FIRST entry and keeps the rest of the list; typing
+            // a comma list is an explicit full replacement. Never silently drop the user's others.
+            const typed = replacement.split(",").map((r) => r.trim()).filter((r) => r !== "");
+            const next = replacement.includes(",") ? typed : [typed[0] as string, ...repoList.slice(1)];
+            repoList = [...new Set(next)];
+            await writeEnvValues(cwd, { TAI_GIT_REPOS: repoList.join(",") });
+            currentRepo = repoList[0] as string;
         }
     } else {
         // TAI-350: a project that never uses git-pr must still be able to reach "fully

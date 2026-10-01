@@ -140,6 +140,9 @@ export interface JiraVerifyInput {
 
 export interface JiraVerifyResult {
     readonly ok: boolean;
+    /** False only when the project key itself was not found (or is invisible to this token) --
+     *  distinct from "found, but not provisioned", so a caller can offer to retype the key. */
+    readonly projectFound: boolean;
     readonly missingIssueTypes: readonly string[];
     readonly personaFieldFound: boolean;
     readonly detail: string;
@@ -173,6 +176,7 @@ export async function verifyJiraSetup(input: JiraVerifyInput): Promise<JiraVerif
     if (!project) {
         return {
             ok: false,
+            projectFound: false,
             missingIssueTypes: [],
             personaFieldFound: false,
             detail: `Project "${input.projectKey}" not found (or this API token can't see it) at ${input.siteUrl}.`,
@@ -211,7 +215,7 @@ export async function verifyJiraSetup(input: JiraVerifyInput): Promise<JiraVerif
               .filter((s): s is string => s !== null)
               .join(" ");
 
-    return { ok, missingIssueTypes, personaFieldFound, detail };
+    return { ok, projectFound: true, missingIssueTypes, personaFieldFound, detail };
 }
 
 // ---------- Step: Confluence setup ----------
