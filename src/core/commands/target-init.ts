@@ -576,7 +576,7 @@ export async function writeEnvValues(cwd: string, values: Readonly<Record<string
     return filePath;
 }
 
-// ---------- Step: CLAUDE.md pointer ----------
+// ---------- Step: CLAUDE.md pointer (and the GEMINI.md twin, TAI-376) ----------
 
 const CLAUDE_MD_BEGIN = "<!-- TAI-INIT:BEGIN -->";
 const CLAUDE_MD_END = "<!-- TAI-INIT:END -->";
@@ -593,7 +593,7 @@ export function portableTaiHome(taiHome: string, homeDir: string = os.homedir())
     return `~/${rel.split(path.sep).join("/")}`;
 }
 
-function claudeMdSection(rawTaiHome: string): string {
+function pointerSection(rawTaiHome: string): string {
     const taiHome = portableTaiHome(rawTaiHome);
     return (
         `${CLAUDE_MD_BEGIN}\n` +
@@ -607,17 +607,21 @@ function claudeMdSection(rawTaiHome: string): string {
     );
 }
 
-/** Idempotent: re-running replaces the existing TAI section (found by its markers) rather
- *  than duplicating it, and leaves the rest of a project's own `CLAUDE.md` untouched.
- *  Refuses to run ahead of `env` — a CLAUDE.md pointer with no working `.env` behind it
- *  would be actively misleading. */
-export async function writeClaudeMdPointer(cwd: string, taiRoot: string, taiHome: string): Promise<string> {
+/** Shared by the `CLAUDE.md` and `GEMINI.md` pointers (same section, same markers, so one
+ *  merge rule): re-running replaces the existing TAI section (found by its markers) rather
+ *  than duplicating it, and leaves the rest of a project's own file untouched. Refuses to
+ *  run ahead of `env` -- a pointer with no working `.env` behind it would be actively
+ *  misleading. */
+async function writePointerFile(fileName: string, cwd: string, taiRoot: string, taiHome: string): Promise<string> {
     const state = await readInitState(taiRoot);
     if (state.steps["env"] === undefined) {
-        throw new Error(`Run the /tai-init "env" step first.`);
+        // A fresh clone has no `.tai/` (gitignored), so name the command that rebuilds it.
+        throw new Error(
+            `Run the /tai-init "env" step first -- on a fresh clone, run \`init run\` instead: it sets up .env and writes this file.`
+        );
     }
 
-    const filePath = path.join(cwd, "CLAUDE.md");
+    const filePath = path.join(cwd, fileName);
     let existing = "";
     try {
         existing = await readFile(filePath, "utf-8");
@@ -625,18 +629,34 @@ export async function writeClaudeMdPointer(cwd: string, taiRoot: string, taiHome
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
 
-    const section = claudeMdSection(taiHome);
+    const section = pointerSection(taiHome);
     const beginIdx = existing.indexOf(CLAUDE_MD_BEGIN);
     const endIdx = existing.indexOf(CLAUDE_MD_END);
     const next =
         beginIdx !== -1 && endIdx !== -1
-            ? existing.slice(0, beginIdx) + section + existing.slice(endIdx + CLAUDE_MD_END.length)
+            ? existing.slice(0, beginIdx) +
+              section +
+              // `section` already ends with its own newline; drop the one that followed the old END
+              // marker (LF or CRLF), or every re-run grows the file by a blank line.
+              existing.slice(endIdx + CLAUDE_MD_END.length).replace(/^\r?\n/, "")
             : existing.trim().length > 0
               ? `${existing.trim()}\n\n${section}`
               : section;
 
     await writeFile(filePath, next, "utf-8");
     return filePath;
+}
+
+export function writeClaudeMdPointer(cwd: string, taiRoot: string, taiHome: string): Promise<string> {
+    return writePointerFile("CLAUDE.md", cwd, taiRoot, taiHome);
+}
+
+/** TAI-376: Gemini CLI reads `GEMINI.md`, not `CLAUDE.md`, so without this a Gemini session in a
+ *  target project never learns the project is TAI-managed. Deliberately NOT an `init-state.json`
+ *  step (see `INIT_STEPS`): making it one would flip every already-onboarded project to "not
+ *  fully initialized" until it re-ran. */
+export function writeGeminiMdPointer(cwd: string, taiRoot: string, taiHome: string): Promise<string> {
+    return writePointerFile("GEMINI.md", cwd, taiRoot, taiHome);
 }
 
 // ---------- .gitignore hygiene ----------

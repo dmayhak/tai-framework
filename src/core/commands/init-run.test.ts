@@ -48,6 +48,12 @@ describe("unpushedChangesReminder", () => {
         assert.ok(unpushedChangesReminder('?? ".gitignore"\n')?.includes(".gitignore"));
     });
 
+    it("also names GEMINI.md, listing three files readably (TAI-376)", () => {
+        assert.ok(unpushedChangesReminder("?? GEMINI.md\n")?.includes("GEMINI.md"));
+        const all = unpushedChangesReminder("?? CLAUDE.md\n?? GEMINI.md\n M .gitignore\n") ?? "";
+        assert.match(all, /CLAUDE\.md, GEMINI\.md and \.gitignore have changes/);
+    });
+
     it("only repo-root files count, and the text says to commit and push (TAI never does)", () => {
         assert.equal(unpushedChangesReminder("?? sub/CLAUDE.md\n"), null);
         const msg = unpushedChangesReminder(" M CLAUDE.md\n") ?? "";
@@ -283,8 +289,23 @@ describe("runInit — non-interactive (no TTY)", () => {
             const state = await readInitState(h.deps.taiRoot);
             assert.ok(isInitComplete(state), "init-state.json is rebuilt from the live results");
             assert.match(await readFile(path.join(dir, "CLAUDE.md"), "utf-8"), /Team AI \(TAI\)/);
+            assert.match(await readFile(path.join(dir, "GEMINI.md"), "utf-8"), /Team AI \(TAI\)/);
+            assert.ok(!("gemini-md" in state.steps), "no new init-state step: isInitComplete is unchanged (TAI-375)");
             assert.deepEqual(h.asked, [], "nothing to ask: every value was already present and confirmed live");
             assert.match(h.all(), /fully initialized/);
+        });
+    });
+
+    it("writes GEMINI.md idempotently and keeps the project's own text in an existing one (TAI-376)", async () => {
+        await withTempDir(async (dir) => {
+            await writeFile(path.join(dir, "GEMINI.md"), "# Mine\n\nKeep me.\n", "utf-8");
+            const h = await harness(dir, { envFile: COMPLETE_ENV, porcelain: null });
+            assert.equal((await runInit(h.deps)).exitCode, 0, h.all());
+            const first = await readFile(path.join(dir, "GEMINI.md"), "utf-8");
+            assert.match(first, /Keep me\./);
+            const h2 = await harness(dir, { envFile: COMPLETE_ENV, porcelain: null });
+            assert.equal((await runInit(h2.deps)).exitCode, 0, h2.all());
+            assert.equal(await readFile(path.join(dir, "GEMINI.md"), "utf-8"), first, "re-run changes nothing");
         });
     });
 

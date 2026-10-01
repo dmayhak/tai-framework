@@ -47,9 +47,11 @@ own editor.) What `init run` does, in order:
   failure with that step's own to-do list. If no Bitbucket repo or credentials are
   configured, `bitbucket` is recorded as done with an `N/A` detail so the project can still
   reach "Fully initialized" (re-run `init run` later to add it).
-- Writes the `CLAUDE.md` pointer, then — if `CLAUDE.md` or `.gitignore` changed — reminds you
-  to commit and push them so teammates and future clones get them. It never commits or pushes
-  for you.
+- Writes the `CLAUDE.md` pointer and the matching `GEMINI.md` pointer (Claude Code reads the
+  first, Gemini CLI the second), then — if either, or `.gitignore`, changed — reminds you to
+  commit and push them so teammates and future clones get them. It never commits or pushes for
+  you. `GEMINI.md` is not one of the five tracked steps, so a project onboarded before it
+  existed stays "Fully initialized".
 
 It is idempotent. Nothing is trusted from a previous run: `.tai/init-state.json` is only a
 cache that `init run` rebuilds from real API results, so on a re-run (or a clone that never had
@@ -205,6 +207,22 @@ npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init claude-md [TAI-HOME]
 as `~/...` (e.g. `~/.tai-framework`) rather than `/home/<you>/...` (TAI-359). A project
 onboarded before that fix has the old absolute path committed — re-run this step and commit
 the diff.
+
+### `GEMINI.md` pointer (TAI-376)
+
+Gemini CLI reads `GEMINI.md`, not `CLAUDE.md`, so a project used from Gemini needs its own
+pointer. `init run` writes it, so on a fresh clone (no `.tai/`) or a project that was never
+set up on this machine, just run `init run`. To add it to a project already initialized here
+without re-running everything, or to refresh it:
+
+```bash
+npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init gemini-md [TAI-HOME]
+```
+
+Same marker-based idempotent merge as `CLAUDE.md` (only TAI's own section is replaced) and
+the same prerequisite: an `env` step already recorded in `.tai/init-state.json`, which a fresh
+clone doesn't have (the command refuses and points you at `init run`). It records no step of
+its own, so `init status` is unaffected.
 
 ## Suggested team rituals (not a verified `init` step)
 

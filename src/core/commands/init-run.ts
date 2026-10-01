@@ -8,7 +8,7 @@
  *
  *   site URL prompt -> `.env` skeleton -> editor for the secret lines -> live discovery
  *   (project, space, repo) -> write only what changed -> verify jira, confluence, bitbucket
- *   (or record N/A) -> `CLAUDE.md` pointer -> unpushed-changes reminder.
+ *   (or record N/A) -> `CLAUDE.md` + `GEMINI.md` pointers -> unpushed-changes reminder.
  *
  * New project vs. joining one needs no separate mode: every step is verified LIVE, so a project
  * that is already provisioned simply passes each one and a new one stops at the first failure
@@ -34,6 +34,7 @@ import {
     parseEnvContent,
     requiredEnvSecretKeys,
     writeClaudeMdPointer,
+    writeGeminiMdPointer,
     writeEnvSkeleton,
     writeEnvValues,
     type BitbucketVerifyInput,
@@ -60,7 +61,7 @@ import {
 /** Files `init` generates or edits that a teammate or a fresh clone only gets once they are
  *  committed and pushed -- the EXA case where `CLAUDE.md` sat in a local commit and a clean
  *  clone simply lacked it. */
-const SHARED_INIT_FILES = ["CLAUDE.md", ".gitignore"] as const;
+const SHARED_INIT_FILES = ["CLAUDE.md", "GEMINI.md", ".gitignore"] as const;
 
 /** A plain reminder (never an action: TAI does not commit or push for you) when
  *  `git status --porcelain` shows a shared init file modified, staged, renamed-to or untracked.
@@ -78,7 +79,7 @@ export function unpushedChangesReminder(porcelain: string | null): string | null
     }
     if (changed.size === 0) return null;
     const files = SHARED_INIT_FILES.filter((f) => changed.has(f));
-    const list = files.join(" and ");
+    const list = files.length > 1 ? `${files.slice(0, -1).join(", ")} and ${files[files.length - 1]}` : files.join("");
     return (
         `Reminder: ${list} ${files.length === 1 ? "has" : "have"} changes that aren't committed yet. TAI never ` +
         `commits or pushes for you -- commit and push ${files.length === 1 ? "it" : "them"} so teammates and ` +
@@ -614,8 +615,10 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
 
     await markStepDone(taiRoot, "env", `.env verified by init run (${envPath}).`);
     await writeClaudeMdPointer(cwd, taiRoot, taiHome);
+    // TAI-376: Gemini CLI reads GEMINI.md, so write the same pointer there. Not a recorded step.
+    await writeGeminiMdPointer(cwd, taiRoot, taiHome);
     const finalState = await markStepDone(taiRoot, "claude-md", `Wrote ${path.join(cwd, "CLAUDE.md")}.`);
-    io.say(renderStepResult("claude-md", true, `Wrote ${path.join(cwd, "CLAUDE.md")}.`, isInitComplete(finalState)));
+    io.say(renderStepResult("claude-md", true, `Wrote ${path.join(cwd, "CLAUDE.md")} and ${path.join(cwd, "GEMINI.md")}.`, isInitComplete(finalState)));
 
     // ----- 6. Plain reminder, never an action -----
     const reminder = unpushedChangesReminder(await services.gitStatusPorcelain(cwd));

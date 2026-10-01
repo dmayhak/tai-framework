@@ -74,6 +74,7 @@ import {
     verifyBitbucketSetup,
     writeEnvFile,
     writeClaudeMdPointer,
+    writeGeminiMdPointer,
     ensureGitignore,
     type InitState,
     type InitStep,
@@ -1166,8 +1167,19 @@ async function main(): Promise<void> {
             return;
         }
 
+        if (action === "gemini-md") {
+            // TAI-376: the GEMINI.md twin of `claude-md`. Deliberately records no init step --
+            // `isInitComplete` must not start requiring a file that already-onboarded projects lack.
+            const taiHome = initArgs[0] ?? defaultTaiHome();
+            const filePath = await writeGeminiMdPointer(process.cwd(), taiRoot, taiHome);
+            console.log(`Wrote ${filePath}.`);
+            const reminder = unpushedChangesReminder(await gitStatusPorcelain(process.cwd()));
+            if (reminder !== null) console.log(`\n${reminder}`);
+            return;
+        }
+
         throw new Error(
-            `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "env", or "claude-md".`
+            `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "env", "claude-md", or "gemini-md".`
         );
     }
 
@@ -1867,7 +1879,7 @@ async function main(): Promise<void> {
     throw new Error(
         `Usage: work <ISSUE-KEY> | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
-            `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md`
+            `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md|gemini-md`
     );
 }
 

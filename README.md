@@ -132,7 +132,8 @@ project you've cloned into a new folder or onto a new PC** (a fresh clone has no
 4. **verifies** Jira, Confluence and Bitbucket against the real APIs, stopping at the first
    failure with a concrete to-do list (Bitbucket is skipped as N/A when you don't use
    `git-pr`);
-5. writes the `CLAUDE.md` pointer and reminds you to commit and push it.
+5. writes the `CLAUDE.md` and `GEMINI.md` pointers (Claude Code and Gemini CLI each read their own)
+   and reminds you to commit and push them.
 
 Re-running is always safe: every step is re-verified live, and `.tai/init-state.json` is just a
 cache it rebuilds — never copy it between clones. For a brand-new project, the one thing it
