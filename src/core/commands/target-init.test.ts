@@ -9,6 +9,8 @@ import {
     INIT_STEPS,
     readInitState,
     markStepDone,
+    clearStep,
+    parseEnvContent,
     isInitComplete,
     checkInitCompletion,
     renderEnvFile,
@@ -628,6 +630,41 @@ describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
             });
             await assertOwnerOnly(filePath);
         });
+    });
+});
+
+describe("clearStep (TAI-367)", () => {
+    it("removes one recorded step and leaves the others, so the state tracks the last live result", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "jira", "ok");
+            await markStepDone(taiRoot, "confluence", "ok");
+            const next = await clearStep(taiRoot, "jira");
+            assert.equal(next.steps.jira, undefined);
+            assert.notEqual(next.steps.confluence, undefined);
+            assert.equal((await readInitState(taiRoot)).steps.jira, undefined);
+        });
+    });
+
+    it("is a no-op for a step that was never recorded", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            assert.deepEqual((await clearStep(taiRoot, "env")).steps, {});
+        });
+    });
+});
+
+describe("parseEnvContent (TAI-367)", () => {
+    it("reads KEY=value lines, strips surrounding quotes, ignores comments and blanks", () => {
+        assert.deepEqual(parseEnvContent('# c\n\nA=1\nB="two"\nC=\n  # D=4\n'), { A: "1", B: "two", C: "" });
+    });
+
+    it("the last occurrence of a key wins", () => {
+        assert.deepEqual(parseEnvContent("A=1\nA=2\n"), { A: "2" });
+    });
+
+    it("tolerates CRLF line endings", () => {
+        assert.deepEqual(parseEnvContent("A=1\r\nB=2\r\n"), { A: "1", B: "2" });
     });
 });
 

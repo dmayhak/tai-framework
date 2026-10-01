@@ -85,6 +85,19 @@ export async function markStepDone(taiRoot: string, step: InitStep, detail: stri
     return next;
 }
 
+/** Removes one step's record -- `init run` (TAI-367) re-verifies every step live, so a step
+ *  that now FAILS must stop reading as done: the state file is a cache of the last live
+ *  result, not a ratchet. Other steps are left alone (they simply were not re-verified). */
+export async function clearStep(taiRoot: string, step: InitStep): Promise<InitState> {
+    const current = await readInitState(taiRoot);
+    if (current.steps[step] === undefined) return current;
+    const { [step]: _removed, ...rest } = current.steps;
+    const next: InitState = { version: 1, steps: rest };
+    await mkdir(taiRoot, { recursive: true });
+    await writeFile(statePath(taiRoot), JSON.stringify(next, null, 2) + "\n", "utf-8");
+    return next;
+}
+
 export function isInitComplete(state: InitState): boolean {
     return INIT_STEPS.every((s) => state.steps[s] !== undefined);
 }
@@ -455,6 +468,17 @@ const BITBUCKET_SECRET_KEYS = ["BITBUCKET_EMAIL", "BITBUCKET_API_TOKEN"] as cons
 /** The secret keys a user must fill in by hand; Bitbucket's only when git-pr support is wanted. */
 export function requiredEnvSecretKeys(includeBitbucket: boolean): string[] {
     return [...JIRA_SECRET_KEYS, ...(includeBitbucket ? BITBUCKET_SECRET_KEYS : [])];
+}
+
+/** `.env` content as a plain `KEY -> value` map (quotes stripped; the last occurrence of a
+ *  key wins; comments, blanks and malformed lines ignored). */
+export function parseEnvContent(content: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const line of content.split("\n")) {
+        const m = ENV_KEY_LINE.exec(line);
+        if (m) out[m[1] as string] = envLineValue(line);
+    }
+    return out;
 }
 
 /** Which required secret keys are absent or empty in `.env` content. A commented-out line

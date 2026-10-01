@@ -1,0 +1,489 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import {
+    runInit,
+    unpushedChangesReminder,
+    chooseEditor,
+    buildEditorCommand,
+    normalizeSiteUrl,
+    renderFillInstructions,
+    type InitRunDeps,
+} from "./init-run.js";
+import { parseEnvContent, readInitState, markStepDone, isInitComplete } from "./target-init.js";
+import type { Listing, DiscoveredProject, DiscoveredSpace } from "./discovery.js";
+
+async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
+    const dir = await mkdtemp(path.join(tmpdir(), "tai-init-run-"));
+    try {
+        await fn(dir);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+}
+
+// ---------- pure helpers ----------
+
+describe("unpushedChangesReminder", () => {
+    it("is null for no git repo, a clean tree, and unrelated files", () => {
+        assert.equal(unpushedChangesReminder(null), null);
+        assert.equal(unpushedChangesReminder(""), null);
+        assert.equal(unpushedChangesReminder(" M README.md\n?? src/x.ts\n"), null);
+    });
+
+    it("names CLAUDE.md and/or .gitignore when they are modified, untracked, staged or renamed", () => {
+        const one = unpushedChangesReminder(" M CLAUDE.md\n");
+        assert.ok(one?.includes("CLAUDE.md") && !one.includes(".gitignore"));
+        const both = unpushedChangesReminder("?? CLAUDE.md\n M .gitignore\n");
+        assert.ok(both?.includes("CLAUDE.md") && both.includes(".gitignore"));
+        assert.ok(unpushedChangesReminder("A  CLAUDE.md\n")?.includes("CLAUDE.md"));
+        assert.ok(unpushedChangesReminder("R  old.md -> CLAUDE.md\n")?.includes("CLAUDE.md"));
+        assert.ok(unpushedChangesReminder('?? ".gitignore"\n')?.includes(".gitignore"));
+    });
+
+    it("only repo-root files count, and the text says to commit and push (TAI never does)", () => {
+        assert.equal(unpushedChangesReminder("?? sub/CLAUDE.md\n"), null);
+        const msg = unpushedChangesReminder(" M CLAUDE.md\n") ?? "";
+        assert.match(msg, /commit and push/i);
+    });
+});
+
+describe("chooseEditor", () => {
+    it("prefers VISUAL, then EDITOR; empty strings count as unset", () => {
+        assert.equal(chooseEditor({ VISUAL: "vim", EDITOR: "nano" }, "linux"), "vim");
+        assert.equal(chooseEditor({ EDITOR: "nano" }, "linux"), "nano");
+        assert.equal(chooseEditor({ VISUAL: "", EDITOR: "nano" }, "linux"), "nano");
+    });
+
+    it("has no default on POSIX but falls back to notepad on win32", () => {
+        assert.equal(chooseEditor({}, "linux"), undefined);
+        assert.equal(chooseEditor({}, "darwin"), undefined);
+        assert.equal(chooseEditor({}, "win32"), "notepad");
+    });
+});
+
+describe("buildEditorCommand", () => {
+    it("quotes the path for a POSIX shell so editor strings with arguments still work", () => {
+        assert.equal(buildEditorCommand("code --wait", "/a b/.env", "linux"), "code --wait '/a b/.env'");
+        assert.equal(buildEditorCommand("vim", "/x/it's/.env", "linux"), `vim '/x/it'\\''s/.env'`);
+    });
+
+    it("double-quotes the path on win32", () => {
+        assert.equal(buildEditorCommand("notepad", "C:\\a b\\.env", "win32"), 'notepad "C:\\a b\\.env"');
+    });
+});
+
+describe("normalizeSiteUrl", () => {
+    it("accepts a bare host, trims, drops a trailing slash or pasted path", () => {
+        assert.equal(normalizeSiteUrl("x.atlassian.net"), "https://x.atlassian.net");
+        assert.equal(normalizeSiteUrl("  https://x.atlassian.net/  "), "https://x.atlassian.net");
+        assert.equal(normalizeSiteUrl("https://x.atlassian.net/jira/software/projects/TAI/boards/1"), "https://x.atlassian.net");
+    });
+
+    it("rejects empty, non-URL and plain-http input", () => {
+        assert.equal(normalizeSiteUrl(""), null);
+        assert.equal(normalizeSiteUrl("not a url"), null);
+        assert.equal(normalizeSiteUrl("http://x.atlassian.net"), null);
+    });
+});
+
+describe("renderFillInstructions", () => {
+    it("lists every key still to fill, the file, and says to save and close", () => {
+        const text = renderFillInstructions(["TAI_JIRA_EMAIL", "TAI_JIRA_API_TOKEN"], "/p/.env");
+        for (const needle of ["TAI_JIRA_EMAIL", "TAI_JIRA_API_TOKEN", "/p/.env"]) assert.ok(text.includes(needle), needle);
+        assert.match(text, /save/i);
+    });
+});
+
+// ---------- engine ----------
+
+const PROJECTS: Listing<DiscoveredProject> = {
+    items: [
+        { key: "EXA", name: "EXA" },
+        { key: "TAI", name: "TAI" },
+    ],
+    truncated: false,
+};
+const SPACES: Listing<DiscoveredSpace> = {
+    items: [
+        { key: "TA", alias: "TAI", name: "TAI", type: "global", value: "TAI" },
+        { key: "EXA", alias: "EXA", name: "EXA", type: "knowledge_base", value: "EXA" },
+    ],
+    truncated: false,
+};
+
+const COMPLETE_ENV =
+    "TAI_BACKEND=jira\nTAI_JIRA_SITE_URL=https://x.atlassian.net\nTAI_PROJECT_KEY=TAI\nTAI_SPACE_KEY=TAI\n" +
+    "TAI_JIRA_EMAIL=a@b.c\nTAI_JIRA_API_TOKEN=tok\n";
+
+interface HarnessOptions {
+    interactive?: boolean;
+    envFile?: string;
+    answers?: string[];
+    projects?: Listing<DiscoveredProject>;
+    spaces?: Listing<DiscoveredSpace>;
+    repo?: string | null;
+    jiraOk?: boolean;
+    listProjectsThrows?: string;
+    porcelain?: string | null;
+    /** Edits the .env the way a human would in the editor. */
+    editor?: (envPath: string) => Promise<void>;
+    noEditor?: boolean;
+    /** Ambient env (as after loadDotEnv); defaults to the parsed `envFile`. */
+    env?: Record<string, string>;
+}
+
+async function harness(dir: string, opts: HarnessOptions = {}) {
+    const calls: string[] = [];
+    const said: string[] = [];
+    const asked: string[] = [];
+    const answers = [...(opts.answers ?? [])];
+    const envPath = path.join(dir, ".env");
+    if (opts.envFile !== undefined) await writeFile(envPath, opts.envFile, "utf-8");
+    const processEnv = opts.env ?? (opts.envFile !== undefined ? parseEnvContent(opts.envFile) : {});
+    let jiraInput: unknown;
+    let bitbucketInput: unknown;
+
+    const deps: InitRunDeps = {
+        cwd: dir,
+        taiRoot: path.join(dir, ".tai"),
+        taiHome: "/opt/tai",
+        env: processEnv,
+        interactive: opts.interactive ?? false,
+        io: {
+            say: (text) => said.push(text),
+            ask: async (question) => {
+                asked.push(question);
+                const next = answers.shift();
+                if (next === undefined) throw new Error(`Unexpected prompt: ${question}`);
+                return next;
+            },
+            editFile: async (filePath) => {
+                calls.push("editFile");
+                await opts.editor?.(filePath);
+                return opts.noEditor ? "no-editor" : "edited";
+            },
+        },
+        renderStepResult: (step, ok, detail, full) => `[${ok ? "ok" : "FAIL"}] ${step}: ${detail}${full ? " (fully initialized)" : ""}`,
+        services: {
+            listProjects: async () => {
+                calls.push("listProjects");
+                if (opts.listProjectsThrows) throw new Error(opts.listProjectsThrows);
+                return opts.projects ?? PROJECTS;
+            },
+            listSpaces: async () => {
+                calls.push("listSpaces");
+                return opts.spaces ?? SPACES;
+            },
+            detectBitbucketRepo: async () => opts.repo ?? null,
+            verifyJira: async (input) => {
+                calls.push("verifyJira");
+                jiraInput = input;
+                return opts.jiraOk === false
+                    ? { ok: false, missingIssueTypes: ["Dev"], personaFieldFound: true, detail: "Missing issue type(s): Dev." }
+                    : { ok: true, missingIssueTypes: [], personaFieldFound: true, detail: "All required issue types present." };
+            },
+            setupConfluence: async () => {
+                calls.push("setupConfluence");
+                return { ok: true, detail: "Config and roster ready." };
+            },
+            verifyBitbucket: async (input) => {
+                calls.push("verifyBitbucket");
+                bitbucketInput = input;
+                return { ok: true, detail: "Repository reachable." };
+            },
+            gitStatusPorcelain: async () => opts.porcelain ?? null,
+        },
+    };
+    return { deps, calls, said, asked, envPath, jiraInput: () => jiraInput, bitbucketInput: () => bitbucketInput, all: () => said.join("\n") };
+}
+
+const STEP_CALLS = ["listProjects", "listSpaces", "verifyJira", "setupConfluence", "verifyBitbucket"];
+const stepCalls = (calls: string[]) => calls.filter((c) => STEP_CALLS.includes(c));
+
+/** The editor a human uses: fills the empty secret lines in place. */
+const fillSecrets = (values: Record<string, string>) => async (envPath: string) => {
+    let content = await readFile(envPath, "utf-8");
+    for (const [key, value] of Object.entries(values)) content = content.replace(new RegExp(`^${key}=.*$`, "m"), `${key}=${value}`);
+    await writeFile(envPath, content, "utf-8");
+};
+
+describe("runInit — non-interactive (no TTY)", () => {
+    it("writes the skeleton, says exactly what is left, makes no network calls, and exits 2", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir);
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 2);
+            assert.equal(result.ok, false);
+            assert.deepEqual(stepCalls(h.calls), []);
+            const env = await readFile(h.envPath, "utf-8");
+            assert.match(env, /^TAI_JIRA_EMAIL=$/m);
+            assert.match(h.all(), /needs a human at a terminal/i);
+            for (const key of ["TAI_JIRA_SITE_URL", "TAI_JIRA_EMAIL", "TAI_JIRA_API_TOKEN"]) assert.ok(h.all().includes(key), key);
+            assert.deepEqual((await readInitState(h.deps.taiRoot)).steps, {});
+        });
+    });
+
+    it("joins an already-onboarded project from a complete .env: verifies every step live in order and finishes", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, porcelain: null });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.deepEqual(stepCalls(h.calls), ["listProjects", "listSpaces", "verifyJira", "setupConfluence"]);
+            const state = await readInitState(h.deps.taiRoot);
+            assert.ok(isInitComplete(state), "init-state.json is rebuilt from the live results");
+            assert.match(await readFile(path.join(dir, "CLAUDE.md"), "utf-8"), /Team AI \(TAI\)/);
+            assert.deepEqual(h.asked, [], "nothing to ask: every value was already present and confirmed live");
+            assert.match(h.all(), /fully initialized/);
+        });
+    });
+
+    it("keeps a working alias (TAI) even though the live space list's real key is TA", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV });
+            await runInit(h.deps);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_SPACE_KEY"], "TAI");
+            assert.equal((h.jiraInput() as { spaceKey: string }).spaceKey, "TAI");
+        });
+    });
+
+    it("records bitbucket as done with an N/A detail when no repo/credentials are configured (TAI-350)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV });
+            await runInit(h.deps);
+            const state = await readInitState(h.deps.taiRoot);
+            assert.match(state.steps.bitbucket?.detail ?? "", /^N\/A/);
+            assert.ok(!h.calls.includes("verifyBitbucket"));
+        });
+    });
+
+    it("verifies Bitbucket for real when a repo and credentials are configured", async () => {
+        await withTempDir(async (dir) => {
+            const env = COMPLETE_ENV + "BITBUCKET_EMAIL=a@b.c\nBITBUCKET_API_TOKEN=btok\nTAI_GIT_REPOS=dmayhak/x,dmayhak/y\n";
+            const h = await harness(dir, { envFile: env });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.deepEqual(h.bitbucketInput(), { email: "a@b.c", apiToken: "btok", repo: "dmayhak/x" });
+            const state = await readInitState(h.deps.taiRoot);
+            assert.ok(!/^N\/A/.test(state.steps.bitbucket?.detail ?? "N/A"));
+        });
+    });
+
+    it("a Bitbucket remote alone does not block a non-interactive join: it says so and records N/A", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, repo: "dmayhak/x" });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /dmayhak\/x[^\n]*no Bitbucket credentials/i);
+            assert.match((await readInitState(h.deps.taiRoot)).steps.bitbucket?.detail ?? "", /^N\/A.*dmayhak\/x/);
+            assert.ok(!/BITBUCKET_EMAIL=/.test(await readFile(h.envPath, "utf-8")), "no empty Bitbucket lines forced on a user who did not ask");
+        });
+    });
+
+    it("already-configured Bitbucket credentials that are still empty DO need a human", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV + "TAI_GIT_REPOS=dmayhak/x\n" });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 2);
+            assert.ok(h.all().includes("BITBUCKET_API_TOKEN"));
+            assert.match(await readFile(h.envPath, "utf-8"), /^BITBUCKET_EMAIL=$/m, "empty secret lines were added for the user to fill");
+        });
+    });
+
+    it("needs a human when the project key is absent and cannot be picked without a prompt", async () => {
+        await withTempDir(async (dir) => {
+            const env = COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI\n", "");
+            const h = await harness(dir, { envFile: env });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 2);
+            assert.ok(h.all().includes("TAI_PROJECT_KEY"));
+            assert.ok(!h.calls.includes("verifyJira"));
+            assert.deepEqual(h.asked, []);
+        });
+    });
+
+    it("warns when TAI_BACKEND is set to something other than jira, since init run sets up the Jira backend", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV.replace("TAI_BACKEND=jira", "TAI_BACKEND=filesystem") });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /TAI_BACKEND is set to "filesystem"/);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_BACKEND"], "filesystem", "the user's value is never overridden");
+        });
+    });
+
+    it("says nothing about TAI_BACKEND when it is jira or unset", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV });
+            await runInit(h.deps);
+            assert.doesNotMatch(h.all(), /TAI_BACKEND/);
+        });
+    });
+
+    it("is idempotent: a second run on the same clone changes nothing and still succeeds", async () => {
+        await withTempDir(async (dir) => {
+            const h1 = await harness(dir, { envFile: COMPLETE_ENV });
+            await runInit(h1.deps);
+            const envAfterFirst = await readFile(h1.envPath, "utf-8");
+            const h2 = await harness(dir, { env: parseEnvContent(envAfterFirst) });
+            const result = await runInit(h2.deps);
+            assert.equal(result.exitCode, 0);
+            assert.equal(await readFile(h2.envPath, "utf-8"), envAfterFirst);
+        });
+    });
+});
+
+describe("runInit — failures stop at the failing step", () => {
+    it("a failed Jira verification stops there, prints the to-do list, and clears the stale 'done' record", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, jiraOk: false });
+            await markStepDone(h.deps.taiRoot, "jira", "old success");
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "jira");
+            assert.ok(!h.calls.includes("setupConfluence"));
+            assert.match(h.all(), /\[FAIL\] jira: Missing issue type\(s\): Dev\./);
+            assert.equal((await readInitState(h.deps.taiRoot)).steps.jira, undefined);
+        });
+    });
+
+    it("a discovery call that throws stops before any verification and explains why", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, listProjectsThrows: "401 Unauthorized" });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "discovery");
+            assert.match(h.all(), /401 Unauthorized/);
+            assert.ok(!h.calls.includes("verifyJira"));
+        });
+    });
+});
+
+describe("runInit — interactive", () => {
+    it("brand-new clone: prompts, hands the secrets to the editor, discovers, writes only what is new, keeps typed secrets", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                answers: ["example.atlassian.net", "tai", "TA"],
+                editor: fillSecrets({ TAI_JIRA_EMAIL: "me@x.com", TAI_JIRA_API_TOKEN: "secret-token" }),
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            const env = parseEnvContent(await readFile(h.envPath, "utf-8"));
+            assert.equal(env["TAI_JIRA_SITE_URL"], "https://example.atlassian.net");
+            assert.equal(env["TAI_JIRA_EMAIL"], "me@x.com");
+            assert.equal(env["TAI_JIRA_API_TOKEN"], "secret-token");
+            assert.equal(env["TAI_PROJECT_KEY"], "TAI");
+            assert.equal(env["TAI_SPACE_KEY"], "TAI", "typing the real key TA writes the alias");
+            assert.match(h.all(), /TAI \(real key TA\)/, "the value that will be written is shown, not just what was typed");
+            assert.deepEqual(stepCalls(h.calls), ["listProjects", "listSpaces", "verifyJira", "setupConfluence"]);
+            assert.equal((h.jiraInput() as { email: string }).email, "me@x.com");
+            if (process.platform !== "win32") assert.equal((await stat(h.envPath)).mode & 0o777, 0o600);
+        });
+    });
+
+    it("offers Bitbucket when the clone's remote is on Bitbucket, and declining leaves it N/A", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                interactive: true,
+                repo: "dmayhak/proj",
+                answers: ["x.atlassian.net", "n", "TAI", "TAI"],
+                editor: fillSecrets({ TAI_JIRA_EMAIL: "me@x.com", TAI_JIRA_API_TOKEN: "t" }),
+            });
+            assert.equal((await runInit(h.deps)).exitCode, 0, h.all());
+            assert.ok(h.asked.some((q) => q.includes("dmayhak/proj")));
+            assert.match((await readInitState(h.deps.taiRoot)).steps.bitbucket?.detail ?? "", /^N\/A/);
+        });
+    });
+
+    it("an editor that leaves secrets empty re-checks, and quitting stops cleanly with no network calls", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, answers: ["x.atlassian.net", "q"] });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 1);
+            assert.equal(result.stoppedAt, "env");
+            assert.ok(h.asked.some((q) => /still empty/i.test(q) && q.includes("TAI_JIRA_API_TOKEN")));
+            assert.deepEqual(stepCalls(h.calls), []);
+        });
+    });
+
+    it("with no editor configured it prints the path and waits for the user to save, then re-checks", async () => {
+        await withTempDir(async (dir) => {
+            let saved = false;
+            const h = await harness(dir, {
+                interactive: true,
+                noEditor: true,
+                answers: ["x.atlassian.net", "", "TAI", "TAI"],
+            });
+            const originalAsk = h.deps.io.ask;
+            h.deps.io.ask = async (q, d) => {
+                // The user fills the file by hand while the engine waits for them.
+                if (!saved && /still empty|saved|re-check/i.test(q)) {
+                    await fillSecrets({ TAI_JIRA_EMAIL: "me@x.com", TAI_JIRA_API_TOKEN: "t" })(h.envPath);
+                    saved = true;
+                }
+                return originalAsk(q, d);
+            };
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.ok(h.all().includes(h.envPath), "the path is printed for the user to open");
+        });
+    });
+
+    it("an empty or truncated project list warns that it may be incomplete and accepts a typed key after confirmation", async () => {
+        await withTempDir(async (dir) => {
+            const env = COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI\n", "");
+            const h = await harness(dir, {
+                interactive: true,
+                envFile: env,
+                projects: { items: [], truncated: true },
+                answers: ["", "NEWPROJ", "y"],
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /incomplete/i);
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_PROJECT_KEY"], "NEWPROJ");
+            assert.equal((h.jiraInput() as { projectKey: string }).projectKey, "NEWPROJ");
+        });
+    });
+
+    it("an existing project key that Jira does not list is offered as the default, never silently replaced", async () => {
+        await withTempDir(async (dir) => {
+            const env = COMPLETE_ENV.replace("TAI_PROJECT_KEY=TAI", "TAI_PROJECT_KEY=GONE");
+            const h = await harness(dir, { interactive: true, envFile: env, answers: ["", ""] });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /GONE is set in \.env but wasn't found/, "the stale value is surfaced to the user");
+            assert.equal(parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_PROJECT_KEY"], "GONE", "Enter accepted it unchanged");
+        });
+    });
+});
+
+describe("runInit — unpushed-changes reminder", () => {
+    const run = async (porcelain: string | null) =>
+        withTempDirResult(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, porcelain });
+            await runInit(h.deps);
+            return h.all();
+        });
+
+    it("reminds the user to commit and push when CLAUDE.md / .gitignore changed", async () => {
+        assert.match(await run(" M CLAUDE.md\n?? .gitignore\n"), /commit and push/i);
+    });
+
+    it("stays quiet on a clean tree and outside a git repo", async () => {
+        assert.doesNotMatch(await run(""), /commit and push/i);
+        assert.doesNotMatch(await run(null), /commit and push/i);
+    });
+});
+
+async function withTempDirResult<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+    let out: T | undefined;
+    await withTempDir(async (dir) => {
+        out = await fn(dir);
+    });
+    return out as T;
+}
