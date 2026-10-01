@@ -1,18 +1,78 @@
 # Target-project setup checklist (TAI-116 piece 3, TAI-130)
 
-The manual admin steps for pointing TAI at a real Jira/Confluence/Bitbucket project,
-reverse-engineered from `tai-framework`'s own live `TAI`/`TAIT` projects (TAI-90 ADR
-decision 4) rather than written from generic Jira docs. Full automation of Jira/Confluence
-admin provisioning is an explicit v1 non-goal (same ADR) — a human does the steps below in
-the Jira/Confluence UI; `cli.ts init <step>` verifies each one against the real API before
-moving on, and each verification doubles as the step's own resumability checkpoint (state
-recorded in `<taiRoot>/init-state.json` — `cli.ts init status` shows progress any time, and
-a step already recorded done is safe to skip on a re-run).
+The steps for pointing TAI at a real Jira/Confluence/Bitbucket project, reverse-engineered
+from `tai-framework`'s own live `TAI`/`TAIT` projects (TAI-90 ADR decision 4) rather than
+written from generic Jira docs. Full automation of Jira/Confluence admin provisioning is an
+explicit v1 non-goal (same ADR) — a human does the Jira/Confluence UI steps in sections 1–2
+below; **`init run`** (next section) does everything else: it collects credentials, discovers
+the project's coordinates, and verifies each step against the real API.
 
-Before running any `init` subcommand below, export the target project's real credentials
-into the current shell — these are the exact same env var names `.env` will end up holding
-once `init env` runs, so nothing here is TAI-specific setup on top of what `.env.example`
-already documents:
+## Quick path: `init run`
+
+One command serves both a **brand-new project** and an **already-onboarded project cloned into
+a new folder or onto a new PC** (a fresh clone has no `.env` and no `.tai/`, because both are
+gitignored). The journey:
+
+1. **Install TAI** once per machine: clone it to `~/.tai-framework`, `npm install`, then run
+   `install-global` (see the README's *Install* section). This writes the `/tai-init` skill
+   (and the rest) for both Claude Code and Gemini CLI.
+2. **Clone your project's repo** (or `cd` into the one you have).
+3. **Run `/tai-init`** in your assistant from inside that repo. It checks `init status`, and if
+   the project isn't fully initialized it tells you to open a **separate terminal** and gives
+   you the exact command, which is always:
+
+```bash
+cd <your project>
+npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init run
+```
+
+Run it directly in the terminal — piping or redirecting its output disables the prompts. (An
+assistant's own shell has no usable terminal: it can't answer prompts or open your editor, and
+a token pasted into chat goes to the model provider, so secrets are only ever typed into your
+own editor.) What `init run` does, in order:
+
+- Asks for your **Atlassian site URL** (defaulting to the one in an existing `.env`).
+- Writes a `.env` skeleton (mode 0600) with each secret line empty under a comment saying
+  what belongs there, then opens `$VISUAL` / `$EDITOR` so you fill in the Jira email, the
+  Atlassian API token and, if you use `git-pr`, the Bitbucket email and token. It re-checks
+  that the required ones are filled before going on. With no editor configured it prints the
+  path and waits for you to fill the file yourself and press Enter.
+- **Discovers** the Jira project, Confluence space and Bitbucket repo live: you pick from the
+  lists (or type a key that isn't listed — the path for a brand-new project). A value already
+  in `.env` that the live list confirms is kept as-is; only an absent or stale one is asked
+  about. The Bitbucket repo is read from your `git remote` when it is on bitbucket.org. A
+  space you pick is written under its common name (the alias, e.g. `TAI`) rather than its real
+  key (`TA`).
+- **Verifies** `jira`, `confluence` and `bitbucket` live, in that order, and stops at the first
+  failure with that step's own to-do list. If no Bitbucket repo or credentials are
+  configured, `bitbucket` is recorded as done with an `N/A` detail so the project can still
+  reach "Fully initialized" (re-run `init run` later to add it).
+- Writes the `CLAUDE.md` pointer, then — if `CLAUDE.md` or `.gitignore` changed — reminds you
+  to commit and push them so teammates and future clones get them. It never commits or pushes
+  for you.
+
+It is idempotent. Nothing is trusted from a previous run: `.tai/init-state.json` is only a
+cache that `init run` rebuilds from real API results, so on a re-run (or a clone that never had
+one) you never copy it from another folder. If `init run` stops at a failing step, fix what
+its to-do list says — for a new project that is usually sections 1–2 below — and run the same
+command again.
+
+Exit codes: `0` everything verified, `1` a step failed or you quit, `2` it needs a human at a
+terminal (printed when it was started somewhere it can't prompt).
+
+**Joining an already-onboarded project** needs nothing beyond the above: you supply the site URL
+and your own email and tokens, and every other value is discovered. The Jira/Confluence
+provisioning in sections 1–2 is already done for that project, so the verification simply
+passes.
+
+The sections below are the manual admin steps `init run` can't do for you (1–2), and the
+individual `init <step>` actions it is built from, which still exist for scripting and for
+re-running a single step.
+
+### Using the individual `init` actions directly
+
+Only needed if you skip `init run`. Each reads its credentials from the current shell or from
+`.env`; these are the same names `.env.example` documents:
 
 ```bash
 export TAI_PROJECT_KEY=<jira project key>
@@ -27,6 +87,9 @@ export BITBUCKET_EMAIL=<you@example.com>
 export BITBUCKET_API_TOKEN=<token>
 export TAI_GIT_REPOS=<workspace/repo>
 ```
+
+`cli.ts init status` shows progress at any time, and a step already recorded done is safe to
+skip on a re-run.
 
 ## 1. Jira
 
@@ -73,7 +136,7 @@ Either way, also provision:
   first time a persona actually attempts a transition into it, which already fails loudly
   by design (`fromJiraStatus`/`transition()`).
 
-Once done:
+Once done, re-run `init run` (or, using the individual actions, `init jira`):
 
 ```bash
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init jira
@@ -110,6 +173,8 @@ npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init bitbucket <workspace/
 
 ## 4. Generate `.env`
 
+`init run` already does this — it writes `.env` first, since it needs your credentials before
+it can discover or verify anything. This section is for the individual `init env` action.
 Requires the `jira`/`confluence` steps above (and `bitbucket`, if `BITBUCKET_EMAIL`/
 `BITBUCKET_API_TOKEN` are exported) to already be recorded done — `init env` refuses to
 run ahead of them, so the generated file is never built from an unverified setup.
@@ -129,7 +194,7 @@ do here, but if you're wondering why these are already excluded, that's why.
 
 ## 5. Generate a `CLAUDE.md` pointer
 
-Requires the `env` step above. Idempotent — re-running replaces TAI's own section (found
+`init run` does this as its last step; this section is the individual action. Requires the `env` step above. Idempotent — re-running replaces TAI's own section (found
 by an HTML-comment marker) without touching the rest of an existing `CLAUDE.md`.
 
 ```bash
@@ -163,8 +228,8 @@ npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init status
 ```
 
 Shows which of the five steps (`jira`, `confluence`, `bitbucket`, `env`, `claude-md`) are
-already recorded done. Safe to run `/tai-init` again after any interruption — it picks up
-wherever this list leaves off rather than restarting.
+already recorded done. Safe to run `/tai-init` (and `init run`) again after any interruption —
+`init run` re-verifies every step live rather than trusting this list.
 
 ## What's next once "Fully initialized" (TAI-349)
 
@@ -186,3 +251,5 @@ step has no live check for whether an Epic already exists.
   `SubtaskType`/`StoryType`) — TAI-116 piece 4, a separate future ticket once this piece
   lands.
 - Retroactively migrating an already-onboarded project's existing setup.
+- Windows. `init run`'s editor hand-off avoids hard-coding POSIX, but supported platforms are
+  an open decision (TAI-371).

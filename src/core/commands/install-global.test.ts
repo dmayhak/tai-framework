@@ -57,6 +57,44 @@ describe("renderGlobalSkillFiles", () => {
         const initFile = files.find((f) => f.relativePath === ".claude/skills/tai-init/SKILL.md")!;
         assert.match(initFile.content, /relay its next-step hint/);
     });
+
+    describe("tai-init's skill drives `init run` (TAI-368)", () => {
+        const body = () => files.find((f) => f.relativePath === ".claude/skills/tai-init/SKILL.md")!.content;
+
+        test("runs `init run` itself only to surface the printed command, then relays it for a separate terminal", () => {
+            assert.match(body(), /init run/);
+            assert.match(body(), /separate terminal/i);
+            assert.match(body(), /exits? (with )?(code )?2/i);
+            assert.match(body(), /verbatim/i);
+        });
+
+        test("covers joining an already-onboarded project on a new folder or PC with the same command", () => {
+            assert.match(body(), /already-onboarded/i);
+            assert.match(body(), /new folder or onto a new PC/i);
+        });
+
+        test("never takes a secret in chat and never relies on the host's `!` prefix", () => {
+            assert.match(body(), /never ask (the human )?for (a|an|any) (token|secret)/i);
+            assert.match(body(), /never suggest the `!` prefix/i);
+        });
+
+        test("keeps the manual Jira provisioning walk-through for a missing issue type or field", () => {
+            assert.match(body(), /target-project-setup-checklist\.md/);
+            assert.match(body(), /missing issue type/i);
+            assert.match(body(), /Persona/);
+        });
+
+        test("no longer walks the old shell-export step-by-step order", () => {
+            assert.doesNotMatch(body(), /export(s|ed)? into this shell/i);
+            assert.doesNotMatch(body(), /`init env` → `init claude-md`/);
+        });
+
+        test("the Gemini copy gets the same text", () => {
+            const gemini = files.find((f) => f.relativePath === ".gemini/skills/tai-init/SKILL.md")!;
+            assert.match(gemini.content, /separate terminal/i);
+            assert.match(gemini.content, /init run/);
+        });
+    });
 });
 
 describe("defaultTaiHome", () => {

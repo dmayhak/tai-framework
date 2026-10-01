@@ -109,31 +109,43 @@ Jira at all.
 
 ### Real setup: Jira + Confluence + Bitbucket
 
-For a real target project, run `/tai-init` from inside that project's own repo — it's an
-interactive, resumable checklist (state tracked in `<taiRoot>/init-state.json`; re-running
-it after an interruption picks up where it left off) that walks through:
+For a real target project, run `/tai-init` from inside that project's own repo. It checks
+`init status`, and if the project isn't fully initialized it hands you one command to run in a
+**separate terminal** (an assistant's own shell can't prompt you or open your editor, and a
+token pasted into chat would go to the model provider):
 
-1. **Jira** — provisioning TAI's issue types (`Kickoff`, `Research`, `EpicReview`, `Dev`, …)
-   and a `Persona` custom field on your project, or aliasing your project's existing types
-   instead of adding new ones.
-2. **Confluence** — creating a space for the project (TAI provisions its own `Config`
-   folder and `Persona Roster` page inside it).
-3. **Bitbucket** *(optional — only if you'll use `/tai-pr` for real PR-driven work)* — an
-   API token with repo read/write + pull-request scopes.
-4. **Generating `.env`** — written for you from the steps above, never hand-typed from
-   scratch.
-5. **Generating a `CLAUDE.md`/`GEMINI.md` pointer** — so your AI CLI knows this project is
-   TAI-managed.
+```bash
+cd <your project>
+npx --prefix ~/.tai-framework tsx ~/.tai-framework/src/hosts/cli.ts init run
+```
 
-Every step is independently verified against the real API before moving on — run
-`npx --prefix ~/.tai-framework tsx ~/.tai-framework/src/hosts/cli.ts init status` any time
-to see progress.
+`init run` is one idempotent command for both a brand-new project and an **already-onboarded
+project you've cloned into a new folder or onto a new PC** (a fresh clone has no `.env` or
+`.tai/`, since both are gitignored). It:
+
+1. asks for your **Atlassian site URL**;
+2. writes a `.env` skeleton and opens your `$VISUAL`/`$EDITOR` so you fill in the secrets
+   (Jira email + API token; for `git-pr`, a Bitbucket email + token with repo read/write and
+   pull-request scopes) — secrets are only ever typed there, never into chat;
+3. **discovers** the Jira project, Confluence space and Bitbucket repo live and lets you pick,
+   keeping any `.env` value the live lists confirm;
+4. **verifies** Jira, Confluence and Bitbucket against the real APIs, stopping at the first
+   failure with a concrete to-do list (Bitbucket is skipped as N/A when you don't use
+   `git-pr`);
+5. writes the `CLAUDE.md` pointer and reminds you to commit and push it.
+
+Re-running is always safe: every step is re-verified live, and `.tai/init-state.json` is just a
+cache it rebuilds — never copy it between clones. For a brand-new project, the one thing it
+can't do is Jira admin provisioning (TAI's issue types and a `Persona` field): its to-do list
+says what's missing, and the checklist below has the click-paths. Run
+`npx --prefix ~/.tai-framework tsx ~/.tai-framework/src/hosts/cli.ts init status` any time to
+see progress.
 
 The full manual admin steps (exact Jira/Confluence click-paths, the complete `.env` var
 reference, the Bitbucket-token scopes) live in
 [`docs/target-project-setup-checklist.md`](docs/target-project-setup-checklist.md) and
-[`.env.example`](.env.example) — read those before running `/tai-init` on a real project,
-since several steps require you to do things in the Jira/Confluence UI first.
+[`.env.example`](.env.example) — read those before running `/tai-init` on a brand-new project,
+since the Jira/Confluence provisioning steps need you to do things in the UI first.
 
 **Environment variables at a glance** (see `.env.example` for the authoritative, fully
 commented list):
