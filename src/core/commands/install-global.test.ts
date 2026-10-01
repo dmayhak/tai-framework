@@ -93,6 +93,11 @@ describe("renderGlobalSkillFiles", () => {
             assert.doesNotMatch(body(), /`init env` → `init claude-md`/);
         });
 
+        test("says init run writes both the CLAUDE.md and GEMINI.md pointers (TAI-376)", () => {
+            assert.match(body(), /init gemini-md/);
+            assert.match(body(), /writes both pointer files/);
+        });
+
         test("the Gemini copy gets the same text", () => {
             const gemini = files.find((f) => f.relativePath === ".gemini/skills/tai-init/SKILL.md")!;
             assert.match(gemini.content, /separate terminal/i);

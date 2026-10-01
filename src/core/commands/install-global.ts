@@ -410,7 +410,8 @@ function initSkillBody(taiHome: string): string {
         `checklist yourself (\`${taiHome}/docs/target-project-setup-checklist.md\`, section 1) and ` +
         "walk the human through those Jira UI steps, then have them re-run `init run`. The " +
         "individual `init jira` / `init confluence` / `init bitbucket` / `init env` / " +
-        "`init claude-md` actions still exist, but you don't need them for the normal flow."
+        "`init claude-md` / `init gemini-md` actions still exist, but you don't need them for the normal " +
+        "flow (`init run` writes both pointer files)."
     );
 }
 

@@ -22,6 +22,7 @@ import {
     requiredEnvSecretKeys,
     missingEnvSecrets,
     writeClaudeMdPointer,
+    writeGeminiMdPointer,
     portableTaiHome,
     verifyJiraSetup,
     setupConfluence,
@@ -712,6 +713,81 @@ describe("writeClaudeMdPointer", () => {
             assert.match(content, /Some existing notes\./);
             assert.match(content, /\.tai-framework-v2/);
             assert.ok(!content.includes("/home/x/.tai-framework\`"), "stale pointer should be replaced, not duplicated");
+        });
+    });
+});
+
+describe("pointer files are byte-identical on re-run (TAI-376)", () => {
+    for (const [name, write] of [
+        ["CLAUDE.md", writeClaudeMdPointer],
+        ["GEMINI.md", writeGeminiMdPointer],
+    ] as const) {
+        it(`${name}: a second write with the same input changes nothing, even with trailing project text`, async () => {
+            await withTempDir(async (dir) => {
+                const taiRoot = path.join(dir, ".tai");
+                await markStepDone(taiRoot, "env", "ok");
+                await writeFile(path.join(dir, name), "# Mine\n", "utf-8");
+                await write(dir, taiRoot, "/home/x/.tai-framework");
+                const first = await readFile(path.join(dir, name), "utf-8");
+                await writeFile(path.join(dir, name), `${first}\n## After\n\nMore.\n`, "utf-8");
+                const withTail = await readFile(path.join(dir, name), "utf-8");
+                await write(dir, taiRoot, "/home/x/.tai-framework");
+                assert.equal(await readFile(path.join(dir, name), "utf-8"), withTail);
+                await write(dir, taiRoot, "/home/x/.tai-framework");
+                assert.equal(await readFile(path.join(dir, name), "utf-8"), withTail);
+            });
+        });
+    }
+});
+
+describe("writeGeminiMdPointer (TAI-376)", () => {
+    it("refuses to run before the env step is done", async () => {
+        await withTempDir(async (dir) => {
+            await assert.rejects(() => writeGeminiMdPointer(dir, path.join(dir, ".tai"), "/home/x/.tai-framework"), /env/);
+        });
+    });
+
+    it("creates GEMINI.md with the same TAI section, and never touches CLAUDE.md", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "env", "ok");
+            await writeFile(path.join(dir, "CLAUDE.md"), "# Claude notes\n", "utf-8");
+            const filePath = await writeGeminiMdPointer(dir, taiRoot, "/home/x/.tai-framework");
+            assert.equal(path.basename(filePath), "GEMINI.md");
+            assert.match(await readFile(filePath, "utf-8"), /Team AI \(TAI\)/);
+            assert.equal(await readFile(path.join(dir, "CLAUDE.md"), "utf-8"), "# Claude notes\n");
+        });
+    });
+
+    it("never embeds the current home directory in the committed file", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "env", "ok");
+            const content = await readFile(await writeGeminiMdPointer(dir, taiRoot, path.join(homedir(), ".tai-framework")), "utf-8");
+            assert.ok(!content.includes(homedir()));
+            assert.match(content, /~\/\.tai-framework/);
+        });
+    });
+
+    it("replaces only its own marked section on re-run, keeping the project's own text", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "env", "ok");
+            await writeFile(path.join(dir, "GEMINI.md"), "# My Gemini notes\n\nKeep me.\n", "utf-8");
+            await writeGeminiMdPointer(dir, taiRoot, "/home/x/.tai-framework");
+            const content = await readFile(await writeGeminiMdPointer(dir, taiRoot, "/home/x/.tai-framework-v2"), "utf-8");
+            assert.match(content, /Keep me\./);
+            assert.match(content, /\.tai-framework-v2/);
+            assert.equal(content.split("TAI-INIT:BEGIN").length - 1, 1, "section replaced, not duplicated");
+        });
+    });
+
+    it("records no init step (isInitComplete must not depend on it)", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "env", "ok");
+            await writeGeminiMdPointer(dir, taiRoot, "/home/x/.tai-framework");
+            assert.deepEqual(Object.keys((await readInitState(taiRoot)).steps), ["env"]);
         });
     });
 });
