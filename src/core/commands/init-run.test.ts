@@ -305,6 +305,19 @@ describe("runInit — non-interactive (no TTY)", () => {
         });
     });
 
+    it("warns when a required secret exists only in the shell environment, since a new terminal would lose it", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                envFile: COMPLETE_ENV.replace("TAI_JIRA_API_TOKEN=tok", "TAI_JIRA_API_TOKEN="),
+                env: { ...parseEnvContent(COMPLETE_ENV), TAI_JIRA_API_TOKEN: "from-shell" },
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.all(), /TAI_JIRA_API_TOKEN is set in your shell but empty in .*\.env/);
+            assert.ok(!(await readFile(h.envPath, "utf-8")).includes("from-shell"), "a secret is never written by init run");
+        });
+    });
+
     it("warns when TAI_BACKEND is set to something other than jira, since init run sets up the Jira backend", async () => {
         await withTempDir(async (dir) => {
             const h = await harness(dir, { envFile: COMPLETE_ENV.replace("TAI_BACKEND=jira", "TAI_BACKEND=filesystem") });

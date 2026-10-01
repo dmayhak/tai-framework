@@ -345,6 +345,16 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         if (missing.length > 0) return stop(1, "env");
     }
 
+    // A secret supplied only by a shell `export` satisfies this run but leaves the .env line
+    // empty -- a new terminal without the export would have no credentials. Never copied in
+    // (init run writes no secrets), so say so.
+    const fileOnly = parseEnvContent(await readEnvFile(envPath));
+    for (const key of requiredEnvSecretKeys(includeBitbucket)) {
+        if ((fileOnly[key] ?? "").trim() === "" && (env[key] ?? "").trim() !== "") {
+            io.say(`Note: ${key} is set in your shell but empty in ${envPath}, so a new terminal without that export won't have it. Fill it in the file to make it permanent.`);
+        }
+    }
+
     const email = env["TAI_JIRA_EMAIL"] as string;
     const apiToken = env["TAI_JIRA_API_TOKEN"] as string;
     siteUrl = normalizeSiteUrl(env["TAI_JIRA_SITE_URL"] ?? "") as string;
