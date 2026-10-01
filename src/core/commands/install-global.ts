@@ -375,24 +375,42 @@ function initSkillBody(taiHome: string): string {
         "This (re)writes all five skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`) " +
         "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
         "`tai-framework` itself has been updated at its fixed location.\n\n" +
-        "**Target-project setup (TAI-116 piece 3, TAI-130):** once the bootstrap above is done, " +
-        "check whether the CURRENT project (cwd) still needs onboarding:\n\n" +
+        "**Target-project setup (TAI-116 piece 3, TAI-130, TAI-368):** once the bootstrap above is " +
+        "done, check whether the CURRENT project (cwd) still needs onboarding:\n\n" +
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts init status\n` +
         "```\n\n" +
         'If it reports "Fully initialized," relay its next-step hint to the human verbatim ' +
         "(TAI-349) — don't just say \"done\" and stop, since a genuinely fresh project has no " +
-        "obvious next action otherwise. Otherwise — including a " +
-        "fresh project with no state file at all — read the full checklist yourself " +
-        `(\`${taiHome}/docs/target-project-setup-checklist.md\`) and walk the human through it ` +
-        "step by step, in this order: Jira setup (issue types, the `Persona` field, workflow " +
-        "statuses) → `init jira` → Confluence space → `init confluence` → Bitbucket repo (only " +
-        "if this project needs `git-pr`) → `init bitbucket <workspace/repo>` → `init env` → " +
-        "`init claude-md`. Each `init <step>` call both performs and verifies its own step " +
-        "against the real API, and records completion for next time — safe to stop and resume " +
-        "later; re-run `init status` to see what's left rather than guessing. The credentials " +
-        "each step needs are plain env vars the human exports into this shell first — the exact " +
-        "checklist doc lists which ones, matching `.env.example`'s own names."
+        "obvious next action otherwise.\n\n" +
+        "Otherwise — a brand-new project, or an already-onboarded one cloned into a new folder or " +
+        "onto a new PC (where `.env` and `.tai/` are gitignored and so missing) — the setup is the " +
+        "same single command either way, `init run`. It prompts for the Atlassian site URL, " +
+        "opens the human's own editor for the secrets, discovers the Jira project / Confluence " +
+        "space / Bitbucket repo live, verifies each against the real API, and rebuilds " +
+        "`.tai/init-state.json` from those results. It needs a human at a real terminal, so run it " +
+        "ONCE from your own shell only to get its instructions:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts init run\n` +
+        "```\n\n" +
+        "Without a terminal it never prompts; it writes a `.env` skeleton and updates `.gitignore`, exits with code 2 and " +
+        "prints a command. Relay that output to the human verbatim and ask them to open a " +
+        "**separate terminal** and run exactly that command (it is safe to re-run any time), " +
+        "then come back and tell you when it finishes. Never suggest the `!` prefix instead — it " +
+        "has no terminal in Claude Code, and the editor hand-off is unverified in Gemini CLI. " +
+        "Never ask the human for a token, password or any other secret in chat — they only ever " +
+        "type secrets into their own editor, and a token pasted into chat goes to the model " +
+        "provider. If it exits 0 instead (everything was already in place), it is done — re-run " +
+        "`init status` and relay the hint as above.\n\n" +
+        "When the human comes back, re-run `init status` rather than assuming. If `init run` " +
+        "stopped at a failing step it printed that step's own to-do list; help with it and ask " +
+        "the human to re-run the same command — it resumes from live verification, not from a " +
+        "saved position. The one part TAI does not automate is Jira admin provisioning: if the " +
+        "to-do list reports a missing issue type or the `Persona` field not found, read the " +
+        `checklist yourself (\`${taiHome}/docs/target-project-setup-checklist.md\`, section 1) and ` +
+        "walk the human through those Jira UI steps, then have them re-run `init run`. The " +
+        "individual `init jira` / `init confluence` / `init bitbucket` / `init env` / " +
+        "`init claude-md` actions still exist, but you don't need them for the normal flow."
     );
 }
 
