@@ -799,6 +799,21 @@ describe("runInit — correction prompts reject answers that mean nothing and na
         });
     });
 
+    it("a single repo with a stray comma is still ONE repo: it replaces the first entry and keeps the rest", async () => {
+        await withTempDir(async (dir) => {
+            for (const typed of ["dmayhak/proj,", ",dmayhak/proj", " dmayhak/proj , "]) {
+                const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/proj", answers: ["", typed] });
+                const result = await runInit(h.deps);
+                assert.equal(result.exitCode, 0, `${JSON.stringify(typed)}: ${h.all()}`);
+                assert.equal(
+                    parseEnvContent(await readFile(h.envPath, "utf-8"))["TAI_GIT_REPOS"],
+                    "dmayhak/proj,dmayhak/other",
+                    `${JSON.stringify(typed)} must not drop the rest of the list`
+                );
+            }
+        });
+    });
+
     it("pressing Enter retries the same repo unchanged (the default), q still stops, and the list is never touched", async () => {
         await withTempDir(async (dir) => {
             const h = await harness(dir, { interactive: true, envFile: BB, goodRepo: "dmayhak/proj", answers: ["", "", "q"] });

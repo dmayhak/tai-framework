@@ -593,9 +593,10 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
                 if (typed.length === 0) io.say("That didn't contain a repository -- type workspace/repo (or a comma-separated list), or q to stop.");
             }
             if (typed.length === 0) return stop(1, "bitbucket");
-            // One repo replaces only the failing FIRST entry and keeps the rest of the list; typing
-            // a comma list is an explicit full replacement. Never silently drop the user's others.
-            const next = replacement.includes(",") ? typed : [typed[0] as string, ...repoList.slice(1)];
+            // One repo (stray commas and spaces ignored) replaces only the failing FIRST entry and
+            // keeps the rest of the list; typing MORE than one is an explicit full replacement.
+            // Never silently drop the user's others.
+            const next = typed.length > 1 ? typed : [typed[0] as string, ...repoList.slice(1)];
             repoList = [...new Set(next)];
             await writeEnvValues(cwd, { TAI_GIT_REPOS: repoList.join(",") });
             currentRepo = repoList[0] as string;
