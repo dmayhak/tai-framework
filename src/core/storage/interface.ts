@@ -121,6 +121,11 @@ export interface IssuePatch {
     readonly component?: string | null;
     readonly severity?: string | null;
     readonly priority?: string | null;
+    // TAI-372/379: re-parent a Story/Bug under an Epic (a subtask is rejected -- see
+    // reparent-gate.ts). A value only, no `null`: detaching from an Epic isn't supported.
+    readonly parentKey?: IssueKey;
+    // TAI-372/379: REPLACES the whole list (`[]` clears), unlike the nullable fields above.
+    readonly labels?: readonly string[];
 }
 
 export interface IssueFilter {

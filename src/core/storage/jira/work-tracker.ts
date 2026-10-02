@@ -39,6 +39,8 @@ import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
+import { reparentViolation } from "../reparent-gate.js";
+import { labelViolation } from "../label-gate.js";
 import {
     cascadeTriggersOn,
     shouldCascadeTransitionParent,
@@ -194,6 +196,9 @@ export function createJiraWorkTracker(
         readonly persona?: Persona | null;
         readonly component?: string | null;
         readonly priority?: string | null;
+        // TAI-372/379: patch-only. On create, `parentKey`/`labels` travel via the `create` arg.
+        readonly parentKey?: IssueKey;
+        readonly labels?: readonly string[];
     };
 
     function toJiraFields(
@@ -225,6 +230,12 @@ export function createJiraWorkTracker(
         }
         if (input.priority !== undefined) {
             f["priority"] = input.priority ? { name: input.priority } : null;
+        }
+        // TAI-372/379: patch-only (create sets these from its own `create` arg above). Jira's
+        // `labels` PUT replaces the whole list, which is exactly the decided semantics.
+        if (!create) {
+            if (input.parentKey !== undefined) f["parent"] = { key: input.parentKey };
+            if (input.labels !== undefined) f["labels"] = [...input.labels];
         }
         // `severity` is deliberately dropped: it has no Jira counterpart, and brief §5.2
         // says to reuse native Priority rather than provision a custom field for it.
@@ -269,6 +280,16 @@ export function createJiraWorkTracker(
                 if (violatesAssignmentGate(current.status, null)) {
                     throw new JiraRejection(exitGateReason(key, current.status), 409);
                 }
+            }
+            if (patch.labels !== undefined) {
+                const violation = labelViolation(patch.labels);
+                if (violation !== null) throw new JiraRejection(violation, 400);
+            }
+            if (patch.parentKey !== undefined) {
+                const current = await fetchIssue(key);
+                const newParent = await workTracker.getIssue(patch.parentKey);
+                const violation = reparentViolation(current, newParent);
+                if (violation !== null) throw new JiraRejection(violation, 409);
             }
             await client.request("PUT", `${API}/issue/${key}`, {
                 fields: toJiraFields(patch),

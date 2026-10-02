@@ -15,6 +15,7 @@ import {
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../core/schema/story-schema.js";
 import {
     parseIssueSearchFilter,
+    parseIssueUpdatePatch,
     parsePageGetRef,
     resolveCreatePriority,
     resolveMergePersona,
@@ -58,6 +59,32 @@ function makeComment(overrides: Partial<Comment> = {}): Comment {
         ...overrides,
     };
 }
+
+describe("parseIssueUpdatePatch (TAI-372/379)", () => {
+    it("maps the existing fields through unchanged", () => {
+        assert.deepEqual(
+            parseIssueUpdatePatch({ summary: "s", description: "d", persona: "developer", priority: "Low", component: "c", severity: "x" }),
+            { summary: "s", description: "d", persona: "developer", priority: "Low", component: "c", severity: "x" }
+        );
+    });
+
+    it("parent= becomes parentKey", () => {
+        assert.deepEqual(parseIssueUpdatePatch({ parent: "TAI-370" }), { parentKey: "TAI-370" });
+    });
+
+    it("labels= is the whole list: comma-split, trimmed, empties dropped; an empty value clears", () => {
+        assert.deepEqual(parseIssueUpdatePatch({ labels: "a, b ,,c" }), { labels: ["a", "b", "c"] });
+        assert.deepEqual(parseIssueUpdatePatch({ labels: "" }), { labels: [] });
+    });
+
+    it("an empty parent= is rejected: detaching from an Epic is not supported", () => {
+        assert.throws(() => parseIssueUpdatePatch({ parent: "" }), /parent=/);
+    });
+
+    it("rejects a key it does not know, so a typo like lables= is not silently ignored", () => {
+        assert.throws(() => parseIssueUpdatePatch({ lables: "a" }), /lables/);
+    });
+});
 
 describe("parseIssueSearchFilter", () => {
     it("defaults to the given projectKey when none is passed in fields", () => {

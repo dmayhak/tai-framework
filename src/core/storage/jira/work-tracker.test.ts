@@ -258,6 +258,99 @@ describe("createIssue", () => {
     });
 });
 
+/** A raw Jira issue of the given type, for the GET the backend does before/after a PUT. */
+function rawIssue(key: string, issuetype: string, extra: Record<string, unknown> = {}) {
+    return {
+        key,
+        fields: {
+            project: { key: "TAI" },
+            issuetype: { name: issuetype },
+            summary: "s",
+            status: { name: "Backlog" },
+            created: "2026-10-02T00:00:00.000-0600",
+            updated: "2026-10-02T00:00:00.000-0600",
+            ...extra,
+        },
+    };
+}
+
+describe("updateIssue: parent= and labels= (TAI-372/379)", () => {
+    function tracker(issues: Record<string, unknown>) {
+        const puts: { path: string; body: unknown }[] = [];
+        const wt = trackerWith(
+            stubFetch((url, init) => {
+                const path = url.split("atlassian.net")[1]?.split("?")[0] ?? "";
+                if (init.method === "PUT") {
+                    puts.push({ path, body: JSON.parse(String(init.body)) });
+                    return new Response(null, { status: 204 });
+                }
+                const key = path.split("/").pop() ?? "";
+                return issues[key] ? json(issues[key]) : json({ errorMessages: ["nope"] }, 404);
+            })
+        );
+        return { wt, puts };
+    }
+
+    it("sends labels as the WHOLE list (replace), and [] to clear", async () => {
+        const { wt, puts } = tracker({ "TAI-5": rawIssue("TAI-5", "Story") });
+        await wt.updateIssue(toIssueKey("TAI-5"), { labels: ["a", "b"] });
+        await wt.updateIssue(toIssueKey("TAI-5"), { labels: [] });
+        assert.deepEqual(puts.map((p) => (p.body as { fields: unknown }).fields), [{ labels: ["a", "b"] }, { labels: [] }]);
+    });
+
+    it("rejects a label with a space up front, with no PUT (same rule the filesystem backend applies)", async () => {
+        const { wt, puts } = tracker({ "TAI-5": rawIssue("TAI-5", "Story") });
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-5"), { labels: ["has space"] }), /spaces/);
+        assert.deepEqual(puts, []);
+    });
+
+    it("rejects an empty label up front, with no PUT", async () => {
+        const { wt, puts } = tracker({ "TAI-5": rawIssue("TAI-5", "Story") });
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-5"), { labels: [""] }), /empty/i);
+        assert.deepEqual(puts, []);
+    });
+
+    it("re-parents a Story under an Epic with PUT fields.parent = {key}", async () => {
+        const { wt, puts } = tracker({
+            "TAI-5": rawIssue("TAI-5", "Story"),
+            "TAI-1": rawIssue("TAI-1", "Epic"),
+        });
+        await wt.updateIssue(toIssueKey("TAI-5"), { parentKey: toIssueKey("TAI-1") });
+        assert.deepEqual(puts, [{ path: "/rest/api/2/issue/TAI-5", body: { fields: { parent: { key: "TAI-1" } } } }]);
+    });
+
+    it("rejects a subtask re-parent without ever calling Jira's PUT", async () => {
+        const { wt, puts } = tracker({
+            "TAI-7": rawIssue("TAI-7", "Dev", { parent: { key: "TAI-5" } }),
+            "TAI-5": rawIssue("TAI-5", "Story"),
+        });
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-7"), { parentKey: toIssueKey("TAI-5") }), /subtask/i);
+        assert.deepEqual(puts, []);
+    });
+
+    it("rejects a non-Epic parent and a missing parent, with no PUT", async () => {
+        const { wt, puts } = tracker({
+            "TAI-5": rawIssue("TAI-5", "Story"),
+            "TAI-8": rawIssue("TAI-8", "Story"),
+        });
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-5"), { parentKey: toIssueKey("TAI-8") }), /must be an Epic/);
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-5"), { parentKey: toIssueKey("TAI-404") }), /not found/i);
+        assert.deepEqual(puts, []);
+    });
+
+    it("an update with neither field never fetches a parent", async () => {
+        const urls: string[] = [];
+        const wt = trackerWith(
+            stubFetch((url, init) => {
+                urls.push(`${init.method ?? "GET"} ${url.split("atlassian.net")[1]?.split("?")[0]}`);
+                return init.method === "PUT" ? new Response(null, { status: 204 }) : json(rawIssue("TAI-5", "Story"));
+            })
+        );
+        await wt.updateIssue(toIssueKey("TAI-5"), { summary: "x" });
+        assert.deepEqual(urls, ["PUT /rest/api/2/issue/TAI-5", "GET /rest/api/2/issue/TAI-5"]);
+    });
+});
+
 describe("transition", () => {
     it("matches on destination status, not on the transition's own name", async () => {
         // Jira transition names and their destination statuses routinely differ
