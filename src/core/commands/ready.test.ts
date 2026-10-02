@@ -1788,7 +1788,9 @@ describe("findReadyWork staleLivingDocs (TAI-302/319)", () => {
             await writeLivingDocSnapshot(taiRoot, "TAI", "project-home", [
                 { epicKey: epic.key, status: epic.status, childTotal: 1, childDone: 0 },
             ]);
-            await backend.workTracker.transition(story.key, Status.ToDo);
+            // Straight to Done, not via To Do: since TAI-374/387 a Story reaching To Do also schedules a
+            // Backlog Epic, which would change the Epic's own status and defeat what this test checks
+            // (the tally moving while the Epic's status stays put).
             await backend.workTracker.transition(story.key, Status.Done);
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });

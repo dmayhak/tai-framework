@@ -4,7 +4,32 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-09-25 (rev 70 — **TAI-354: Kickoff gains a mandatory,
+> **Last updated:** 2026-10-02 (rev 71 — **TAI-374/387: Epics are created as they are agreed
+> (early Epic shells), fleshed out in Backlog, and scheduled by Perry; `To Do` now cascades
+> upward and a Kickoff Story never moves its Epic.** Human-directed, ADR Confluence page
+> 47349832 (rev 4). The serial project-level Kickoff left every agreed Epic invisible on the
+> board until EpicReview, Requirements/UX and the review gate had all finished. Now: Ada creates
+> each Epic as a **Backlog shell** as it is agreed during EpicReview (a narrow `create: Epic`
+> grant; the shell IS the proposal) and records its Jira key in the work-breakdown doc in the
+> same step (the doc stays canonical, with a Jira-key index column). Perry — not Ada — gives
+> every Epic its per-Epic Kickoff Story and the Stories/tasks already known, in Backlog, during
+> grooming; an Epic is not left empty. **Epic status now describes readiness:** `Backlog` =
+> proposed and being fleshed out, `To Do` = fleshed out and approved to build (its Kickoff
+> passed its PM+UX gate and a human agreed; the persona asks first — convention, no code gate),
+> `In Progress` = building. An Epic's Stories do NOT all move to `To Do` with it: Perry
+> schedules a first wave and leaves later phases / blocked / externally-waiting work in Backlog.
+> The shared cascade gate (`cascade-gate.ts`, `upwardCascadeTarget`) changes accordingly: a
+> **Kickoff Story starting work, or being scheduled, never moves its parent Epic**; every other
+> child still does, and a **subtask reaching `To Do` now schedules its Backlog parent, which
+> schedules its Backlog Epic** (new upward To Do cascade; only a Backlog parent moves).
+> Scheduling a first-wave non-Kickoff Story therefore also approves a Backlog Epic, so Perry
+> asks the human first. Rev 28's sentence below ("`In Progress` is derived … any child that has
+> left Backlog") was never what the code did (the cascade fires on `In Progress`/`In Review`
+> only) and is rewritten. The Kickoff review gate is clarified, not changed: it governs the
+> project-level Kickoff Story's own Done transition and the Stories/Spikes spawned from it;
+> Epic shells and per-Epic Kickoffs sit outside it.
+>
+> Prior: rev 70 — **TAI-354: Kickoff gains a mandatory,
 > human-gated `EpicReview` step — Ada's proposed Epic breakdown is probed with the
 > human, epic by epic, not rubber-stamped.** Found live on the same EXA stress-test as
 > revs 67–69: after Ada's `Research` subtask produced the work-breakdown doc (proposing
@@ -1702,12 +1727,15 @@ behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban
 **Epic status (rev 28) — `In Progress` is derived from children; `Done` is never
 auto-derived, always a deliberate human decision.**
 
-- **`In Progress` is a simple derived signal:** the moment an Epic has ANY child that has
-  left `Backlog` (i.e., any child in `To Do`/`In Progress`/`In Review`/`Done`/`Canceled`),
-  the Epic itself reads `In Progress` — real engagement has started, distinct from a
-  still-dormant Epic with nothing decomposed under it yet (which itself sits in `Backlog`
-  until a first Spike/Story is scoped, per the section above). Coarse by design — this
-  isn't a percentage-complete rollup, just a dormant/active signal.
+- **`In Progress` is a simple derived signal (rewritten rev 71, TAI-374/387):** an Epic reads
+  `In Progress` once real BUILD work has started under it — a non-Kickoff child (Story, Bug,
+  Spike) reaching `In Progress`/`In Review`, written by the shared cascade gate. A child merely
+  in `To Do` does not make it `In Progress`; instead a non-Kickoff Story reaching `To Do`
+  schedules a Backlog Epic to `To Do` (the To Do cascade), and a **Kickoff Story never moves
+  its Epic in either direction** — an epic's own Kickoff is refinement, so an Epic in `Backlog`
+  may have its Kickoff running (`Backlog` = proposed and being fleshed out, `To Do` = approved
+  to build). Coarse by design — this isn't a percentage-complete rollup, just a
+  proposed/approved/building signal.
 - **`Done` is NOT derived from "all current children are `Done`/`Canceled`."** That's a
   false-completion trap: Epics are open-ended thematic groupings (§5.1: "a feature set"),
   and more Stories can always be decomposed under one later — brief §3.7's own recursive-

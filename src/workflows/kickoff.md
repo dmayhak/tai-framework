@@ -16,8 +16,7 @@ Kickoff Story — then, per the general TAI-83 "Eager Subtask Creation" exceptio
 judged appropriate to start (rev 66, found live 2026-09-24 — supersedes the prior
 "PM creates the container, not the subtasks" framing, which contradicted TAI-83's own
 rule the same way TAI-317/rev-57 already fixed once for `Investigate`/
-`ArchitectureDesign`). `Research` and `UxDesign` are typically both immediately
-startable, so Perry usually creates both directly once she judges them needed — creation
+`ArchitectureDesign`). `Research` is typically startable immediately and `UxDesign` follows `EpicReview` (TAI-354), so Perry usually creates both directly once she judges them needed — creation
 authority and execution ownership stay separate axes, so `Research` still routes to
 Analyst and `UxDesign` to UX Designer regardless of who created the ticket. `Requirements`
 is Perry's own type but precedence-blocked behind `Research` and `EpicReview`, so it's
@@ -101,6 +100,21 @@ Perry later decomposes a specific Epic into Stories (`personas/pm.md` item 5), t
 now creates its own Kickoff-type Story under that Epic rather than deciding the breakdown
 solo — the same `Research` → `EpicReview` sequence applies there too, scoped to one Epic
 instead of the whole project.
+
+## Epic shells, per-Epic Kickoffs, and this gate (TAI-374/387)
+
+Epics are created **as they are agreed**, not after this whole Kickoff finishes (ADR Confluence
+page 47349832 rev 4). During `EpicReview` Ada creates each agreed Epic as a **Backlog shell** and
+records its Jira key in the work-breakdown doc's Epic table at once (the doc stays canonical;
+the ticket carries a short summary and a link to its section). Perry then gives every Epic its
+own Kickoff Story (`personas/pm.md` item 5) and the Stories/tasks already known, all in
+`Backlog` — an Epic is not left empty. **Epic status describes readiness:** `Backlog` =
+proposed and being fleshed out, `To Do` = fleshed out and approved to build, `In Progress` =
+building. A Kickoff Story starting work or being scheduled **never moves its Epic**; every
+other child still does (`cascade-gate.ts`, `upwardCascadeTarget`). **None of this is gated by
+the review gate below:** that gate governs THIS Kickoff Story's own `Done` transition and the
+Story/Spike tickets spawned from it through WBS assembly; Epic shells and per-Epic Kickoff
+Stories sit outside it, and each per-Epic Kickoff has its own gate when it needs one.
 
 ## Review Gate
 **Required reviewers:** PM + UX Designer

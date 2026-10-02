@@ -19,6 +19,95 @@ async function withBackend(fn: (backend: StorageBackend) => Promise<void>): Prom
     }
 }
 
+describe("upward cascade: Kickoff exemption and the To Do cascade (TAI-374/387)", () => {
+    // Every issue gets an assignee so the In Progress entry gate never interferes with what is under test.
+    async function make(backend: StorageBackend, issueType: StoryType | SubtaskType | "epic", summary: string, parentKey?: ReturnType<typeof toIssueKey>) {
+        return backend.workTracker.createIssue({
+            projectKey: "TAI",
+            issueType,
+            summary,
+            assignee: CURRENT_USER,
+            ...(parentKey ? { parentKey } : {}),
+        });
+    }
+    const statusOf = async (b: StorageBackend, key: ReturnType<typeof toIssueKey>) => (await b.workTracker.getIssue(key))?.status;
+
+    test("a Kickoff Story going In Progress leaves its Backlog Epic in Backlog", async () => {
+        await withBackend(async (b) => {
+            const epic = await make(b, "epic", "e");
+            const kickoff = await make(b, StoryType.Kickoff, "k", epic.key);
+            await b.workTracker.transition(kickoff.key, Status.InProgress);
+            assert.equal(await statusOf(b, kickoff.key), Status.InProgress);
+            assert.equal(await statusOf(b, epic.key), Status.Backlog);
+        });
+    });
+
+    test("a subtask of a Kickoff going In Progress moves the Kickoff, not the Epic", async () => {
+        await withBackend(async (b) => {
+            const epic = await make(b, "epic", "e");
+            const kickoff = await make(b, StoryType.Kickoff, "k", epic.key);
+            const research = await make(b, SubtaskType.Research, "r", kickoff.key);
+            await b.workTracker.transition(research.key, Status.InProgress);
+            assert.equal(await statusOf(b, kickoff.key), Status.InProgress);
+            assert.equal(await statusOf(b, epic.key), Status.Backlog);
+        });
+    });
+
+    test("a normal Story going In Progress still moves its Epic", async () => {
+        await withBackend(async (b) => {
+            const epic = await make(b, "epic", "e");
+            const story = await make(b, StoryType.Story, "s", epic.key);
+            await b.workTracker.transition(story.key, Status.InProgress);
+            assert.equal(await statusOf(b, epic.key), Status.InProgress);
+        });
+    });
+
+    test("a subtask reaching To Do schedules its Backlog Story, and that schedules the Backlog Epic", async () => {
+        await withBackend(async (b) => {
+            const epic = await make(b, "epic", "e");
+            const story = await make(b, StoryType.Story, "s", epic.key);
+            const dev = await make(b, SubtaskType.Dev, "d", story.key);
+            const result = await b.workTracker.transition(dev.key, Status.ToDo);
+            assert.equal(result.ok, true);
+            assert.equal(await statusOf(b, story.key), Status.ToDo);
+            assert.equal(await statusOf(b, epic.key), Status.ToDo);
+            if (result.ok) assert.deepEqual((result.affectedIssues ?? []).map((i) => i.key).sort(), [epic.key, story.key].sort());
+        });
+    });
+
+    test("a subtask of a Kickoff reaching To Do schedules the Kickoff but NOT the Epic", async () => {
+        await withBackend(async (b) => {
+            const epic = await make(b, "epic", "e");
+            const kickoff = await make(b, StoryType.Kickoff, "k", epic.key);
+            const research = await make(b, SubtaskType.Research, "r", kickoff.key);
+            await b.workTracker.transition(research.key, Status.ToDo);
+            assert.equal(await statusOf(b, kickoff.key), Status.ToDo);
+            assert.equal(await statusOf(b, epic.key), Status.Backlog);
+        });
+    });
+
+    test("a Kickoff Story going To Do directly leaves its Backlog Epic in Backlog", async () => {
+        await withBackend(async (b) => {
+            const epic = await make(b, "epic", "e");
+            const kickoff = await make(b, StoryType.Kickoff, "k", epic.key);
+            await b.workTracker.transition(kickoff.key, Status.ToDo);
+            assert.equal(await statusOf(b, epic.key), Status.Backlog);
+        });
+    });
+
+    test("the To Do cascade never regresses a parent that is already started or Done", async () => {
+        await withBackend(async (b) => {
+            const epic = await make(b, "epic", "e");
+            const story = await make(b, StoryType.Story, "s", epic.key);
+            const dev = await make(b, SubtaskType.Dev, "d", story.key);
+            await b.workTracker.transition(story.key, Status.InProgress);
+            await b.workTracker.transition(dev.key, Status.ToDo);
+            assert.equal(await statusOf(b, story.key), Status.InProgress);
+            assert.equal(await statusOf(b, epic.key), Status.InProgress);
+        });
+    });
+});
+
 describe("issue CRUD", () => {
     // REGRESSION (TAI-15 code review): real Jira structurally rejects a parentless subtask;
     // this backend used to accept one silently — a portability trap for code developed and
