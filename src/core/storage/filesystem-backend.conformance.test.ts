@@ -36,6 +36,7 @@ defineStorageConformance("filesystem", async (): Promise<ConformanceHarness> => 
             validatesAssignee: false, // no external directory to validate an assignee against
             answersPageToIssueLinks: true, // reads its own local link index directly
             clearedDescriptionIsEmptyString: false, // genuinely clears to undefined
+            searchIsEventuallyConsistent: false, // reads its own files: always consistent
         },
         validAssignee: CURRENT_USER,
         invalidAssignee: NOBODY, // "invalid" has no meaning here; capability flag documents that

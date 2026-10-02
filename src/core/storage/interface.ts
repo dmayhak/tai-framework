@@ -141,6 +141,18 @@ export interface IssueFilter {
     // can page internally up to this bound without violating the interface. When omitted,
     // every backend applies DEFAULT_SEARCH_LIMIT below — never "everything."
     readonly limit?: number;
+    /**
+     * TAI-381: with `parentKey`, ALSO include the parent's own immediately-consistent subtasks.
+     * Jira's search index lags a few seconds behind a create (measured live: 2-4s), so a plain
+     * search can miss a subtask created moments ago -- which silently broke the downward cascade
+     * (a just-created child left open when its parent closed), the duplicate-subtask guard, and
+     * link-precedence. The parent's `fields.subtasks` is read-your-write, so this merges those in.
+     * Opt-in because it costs an extra read; callers that write and then read children (the
+     * cascade, the guard, link-precedence) set it, read-heavy listing does not. Covers
+     * Story->subtask only: Jira has no immediate Epic->Story equivalent (documented limit). A
+     * no-op on the filesystem backend, which is always consistent.
+     */
+    readonly readYourWrites?: boolean;
 }
 
 /**

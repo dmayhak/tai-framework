@@ -91,6 +91,7 @@ defineStorageConformance(
                 // Verified live: PUT description:null reads back as "", not absent — Jira's
                 // own storage has no true "no description" state distinct from "empty".
                 clearedDescriptionIsEmptyString: true,
+            searchIsEventuallyConsistent: true, // TAI-381: measured live, a JQL search lags a create by ~2-4s
             },
             validAssignee,
             invalidAssignee,

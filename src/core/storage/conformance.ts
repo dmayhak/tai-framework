@@ -81,6 +81,16 @@ export interface StorageCapabilities {
      * "cleared" and "explicitly emptied" collapse to the same thing on read.
      */
     readonly clearedDescriptionIsEmptyString: boolean;
+
+    /**
+     * TAI-381: is `search()` only EVENTUALLY consistent with writes? Jira: yes -- measured live, a
+     * JQL search can miss an issue for ~2-4s after it is created (while a parent's own `subtasks`
+     * field, and fetching by key, are immediate). The filesystem backend reads its own files, so no.
+     * Where true, assertions about a plain search finding something just created poll until it is
+     * visible (`eventually`) instead of assuming read-your-write; `IssueFilter.readYourWrites` is
+     * what gives callers an immediate answer for a Story's subtasks.
+     */
+    readonly searchIsEventuallyConsistent: boolean;
 }
 
 // ---------- Harness: what each backend supplies to run the shared suite ----------
@@ -158,6 +168,21 @@ export function defineStorageConformance(
             cleanupPages.push(page.id);
             return page;
         }
+
+        /** TAI-381: re-runs `read` until `done(value)` holds, but ONLY on a backend whose search is
+         *  eventually consistent (otherwise one check, so a real bug there is not hidden by polling). */
+        async function eventually<T>(read: () => Promise<T>, done: (value: T) => boolean, what: string): Promise<T> {
+            const budgetMs = h.capabilities.searchIsEventuallyConsistent ? 20000 : 0;
+            const deadline = Date.now() + budgetMs;
+            for (;;) {
+                const value = await read();
+                if (done(value)) return value;
+                if (Date.now() >= deadline) assert.fail(`${what} (not visible after ${budgetMs}ms)`);
+                await new Promise((r) => setTimeout(r, 750));
+            }
+        }
+        const childKeys = (parent: IssueKey) => async () =>
+            (await h.backend.workTracker.search({ projectKey: h.projectKey, parentKey: parent })).map((i) => i.key);
 
         // ---------- Issue CRUD ----------
 
@@ -746,6 +771,15 @@ export function defineStorageConformance(
                     })
                 );
 
+                // Epic->Story children are found by search, which lags on Jira (TAI-381: no immediate
+                // Epic-children field exists), so let the index catch up before closing the Epic. The
+                // Story->Dev hop needs no such wait: it reads the Story's own `subtasks` field.
+                await eventually(
+                    childKeys(epic.key),
+                    (keys) => keys.includes(story.key),
+                    "the Story must be searchable under the Epic before the Epic is closed"
+                );
+
                 const result = await h.backend.workTracker.transition(epic.key, Status.Done);
                 assert.equal(result.ok, true);
 
@@ -1024,6 +1058,59 @@ export function defineStorageConformance(
             });
         });
 
+        // ---------- read-your-write child lookup (TAI-381) ----------
+
+        describe("WorkTracker: search with readYourWrites (TAI-381)", () => {
+            it("returns a subtask created a moment ago IMMEDIATELY, with no polling", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: read-your-write parent",
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: read-your-write child",
+                    })
+                );
+                const found = await h.backend.workTracker.search({
+                    projectKey: h.projectKey,
+                    parentKey: story.key,
+                    readYourWrites: true,
+                });
+                assert.deepEqual(found.map((i) => i.key), [dev.key]);
+            });
+
+            it("still applies the rest of the filter to what it returns", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: read-your-write filter parent",
+                    })
+                );
+                track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        summary: "Conformance: read-your-write filter child",
+                    })
+                );
+                const none = await h.backend.workTracker.search({
+                    projectKey: h.projectKey,
+                    parentKey: story.key,
+                    issueTypes: [SubtaskType.SpikeTask],
+                    readYourWrites: true,
+                });
+                assert.deepEqual(none, []);
+            });
+        });
+
         // ---------- Issue links & search ----------
 
         describe("WorkTracker: links and search", () => {
@@ -1153,12 +1240,10 @@ export function defineStorageConformance(
                     })
                 );
 
-                const afterDecomposition = await h.backend.workTracker.search({
-                    projectKey: h.projectKey,
-                    parentKey: epic.key,
-                });
-                assert.ok(
-                    afterDecomposition.some((i) => i.key === story.key),
+                // Plain search is eventually consistent on Jira (TAI-381), so poll there.
+                await eventually(
+                    childKeys(epic.key),
+                    (keys) => keys.includes(story.key),
                     "once a Story exists under the Epic, parentKey search must find it"
                 );
             });

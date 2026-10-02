@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { Status, SubtaskType } from "../../schema/story-schema.js";
+import { Status, StoryType, SubtaskType } from "../../schema/story-schema.js";
 import {
     StorageConnectivityError,
     toIssueKey,
@@ -202,6 +202,9 @@ describe("createIssue", () => {
                             ],
                         });
                     }
+                    // TAI-381: the guard also reads the parent's own (immediately consistent) subtasks
+                    // field, in case the search index hasn't caught up with a just-created sibling.
+                    if (path === "/rest/api/2/issue/TAI-192") return json({ key: "TAI-192", fields: { subtasks: [{ key: "TAI-193" }] } });
                     throw new Error(`unexpected call: ${path}`);
                 })
             );
@@ -216,7 +219,7 @@ describe("createIssue", () => {
                     }),
                 /TAI-193 \(Done\) already exists/
             );
-            assert.deepEqual(calls, ["POST /rest/api/2/search/jql"]);
+            assert.deepEqual(calls, ["POST /rest/api/2/search/jql", "GET /rest/api/2/issue/TAI-192"]);
         });
 
         it("allows the create when allowDuplicate: true is passed, skipping the guard's search entirely", async () => {
@@ -348,6 +351,76 @@ describe("updateIssue: parent= and labels= (TAI-372/379)", () => {
         );
         await wt.updateIssue(toIssueKey("TAI-5"), { summary: "x" });
         assert.deepEqual(urls, ["PUT /rest/api/2/issue/TAI-5", "GET /rest/api/2/issue/TAI-5"]);
+    });
+});
+
+describe("read-your-write child lookup (TAI-381)", () => {
+    // Jira's search index lags ~2-4s behind a create (measured live): POST /search/jql can miss a
+    // just-created child while the PARENT's own `subtasks` field already lists it.
+    function lagTracker(opts: { searchHits?: unknown[]; parentSubtasks: string[]; issues: Record<string, unknown> }) {
+        const calls: string[] = [];
+        const wt = trackerWith(
+            stubFetch((url, init) => {
+                const path = url.split("atlassian.net")[1]?.split("?")[0] ?? "";
+                const subtasksOnly = url.includes("fields=subtasks");
+                calls.push(`${init.method ?? "GET"} ${path}${subtasksOnly ? " (subtasks)" : ""}`);
+                if (path === "/rest/api/2/search/jql") return json({ issues: opts.searchHits ?? [] });
+                if (subtasksOnly) return json({ key: "TAI-10", fields: { subtasks: opts.parentSubtasks.map((key) => ({ key })) } });
+                if (init.method === "POST" && path.endsWith("/transitions")) return new Response(null, { status: 204 });
+                if (path.endsWith("/transitions")) {
+                    return json({ transitions: [{ id: "41", name: "Cancel", to: { name: "Canceled" } }] });
+                }
+                if (init.method === "POST" && path === "/rest/api/2/issue") return json({ key: "TAI-99" });
+                const key = path.split("/").pop() ?? "";
+                return opts.issues[key] ? json(opts.issues[key]) : json({ errorMessages: ["nope"] }, 404);
+            })
+        );
+        return { wt, calls };
+    }
+    const dev = (key: string, extra: Record<string, unknown> = {}) =>
+        rawIssue(key, "Dev", { parent: { key: "TAI-10" }, [PERSONA_FIELD]: { value: "Developer" }, ...extra });
+
+    it("a plain search never reads the parent (read-heavy callers pay nothing extra)", async () => {
+        const { wt, calls } = lagTracker({ parentSubtasks: ["TAI-11"], issues: {} });
+        await wt.search({ projectKey: "TAI", parentKey: toIssueKey("TAI-10") });
+        assert.deepEqual(calls, ["POST /rest/api/2/search/jql"]);
+    });
+
+    it("with readYourWrites, finds a subtask the search missed by reading the parent's subtasks field", async () => {
+        const { wt } = lagTracker({ parentSubtasks: ["TAI-11"], issues: { "TAI-11": dev("TAI-11") } });
+        const found = await wt.search({ projectKey: "TAI", parentKey: toIssueKey("TAI-10"), readYourWrites: true });
+        assert.deepEqual(found.map((i) => i.key), ["TAI-11"]);
+    });
+
+    it("does not duplicate a subtask the search already returned, and does not refetch it", async () => {
+        const { wt, calls } = lagTracker({ searchHits: [dev("TAI-11")], parentSubtasks: ["TAI-11"], issues: { "TAI-11": dev("TAI-11") } });
+        const found = await wt.search({ projectKey: "TAI", parentKey: toIssueKey("TAI-10"), readYourWrites: true });
+        assert.deepEqual(found.map((i) => i.key), ["TAI-11"]);
+        assert.ok(!calls.includes("GET /rest/api/2/issue/TAI-11"), "already had it from the search");
+    });
+
+    it("applies the rest of the filter to a subtask found only through the parent", async () => {
+        const { wt } = lagTracker({ parentSubtasks: ["TAI-11"], issues: { "TAI-11": dev("TAI-11") } });
+        const found = await wt.search({ projectKey: "TAI", parentKey: toIssueKey("TAI-10"), issueTypes: [StoryType.Bug], readYourWrites: true });
+        assert.deepEqual(found, []);
+    });
+
+    it("the duplicate-subtask guard sees a just-created same-type sibling the search missed, and never creates", async () => {
+        const { wt, calls } = lagTracker({ parentSubtasks: ["TAI-11"], issues: { "TAI-11": dev("TAI-11") } });
+        await assert.rejects(
+            () => wt.createIssue({ projectKey: "TAI", issueType: SubtaskType.Dev, parentKey: toIssueKey("TAI-10"), summary: "second dev" }),
+            /second "dev" subtask/
+        );
+        assert.ok(!calls.includes("POST /rest/api/2/issue"), "must not have created the duplicate");
+    });
+
+    it("the downward cascade cancels a just-created child the search missed", async () => {
+        const { wt, calls } = lagTracker({
+            parentSubtasks: ["TAI-11"],
+            issues: { "TAI-10": rawIssue("TAI-10", "Story", { status: { name: "In Progress" } }), "TAI-11": dev("TAI-11") },
+        });
+        await wt.transition(toIssueKey("TAI-10"), Status.Canceled);
+        assert.ok(calls.includes("POST /rest/api/2/issue/TAI-11/transitions"), calls.join("\n"));
     });
 });
 
