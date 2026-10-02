@@ -41,6 +41,7 @@ import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
 import { reparentViolation } from "../reparent-gate.js";
 import { labelViolation } from "../label-gate.js";
+import { matchesIssueFilter } from "../issue-filter.js";
 import {
     cascadeTriggersOn,
     shouldCascadeTransitionParent,
@@ -255,6 +256,8 @@ export function createJiraWorkTracker(
                     projectKey: input.projectKey,
                     parentKey: input.parentKey,
                     issueTypes: [input.issueType],
+                    // TAI-381: a sibling created seconds ago must still count, search lag or not.
+                    readYourWrites: true,
                 });
                 if (siblings[0]) {
                     throw new Error(duplicateSubtaskGateReason(input.parentKey, input.issueType, siblings[0]));
@@ -428,6 +431,8 @@ export function createJiraWorkTracker(
                             projectKey: updated.projectKey,
                             parentKey: key,
                             limit: DEFAULT_SEARCH_LIMIT,
+                            // TAI-381: a child created seconds ago must be cascaded too.
+                            readYourWrites: true,
                         });
                         for (const child of children) {
                             if (!shouldCascadeCancelChild(child.status)) continue;
@@ -700,7 +705,24 @@ export function createJiraWorkTracker(
             // deliberately deferred (interface.ts: `limit` bounds the result; no real project is
             // near needing it) — but a single page is all we ask for, so results are bounded,
             // never silently truncated mid-iteration.
-            return res.issues.map((r) => toIssue(r, personaFieldId, aliases));
+            const found = res.issues.map((r) => toIssue(r, personaFieldId, aliases));
+
+            // TAI-381: the index above lags a few seconds behind a create. With `readYourWrites`,
+            // also read the PARENT's own `subtasks` field (immediately consistent), fetch any
+            // listed subtask the search missed straight by key, and keep it if it satisfies the rest
+            // of the filter. Story->subtask only; Jira has no immediate Epic->Story counterpart.
+            if (filter.parentKey && filter.readYourWrites) {
+                const parent = await client.getOrNull<{ fields?: { subtasks?: { key: string }[] } }>(
+                    `${API}/issue/${filter.parentKey}?fields=subtasks`
+                );
+                const have = new Set(found.map((i) => i.key as string));
+                for (const sub of parent?.fields?.subtasks ?? []) {
+                    if (have.has(sub.key)) continue;
+                    const issue = await fetchIssue(toIssueKey(sub.key));
+                    if (matchesIssueFilter(issue, filter)) found.push(issue);
+                }
+            }
+            return found.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);
         },
     };
     return workTracker;

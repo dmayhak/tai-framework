@@ -85,10 +85,10 @@ async function searchSubtasksWithRetry(
 ): Promise<{ subtasks: readonly Issue[]; warning: string | null }> {
     const { attempts, delayMs } = { ...DEFAULT_RETRY, ...retryOptions };
 
-    let previous = await workTracker.search({ projectKey, parentKey: storyKey });
+    let previous = await workTracker.search({ projectKey, parentKey: storyKey, readYourWrites: true });
     for (let attempt = 1; attempt < attempts; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
-        const current = await workTracker.search({ projectKey, parentKey: storyKey });
+        const current = await workTracker.search({ projectKey, parentKey: storyKey, readYourWrites: true });
         if (current.length === previous.length) return { subtasks: current, warning: null };
         previous = current;
     }

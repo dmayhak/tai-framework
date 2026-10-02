@@ -44,6 +44,7 @@ import { reviewGateApplies, checkReviewGate, reviewGateReason } from "./review-g
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "./duplicate-subtask-gate.js";
 import { reparentViolation } from "./reparent-gate.js";
 import { labelViolation } from "./label-gate.js";
+import { matchesIssueFilter } from "./issue-filter.js";
 import {
     cascadeTriggersOn,
     shouldCascadeTransitionParent,
@@ -723,15 +724,7 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async search(filter: IssueFilter): Promise<readonly Issue[]> {
             const issues = await readJsonDir<Issue>(issuesDir(rootDir, filter.projectKey));
-            const results = issues.filter((i) => {
-                if (filter.issueTypes && !filter.issueTypes.includes(i.issueType)) return false;
-                if (filter.statuses && !filter.statuses.includes(i.status)) return false;
-                if (filter.assignee && i.assignee?.id !== filter.assignee) return false;
-                if (filter.persona && i.persona !== filter.persona) return false;
-                if (filter.parentKey && i.parentKey !== filter.parentKey) return false;
-                if (filter.updatedSince && i.updatedAt < filter.updatedSince) return false;
-                return true;
-            });
+            const results = issues.filter((i) => matchesIssueFilter(i, filter));
             return results.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);
         },
     };
