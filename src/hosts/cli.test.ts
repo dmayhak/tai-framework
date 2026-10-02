@@ -488,6 +488,17 @@ describe("resolveMergePersona (TAI-314/315/316)", () => {
     });
 });
 
+describe("renderInitStepResult heading (TAI-377)", () => {
+    it("defaults to `# init <step>`, which the individual init actions keep using", () => {
+        assert.match(renderInitStepResult("claude-md", true, "Wrote CLAUDE.md."), /^# init claude-md\n/);
+    });
+
+    it("takes an optional display label for a step that now covers more than its key says", () => {
+        const out = renderInitStepResult("claude-md", true, "Wrote both.", false, "claude-md + gemini-md");
+        assert.match(out, /^# init claude-md \+ gemini-md\n/);
+    });
+});
+
 describe("renderInitStepResult / renderInitStatus (TAI-349)", () => {
     it("renderInitStepResult appends the next-step hint only when ok AND fullyInitialized", () => {
         const bare = renderInitStepResult("env", true, "Wrote .env.");

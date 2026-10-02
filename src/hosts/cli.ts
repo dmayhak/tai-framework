@@ -1074,9 +1074,18 @@ export async function renderIssueDetail(
 // duplicating it, so the two surfaces can't drift apart.
 const NEXT_STEP_HINT = `If this is a fresh project with nothing in it yet: there's no dedicated command for this yet (TAI-348) -- ${PM_KICKOFF_HINT}.`;
 
-export function renderInitStepResult(step: InitStep, ok: boolean, detail: string, fullyInitialized = false): string {
+/** `label` (TAI-377) overrides only the DISPLAYED heading, never the step key -- `claude-md` is also
+ *  the recorded `init-state.json` key, so renaming it would orphan existing state files. `init run`
+ *  uses it because its pointer step now writes both CLAUDE.md and GEMINI.md. */
+export function renderInitStepResult(
+    step: InitStep,
+    ok: boolean,
+    detail: string,
+    fullyInitialized = false,
+    label?: string
+): string {
     const hint = ok && fullyInitialized ? `\n\n${NEXT_STEP_HINT}` : "";
-    return `# init ${step}\n\n${ok ? "Done." : "Not done."} ${detail}${hint}`;
+    return `# init ${label ?? step}\n\n${ok ? "Done." : "Not done."} ${detail}${hint}`;
 }
 
 export function renderInitStatus(state: InitState): string {

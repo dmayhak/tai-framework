@@ -178,7 +178,14 @@ export interface InitRunDeps {
     readonly interactive: boolean;
     readonly io: InitRunIO;
     /** The CLI's own step-result renderer, injected so the core stays free of host imports. */
-    readonly renderStepResult: (step: InitStep, ok: boolean, detail: string, fullyInitialized?: boolean) => string;
+    readonly renderStepResult: (
+        step: InitStep,
+        ok: boolean,
+        detail: string,
+        fullyInitialized?: boolean,
+        /** Display-only heading override (TAI-377); never changes the step key. */
+        label?: string
+    ) => string;
     readonly services: InitRunServices;
 }
 
@@ -618,7 +625,15 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     // TAI-376: Gemini CLI reads GEMINI.md, so write the same pointer there. Not a recorded step.
     await writeGeminiMdPointer(cwd, taiRoot, taiHome);
     const finalState = await markStepDone(taiRoot, "claude-md", `Wrote ${path.join(cwd, "CLAUDE.md")}.`);
-    io.say(renderStepResult("claude-md", true, `Wrote ${path.join(cwd, "CLAUDE.md")} and ${path.join(cwd, "GEMINI.md")}.`, isInitComplete(finalState)));
+    io.say(
+        renderStepResult(
+            "claude-md",
+            true,
+            `Wrote ${path.join(cwd, "CLAUDE.md")} and ${path.join(cwd, "GEMINI.md")}.`,
+            isInitComplete(finalState),
+            "claude-md + gemini-md"
+        )
+    );
 
     // ----- 6. Plain reminder, never an action -----
     const reminder = unpushedChangesReminder(await services.gitStatusPorcelain(cwd));
