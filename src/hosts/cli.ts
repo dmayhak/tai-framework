@@ -854,7 +854,14 @@ export function renderPullRequestComments(prId: string, comments: readonly PullR
     if (comments.length === 0) {
         return `# Comments on PR ${prId}\n\nNo comments on PR ${prId}. Confirm that is expected for a PR that was reviewed before merging.`;
     }
-    const when = (iso: string): string => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+    // Normalize through Date so a non-UTC offset is converted, not mislabeled "UTC"; an
+    // unparseable value is shown as given rather than guessed at.
+    const when = (iso: string): string => {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return iso;
+        const utc = d.toISOString();
+        return `${utc.slice(0, 10)} ${utc.slice(11, 16)} UTC`;
+    };
     const lines = [`# Comments on PR ${prId} (${comments.length})`, ""];
     comments.forEach((c, i) => {
         const where = c.inline ? ` · ${c.inline.path}${c.inline.line !== undefined ? `:${c.inline.line}` : ""}` : "";

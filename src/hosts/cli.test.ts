@@ -88,6 +88,20 @@ describe("renderPullRequestComments (TAI-383)", () => {
         assert.match(out, /2026-10-02 14:49 UTC/);
     });
 
+    it("normalizes a non-UTC timestamp to UTC instead of mislabeling local time as UTC (PR #127 review)", () => {
+        const out = renderPullRequestComments("126", [comment("1", "x", "2026-10-02T16:49:49.500060+02:00")]);
+        assert.match(out, /2026-10-02 14:49 UTC/);
+    });
+
+    it("keeps a Bitbucket-style +00:00 timestamp as is", () => {
+        const out = renderPullRequestComments("126", [comment("1", "x", "2026-10-02T14:49:49.500060+00:00")]);
+        assert.match(out, /2026-10-02 14:49 UTC/);
+    });
+
+    it("shows an unparseable timestamp as given rather than guessing", () => {
+        assert.match(renderPullRequestComments("126", [comment("1", "x", "not-a-date")]), /not-a-date/);
+    });
+
     it("labels an inline comment with its file and line", () => {
         const out = renderPullRequestComments("126", [comment("1", "bug", "2026-10-02T14:49:49Z", { path: "src/db.ts", line: 42 })]);
         assert.match(out, /src\/db\.ts:42/);
