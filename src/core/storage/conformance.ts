@@ -721,6 +721,118 @@ export function defineStorageConformance(
         // to construct that scenario against. The best-effort try/catch around the cascade
         // still exists for a genuine connectivity fault or a future gate, just not something
         // this conformance harness can currently trigger.
+        // ---------- Kickoff exemption and the To Do cascade (TAI-374/387/388) ----------
+
+        // The shared `upwardCascadeTarget` (cascade-gate.ts) is imported by both backends; this checks that each
+        // actually wires it in, and that the whole chain behaves identically. Every read is by KEY, never search:
+        // Jira's search index lags a few seconds behind a create (TAI-381), but fetching by key is immediate.
+        describe("WorkTracker: Kickoff exemption and the To Do cascade (TAI-374/387/388)", () => {
+            async function epic(summary: string) {
+                const issue = track(await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: "epic", summary }));
+                await h.backend.workTracker.assignIssue(issue.key, h.validAssignee);
+                return issue;
+            }
+            async function child(issueType: StoryType | SubtaskType, parentKey: IssueKey, summary: string) {
+                const issue = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType, parentKey, summary })
+                );
+                // The In Progress cascade recurses through the FULL transition() (assignment gate included),
+                // so every issue in the chain needs an assignee; harmless for the To Do cases.
+                await h.backend.workTracker.assignIssue(issue.key, h.validAssignee);
+                return issue;
+            }
+            const statusOf = async (key: IssueKey) => (await h.backend.workTracker.getIssue(key))?.status;
+
+            it("a Kickoff Story going In Progress leaves its Backlog Epic in Backlog", async () => {
+                const e = await epic("Conformance: kickoff exemption epic");
+                const k = await child(StoryType.Kickoff, e.key, "Conformance: kickoff exemption kickoff");
+                const result = await h.backend.workTracker.transition(k.key, Status.InProgress);
+                assert.equal(result.ok, true);
+                assert.equal(await statusOf(k.key), Status.InProgress);
+                assert.equal(await statusOf(e.key), Status.Backlog, "an epic's Kickoff is refinement; the Epic stays Backlog");
+            });
+
+            it("a Kickoff SUBTASK starting moves its Kickoff Story but not the Epic", async () => {
+                const e = await epic("Conformance: kickoff subtask epic");
+                const k = await child(StoryType.Kickoff, e.key, "Conformance: kickoff subtask kickoff");
+                const research = await child(SubtaskType.Research, k.key, "Conformance: kickoff subtask research");
+                await h.backend.workTracker.transition(research.key, Status.InProgress);
+                assert.equal(await statusOf(k.key), Status.InProgress);
+                assert.equal(await statusOf(e.key), Status.Backlog);
+            });
+
+            for (const [type, label] of [
+                [StoryType.Story, "Story"],
+                [StoryType.Bug, "Bug"],
+                [StoryType.Spike, "Spike"],
+            ] as const) {
+                it(`a ${label} (not a Kickoff) going In Progress still moves its Backlog Epic`, async () => {
+                    const e = await epic(`Conformance: ${label} still cascades epic`);
+                    const c = await child(type, e.key, `Conformance: ${label} still cascades child`);
+                    await h.backend.workTracker.transition(c.key, Status.InProgress);
+                    assert.equal(await statusOf(e.key), Status.InProgress);
+                });
+            }
+
+            it("a subtask reaching To Do schedules its Backlog Story, and that schedules the Backlog Epic", async () => {
+                const e = await epic("Conformance: to-do chain epic");
+                const story = await child(StoryType.Story, e.key, "Conformance: to-do chain story");
+                const dev = await child(SubtaskType.Dev, story.key, "Conformance: to-do chain dev");
+                const result = await h.backend.workTracker.transition(dev.key, Status.ToDo);
+                assert.equal(result.ok, true);
+                assert.equal(await statusOf(story.key), Status.ToDo, "the Backlog Story is scheduled");
+                assert.equal(await statusOf(e.key), Status.ToDo, "and so is its Backlog Epic");
+                if (result.ok) {
+                    // Same reporting contract as the In Progress cascade: every other issue mutated is listed.
+                    assert.deepEqual((result.affectedIssues ?? []).map((i) => i.key).sort(), [story.key, e.key].sort());
+                }
+            });
+
+            it("a non-Kickoff Story reaching To Do directly schedules its Backlog Epic", async () => {
+                const e = await epic("Conformance: story to-do epic");
+                const story = await child(StoryType.Story, e.key, "Conformance: story to-do story");
+                await h.backend.workTracker.transition(story.key, Status.ToDo);
+                assert.equal(await statusOf(e.key), Status.ToDo);
+            });
+
+            it("a Kickoff Story never schedules its Epic, whether it is moved directly or through its subtask", async () => {
+                const direct = await epic("Conformance: kickoff to-do direct epic");
+                const k1 = await child(StoryType.Kickoff, direct.key, "Conformance: kickoff to-do direct");
+                await h.backend.workTracker.transition(k1.key, Status.ToDo);
+                assert.equal(await statusOf(k1.key), Status.ToDo);
+                assert.equal(await statusOf(direct.key), Status.Backlog);
+
+                const viaSubtask = await epic("Conformance: kickoff to-do via subtask epic");
+                const k2 = await child(StoryType.Kickoff, viaSubtask.key, "Conformance: kickoff to-do via subtask");
+                const research = await child(SubtaskType.Research, k2.key, "Conformance: kickoff to-do research");
+                await h.backend.workTracker.transition(research.key, Status.ToDo);
+                assert.equal(await statusOf(k2.key), Status.ToDo, "the subtask schedules its Kickoff");
+                assert.equal(await statusOf(viaSubtask.key), Status.Backlog, "but the Kickoff stops there");
+            });
+
+            it("the To Do cascade never regresses a parent that is already started", async () => {
+                const e = await epic("Conformance: no regress epic");
+                const story = await child(StoryType.Story, e.key, "Conformance: no regress story");
+                const dev = await child(SubtaskType.Dev, story.key, "Conformance: no regress dev");
+                await h.backend.workTracker.transition(story.key, Status.InProgress);
+                await h.backend.workTracker.transition(dev.key, Status.ToDo);
+                assert.equal(await statusOf(story.key), Status.InProgress, "a started Story is left alone");
+                assert.equal(await statusOf(e.key), Status.InProgress, "and so is its Epic");
+            });
+
+            it("scheduling a second child leaves an already-To Do parent exactly as it is", async () => {
+                const e = await epic("Conformance: second child epic");
+                const story = await child(StoryType.Story, e.key, "Conformance: second child story");
+                const dev = await child(SubtaskType.Dev, story.key, "Conformance: second child dev");
+                const second = await child(SubtaskType.SpikeTask, story.key, "Conformance: second child spike");
+                await h.backend.workTracker.transition(dev.key, Status.ToDo);
+                const result = await h.backend.workTracker.transition(second.key, Status.ToDo);
+                assert.equal(result.ok, true);
+                assert.equal(await statusOf(story.key), Status.ToDo);
+                if (result.ok) assert.deepEqual(result.affectedIssues ?? [], [], "nothing further moved");
+            });
+        });
+
         describe("WorkTracker: transition() and the downward/terminal cascade gate (TAI-267, TAI-247 ADR)", () => {
             it("cascade-cancels an open child when the parent reaches Done", async () => {
                 const story = track(
@@ -1189,14 +1301,19 @@ export function defineStorageConformance(
                     })
                 );
 
-                const results = await h.backend.workTracker.search({
-                    projectKey: h.projectKey,
-                    parentKey: parent.key,
-                    issueTypes: [SubtaskType.Dev],
-                    persona: Persona.Developer,
-                });
-
-                assert.ok(results.some((i) => i.key === match.key), "search must find the matching issue");
+                // Plain search is eventually consistent on Jira (TAI-381): poll until the match is visible, then check
+                // the non-match is absent -- that negative assertion stays strict once the index has caught up.
+                const results = await eventually(
+                    () =>
+                        h.backend.workTracker.search({
+                            projectKey: h.projectKey,
+                            parentKey: parent.key,
+                            issueTypes: [SubtaskType.Dev],
+                            persona: Persona.Developer,
+                        }),
+                    (r) => r.some((i) => i.key === match.key),
+                    "search must find the matching issue"
+                );
                 assert.ok(
                     !results.some((i) => i.key === nonMatch.key),
                     "search must not return the non-matching issue"
