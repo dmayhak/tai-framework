@@ -304,6 +304,12 @@ describe("updateIssue: parent= and labels= (TAI-372/379)", () => {
         assert.deepEqual(puts, []);
     });
 
+    it("rejects an empty label up front, with no PUT", async () => {
+        const { wt, puts } = tracker({ "TAI-5": rawIssue("TAI-5", "Story") });
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-5"), { labels: [""] }), /empty/i);
+        assert.deepEqual(puts, []);
+    });
+
     it("re-parents a Story under an Epic with PUT fields.parent = {key}", async () => {
         const { wt, puts } = tracker({
             "TAI-5": rawIssue("TAI-5", "Story"),

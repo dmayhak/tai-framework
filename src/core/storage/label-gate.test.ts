@@ -12,4 +12,9 @@ describe("labelViolation (TAI-379 review)", () => {
         assert.match(labelViolation(["ok", "has space"]) ?? "", /"has space".*spaces/);
         assert.match(labelViolation(["tab\there"]) ?? "", /tab/);
     });
+
+    it("rejects an empty or whitespace-only label: Jira silently drops it, the filesystem would keep it", () => {
+        assert.match(labelViolation(["ok", ""]) ?? "", /empty/i);
+        assert.match(labelViolation(["   "]) ?? "", /empty/i);
+    });
 });

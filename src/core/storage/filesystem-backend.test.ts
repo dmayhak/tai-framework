@@ -182,6 +182,14 @@ describe("issue CRUD", () => {
             });
         });
 
+        test("rejects an empty label instead of storing it (Jira would drop it)", async () => {
+            await withBackend(async ({ workTracker }) => {
+                const s = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "s", labels: ["keep"] });
+                await assert.rejects(() => workTracker.updateIssue(s.key, { labels: ["a", ""] }), /empty/i);
+                assert.deepEqual((await workTracker.getIssue(s.key))?.labels, ["keep"]);
+            });
+        });
+
         test("re-parents a Story under another Epic", async () => {
             await withBackend(async ({ workTracker }) => {
                 const e1 = await workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "e1" });
