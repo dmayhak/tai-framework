@@ -921,6 +921,109 @@ export function defineStorageConformance(
             });
         });
 
+        // ---------- update: parent= and labels= (TAI-372/379/380) ----------
+
+        // `reparent-gate.ts`/`label-gate.ts` are shared, so both backends use the same rules and
+        // reason text; what this checks is that each backend actually WIRES them in, rejects
+        // BEFORE writing anything, and round-trips the accepted cases through a fresh read.
+        describe("WorkTracker: updateIssue parent= and labels= (TAI-372/379/380)", () => {
+            async function epic(summary: string) {
+                return track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: "epic",
+                        summary,
+                    })
+                );
+            }
+            async function storyUnder(parentKey: IssueKey | undefined, summary: string) {
+                return track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        ...(parentKey ? { parentKey } : {}),
+                        summary,
+                    })
+                );
+            }
+
+            it("labels REPLACE the whole list, and [] clears it", async () => {
+                const story = await storyUnder(undefined, "Conformance: labels replace");
+                await h.backend.workTracker.updateIssue(story.key, { labels: ["conf-a", "conf-b"] });
+                assert.deepEqual([...((await h.backend.workTracker.getIssue(story.key))?.labels ?? [])].sort(), ["conf-a", "conf-b"]);
+
+                await h.backend.workTracker.updateIssue(story.key, { labels: ["conf-c"] });
+                assert.deepEqual((await h.backend.workTracker.getIssue(story.key))?.labels, ["conf-c"]);
+
+                await h.backend.workTracker.updateIssue(story.key, { labels: [] });
+                assert.deepEqual((await h.backend.workTracker.getIssue(story.key))?.labels, []);
+            });
+
+            it("an update that leaves labels undefined does not touch them", async () => {
+                const story = await storyUnder(undefined, "Conformance: labels untouched");
+                await h.backend.workTracker.updateIssue(story.key, { labels: ["conf-keep"] });
+                await h.backend.workTracker.updateIssue(story.key, { summary: "Conformance: labels untouched (renamed)" });
+                assert.deepEqual((await h.backend.workTracker.getIssue(story.key))?.labels, ["conf-keep"]);
+            });
+
+            it("rejects a label containing a space, or an empty label, changing nothing", async () => {
+                const story = await storyUnder(undefined, "Conformance: bad labels");
+                await h.backend.workTracker.updateIssue(story.key, { labels: ["conf-keep"] });
+                await assert.rejects(() => h.backend.workTracker.updateIssue(story.key, { labels: ["has space"] }), /spaces/);
+                await assert.rejects(() => h.backend.workTracker.updateIssue(story.key, { labels: ["a", ""] }), /empty/i);
+                assert.deepEqual((await h.backend.workTracker.getIssue(story.key))?.labels, ["conf-keep"]);
+            });
+
+            it("re-parents a Story from one Epic to another", async () => {
+                const from = await epic("Conformance: reparent from");
+                const to = await epic("Conformance: reparent to");
+                const story = await storyUnder(from.key, "Conformance: reparent story");
+                assert.equal(story.parentKey, from.key);
+
+                const moved = await h.backend.workTracker.updateIssue(story.key, { parentKey: to.key });
+                assert.equal(moved.parentKey, to.key);
+                assert.equal((await h.backend.workTracker.getIssue(story.key))?.parentKey, to.key);
+            });
+
+            it("rejects re-parenting a subtask, an Epic, a non-Epic parent and a missing parent, changing nothing", async () => {
+                const e = await epic("Conformance: reparent guard epic");
+                const other = await epic("Conformance: reparent guard other epic");
+                const story = await storyUnder(e.key, "Conformance: reparent guard story");
+                const notAnEpic = await storyUnder(undefined, "Conformance: reparent guard non-epic");
+                const subtask = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: story.key,
+                        allowDuplicate: true,
+                        summary: "Conformance: reparent guard subtask",
+                    })
+                );
+
+                await assert.rejects(() => h.backend.workTracker.updateIssue(subtask.key, { parentKey: notAnEpic.key }), /subtask/i);
+                await assert.rejects(() => h.backend.workTracker.updateIssue(e.key, { parentKey: other.key }), /Epic has no parent/);
+                await assert.rejects(() => h.backend.workTracker.updateIssue(story.key, { parentKey: notAnEpic.key }), /must be an Epic/);
+                await assert.rejects(
+                    () => h.backend.workTracker.updateIssue(story.key, { parentKey: `${h.projectKey}-999999` as IssueKey }),
+                    /not found/i
+                );
+
+                assert.equal((await h.backend.workTracker.getIssue(subtask.key))?.parentKey, story.key);
+                assert.equal((await h.backend.workTracker.getIssue(story.key))?.parentKey, e.key);
+                assert.equal((await h.backend.workTracker.getIssue(e.key))?.parentKey, undefined);
+            });
+
+            it("a rejected parent= leaves the REST of the same patch unapplied (no partial update)", async () => {
+                const e = await epic("Conformance: atomic epic");
+                const story = await storyUnder(e.key, "Conformance: atomic original");
+                const notAnEpic = await storyUnder(undefined, "Conformance: atomic non-epic");
+                await assert.rejects(() =>
+                    h.backend.workTracker.updateIssue(story.key, { summary: "Conformance: atomic CHANGED", parentKey: notAnEpic.key })
+                );
+                assert.equal((await h.backend.workTracker.getIssue(story.key))?.summary, "Conformance: atomic original");
+            });
+        });
+
         // ---------- Issue links & search ----------
 
         describe("WorkTracker: links and search", () => {
