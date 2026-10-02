@@ -131,8 +131,9 @@ function readySkillBody(taiHome: string): string {
         "- **Open PRs ready to test** — `Dev` subtasks with a linked, open PR, full stop. Testing " +
         "runs in parallel with review, not gated behind it.\n" +
         "- **Approved PRs ready to merge** — the same `Dev`-subtask/PR pairs as above, additionally " +
-        "at the required approval count AND CI-green. Run `git-pr merge <ISSUE-KEY> <REPO>` to " +
-        "land it, not `/tai-work`.\n\n" +
+        "at the required approval count AND CI-green. Land it with `git-pr merge <ISSUE-KEY> " +
+        "<REPO>`, not `/tai-work` — but approval does not finish a PR (TAI-382): first run " +
+        "`git-pr comments <REPO>` and read every comment, per `tai-pr`'s skill.\n\n" +
         "Present this list to the human AS-IS — every actionable line above (In Progress, Ready " +
         "Work, and all three PR sections) is already numbered with ONE shared counter (TAI-182), " +
         "so don't renumber or reformat it yourself.\n\n" +
@@ -183,8 +184,9 @@ function prSkillBody(taiHome: string): string {
         "position in the shared numbering) and take the action its section describes — for a " +
         "\"ready for your review\" line, that means doing the real review flow below (fetch, " +
         "diff, findings, stop — never skip straight to `git-pr review`); for a \"ready to merge\" " +
-        "line, picking that number IS the explicit instruction, so run `git-pr merge <ISSUE-KEY> " +
-        "<REPO>` directly, no further confirmation needed. A number with no corresponding line, or " +
+        "line, picking that number IS the explicit instruction to merge, but approval does not finish " +
+        "a PR: do the **comments-before-merge step below** (`git-pr comments`, then decide) BEFORE " +
+        "running `git-pr merge <ISSUE-KEY> <REPO>`. A number with no corresponding line, or " +
         "any ambiguity about which line it means, is a re-ask, not a guess.\n\n" +
         "Everything below this point is for an explicit `create`/`review`/`comment`/`merge` " +
         "invocation (typed directly, or reached via a number from `tai-ready`'s own combined " +
@@ -195,6 +197,7 @@ function prSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment <REPO> [PR-ID] <BODY>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comments <REPO> [PR-ID]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr render-findings <FINDINGS-JSON-OR-@FILE>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr unapprove <REPO> [PR-ID]\n` +
@@ -263,6 +266,21 @@ function prSkillBody(taiHome: string): string {
         "next opened via `/tai-work` or `/tai-ready`, not just in whichever terminal ran this " +
         "merge attempt — and the denial message suggests `git-pr unapprove` as the next step " +
         "(suggest only; run it because the human says to, same as everywhere else in this file).\n\n" +
+        "- `comments` (TAI-383) — read-only: lists EVERY comment on the PR, in order, with author, " +
+        "time, inline file/line, and the full body. Takes no `<ISSUE-KEY>` and needs no roster " +
+        "membership. This is the first half of the comments-before-merge step below.\n\n" +
+        "**Comments-before-merge (TAI-382/383) — even an approved PR:** an approval is a decision, " +
+        "not the end of the PR. Before running `git-pr merge`, run `git-pr comments <REPO> [PR-ID]` " +
+        "and read ALL comments — including a second reviewer's and anything posted after the last " +
+        "commit. For EACH one, decide and tell the human which: (a) **fix it** — only if it is " +
+        "**very minor** (a typo, a title or comment wording, a rename; no behavior change; trivially " +
+        "verified): fix it, run the tests, push, note it on the PR, and merge — no need to ask; " +
+        "(b) **file a ticket** for it; or (c) **skip it** with a stated reason. Anything " +
+        "**review-worthy** (a behavior change, a logic or parity finding, a design question — " +
+        "anything a reviewer would want to look at again) is NOT fixed-and-merged on your own: do " +
+        "NOT merge automatically — report it and ask the human first. If you are unsure which " +
+        "bucket a comment is in, it is review-worthy. Verify a reviewer's factual claims against " +
+        "reality before acting on them (they can be wrong). Never silently drop a comment.\n\n" +
         "**Doing an actual review (TAI-187), not just recording a decision:** when the human asks " +
         "to review a PR — including picking a numbered \"PRs ready for your review\" line from " +
         "`/tai-ready`'s output — do the real review yourself, inline, in this same session, " +

@@ -299,6 +299,49 @@ describe("addInlineComment (TAI-207)", () => {
     });
 });
 
+describe("listPullRequestComments (TAI-383)", () => {
+    const user = { account_id: "acct-1", display_name: "Del" };
+    const c = (id: number, raw: string, extra: Record<string, unknown> = {}) => ({
+        id,
+        content: { raw },
+        user,
+        created_on: `2026-10-02T14:0${id}:00Z`,
+        updated_on: `2026-10-02T14:0${id}:00Z`,
+        ...extra,
+    });
+
+    it("walks the `next`-URL pagination and maps author, body and times", async () => {
+        const host = hostWith(
+            stubFetch((method, url) => {
+                assert.equal(method, "GET");
+                if (url.includes("page2")) return json({ values: [c(2, "second")] });
+                assert.ok(url.includes("/repositories/dmayhak/tai-framework/pullrequests/7/comments"));
+                return json({
+                    values: [c(1, "first")],
+                    next: "https://api.bitbucket.org/2.0/repositories/dmayhak/tai-framework/pullrequests/7/comments?page2",
+                });
+            })
+        );
+        const comments = await host.listPullRequestComments(REPO, toPullRequestId("7"));
+        assert.deepEqual(comments.map((x) => x.body), ["first", "second"]);
+        assert.equal(comments[0]?.author.displayName, "Del");
+        assert.equal(comments[0]?.createdAt, "2026-10-02T14:01:00Z");
+    });
+
+    it("carries an inline anchor (path + destination line) when the comment has one", async () => {
+        const host = hostWith(stubFetch(() => json({ values: [c(1, "bug here", { inline: { path: "src/db.ts", to: 42, from: null } }), c(2, "general")] })));
+        const [inline, general] = await host.listPullRequestComments(REPO, toPullRequestId("7"));
+        assert.deepEqual(inline?.inline, { path: "src/db.ts", line: 42 });
+        assert.equal(general?.inline, undefined);
+    });
+
+    it("leaves out deleted comments", async () => {
+        const host = hostWith(stubFetch(() => json({ values: [c(1, "gone", { deleted: true }), c(2, "kept")] })));
+        const comments = await host.listPullRequestComments(REPO, toPullRequestId("7"));
+        assert.deepEqual(comments.map((x) => x.body), ["kept"]);
+    });
+});
+
 describe("mergePullRequest — the §3.3 rejection-vs-connectivity split", () => {
     it("returns ok:true with the merged PR on success", async () => {
         const host = hostWith(stubFetch(() => json({ ...PR_JSON, state: "MERGED" })));

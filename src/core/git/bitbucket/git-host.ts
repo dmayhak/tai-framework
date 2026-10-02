@@ -14,6 +14,7 @@ import type {
     PullRequestId,
     PullRequestState,
     PullRequestRef,
+    PullRequestComment,
     CreatePullRequestInput,
     CommitSha,
     CommitStatus,
@@ -26,6 +27,7 @@ import {
     toPullRequestRef,
     toCommitStatus,
     toComment,
+    toPullRequestComment,
     toHumanRef,
     type BitbucketRepositoryJson,
     type BitbucketPullRequestJson,
@@ -197,6 +199,16 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
                 { content: { raw: input.body }, inline: { path: input.path, to: input.line } }
             );
             return toComment(c);
+        },
+
+        // TAI-383: same comments endpoint the two `add*Comment` methods POST to, read back. Deleted
+        // comments stay in Bitbucket's list with `deleted: true`; they are not worth a reader's time.
+        async listPullRequestComments(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestComment[]> {
+            const { workspace, slug } = splitRepoId(repo);
+            const raw = await client.paginate<BitbucketCommentJson>(
+                `/repositories/${workspace}/${slug}/pullrequests/${id}/comments`
+            );
+            return raw.filter((c) => c.deleted !== true).map(toPullRequestComment);
         },
 
         async mergePullRequest(

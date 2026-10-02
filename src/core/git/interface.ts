@@ -116,6 +116,15 @@ export interface InlineCommentInput {
     readonly body: string;
 }
 
+/**
+ * TAI-383: a PR comment as read back, for the "review ALL comments before merging, even an
+ * approved PR" step (TAI-382). A general comment has no `inline`; an inline one carries the file
+ * and the destination-side (new-file) line it was anchored to, mirroring `InlineCommentInput`.
+ */
+export interface PullRequestComment extends Comment {
+    readonly inline?: { readonly path: string; readonly line?: number };
+}
+
 export type CommitStatusState = "successful" | "failed" | "inProgress" | "stopped";
 
 export interface CommitStatus {
@@ -199,6 +208,12 @@ export interface GitHost {
      */
     addInlineComment(repo: RepoId, id: PullRequestId, input: InlineCommentInput): Promise<Comment>;
     mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy): Promise<GitMutationResult>;
+    /**
+     * TAI-383: every (non-deleted) comment on a PR, oldest first as the host returns them --
+     * what `git-pr comments` shows so whoever merges reads ALL of them first, including a second
+     * reviewer's. Read-only, so no persona gate (same as `getPullRequest`).
+     */
+    listPullRequestComments(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestComment[]>;
 
     /**
      * Read-only by design — TAI-32 (this project's own Bitbucket Pipelines work) found no

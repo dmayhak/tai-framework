@@ -16,6 +16,7 @@ import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../
 import {
     parseIssueSearchFilter,
     parseIssueUpdatePatch,
+    renderPullRequestComments,
     parsePageGetRef,
     resolveCreatePriority,
     resolveMergePersona,
@@ -59,6 +60,47 @@ function makeComment(overrides: Partial<Comment> = {}): Comment {
         ...overrides,
     };
 }
+
+describe("renderPullRequestComments (TAI-383)", () => {
+    const author = { id: toHumanId("acct-1"), displayName: "Del" };
+    const comment = (id: string, body: string, createdAt: string, inline?: { path: string; line?: number }) => ({
+        id,
+        author,
+        body,
+        createdAt,
+        updatedAt: createdAt,
+        ...(inline ? { inline } : {}),
+    });
+
+    it("says so plainly when there are no comments, still telling the reader to confirm that is intended", () => {
+        assert.match(renderPullRequestComments("126", []), /No comments on PR 126/);
+    });
+
+    it("lists EVERY comment in order with author, time and the full body, under a count", () => {
+        const out = renderPullRequestComments("126", [
+            comment("1", "first body\nsecond line", "2026-10-02T14:49:49Z"),
+            comment("2", "another review", "2026-10-02T15:10:00Z"),
+        ]);
+        assert.match(out, /Comments on PR 126 \(2\)/);
+        assert.ok(out.indexOf("first body") < out.indexOf("another review"));
+        assert.match(out, /second line/);
+        assert.match(out, /Del/);
+        assert.match(out, /2026-10-02 14:49 UTC/);
+    });
+
+    it("labels an inline comment with its file and line", () => {
+        const out = renderPullRequestComments("126", [comment("1", "bug", "2026-10-02T14:49:49Z", { path: "src/db.ts", line: 42 })]);
+        assert.match(out, /src\/db\.ts:42/);
+    });
+
+    it("ends with the decision prompt: fix only if very minor, ticket, or skip with a reason; ask if review-worthy", () => {
+        const out = renderPullRequestComments("126", [comment("1", "x", "2026-10-02T14:49:49Z")]);
+        assert.match(out, /very minor/i);
+        assert.match(out, /ticket/i);
+        assert.match(out, /review-worthy/i);
+        assert.match(out, /ask the human/i);
+    });
+});
 
 describe("parseIssueUpdatePatch (TAI-372/379)", () => {
     it("maps the existing fields through unchanged", () => {

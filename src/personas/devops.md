@@ -127,6 +127,11 @@ human performs directly on the git host, outside this subtask, is detected on ne
 and reflected, not fought — same stance as `personas/code-reviewer.md`'s
 out-of-band-review handling, now extended to `Dev`'s own Done-on-merge sync too.
 
+**Before merging, read the PR's comments even if it is approved (TAI-382/383):** run `git-pr
+comments <REPO> [PR-ID]`, and apply the same rule `personas/developer.md`'s Handoff states — a
+**very minor** fix gets fixed, tested, pushed and merged; a ticket or a stated-reason skip for
+the rest; anything **review-worthy** is not merged automatically, ask the human first.
+
 ## Handoff
 
 - To whoever ends up owning `PostDeploy` for a given instance — not always himself.

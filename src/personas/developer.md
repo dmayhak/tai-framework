@@ -191,6 +191,14 @@ whom — rather than working around a spec gap silently.
   detects the merge and syncs `Dev` to `Done` the same way — never fought, same stance as
   reviews synced out-of-band. No separate Deploy subtask needed for framework-internal
   work; a Story with a genuine deploy step still routes that through DevOps as usual.
+- **Before merging — read the comments, even on an approved PR (TAI-382/383).** Approval is
+  a decision, not the end of the PR. Run `git-pr comments <REPO> [PR-ID]` first and read ALL of
+  them (a second reviewer's, anything after the last commit). For each: a **very minor** fix (a
+  typo, wording, a rename; no behavior change) — fix it, run the tests, push, note it on the
+  PR, and merge without asking; otherwise file a ticket or skip it with a stated reason, and
+  tell the human. Anything **review-worthy** (a behavior change, a logic or parity finding, a
+  design question) is **not** merged automatically — ask the human first; if unsure which, it is
+  review-worthy. Verify a reviewer's factual claims before acting (they can be wrong).
 - On a failed test: receives the subtask back at **In Progress** — which, under rev 52, is
   where it already sits (it never left In Progress in the first place); no new artifact is
   created for pre-deployment rework (see `workflows/story.md` — "Why no Defect subtask").

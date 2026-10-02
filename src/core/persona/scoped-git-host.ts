@@ -26,6 +26,7 @@ import type {
     GitHost,
     GitMutationResult,
     InlineCommentInput,
+    PullRequestComment,
     PullRequestId,
     PullRequestRef,
     PullRequestState,
@@ -99,6 +100,11 @@ export class PersonaScopedGitHost implements GitHost {
     // through a persona-scoped call site, so no `canPerformGitAction` check belongs here.
     addInlineComment(repo: RepoId, id: PullRequestId, input: InlineCommentInput): Promise<Comment> {
         return this.inner.addInlineComment(repo, id, input);
+    }
+
+    // TAI-383: read-only, so no `canPerformGitAction` check -- same as `getPullRequest` above.
+    listPullRequestComments(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestComment[]> {
+        return this.inner.listPullRequestComments(repo, id);
     }
 
     async mergePullRequest(
