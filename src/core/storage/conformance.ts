@@ -33,6 +33,7 @@ import {
     type PageId,
     type HumanRef,
     StorageConnectivityError,
+    isFlagged,
 } from "./interface.js";
 import { refreshIssue } from "../cache/issue-cache.js";
 import { refreshPage } from "../cache/page-cache.js";
@@ -1167,6 +1168,141 @@ export function defineStorageConformance(
                     h.backend.workTracker.updateIssue(story.key, { summary: "Conformance: atomic CHANGED", parentKey: notAnEpic.key })
                 );
                 assert.equal((await h.backend.workTracker.getIssue(story.key))?.summary, "Conformance: atomic original");
+            });
+        });
+
+        describe("WorkTracker: updateIssue flagged= (TAI-390/392)", () => {
+            async function story(summary: string) {
+                return track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: StoryType.Story, summary })
+                );
+            }
+            const read = async (key: IssueKey) => (await h.backend.workTracker.getIssue(key))!;
+
+            it("a new issue is not flagged", async () => {
+                const created = await story("Conformance: flagged default");
+                assert.equal(isFlagged(created), false);
+                assert.equal(isFlagged(await read(created.key)), false);
+            });
+
+            it("setting flagged reads back true, clearing it reads back false", async () => {
+                const issue = await story("Conformance: flagged set and clear");
+
+                const set = await h.backend.workTracker.updateIssue(issue.key, { flagged: true });
+                assert.equal(isFlagged(set), true);
+                assert.equal(isFlagged(await read(issue.key)), true);
+
+                const cleared = await h.backend.workTracker.updateIssue(issue.key, { flagged: false });
+                assert.equal(isFlagged(cleared), false);
+                assert.equal(isFlagged(await read(issue.key)), false);
+            });
+
+            it("flagging twice, or clearing an unflagged issue, is harmless", async () => {
+                const issue = await story("Conformance: flagged idempotent");
+                await h.backend.workTracker.updateIssue(issue.key, { flagged: false });
+                assert.equal(isFlagged(await read(issue.key)), false);
+                await h.backend.workTracker.updateIssue(issue.key, { flagged: true });
+                await h.backend.workTracker.updateIssue(issue.key, { flagged: true });
+                assert.equal(isFlagged(await read(issue.key)), true);
+            });
+
+            it("an update that leaves flagged undefined does not touch it, flagged or not", async () => {
+                const issue = await story("Conformance: flagged untouched");
+                await h.backend.workTracker.updateIssue(issue.key, { summary: "Conformance: flagged untouched (1)" });
+                assert.equal(isFlagged(await read(issue.key)), false, "an unflagged issue stays unflagged");
+
+                await h.backend.workTracker.updateIssue(issue.key, { flagged: true });
+                await h.backend.workTracker.updateIssue(issue.key, { summary: "Conformance: flagged untouched (2)" });
+                await h.backend.workTracker.updateIssue(issue.key, { labels: ["conf-flag-keep"] });
+                const after = await read(issue.key);
+                assert.equal(isFlagged(after), true, "a flagged issue stays flagged through unrelated updates");
+                assert.equal(after.summary, "Conformance: flagged untouched (2)");
+            });
+
+            it("flagging changes nothing else: status, labels, assignee and summary are as they were", async () => {
+                const issue = await story("Conformance: flagged isolation");
+                await h.backend.workTracker.updateIssue(issue.key, { labels: ["conf-flag-iso"] });
+                const before = await read(issue.key);
+
+                const flagged = await read((await h.backend.workTracker.updateIssue(issue.key, { flagged: true })).key);
+                assert.equal(flagged.status, before.status);
+                assert.deepEqual(flagged.labels, before.labels);
+                assert.equal(flagged.summary, before.summary);
+                assert.deepEqual(flagged.assignee, before.assignee);
+            });
+
+            it("a status transition does not clear the flag", async () => {
+                const issue = await story("Conformance: flagged survives transition");
+                await h.backend.workTracker.updateIssue(issue.key, { flagged: true });
+                const moved = await h.backend.workTracker.transition(issue.key, Status.ToDo);
+                assert.equal(moved.ok, true);
+                const after = await read(issue.key);
+                assert.equal(after.status, Status.ToDo);
+                assert.equal(isFlagged(after), true);
+            });
+
+            it("flagged travels with other fields in one patch", async () => {
+                const issue = await story("Conformance: flagged combined");
+                const updated = await h.backend.workTracker.updateIssue(issue.key, {
+                    summary: "Conformance: flagged combined (renamed)",
+                    flagged: true,
+                });
+                assert.equal(updated.summary, "Conformance: flagged combined (renamed)");
+                assert.equal(isFlagged(updated), true);
+                assert.equal(isFlagged(await read(issue.key)), true);
+            });
+
+            it("works on every issue type the board holds: Epic and subtask as well as Story", async () => {
+                const epic = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: "epic", summary: "Conformance: flagged epic" })
+                );
+                const subtask = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: sharedParentKey,
+                        allowDuplicate: true,
+                        summary: "Conformance: flagged subtask",
+                    })
+                );
+                for (const key of [epic.key, subtask.key]) {
+                    await h.backend.workTracker.updateIssue(key, { flagged: true });
+                    assert.equal(isFlagged(await read(key)), true, `${key} flagged`);
+                    await h.backend.workTracker.updateIssue(key, { flagged: false });
+                    assert.equal(isFlagged(await read(key)), false, `${key} cleared`);
+                }
+            });
+
+            it("search returns the flag too, so /tai-ready can see it", async () => {
+                // Scoped by parent so the new Story is on the first page of a project that holds
+                // many (search orders by key); a project-wide search would miss it on a busy board.
+                const epic = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: "epic", summary: "Conformance: flagged search epic" })
+                );
+                const issue = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        parentKey: epic.key,
+                        summary: "Conformance: flagged via search",
+                    })
+                );
+                const children = () => h.backend.workTracker.search({ projectKey: h.projectKey, parentKey: epic.key });
+                await h.backend.workTracker.updateIssue(issue.key, { flagged: true });
+                const found = await eventually(
+                    children,
+                    (hits) => hits.some((i) => i.key === issue.key && isFlagged(i)),
+                    `${issue.key} not found flagged by search`
+                );
+                assert.equal(isFlagged(found.find((i) => i.key === issue.key)!), true);
+
+                await h.backend.workTracker.updateIssue(issue.key, { flagged: false });
+                const again = await eventually(
+                    children,
+                    (hits) => hits.some((i) => i.key === issue.key && !isFlagged(i)),
+                    `${issue.key} still shows flagged in search`
+                );
+                assert.equal(isFlagged(again.find((i) => i.key === issue.key)!), false);
             });
         });
 
