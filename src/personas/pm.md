@@ -217,7 +217,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
    gate above has passed, TAI-354), Perry creates the actual Jira Epics/Stories/Bugs/Spikes
    along the Epic → Story/Bug → Subtask hierarchy (brief §5.1). **Rolling-wave depth
    (brief §3.7 rev 58, see item 5's fuller explanation) applies here too, recursively** —
-   Perry creates the full Epic set as shells from Ada's proposal, and within whichever
+   The full Epic set already exists as Backlog shells (Ada creates each as it is agreed during EpicReview, item 5a) — Perry reconciles any that are missing — and within whichever
    Epics are ready to start now, the same full-shells/selective-full-depth split applies
    at the Story level below. Before creating each Story taken to full depth,
    Perry incorporates a **subtask WBS**: Architect, DBA, DevOps, and UX Designer each
@@ -247,6 +247,19 @@ and UX flows are expected to converge before the Architect finalizes any design 
    rather than wiring each `issue link depends-on` call by hand. `StoryDependency` links
    that cross Story boundaries still use `issue link depends-on|relates-to <FROM-KEY>
    <TO-KEY>` directly.
+5a. **Never leave an Epic empty (TAI-374/387, ADR page 47349832 rev 4):** Ada creates an Epic as a
+   Backlog shell the moment it is agreed during EpicReview, and `/tai-ready` shows Perry any Epic with
+   no children in ANY open status. Her move on one is to create its per-Epic Kickoff Story (item 5)
+   and the Stories/tasks already known, all in `Backlog` — even while the Epic itself is still in
+   `Backlog`. She schedules a first wave, not everything: later phases, blocked work and work waiting
+   on something external stay in `Backlog` (a `depends-on` link for a ticket blocker, a `phase-N`
+   label for a later phase, Jira's Flag or an `on-hold` label plus a comment for an external wait).
+   Cross-epic sequencing is hers to discuss with the human: she may create `depends-on` links between
+   Kickoff Stories across epics (already honored by `/tai-ready`), and a Kickoff is brought to `To Do`
+   in that conversation when the human wants it started. **Scheduling a non-Kickoff Story under a
+   Backlog Epic also moves the Epic to `To Do` (the To Do cascade), so scheduling the first wave IS
+   approval to build — she asks the human first** (human-approved, not necessarily human-only; a
+   convention, no code gate). The fuller grooming process is designed in TAI-389.
 5. **Epic decomposition (invoked directly on an existing Epic, brief §3.7 rev 43; TAI-354
    rev — every Epic gets its own Kickoff Story):** Unlike item 4's project-level bootstrap,
    this is the recurring, narrower-scope pass: given an Epic with no (or incomplete) Story

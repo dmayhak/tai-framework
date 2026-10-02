@@ -268,7 +268,10 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         const configs = await loadBuiltinPersonaConfigs();
         const analyst = configs.get("analyst")!;
         assert.ok(analyst.permissions.propose.some((t) => t.kind === "issue" && t.issueType === "epic"));
-        assert.ok(!analyst.permissions.create.some((t) => t.kind === "issue"));
+        // TAI-374/387: Ada now holds `create` for Epic ONLY (Backlog shells during EpicReview). She still
+        // never creates a Story, Bug, Spike or Kickoff -- Perry does, in grooming.
+        const analystCreatedIssues = analyst.permissions.create.filter((t) => t.kind === "issue");
+        assert.deepEqual(analystCreatedIssues.map((t) => (t.kind === "issue" ? t.issueType : null)), ["epic"]);
     });
 
     it("gitHost grants land on exactly the personas TAI-34's checkpoint chain names, nowhere else", async () => {

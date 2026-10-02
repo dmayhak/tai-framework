@@ -47,7 +47,7 @@ import { labelViolation } from "./label-gate.js";
 import { matchesIssueFilter } from "./issue-filter.js";
 import {
     cascadeTriggersOn,
-    shouldCascadeTransitionParent,
+    upwardCascadeTarget,
     cascadeTriggersOnClose,
     shouldCascadeCancelChild,
 } from "./cascade-gate.js";
@@ -485,11 +485,16 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             // the same way. Entirely best-effort -- a thrown error or a rejected
             // MutationResult are both just logged, never allowed to block this issue's own
             // transition (ADR, Confluence page 29753345).
-            if (cascadeTriggersOn(target) && existing.parentKey) {
+            //
+            // TAI-374/387: also fires on `To Do` (a scheduled subtask schedules its Backlog parent),
+            // and a Kickoff Story never moves its Epic either way -- all in the shared
+            // `upwardCascadeTarget` (cascade-gate.ts), so both backends apply one rule.
+            if ((cascadeTriggersOn(target) || target === Status.ToDo) && existing.parentKey) {
                 try {
                     const parent = await mustGetIssue(rootDir, existing.parentKey);
-                    if (shouldCascadeTransitionParent(parent.status)) {
-                        const cascadeResult = await workTracker.transition(existing.parentKey, Status.InProgress);
+                    const cascadeTo = upwardCascadeTarget(existing, parent, target);
+                    if (cascadeTo !== null) {
+                        const cascadeResult = await workTracker.transition(existing.parentKey, cascadeTo);
                         if (!cascadeResult.ok) {
                             console.warn(
                                 `Parent-cascade transition failed for ${existing.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`

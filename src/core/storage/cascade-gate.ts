@@ -31,7 +31,7 @@
  * shape the upward cascade already established.
  */
 
-import { Status } from "../schema/story-schema.js";
+import { Status, StoryType, type SubtaskType } from "../schema/story-schema.js";
 
 /** True if `target` is a status that should trigger the parent cascade -- only the two
  *  "work has started" statuses. Done/ToDo/Backlog/Canceled never cascade. */
@@ -45,6 +45,40 @@ export function cascadeTriggersOn(target: Status): boolean {
  *  asymmetry, extended here to a real write). */
 export function shouldCascadeTransitionParent(parentStatus: Status): boolean {
     return parentStatus === Status.ToDo || parentStatus === Status.Backlog;
+}
+
+/**
+ * TAI-374/387 (ADR page 47349832 rev 4): the ONE upward-cascade rule both backends apply, replacing
+ * the earlier pair of predicates for the In Progress case and adding the To Do case.
+ *
+ * Returns the status to write on `parent` because `child` just moved to `target`, or `null` for no
+ * cascade.
+ *
+ * - **Started** (`In Progress`/`In Review`): a Backlog or To Do parent becomes `In Progress` -- the
+ *   existing TAI-220/221/222 behavior; a parent already started, Done or Canceled is left alone.
+ * - **Scheduled** (`To Do`): a BACKLOG parent becomes `To Do`, so the board never shows a Backlog
+ *   Story with scheduled subtasks, nor a Backlog Epic with scheduled Stories. Only a Backlog parent
+ *   moves: a parent already To Do or later is left alone, so this can never regress anything.
+ * - **The one exception, for both cascades:** a Kickoff Story never moves its parent Epic. An epic's
+ *   Kickoff is refinement, not building: an Epic in Backlog may have its Kickoff in progress, and
+ *   the Epic only becomes To Do when it is approved to build. A subtask of a Kickoff still moves the
+ *   Kickoff itself.
+ *
+ * Pure logic, no I/O, like the other predicates here.
+ */
+export function upwardCascadeTarget(
+    child: { readonly issueType: StoryType | SubtaskType | "epic" },
+    parent: { readonly issueType: StoryType | SubtaskType | "epic"; readonly status: Status },
+    target: Status
+): Status | null {
+    if (child.issueType === StoryType.Kickoff && parent.issueType === "epic") return null;
+    if (cascadeTriggersOn(target)) {
+        return shouldCascadeTransitionParent(parent.status) ? Status.InProgress : null;
+    }
+    if (target === Status.ToDo) {
+        return parent.status === Status.Backlog ? Status.ToDo : null;
+    }
+    return null;
 }
 
 /** True if `target` is a status that should trigger the downward/terminal cascade (TAI-247

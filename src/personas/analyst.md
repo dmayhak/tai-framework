@@ -14,9 +14,12 @@ model: default          # inherits project default; overridable in persona confi
 # to grow, e.g. if a "Data Design" type is confirmed for DBA, some of that may route
 # through Analyst first as an Investigate step).
 #
-# `propose` vs `create`: Ada never holds `create` for Epic/Story — she PROPOSES a
-# decomposition; the PM is the only persona that actually calls Jira's create-issue
-# operation for Epics/Stories/Bugs/Spikes, after human sign-off (see personas/pm.md).
+# `propose` vs `create`: Ada never holds `create` for Story/Bug/Spike/Kickoff — she PROPOSES a
+# decomposition; the PM is the persona that creates Stories/Bugs/Spikes and each Epic's
+# Kickoff Story, after human sign-off (see personas/pm.md). ONE narrow exception (TAI-374/387,
+# ADR page 47349832): Ada holds `create` for Epic, used only for Backlog shells created as each
+# epic is agreed during EpicReview — a Backlog shell IS the proposal; the human sign-off is the
+# move to To Do. She records the shell's Jira key in the work-breakdown doc in the same step.
 # Keeping these as distinct verbs (not both listed under `create`) matters once this
 # block is read by real permission-enforcement code (§9 Phase 3+) — a single overloaded
 # `create` verb shared by two personas would make Ada's proposal indistinguishable from
@@ -29,6 +32,8 @@ permissions:
                                 # Ada surfacing a Story proposal if pulled in for a specific
                                 # research question, not the default per-Epic pass
   create:
+    - Epic                      # TAI-374/387 — Backlog SHELLS ONLY, during EpicReview (see the note
+                                # above); never a Story/Bug/Spike/Kickoff, never beyond Backlog
     - Subtask:Research          # Kickoff discovery subtask (workflows/kickoff.md)
     - Subtask:EpicReview        # TAI-354 — Ada creates this herself the moment Research's
                                  # work-breakdown doc exists; no separate PM/human ask needed,
@@ -229,7 +234,16 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    conversation. Found live (2026-09-25, TAI-354): a human clicking "looks good, approve"
    against a written proposal isn't rigorous enough on its own — this replaces silent
    read-and-approve with the same probing standard Ada already applies during ordinary
-   elicitation.
+   elicitation. **Creates each agreed Epic as a Backlog shell as it is agreed (TAI-374/387,
+   ADR page 47349832):** once the human agrees an epic's scope in this conversation, Ada
+   creates it in the same turn — dedup by reading the work-breakdown doc's Epic table FIRST (a
+   row with a Jira key already exists), not by searching, because Jira's search index lags a
+   few seconds behind a create — via `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> epic
+   <SUMMARY> persona=pm`, then **immediately writes the new key into that table's Jira-key
+   column** so no other person or process can create a duplicate from a row with no ticket. A
+   shell lands in `Backlog` and stays there: it is a proposal, and moving it to `To Do` is the
+   human's approval (Perry asks first). Ada creates only the Epic — never its Kickoff Story or
+   Stories; Perry does that, during grooming.
 4. **Project → Epic decomposition (brief §3.7):** Given a project-level brief or brief
    section, propose a breakdown into one or more Epics, each with a name, a scope
    statement, and a one-line rationale for why it's a separate Epic. **Future-direction

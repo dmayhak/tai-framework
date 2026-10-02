@@ -44,7 +44,7 @@ import { labelViolation } from "../label-gate.js";
 import { matchesIssueFilter } from "../issue-filter.js";
 import {
     cascadeTriggersOn,
-    shouldCascadeTransitionParent,
+    upwardCascadeTarget,
     cascadeTriggersOnClose,
     shouldCascadeCancelChild,
 } from "../cascade-gate.js";
@@ -331,7 +331,8 @@ export function createJiraWorkTracker(
                 // regression found while fixing the assignment gate: an earlier version fetched
                 // unconditionally, which broke on any transition target with no assignee data
                 // available yet.
-                if (target === Status.InProgress || target === Status.InReview || target === Status.Done) {
+                // TAI-374/387: `To Do` now also needs `current` -- its parent decides the To Do cascade.
+                if (target === Status.InProgress || target === Status.InReview || target === Status.Done || target === Status.ToDo) {
                     const current = await fetchIssue(key);
                     if (
                         (target === Status.InProgress || target === Status.InReview) &&
@@ -354,11 +355,15 @@ export function createJiraWorkTracker(
                     // -- a thrown error or a rejected MutationResult are both just logged,
                     // never allowed to block this issue's own transition (ADR, Confluence
                     // page 29753345).
-                    if (cascadeTriggersOn(target) && current.parentKey) {
+                    //
+                    // TAI-374/387: also fires on `To Do`, and a Kickoff Story never moves its Epic
+                    // either way -- all in the shared `upwardCascadeTarget` (cascade-gate.ts).
+                    if ((cascadeTriggersOn(target) || target === Status.ToDo) && current.parentKey) {
                         try {
                             const parent = await fetchIssue(current.parentKey);
-                            if (shouldCascadeTransitionParent(parent.status)) {
-                                const cascadeResult = await workTracker.transition(current.parentKey, Status.InProgress);
+                            const cascadeTo = upwardCascadeTarget(current, parent, target);
+                            if (cascadeTo !== null) {
+                                const cascadeResult = await workTracker.transition(current.parentKey, cascadeTo);
                                 if (!cascadeResult.ok) {
                                     console.warn(
                                         `Parent-cascade transition failed for ${current.parentKey} (best-effort, continuing with ${key} -> "${target}"): ${cascadeResult.reason}`

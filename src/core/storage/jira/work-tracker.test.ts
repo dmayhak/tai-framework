@@ -354,6 +354,100 @@ describe("updateIssue: parent= and labels= (TAI-372/379)", () => {
     });
 });
 
+describe("upward cascade: Kickoff exemption and the To Do cascade (TAI-374/387)", () => {
+    interface Rec { status: string; issuetype: string; parentKey?: string }
+    /** A stateful multi-issue Jira fake that understands both To Do and In Progress transitions. */
+    function fake(issues: Record<string, Rec>) {
+        const posted: string[] = [];
+        const ids: Record<string, string> = { "11": "To Do", "21": "In Progress" };
+        const wt = trackerWith(
+            stubFetch((url, init) => {
+                const path = url.split("atlassian.net")[1]?.split("?")[0] ?? "";
+                const m = path.match(/^\/rest\/api\/2\/issue\/([A-Za-z0-9-]+)(\/transitions)?$/);
+                if (!m) throw new Error(`unexpected call: ${path}`);
+                const [, key, suffix] = m;
+                const rec = issues[key as string];
+                if (!rec) throw new Error(`unknown issue in fake: ${key}`);
+                if (suffix && (init.method ?? "GET") === "GET") {
+                    return json({ transitions: [{ id: "11", name: "Schedule", to: { name: "To Do" } }, { id: "21", name: "Start", to: { name: "In Progress" } }] });
+                }
+                if (suffix && init.method === "POST") {
+                    const id = (JSON.parse(String(init.body)) as { transition: { id: string } }).transition.id;
+                    rec.status = ids[id] as string;
+                    posted.push(`${key} -> ${rec.status}`);
+                    return new Response(null, { status: 204 });
+                }
+                return json({
+                    key,
+                    fields: {
+                        project: { key: "TAI" },
+                        issuetype: { name: rec.issuetype },
+                        summary: "s",
+                        status: { name: rec.status },
+                        assignee: { accountId: "a1", displayName: "del" },
+                        ...(rec.parentKey ? { parent: { key: rec.parentKey } } : {}),
+                        created: "x",
+                        updated: "y",
+                    },
+                });
+            })
+        );
+        return { wt, posted };
+    }
+
+    it("a Kickoff Story going In Progress does not touch its Backlog Epic", async () => {
+        const issues = { "TAI-1": { status: "Backlog", issuetype: "Epic" }, "TAI-2": { status: "To Do", issuetype: "Kickoff", parentKey: "TAI-1" } };
+        const { wt, posted } = fake(issues);
+        await wt.transition(toIssueKey("TAI-2"), Status.InProgress);
+        assert.deepEqual(posted, ["TAI-2 -> In Progress"]);
+        assert.equal(issues["TAI-1"].status, "Backlog");
+    });
+
+    it("a normal Story going In Progress still moves its Epic", async () => {
+        const issues = { "TAI-1": { status: "Backlog", issuetype: "Epic" }, "TAI-2": { status: "To Do", issuetype: "Story", parentKey: "TAI-1" } };
+        const { wt } = fake(issues);
+        await wt.transition(toIssueKey("TAI-2"), Status.InProgress);
+        assert.equal(issues["TAI-1"].status, "In Progress");
+    });
+
+    it("a subtask reaching To Do schedules its Backlog Story, which schedules the Backlog Epic", async () => {
+        const issues = {
+            "TAI-1": { status: "Backlog", issuetype: "Epic" },
+            "TAI-2": { status: "Backlog", issuetype: "Story", parentKey: "TAI-1" },
+            "TAI-3": { status: "Backlog", issuetype: "Dev", parentKey: "TAI-2" },
+        };
+        const { wt } = fake(issues);
+        const result = await wt.transition(toIssueKey("TAI-3"), Status.ToDo);
+        assert.equal(result.ok, true);
+        assert.equal(issues["TAI-2"].status, "To Do");
+        assert.equal(issues["TAI-1"].status, "To Do");
+        if (result.ok) assert.deepEqual((result.affectedIssues ?? []).map((i) => i.key).sort(), ["TAI-1", "TAI-2"]);
+    });
+
+    it("a subtask of a Kickoff reaching To Do schedules the Kickoff but NOT the Epic", async () => {
+        const issues = {
+            "TAI-1": { status: "Backlog", issuetype: "Epic" },
+            "TAI-2": { status: "Backlog", issuetype: "Kickoff", parentKey: "TAI-1" },
+            "TAI-3": { status: "Backlog", issuetype: "Research", parentKey: "TAI-2" },
+        };
+        const { wt } = fake(issues);
+        await wt.transition(toIssueKey("TAI-3"), Status.ToDo);
+        assert.equal(issues["TAI-2"].status, "To Do");
+        assert.equal(issues["TAI-1"].status, "Backlog");
+    });
+
+    it("the To Do cascade never regresses a parent that is already started", async () => {
+        const issues = {
+            "TAI-1": { status: "In Progress", issuetype: "Epic" },
+            "TAI-2": { status: "In Progress", issuetype: "Story", parentKey: "TAI-1" },
+            "TAI-3": { status: "Backlog", issuetype: "Dev", parentKey: "TAI-2" },
+        };
+        const { wt, posted } = fake(issues);
+        await wt.transition(toIssueKey("TAI-3"), Status.ToDo);
+        assert.deepEqual(posted, ["TAI-3 -> To Do"]);
+    });
+});
+
 describe("read-your-write child lookup (TAI-381)", () => {
     // Jira's search index lags ~2-4s behind a create (measured live): POST /search/jql can miss a
     // just-created child while the PARENT's own `subtasks` field already lists it.
