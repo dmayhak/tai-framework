@@ -926,7 +926,7 @@ export function defineStorageConformance(
         // `reparent-gate.ts`/`label-gate.ts` are shared, so both backends use the same rules and
         // reason text; what this checks is that each backend actually WIRES them in, rejects
         // BEFORE writing anything, and round-trips the accepted cases through a fresh read.
-        describe("WorkTracker: updateIssue parent= and labels= (TAI-372/379)", () => {
+        describe("WorkTracker: updateIssue parent= and labels= (TAI-372/379/380)", () => {
             async function epic(summary: string) {
                 return track(
                     await h.backend.workTracker.createIssue({
