@@ -7,7 +7,7 @@
 
 import type { StorageBackend } from "../interface.js";
 import { RestClient, apiTokenAuth, type AtlassianAuth } from "./rest-client.js";
-import { createJiraWorkTracker, discoverPersonaFieldId } from "./work-tracker.js";
+import { createJiraWorkTracker, discoverFlaggedFieldId, discoverPersonaFieldId } from "./work-tracker.js";
 import { createConfluenceDocStore } from "./doc-store.js";
 import { loadTypeAliasMap } from "./type-alias-config.js";
 import type { MermaidConfig } from "./storage-format.js";
@@ -40,6 +40,8 @@ export async function createJiraBackend(config: JiraBackendConfig): Promise<Stor
     });
 
     const personaFieldId = await discoverPersonaFieldId(client);
+    // TAI-390: also by name, but optional -- a site without a "Flagged" field degrades (null).
+    const flaggedFieldId = await discoverFlaggedFieldId(client);
     const docStore = createConfluenceDocStore(client, {
         spaceKey: config.spaceKey,
         ...(config.mermaid ? { mermaid: config.mermaid } : {}),
@@ -51,7 +53,7 @@ export async function createJiraBackend(config: JiraBackendConfig): Promise<Stor
 
     return {
         kind: "jira",
-        workTracker: createJiraWorkTracker(client, { personaFieldId, docStore, spaceKey: config.spaceKey, aliases }),
+        workTracker: createJiraWorkTracker(client, { personaFieldId, flaggedFieldId, docStore, spaceKey: config.spaceKey, aliases }),
         docStore,
     };
 }

@@ -431,6 +431,8 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 ...existing,
                 parentKey: patch.parentKey ?? existing.parentKey,
                 labels: patch.labels ?? existing.labels,
+                // TAI-390: stored only while true; clearing drops the key (same shape as Jira reads).
+                flagged: patch.flagged === undefined ? existing.flagged : patch.flagged ? true : undefined,
                 summary: patch.summary ?? existing.summary,
                 description: applyTriState(existing.description, patch.description),
                 assignee: patch.assignee === undefined ? existing.assignee : patch.assignee,

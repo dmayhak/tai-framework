@@ -253,7 +253,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
    and the Stories/tasks already known, all in `Backlog` — even while the Epic itself is still in
    `Backlog`. She schedules a first wave, not everything: later phases, blocked work and work waiting
    on something external stay in `Backlog` (a `depends-on` link for a ticket blocker, a `phase-N`
-   label for a later phase, Jira's Flag or an `on-hold` label plus a comment for an external wait).
+   label for a later phase, Jira's Flag for an external wait: `issue update <KEY> flagged=true` plus a
+   comment saying what it waits for — a flagged To Do item drops out of Ready Work into `/tai-ready`'s
+   "On hold" section; TAI-390).
    Cross-epic sequencing is hers to discuss with the human: she may create `depends-on` links between
    Kickoff Stories across epics (already honored by `/tai-ready`), and a Kickoff is brought to `To Do`
    in that conversation when the human wants it started. **Scheduling a non-Kickoff Story under a

@@ -63,11 +63,16 @@ import {
     toJql,
     issueFields,
     toHumanRef,
+    JIRA_FLAG_OPTION,
     type RawUser,
     type TypeAliasMap,
 } from "./mappers.js";
 
 const API = "/rest/api/2";
+
+const noFlaggedFieldReason = (): string =>
+    'This Jira site has no "Flagged" custom field (it comes with Jira Software), so TAI cannot set or clear a flag here. ' +
+    "Use an `on-hold` label plus a comment saying what the work waits for instead.";
 
 export interface JiraWorkTrackerConfig {
     /**
@@ -94,6 +99,11 @@ export interface JiraWorkTrackerConfig {
     /** TAI-116 piece 4 (TAI-178 ADR): the project's "Type Aliases" override, resolved once
      *  at backend-construction time (`jira-backend.ts`), same as `personaFieldId`. */
     readonly aliases: TypeAliasMap;
+    /** TAI-390: field id of Jira's own "Flagged" custom field (multi-checkbox, option
+     *  "Impediment"), DISCOVERED BY NAME like `personaFieldId` (`discoverFlaggedFieldId`).
+     *  `null`/omitted when the site has none (e.g. a Jira Software-less project): reads then
+     *  never report `flagged`, and setting/clearing it is rejected with a clear message. */
+    readonly flaggedFieldId?: string | null;
 }
 
 /** Resolve the `Persona` custom field's site-specific id by its name. */
@@ -112,6 +122,13 @@ export async function discoverPersonaFieldId(
         );
     }
     return match.id;
+}
+
+/** TAI-390: resolve Jira's "Flagged" custom field id by name; `null` when the site has none
+ *  (unlike the Persona field this is optional, so absence degrades rather than throws). */
+export async function discoverFlaggedFieldId(client: RestClient, fieldName = "Flagged"): Promise<string | null> {
+    const fields = await client.request<{ id: string; name: string; custom: boolean }[]>("GET", `${API}/field`);
+    return fields.find((f) => f.custom && f.name === fieldName)?.id ?? null;
 }
 
 /**
@@ -162,7 +179,8 @@ export function createJiraWorkTracker(
     config: JiraWorkTrackerConfig
 ): WorkTracker {
     const { personaFieldId, docStore, spaceKey, aliases } = config;
-    const fields = issueFields(personaFieldId);
+    const flaggedFieldId = config.flaggedFieldId ?? null;
+    const fields = issueFields(personaFieldId, flaggedFieldId);
 
     // Lazy + memoized: only fetched the first time a review-gated transition is actually
     // attempted (most transitions never touch a REVIEW_GATES-bearing story type), then
@@ -178,7 +196,7 @@ export function createJiraWorkTracker(
 
     async function fetchIssue(key: IssueKey): Promise<Issue> {
         const raw = await client.request<RawIssue>("GET", `${API}/issue/${key}?fields=${fields}`);
-        return toIssue(raw, personaFieldId, aliases);
+        return toIssue(raw, personaFieldId, aliases, flaggedFieldId);
     }
 
     /**
@@ -200,6 +218,7 @@ export function createJiraWorkTracker(
         // TAI-372/379: patch-only. On create, `parentKey`/`labels` travel via the `create` arg.
         readonly parentKey?: IssueKey;
         readonly labels?: readonly string[];
+        readonly flagged?: boolean;
     };
 
     function toJiraFields(
@@ -238,6 +257,11 @@ export function createJiraWorkTracker(
             if (input.parentKey !== undefined) f["parent"] = { key: input.parentKey };
             if (input.labels !== undefined) f["labels"] = [...input.labels];
         }
+        // TAI-390: a multi-checkbox set to [{value:Impediment}] / [] (verified live on TAIT).
+        // Callers must have passed `flaggedViolation` first, so `flaggedFieldId` is non-null here.
+        if (input.flagged !== undefined && flaggedFieldId) {
+            f[flaggedFieldId] = input.flagged ? [{ value: JIRA_FLAG_OPTION }] : [];
+        }
         // `severity` is deliberately dropped: it has no Jira counterpart, and brief §5.2
         // says to reuse native Priority rather than provision a custom field for it.
 
@@ -274,7 +298,7 @@ export function createJiraWorkTracker(
 
         async getIssue(key: IssueKey): Promise<Issue | null> {
             const raw = await client.getOrNull<RawIssue>(`${API}/issue/${key}?fields=${fields}`);
-            return raw ? toIssue(raw, personaFieldId, aliases) : null;
+            return raw ? toIssue(raw, personaFieldId, aliases, flaggedFieldId) : null;
         },
 
         async updateIssue(key: IssueKey, patch: IssuePatch): Promise<Issue> {
@@ -287,6 +311,9 @@ export function createJiraWorkTracker(
             if (patch.labels !== undefined) {
                 const violation = labelViolation(patch.labels);
                 if (violation !== null) throw new JiraRejection(violation, 400);
+            }
+            if (patch.flagged !== undefined && !flaggedFieldId) {
+                throw new JiraRejection(noFlaggedFieldReason(), 400);
             }
             if (patch.parentKey !== undefined) {
                 const current = await fetchIssue(key);
@@ -710,7 +737,7 @@ export function createJiraWorkTracker(
             // deliberately deferred (interface.ts: `limit` bounds the result; no real project is
             // near needing it) — but a single page is all we ask for, so results are bounded,
             // never silently truncated mid-iteration.
-            const found = res.issues.map((r) => toIssue(r, personaFieldId, aliases));
+            const found = res.issues.map((r) => toIssue(r, personaFieldId, aliases, flaggedFieldId));
 
             // TAI-381: the index above lags a few seconds behind a create. With `readYourWrites`,
             // also read the PARENT's own `subtasks` field (immediately consistent), fetch any

@@ -85,6 +85,10 @@ export interface Issue {
     readonly severity?: string;
     readonly priority?: string;
     readonly labels: readonly string[];
+    /** TAI-390: work waiting on something external with no ticket (Jira's Flag / "impediment").
+     *  Present (`true`) only while flagged; ABSENT otherwise on every backend -- read it through
+     *  `isFlagged()`, never `=== false`. */
+    readonly flagged?: boolean;
     readonly createdAt: string;
     readonly updatedAt: string;
     // Comments are part of this payload, not a separate fetch (brief §7).
@@ -126,6 +130,8 @@ export interface IssuePatch {
     readonly parentKey?: IssueKey;
     // TAI-372/379: REPLACES the whole list (`[]` clears), unlike the nullable fields above.
     readonly labels?: readonly string[];
+    // TAI-390: `true` sets the flag, `false` clears it; `undefined` leaves it unchanged.
+    readonly flagged?: boolean;
 }
 
 export interface IssueFilter {
@@ -168,6 +174,9 @@ export interface IssueFilter {
  * moment the same code ran against Jira.
  */
 export const DEFAULT_SEARCH_LIMIT = 50;
+
+/** TAI-390: the one way to read `Issue.flagged` (absent means not flagged on every backend). */
+export const isFlagged = (issue: Pick<Issue, "flagged">): boolean => issue.flagged === true;
 
 export interface IssueLink {
     readonly relation: DependencyRelation;

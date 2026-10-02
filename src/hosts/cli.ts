@@ -30,6 +30,7 @@ import {
     toIssueKey,
     toPageId,
     DEFAULT_SEARCH_LIMIT,
+    isFlagged,
     type CreateIssueInput,
     type CreatePageInput,
     type Page,
@@ -623,7 +624,7 @@ function splitTasksAndStories<T>(
     return { tasks, stories };
 }
 
-function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, persona?: string): string {
+export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, persona?: string): string {
     const lines: string[] = [`# Ready work${persona ? ` for ${persona}` : ""}`, ""];
     const counter = numberedLines();
     let actionableCount = 0;
@@ -651,7 +652,7 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote}) — ${historyNote}${rebaseFlag}${blockedFlag(c.issue.key)}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote}) — ${historyNote}${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}`
             );
             actionableCount++;
         };
@@ -693,6 +694,23 @@ function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, pers
             lines.push("### Stories", "");
             readyStories.forEach(renderReadyLine);
         }
+    }
+    // TAI-390 (TAI-389 ADR decision 8): flagged To Do items wait here, out of Ready Work. Numbered
+    // so a human can reply with one to look at it (and unflag it once the impediment is gone); the
+    // reason shown is the latest comment's first line -- the convention is to comment what it waits for.
+    if (result.onHold.length > 0) {
+        lines.push("", "## On hold (flagged)", "");
+        for (const issue of result.onHold) {
+            const parentNote = issue.parentKey ? `, parent: ${issue.parentKey}` : "";
+            const reason = issue.comments.at(-1)?.body.split("\n").find((l) => l.trim() !== "")?.trim();
+            lines.push(
+                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
+                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote}) ${FLAG_MARKER}` +
+                    (reason ? ` — latest comment: ${reason}` : "")
+            );
+            actionableCount++;
+        }
+        lines.push("", "_Unflag with `issue update <KEY> flagged=false` once the impediment is gone; it returns to Ready Work._");
     }
     if (result.readyToReview.length > 0) {
         lines.push("", "## PRs ready for your review", "");
@@ -823,7 +841,7 @@ function parseKeyValueArgs(args: readonly string[]): Record<string, string> {
  *  `parent=` re-parents a Story/Bug under an Epic; `labels=` REPLACES the whole list (an empty
  *  value clears it) -- both decided on TAI-372, 2026-10-02. */
 export function parseIssueUpdatePatch(fields: Readonly<Record<string, string>>): IssuePatch {
-    const known = new Set(["summary", "description", "persona", "priority", "component", "severity", "parent", "labels"]);
+    const known = new Set(["summary", "description", "persona", "priority", "component", "severity", "parent", "labels", "flagged"]);
     const unknown = Object.keys(fields).filter((k) => !known.has(k));
     if (unknown.length > 0) {
         throw new Error(`Unknown issue update field(s): ${unknown.join(", ")}. Valid: ${[...known].join(", ")}.`);
@@ -831,10 +849,14 @@ export function parseIssueUpdatePatch(fields: Readonly<Record<string, string>>):
     if (fields["parent"] === "") {
         throw new Error("parent= needs an Epic key; detaching an issue from its Epic is not supported.");
     }
+    if (fields["flagged"] !== undefined && fields["flagged"] !== "true" && fields["flagged"] !== "false") {
+        throw new Error(`flagged= must be true or false, got "${fields["flagged"]}".`);
+    }
     return {
         ...(fields["summary"] !== undefined ? { summary: fields["summary"] } : {}),
         ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
         ...(fields["persona"] !== undefined ? { persona: fields["persona"] as Persona } : {}),
+        ...(fields["flagged"] !== undefined ? { flagged: fields["flagged"] === "true" } : {}),
         ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
         ...(fields["component"] !== undefined ? { component: fields["component"] } : {}),
         ...(fields["severity"] !== undefined ? { severity: fields["severity"] } : {}),
@@ -877,12 +899,16 @@ export function renderPullRequestComments(prId: string, comments: readonly PullR
     return lines.join("\n");
 }
 
+/** TAI-390: the marker `issue get`/`search`/`update` and `/tai-ready` show on a flagged issue. */
+export const FLAG_MARKER = "🚩 flagged";
+const flagSuffix = (issue: Pick<Issue, "flagged">): string => (isFlagged(issue) ? ` · ${FLAG_MARKER}` : "");
+
 function renderIssueRef(issue: Issue): string {
     return [
         `# Issue ${issue.key}`,
         "",
         `**${issue.summary}**`,
-        `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}`,
+        `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}${flagSuffix(issue)}`,
     ].join("\n");
 }
 
@@ -975,7 +1001,7 @@ export function renderIssueSearchResults(issues: readonly Issue[], filter: Issue
 
     for (const issue of issues) {
         lines.push(
-            `## ${issue.key} [${issue.issueType}] ${issue.status} — ${issue.summary}`,
+            `## ${issue.key} [${issue.issueType}] ${issue.status} — ${issue.summary}${isFlagged(issue) ? ` ${FLAG_MARKER}` : ""}`,
             `Persona: ${issue.persona ?? "none"}${issue.parentKey ? ` | Parent: ${issue.parentKey}` : ""} | ` +
                 `Updated: ${issue.updatedAt} | Comments: ${issue.comments.length}`,
             "",
@@ -1037,7 +1063,7 @@ export async function renderIssueDetail(
         `# Issue ${issue.key}`,
         "",
         `**${issue.summary}**`,
-        `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}`,
+        `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}${flagSuffix(issue)}`,
         `Persona: ${issue.persona ?? "none"} | Priority: ${issue.priority ?? "none"} | Labels: ${issue.labels.join(", ") || "none"} | Updated: ${issue.updatedAt}`,
         "",
         "## Description",
@@ -1725,7 +1751,8 @@ async function main(): Promise<void> {
                 throw new Error(
                     "Usage: issue update <ISSUE-KEY> [summary=<TEXT>] [description=<TEXT>] " +
                         "[persona=<PERSONA>] [priority=<PRIORITY>] [component=<TEXT>] [severity=<TEXT>] " +
-                        "[parent=<EPIC-KEY>] [labels=<a,b,c>]\n" +
+                        "[parent=<EPIC-KEY>] [labels=<a,b,c>] [flagged=true|false]\n" +
+                        "  flagged=true sets Jira's Flag (impediment: waiting on something external), flagged=false clears it.\n" +
                         "  parent= re-parents a Story/Bug under an Epic (a subtask is rejected -- use the Jira UI); " +
                         "labels= REPLACES the whole list (labels= with no value clears it).\n" +
                         "  For reassigning to a different human, use \"issue assign\" instead -- it resolves " +

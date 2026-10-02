@@ -24,6 +24,8 @@ import {
     renderIssueSearchResults,
     renderLinkedIssues,
     renderIssueDetail,
+    renderReadyWork,
+    FLAG_MARKER,
     renderCascadeWarnings,
     renderInitStepResult,
     renderInitStatus,
@@ -139,6 +141,84 @@ describe("parseIssueUpdatePatch (TAI-372/379)", () => {
 
     it("rejects a key it does not know, so a typo like lables= is not silently ignored", () => {
         assert.throws(() => parseIssueUpdatePatch({ lables: "a" }), /lables/);
+    });
+});
+
+describe("flagged= and flag markers (TAI-390)", () => {
+    const noLinks = {
+        workTracker: { getLinkedIssues: async () => [], getLinkedPages: async () => [] },
+        docStore: { getPage: async () => null },
+    };
+
+    it("flagged=true/false parse to a boolean patch field", () => {
+        assert.deepEqual(parseIssueUpdatePatch({ flagged: "true" }), { flagged: true });
+        assert.deepEqual(parseIssueUpdatePatch({ flagged: "false" }), { flagged: false });
+    });
+
+    it("rejects any other flagged= value instead of guessing", () => {
+        assert.throws(() => parseIssueUpdatePatch({ flagged: "yes" }), /flagged= must be true or false/);
+        assert.throws(() => parseIssueUpdatePatch({ flagged: "" }), /flagged= must be true or false/);
+    });
+
+    it("issue get and issue search show the marker only on a flagged issue", async () => {
+        const flagged = makeIssue({ flagged: true });
+        const plain = makeIssue();
+        assert.ok((await renderIssueDetail(noLinks, flagged)).includes(FLAG_MARKER));
+        assert.ok(!(await renderIssueDetail(noLinks, plain)).includes(FLAG_MARKER));
+        assert.ok(renderIssueSearchResults([flagged], { projectKey: "TAI" }).includes(FLAG_MARKER));
+        assert.ok(!renderIssueSearchResults([plain], { projectKey: "TAI" }).includes(FLAG_MARKER));
+    });
+});
+
+describe("renderReadyWork flagged view (TAI-390)", () => {
+    const emptyResult = {
+        ready: [],
+        onHold: [],
+        inProgress: [],
+        readyToReview: [],
+        readyToTest: [],
+        readyToMerge: [],
+        blockedBy: new Map(),
+        staleLivingDocs: [],
+    };
+
+    it("has no On hold section when nothing is held", () => {
+        assert.ok(!renderReadyWork({ ...emptyResult, ready: [makeIssue()] }).includes("On hold"));
+    });
+
+    it("lists held items in a numbered On hold section after Ready Work, with the latest comment's first line", () => {
+        const out = renderReadyWork({
+            ...emptyResult,
+            ready: [makeIssue({ key: toIssueKey("TAI-1") })],
+            onHold: [
+                makeIssue({
+                    key: toIssueKey("TAI-2"),
+                    flagged: true,
+                    comments: [makeComment({ body: "old" }), makeComment({ body: "\nWaiting on the vendor's API key.\nMore detail." })],
+                }),
+            ],
+        });
+        assert.ok(out.indexOf("## Ready Work") < out.indexOf("## On hold (flagged)"));
+        assert.match(out, /1\. \*\*TAI-1\*\*/);
+        assert.match(out, /2\. \*\*TAI-2\*\*.*🚩 flagged — latest comment: Waiting on the vendor's API key\./);
+        assert.ok(!out.includes("More detail."));
+        assert.match(out, /Reply with a number/);
+    });
+
+    it("a held item with no comments still renders (no reason shown)", () => {
+        const out = renderReadyWork({ ...emptyResult, onHold: [makeIssue({ flagged: true })] });
+        assert.match(out, /## On hold \(flagged\)/);
+        assert.ok(!out.includes("latest comment"));
+    });
+
+    it("a flagged In Progress item stays under In Progress with the marker", () => {
+        const out = renderReadyWork({
+            ...emptyResult,
+            inProgress: [{ issue: makeIssue({ status: Status.InProgress, flagged: true }), hasLocalHistory: false }],
+        });
+        assert.match(out, /## In Progress/);
+        assert.ok(out.includes(FLAG_MARKER));
+        assert.ok(!out.includes("On hold"));
     });
 });
 
