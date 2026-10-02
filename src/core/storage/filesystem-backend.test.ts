@@ -164,6 +164,42 @@ describe("issue CRUD", () => {
         });
     });
 
+    // TAI-372/379: same behavior as the Jira backend (conformance.ts covers it in TAI-380).
+    describe("updateIssue: parent= and labels=", () => {
+        test("labels replace the whole list, and [] clears", async () => {
+            await withBackend(async ({ workTracker }) => {
+                const s = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "s", labels: ["x"] });
+                assert.deepEqual((await workTracker.updateIssue(s.key, { labels: ["a", "b"] })).labels, ["a", "b"]);
+                assert.deepEqual((await workTracker.updateIssue(s.key, { labels: [] })).labels, []);
+            });
+        });
+
+        test("re-parents a Story under another Epic", async () => {
+            await withBackend(async ({ workTracker }) => {
+                const e1 = await workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "e1" });
+                const e2 = await workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "e2" });
+                const s = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "s", parentKey: e1.key });
+                const moved = await workTracker.updateIssue(s.key, { parentKey: e2.key });
+                assert.equal(moved.parentKey, e2.key);
+                assert.equal((await workTracker.getIssue(s.key))?.parentKey, e2.key);
+            });
+        });
+
+        test("rejects a subtask re-parent, a non-Epic parent and a missing parent, changing nothing", async () => {
+            await withBackend(async ({ workTracker }) => {
+                const e = await workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "e" });
+                const s = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "s", parentKey: e.key });
+                const other = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "other" });
+                const d = await workTracker.createIssue({ projectKey: "TAI", issueType: SubtaskType.Dev, summary: "d", parentKey: s.key });
+                await assert.rejects(() => workTracker.updateIssue(d.key, { parentKey: other.key }), /subtask/i);
+                await assert.rejects(() => workTracker.updateIssue(s.key, { parentKey: other.key }), /must be an Epic/);
+                await assert.rejects(() => workTracker.updateIssue(s.key, { parentKey: toIssueKey("TAI-404") }), /not found/i);
+                assert.equal((await workTracker.getIssue(d.key))?.parentKey, s.key);
+                assert.equal((await workTracker.getIssue(s.key))?.parentKey, e.key);
+            });
+        });
+    });
+
     test("getIssue returns null for a missing key", async () => {
         await withBackend(async ({ workTracker }) => {
             assert.equal(await workTracker.getIssue(toIssueKey("TAI-999")), null);

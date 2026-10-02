@@ -818,6 +818,33 @@ function parseKeyValueArgs(args: readonly string[]): Record<string, string> {
     return fields;
 }
 
+/** Builds an `issue update` patch from its `key=value` arguments. Rejects an unknown key rather
+ *  than ignoring it (found live: a typo'd `lables=` would otherwise "succeed" doing nothing).
+ *  `parent=` re-parents a Story/Bug under an Epic; `labels=` REPLACES the whole list (an empty
+ *  value clears it) -- both decided on TAI-372, 2026-10-02. */
+export function parseIssueUpdatePatch(fields: Readonly<Record<string, string>>): IssuePatch {
+    const known = new Set(["summary", "description", "persona", "priority", "component", "severity", "parent", "labels"]);
+    const unknown = Object.keys(fields).filter((k) => !known.has(k));
+    if (unknown.length > 0) {
+        throw new Error(`Unknown issue update field(s): ${unknown.join(", ")}. Valid: ${[...known].join(", ")}.`);
+    }
+    if (fields["parent"] === "") {
+        throw new Error("parent= needs an Epic key; detaching an issue from its Epic is not supported.");
+    }
+    return {
+        ...(fields["summary"] !== undefined ? { summary: fields["summary"] } : {}),
+        ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+        ...(fields["persona"] !== undefined ? { persona: fields["persona"] as Persona } : {}),
+        ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
+        ...(fields["component"] !== undefined ? { component: fields["component"] } : {}),
+        ...(fields["severity"] !== undefined ? { severity: fields["severity"] } : {}),
+        ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
+        ...(fields["labels"] !== undefined
+            ? { labels: fields["labels"].split(",").map((l) => l.trim()).filter((l) => l !== "") }
+            : {}),
+    };
+}
+
 function renderIssueRef(issue: Issue): string {
     return [
         `# Issue ${issue.key}`,
@@ -1641,20 +1668,16 @@ async function main(): Promise<void> {
             if (!issueKey || kv.length === 0) {
                 throw new Error(
                     "Usage: issue update <ISSUE-KEY> [summary=<TEXT>] [description=<TEXT>] " +
-                        "[persona=<PERSONA>] [priority=<PRIORITY>] [component=<TEXT>] [severity=<TEXT>]\n" +
+                        "[persona=<PERSONA>] [priority=<PRIORITY>] [component=<TEXT>] [severity=<TEXT>] " +
+                        "[parent=<EPIC-KEY>] [labels=<a,b,c>]\n" +
+                        "  parent= re-parents a Story/Bug under an Epic (a subtask is rejected -- use the Jira UI); " +
+                        "labels= REPLACES the whole list (labels= with no value clears it).\n" +
                         "  For reassigning to a different human, use \"issue assign\" instead -- it resolves " +
                         "the real Atlassian Account ID that assignee patches require."
                 );
             }
             const fields = parseKeyValueArgs(kv);
-            const patch: IssuePatch = {
-                ...(fields["summary"] !== undefined ? { summary: fields["summary"] } : {}),
-                ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
-                ...(fields["persona"] !== undefined ? { persona: fields["persona"] as Persona } : {}),
-                ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
-                ...(fields["component"] !== undefined ? { component: fields["component"] } : {}),
-                ...(fields["severity"] !== undefined ? { severity: fields["severity"] } : {}),
-            };
+            const patch = parseIssueUpdatePatch(fields);
             const issue = await config.backend.workTracker.updateIssue(toIssueKey(issueKey), patch);
             console.log(renderIssueRef(issue));
             return;
