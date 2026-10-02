@@ -43,6 +43,7 @@ import { violatesAssignmentGate, entryGateReason, exitGateReason } from "./assig
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "./review-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "./duplicate-subtask-gate.js";
 import { reparentViolation } from "./reparent-gate.js";
+import { labelViolation } from "./label-gate.js";
 import {
     cascadeTriggersOn,
     shouldCascadeTransitionParent,
@@ -416,6 +417,10 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             const existing = await mustGetIssue(rootDir, key);
             if (patch.assignee === null && violatesAssignmentGate(existing.status, null)) {
                 throw new Error(exitGateReason(key, existing.status));
+            }
+            if (patch.labels !== undefined) {
+                const violation = labelViolation(patch.labels);
+                if (violation !== null) throw new Error(violation);
             }
             if (patch.parentKey !== undefined) {
                 const violation = reparentViolation(existing, await readIssueFile(rootDir, patch.parentKey));

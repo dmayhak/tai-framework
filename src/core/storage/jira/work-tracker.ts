@@ -40,6 +40,7 @@ import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assi
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
 import { reparentViolation } from "../reparent-gate.js";
+import { labelViolation } from "../label-gate.js";
 import {
     cascadeTriggersOn,
     shouldCascadeTransitionParent,
@@ -279,6 +280,10 @@ export function createJiraWorkTracker(
                 if (violatesAssignmentGate(current.status, null)) {
                     throw new JiraRejection(exitGateReason(key, current.status), 409);
                 }
+            }
+            if (patch.labels !== undefined) {
+                const violation = labelViolation(patch.labels);
+                if (violation !== null) throw new JiraRejection(violation, 400);
             }
             if (patch.parentKey !== undefined) {
                 const current = await fetchIssue(key);

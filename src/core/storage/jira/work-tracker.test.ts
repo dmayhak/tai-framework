@@ -298,6 +298,12 @@ describe("updateIssue: parent= and labels= (TAI-372/379)", () => {
         assert.deepEqual(puts.map((p) => (p.body as { fields: unknown }).fields), [{ labels: ["a", "b"] }, { labels: [] }]);
     });
 
+    it("rejects a label with a space up front, with no PUT (same rule the filesystem backend applies)", async () => {
+        const { wt, puts } = tracker({ "TAI-5": rawIssue("TAI-5", "Story") });
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-5"), { labels: ["has space"] }), /spaces/);
+        assert.deepEqual(puts, []);
+    });
+
     it("re-parents a Story under an Epic with PUT fields.parent = {key}", async () => {
         const { wt, puts } = tracker({
             "TAI-5": rawIssue("TAI-5", "Story"),
