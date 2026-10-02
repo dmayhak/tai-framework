@@ -200,7 +200,8 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
                 return opts.noEditor ? "no-editor" : "edited";
             },
         },
-        renderStepResult: (step, ok, detail, full) => `[${ok ? "ok" : "FAIL"}] ${step}: ${detail}${full ? " (fully initialized)" : ""}`,
+        renderStepResult: (step, ok, detail, full, label) =>
+            `[${ok ? "ok" : "FAIL"}] ${label ?? step}: ${detail}${full ? " (fully initialized)" : ""}`,
         services: {
             listProjects: async () => {
                 calls.push("listProjects");
@@ -306,6 +307,15 @@ describe("runInit — non-interactive (no TTY)", () => {
             const h2 = await harness(dir, { envFile: COMPLETE_ENV, porcelain: null });
             assert.equal((await runInit(h2.deps)).exitCode, 0, h2.all());
             assert.equal(await readFile(path.join(dir, "GEMINI.md"), "utf-8"), first, "re-run changes nothing");
+        });
+    });
+
+    it("heads the pointer step with BOTH files it wrote, not just 'claude-md' (TAI-377)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { envFile: COMPLETE_ENV, porcelain: null });
+            assert.equal((await runInit(h.deps)).exitCode, 0, h.all());
+            assert.match(h.all(), /\[ok\] claude-md \+ gemini-md: Wrote .*CLAUDE\.md and .*GEMINI\.md/);
+            assert.doesNotMatch(h.all(), /\[ok\] claude-md: /);
         });
     });
 
