@@ -16,6 +16,7 @@ import {
     type PullRequestState,
     type PullRequestReviewer,
     type PullRequestRef,
+    type PullRequestComment,
     type CommitStatus,
     type CommitStatusState,
 } from "../interface.js";
@@ -85,6 +86,9 @@ export interface BitbucketCommentJson {
     readonly user: BitbucketUserJson;
     readonly created_on: string;
     readonly updated_on: string;
+    // Only present on a PR comment read back (TAI-383): an inline anchor and a soft-delete flag.
+    readonly inline?: { readonly path: string; readonly to?: number | null };
+    readonly deleted?: boolean;
 }
 
 // ---------- Mappers ----------
@@ -180,5 +184,15 @@ export function toComment(c: BitbucketCommentJson): Comment {
         body: c.content.raw,
         createdAt: c.created_on,
         updatedAt: c.updated_on,
+    };
+}
+
+/** TAI-383: a PR comment read back, keeping its inline anchor when it has one. */
+export function toPullRequestComment(c: BitbucketCommentJson): PullRequestComment {
+    return {
+        ...toComment(c),
+        ...(c.inline
+            ? { inline: { path: c.inline.path, ...(typeof c.inline.to === "number" ? { line: c.inline.to } : {}) } }
+            : {}),
     };
 }

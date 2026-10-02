@@ -14,6 +14,7 @@ import {
     type InlineCommentInput,
     type PullRequestId,
     type PullRequestRef,
+    type PullRequestComment,
     type PullRequestState,
     type RepoId,
     type RepoRef,
@@ -81,6 +82,10 @@ class RecordingGitHost implements GitHost {
         };
     }
 
+    async listPullRequestComments(_repo: RepoId, _id: PullRequestId): Promise<readonly PullRequestComment[]> {
+        this.calls.push("listPullRequestComments");
+        return [];
+    }
     async addInlineComment(_repo: RepoId, _id: PullRequestId, _input: InlineCommentInput): Promise<Comment> {
         this.calls.push("addInlineComment");
         return {
@@ -213,6 +218,7 @@ describe("PersonaScopedGitHost pass-through methods", () => {
         await scoped.unapprovePullRequest(repo, pr);
         await scoped.addPullRequestComment(repo, pr, "x");
         await scoped.addInlineComment(repo, pr, { path: "a.ts", line: 1, body: "x" });
+        await scoped.listPullRequestComments(repo, pr);
         await scoped.getCommitStatuses(repo, toCommitSha("abc123"));
 
         assert.deepEqual(inner.calls, [
@@ -225,6 +231,7 @@ describe("PersonaScopedGitHost pass-through methods", () => {
             "unapprovePullRequest",
             "addPullRequestComment",
             "addInlineComment",
+            "listPullRequestComments",
             "getCommitStatuses",
         ]);
     });

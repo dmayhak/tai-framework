@@ -58,6 +58,50 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(initFile.content, /relay its next-step hint/);
     });
 
+    describe("tai-pr / tai-ready: read ALL PR comments before merging, even an approved PR (TAI-382/383)", () => {
+        const prSkill = () => files.find((f) => f.relativePath === ".claude/skills/tai-pr/SKILL.md")!.content;
+        const readySkill = () => files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!.content;
+
+        test("tai-pr documents the read-only `git-pr comments <REPO> [PR-ID]` command", () => {
+            assert.match(prSkill(), /git-pr comments <REPO> \[PR-ID\]/);
+        });
+
+        test("tai-pr says approval does not finish a PR: read every comment first, including a second reviewer's", () => {
+            assert.match(prSkill(), /even an approved PR/i);
+            assert.match(prSkill(), /ALL comments/);
+            assert.match(prSkill(), /second reviewer/i);
+        });
+
+        test("tai-pr states the minor-vs-review-worthy policy: minor -> fix, test, push, merge; review-worthy -> ask first", () => {
+            assert.match(prSkill(), /very minor/i);
+            assert.match(prSkill(), /fix it, run the tests, push, note it on the PR, and merge/i);
+            assert.match(prSkill(), /review-worthy/i);
+            assert.match(prSkill(), /do NOT merge automatically/i);
+            assert.match(prSkill(), /unsure which.*review-worthy/i);
+        });
+
+        test("tai-pr says to file a ticket or skip with a stated reason, report it, and verify a reviewer's claims", () => {
+            assert.match(prSkill(), /file a ticket/i);
+            assert.match(prSkill(), /stated reason/i);
+            assert.match(prSkill(), /verify (a|the) reviewer's (factual )?claims/i);
+        });
+
+        test("picking a 'ready to merge' line no longer means merge immediately: comments are read first", () => {
+            assert.doesNotMatch(prSkill(), /run `git-pr merge <ISSUE-KEY> <REPO>` directly, no further confirmation needed/);
+            assert.match(prSkill(), /git-pr comments[^.]*before[^.]*git-pr merge|before[^.]*git-pr merge[^.]*git-pr comments/is);
+        });
+
+        test("tai-ready's merge line points at the comments step too", () => {
+            assert.match(readySkill(), /git-pr comments/);
+        });
+
+        test("the Gemini copy of tai-pr carries the same rule", () => {
+            const gemini = files.find((f) => f.relativePath === ".gemini/skills/tai-pr/SKILL.md")!;
+            assert.match(gemini.content, /even an approved PR/i);
+            assert.match(gemini.content, /git-pr comments/);
+        });
+    });
+
     describe("tai-init's skill drives `init run` (TAI-368)", () => {
         const body = () => files.find((f) => f.relativePath === ".claude/skills/tai-init/SKILL.md")!.content;
 

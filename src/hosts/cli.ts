@@ -105,7 +105,7 @@ import { loadPersonaConfig } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
-import { toRepoId, type GitHost, type GitMutationResult, type PullRequestRef, type RepoId } from "../core/git/interface.js";
+import { toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
 import {
@@ -845,6 +845,38 @@ export function parseIssueUpdatePatch(fields: Readonly<Record<string, string>>):
     };
 }
 
+/** TAI-383 (TAI-382): everything on a PR, in the order the host returned it, so whoever is about to
+ *  merge reads ALL of it -- including a second reviewer's and anything after the last commit --
+ *  before deciding. Full bodies on purpose (the point is that they get READ, not skimmed). Ends with
+ *  the decision prompt; this is surfacing, never a gate -- whether a comment is actionable is a
+ *  judgment call (the human's 2026-10-02 policy: very minor -> fix, test, merge; review-worthy -> ask). */
+export function renderPullRequestComments(prId: string, comments: readonly PullRequestComment[]): string {
+    if (comments.length === 0) {
+        return `# Comments on PR ${prId}\n\nNo comments on PR ${prId}. Confirm that is expected for a PR that was reviewed before merging.`;
+    }
+    // Normalize through Date so a non-UTC offset is converted, not mislabeled "UTC"; an
+    // unparseable value is shown as given rather than guessed at.
+    const when = (iso: string): string => {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return iso;
+        const utc = d.toISOString();
+        return `${utc.slice(0, 10)} ${utc.slice(11, 16)} UTC`;
+    };
+    const lines = [`# Comments on PR ${prId} (${comments.length})`, ""];
+    comments.forEach((c, i) => {
+        const where = c.inline ? ` · ${c.inline.path}${c.inline.line !== undefined ? `:${c.inline.line}` : ""}` : "";
+        lines.push(`## ${i + 1}. ${c.author.displayName} · ${when(c.createdAt)}${where}`, "", c.body.trim(), "");
+    });
+    lines.push(
+        "---",
+        "Before merging, decide for EACH comment above: fix it (only if very minor -- a typo or wording, no behavior change -- " +
+            "then run the tests, push, and note it on the PR), file a ticket for it, or skip it with a stated reason. " +
+            "Anything review-worthy (a behavior change, a logic or parity finding, a design question) is NOT merged automatically: " +
+            "ask the human first. Verify a reviewer's factual claims before acting on them."
+    );
+    return lines.join("\n");
+}
+
 function renderIssueRef(issue: Issue): string {
     return [
         `# Issue ${issue.key}`,
@@ -1232,11 +1264,12 @@ async function main(): Promise<void> {
             "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
             "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
             "     | git-pr comment <REPO> [PR-ID] <BODY>\n" +
+            "     | git-pr comments <REPO> [PR-ID]   (read-only: list ALL comments on a PR -- run before merge)\n" +
             "     | git-pr render-findings <FINDINGS-JSON-OR-@FILE>\n" +
             "     | git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>\n" +
             "     | git-pr unapprove <REPO> [PR-ID]\n" +
             "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
-            "  [PR-ID] is optional on review/comment/comment-findings/unapprove/merge — omit it to " +
+            "  [PR-ID] is optional on review/comment/comments/comment-findings/unapprove/merge — omit it to " +
             "resolve against REPO's sole open PR; if more than one is open, the error lists them so " +
             "you can pass one explicitly.";
 
@@ -1267,6 +1300,20 @@ async function main(): Promise<void> {
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             await gitHost.reviewPullRequest(repo, prId, decision, comment);
             console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
+            return;
+        }
+
+        // TAI-383 (TAI-382): read-only, so neither persona- nor roster-gated -- anyone about to merge
+        // (or just curious) can read a PR's comments. Same optional-[PR-ID] resolution as the rest.
+        if (action === "comments") {
+            const [repoArg, prIdArg] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const backend = createBitbucketBackend({
+                auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")),
+            });
+            const repo = toRepoId(repoArg);
+            const prId = await resolvePullRequestId(backend.gitHost, repo, prIdArg);
+            console.log(renderPullRequestComments(String(prId), await backend.gitHost.listPullRequestComments(repo, prId)));
             return;
         }
 
