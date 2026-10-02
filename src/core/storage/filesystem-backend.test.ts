@@ -996,3 +996,36 @@ describe("attachments (stub level)", () => {
         });
     });
 });
+
+describe("flagged (TAI-390)", () => {
+    const make = (b: StorageBackend) =>
+        b.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "s" });
+
+    test("a new issue is not flagged; true sets it, false clears it, undefined leaves it alone", async () => {
+        await withBackend(async (b) => {
+            const issue = await make(b);
+            assert.equal(issue.flagged, undefined);
+
+            const set = await b.workTracker.updateIssue(issue.key, { flagged: true });
+            assert.equal(set.flagged, true);
+            assert.equal((await b.workTracker.getIssue(issue.key))?.flagged, true);
+
+            const untouched = await b.workTracker.updateIssue(issue.key, { summary: "renamed" });
+            assert.equal(untouched.flagged, true, "an update that does not mention flagged must not clear it");
+
+            const cleared = await b.workTracker.updateIssue(issue.key, { flagged: false });
+            assert.equal("flagged" in cleared, false, "cleared means absent, same shape the Jira backend reads back");
+            assert.equal("flagged" in ((await b.workTracker.getIssue(issue.key)) ?? {}), false);
+        });
+    });
+
+    test("flagging does not change status, labels or assignee", async () => {
+        await withBackend(async (b) => {
+            const issue = await make(b);
+            const flagged = await b.workTracker.updateIssue(issue.key, { flagged: true });
+            assert.equal(flagged.status, issue.status);
+            assert.deepEqual(flagged.labels, issue.labels);
+            assert.equal(flagged.assignee, issue.assignee);
+        });
+    });
+});

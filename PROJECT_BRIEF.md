@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-02 (rev 71 — **TAI-374/387: Epics are created as they are agreed
+> **Last updated:** 2026-10-02 (rev 72 — **TAI-390: `flagged` is a first-class `Issue` field on
+> both backends.** Work waiting on something external with no ticket is marked with Jira's Flag
+> (impediment), read and set through `Issue.flagged`/`IssuePatch.flagged` (`issue update <KEY>
+> flagged=true|false`): the Jira backend finds the "Flagged" custom field BY NAME like the Persona
+> field (a site without one degrades — reads omit it, a set/clear is rejected with a clear
+> message), the filesystem backend stores a boolean. `issue get`/`search`/`update` show a
+> "🚩 flagged" marker; `/tai-ready` is hybrid — a flagged `To Do` item leaves Ready Work for a
+> numbered "On hold (flagged)" section, a flagged `In Progress` item stays put with the marker
+> (human-decided on TAI-390, TAI-389 ADR decision 8).
+>
+> Prior: rev 71 — **TAI-374/387: Epics are created as they are agreed
 > (early Epic shells), fleshed out in Backlog, and scheduled by Perry; `To Do` now cascades
 > upward and a Kickoff Story never moves its Epic.** Human-directed, ADR Confluence page
 > 47349832 (rev 4). The serial project-level Kickoff left every agreed Epic invisible on the
@@ -1736,6 +1746,11 @@ auto-derived, always a deliberate human decision.**
   may have its Kickoff running (`Backlog` = proposed and being fleshed out, `To Do` = approved
   to build). Coarse by design — this isn't a percentage-complete rollup, just a
   proposed/approved/building signal.
+- **Waiting work is marked, not given a status (TAI-390):** `To Do` means scheduled to start now.
+  Work waiting on another ticket carries a `depends-on` link, a later phase a `phase-N` label, and
+  work waiting on something external with no ticket carries Jira's **Flag** (`Issue.flagged`).
+  A flagged `To Do` ticket is not Ready Work (`/tai-ready` lists it under "On hold (flagged)");
+  unflagging returns it.
 - **`Done` is NOT derived from "all current children are `Done`/`Canceled`."** That's a
   false-completion trap: Epics are open-ended thematic groupings (§5.1: "a feature set"),
   and more Stories can always be decomposed under one later — brief §3.7's own recursive-

@@ -55,7 +55,7 @@ import {
     isSubtaskReady,
     type Persona,
 } from "../schema/story-schema.js";
-import { DEFAULT_SEARCH_LIMIT, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
+import { DEFAULT_SEARCH_LIMIT, isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { readWorkStatus } from "../workspace/status.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -161,6 +161,11 @@ export interface ReadyWorkResult {
      *  precedence re-check (already started once, so precedence — a gate on OFFERING new
      *  work — doesn't apply to resuming it). */
     readonly inProgress: readonly InProgressCandidate[];
+    /** TAI-390 (TAI-389 ADR decision 8): FLAGGED To Do items (Jira's Flag / impediment: waiting on
+     *  something external). They would otherwise be in `ready`, but a flag means "not now", so they
+     *  are listed here instead; unflagging puts them back. A flagged In Progress item is NOT held --
+     *  it stays in `inProgress` (the work already started; its `issue.flagged` drives a marker). */
+    readonly onHold: readonly Issue[];
     /** rev 52: open PRs the current human should review. Empty whenever `gitHost`/`repos`/
      *  `currentHuman`/`prReviewers` aren't all supplied, or the current human isn't on the
      *  PR Reviewers roster — never a partial/best-effort guess. */
@@ -649,6 +654,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     });
 
     const ready: Issue[] = [];
+    const onHold: Issue[] = [];
     const inProgressIssues: Issue[] = [];
     const parentContexts = new Map<IssueKey, ParentPrecedenceContext | null>();
     const ancestorCache = new Map<IssueKey, Issue | null>();
@@ -668,7 +674,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
                 parentKey: issue.key,
                 limit: 1,
             });
-            if (children.length === 0) ready.push(issue);
+            if (children.length === 0) (isFlagged(issue) ? onHold : ready).push(issue);
             continue;
         }
 
@@ -691,7 +697,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         if (!isSubtaskIssueType(issue.issueType)) {
             // Story-level ticket — no precedence gate of its own (brief §5.3), trivially
             // ready once it's open (ToDo, per the branch above) and matches the persona filter.
-            ready.push(issue);
+            (isFlagged(issue) ? onHold : ready).push(issue);
             continue;
         }
         if (!issue.parentKey) continue; // malformed data — skip rather than crash
@@ -707,7 +713,8 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
             // TAI-195: a subtask inherits its parent's Priority for sort/display purposes
             // when it has none of its own — a synthesized view (a copy; the original fetched
             // Issue elsewhere is untouched), not a claim about what Jira's raw field says.
-            ready.push(issue.priority !== undefined ? issue : { ...issue, priority: ctx.priority });
+            const offered = issue.priority !== undefined ? issue : { ...issue, priority: ctx.priority };
+            (isFlagged(issue) ? onHold : ready).push(offered);
         }
     }
 
@@ -715,6 +722,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     // work (human-decided 2026-08-25), purely a display/ordering change. Stable sort: equal
     // priority (including "both unset") preserves the search's own key-ascending order.
     ready.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
+    onHold.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
 
     // TAI-195/199 (extended 2026-08-26, human-confirmed after a live PR merge conflict
     // surfaced the gap): In Progress gets the same priority sort/inheritance treatment as
@@ -752,7 +760,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
     const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);
 
-    return { ready, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy, staleLivingDocs };
+    return { ready, onHold, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy, staleLivingDocs };
 }
 
 /** TAI-302/319: short-circuits before fetching a single Epic/child when no snapshot has ever

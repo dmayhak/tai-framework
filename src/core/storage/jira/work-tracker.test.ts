@@ -58,7 +58,7 @@ function json(body: unknown, status = 200): Response {
     });
 }
 
-function trackerWith(fetchImpl: typeof fetch, docStore: DocStore = fakeDocStore()) {
+function trackerWith(fetchImpl: typeof fetch, docStore: DocStore = fakeDocStore(), flaggedFieldId: string | null = null) {
     const client = new RestClient({
         siteUrl: "https://example.atlassian.net",
         auth: apiTokenAuth("a@b.c", "token"),
@@ -69,6 +69,7 @@ function trackerWith(fetchImpl: typeof fetch, docStore: DocStore = fakeDocStore(
         docStore,
         spaceKey: SPACE_KEY,
         aliases: EMPTY_TYPE_ALIAS_MAP,
+        flaggedFieldId,
     });
 }
 
@@ -989,5 +990,76 @@ describe("resolveHuman (TAI-165/167 ADR)", () => {
         const wt = trackerWith(stubFetch(() => json([])));
         const human = await wt.resolveHuman("nobody@example.com");
         assert.equal(human, null);
+    });
+});
+
+describe("flagged (TAI-390): Jira's Flagged field, discovered by name", () => {
+    const FLAGGED_FIELD = "customfield_10021";
+
+    function tracker(flaggedFieldId: string | null, issueExtra: Record<string, unknown> = {}) {
+        const puts: { path: string; body: unknown }[] = [];
+        const gets: string[] = [];
+        const wt = trackerWith(
+            stubFetch((url, init) => {
+                const path = url.split("atlassian.net")[1]?.split("?")[0] ?? "";
+                if (init.method === "PUT") {
+                    puts.push({ path, body: JSON.parse(String(init.body)) });
+                    return new Response(null, { status: 204 });
+                }
+                gets.push(url);
+                return json(rawIssue("TAI-5", "Story", issueExtra));
+            }),
+            fakeDocStore(),
+            flaggedFieldId
+        );
+        return { wt, puts, gets };
+    }
+
+    it("sets the flag with update.<id> = [{value:Impediment}] and clears it with []", async () => {
+        const { wt, puts } = tracker(FLAGGED_FIELD);
+        await wt.updateIssue(toIssueKey("TAI-5"), { flagged: true });
+        await wt.updateIssue(toIssueKey("TAI-5"), { flagged: false });
+        assert.deepEqual(puts.map((p) => p.body), [
+            { fields: { [FLAGGED_FIELD]: [{ value: "Impediment" }] } },
+            { fields: { [FLAGGED_FIELD]: [] } },
+        ]);
+    });
+
+    it("an update that leaves flagged undefined sends no Flagged field at all", async () => {
+        const { wt, puts } = tracker(FLAGGED_FIELD);
+        await wt.updateIssue(toIssueKey("TAI-5"), { summary: "x" });
+        assert.deepEqual(puts.map((p) => p.body), [{ fields: { summary: "x" } }]);
+    });
+
+    it("requests the Flagged field and reads Impediment back as flagged: true", async () => {
+        const { wt, gets } = tracker(FLAGGED_FIELD, { [FLAGGED_FIELD]: [{ value: "Impediment" }] });
+        const issue = await wt.getIssue(toIssueKey("TAI-5"));
+        assert.equal(issue?.flagged, true);
+        assert.ok(gets[0]?.includes(FLAGGED_FIELD), "the Flagged field must be requested explicitly");
+    });
+
+    it("an empty or null Flagged field reads back as not flagged (flagged omitted)", async () => {
+        for (const v of [[], null]) {
+            const { wt } = tracker(FLAGGED_FIELD, { [FLAGGED_FIELD]: v });
+            const issue = await wt.getIssue(toIssueKey("TAI-5"));
+            assert.equal("flagged" in (issue ?? {}), false);
+        }
+    });
+
+    it("with no Flagged field on the site: reads omit flagged, and setting it is rejected clearly with no PUT", async () => {
+        const { wt, puts } = tracker(null);
+        const issue = await wt.getIssue(toIssueKey("TAI-5"));
+        assert.equal("flagged" in (issue ?? {}), false);
+        await assert.rejects(
+            () => wt.updateIssue(toIssueKey("TAI-5"), { flagged: true }),
+            /no "Flagged" custom field/i
+        );
+        assert.deepEqual(puts, []);
+    });
+
+    it("clearing the flag on a site with no Flagged field is also rejected (not a silent no-op)", async () => {
+        const { wt, puts } = tracker(null);
+        await assert.rejects(() => wt.updateIssue(toIssueKey("TAI-5"), { flagged: false }), /no "Flagged" custom field/i);
+        assert.deepEqual(puts, []);
     });
 });

@@ -104,7 +104,13 @@ function readySkillBody(taiHome: string): string {
         "posted a `Rebase needed:` comment on it — self-clears once that PR actually merges, no " +
         "separate action needed.\n" +
         "- **Ready Work** — genuinely not-yet-started (open, and — for a subtask — with every " +
-        "precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`).\n\n" +
+        "precedence prerequisite already Done or Canceled, per `SUBTASK_PRECEDENCE`).\n" +
+        "- **On hold (flagged)** (TAI-390) — a To Do ticket carrying Jira's Flag (impediment: " +
+        "waiting on something external) is NOT Ready Work; it is listed here instead, numbered, " +
+        "with the first line of its latest comment as the reason. Don't start it; if the " +
+        "impediment is gone, `issue update <KEY> flagged=false` returns it to Ready Work. A " +
+        "flagged ticket that is already In Progress stays under **In Progress** with a " +
+        "\"🚩 flagged\" marker.\n\n" +
         "**If both sections come back empty (TAI-348/349, found live 2026-09-24)** — no error, " +
         "just genuinely nothing to show — don't end on a vague \"want to handle that another " +
         "way?\". If this looks like a genuinely fresh project (no Epics/Stories exist at all, not " +

@@ -1833,3 +1833,93 @@ describe("findReadyWork staleLivingDocs (TAI-302/319)", () => {
         });
     });
 });
+
+describe("findReadyWork flagged items (TAI-390): the hybrid On hold view", () => {
+    async function todoStory(backend: StorageBackend, summary: string) {
+        const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary });
+        await backend.workTracker.transition(story.key, Status.ToDo);
+        return story;
+    }
+
+    test("onHold is empty when nothing is flagged", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            await todoStory(backend, "plain");
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.onHold, []);
+        });
+    });
+
+    test("a flagged To Do story leaves Ready Work and lands in onHold; unflagging restores it", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await todoStory(backend, "waiting on the vendor");
+            await backend.workTracker.updateIssue(story.key, { flagged: true });
+
+            const held = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!held.ready.some((i) => i.key === story.key), "a flagged To Do item is not Ready Work");
+            assert.deepEqual(held.onHold.map((i) => i.key), [story.key]);
+
+            await backend.workTracker.updateIssue(story.key, { flagged: false });
+            const freed = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(freed.ready.some((i) => i.key === story.key));
+            assert.deepEqual(freed.onHold, []);
+        });
+    });
+
+    test("a flagged, precedence-ready To Do subtask is held too", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "s" });
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "build",
+                persona: Persona.Developer,
+                parentKey: story.key,
+            });
+            await backend.workTracker.transition(dev.key, Status.ToDo);
+            await backend.workTracker.updateIssue(dev.key, { flagged: true });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.ready.some((i) => i.key === dev.key));
+            assert.deepEqual(result.onHold.map((i) => i.key), [dev.key]);
+        });
+    });
+
+    test("a flagged childless Epic is held, not offered to Perry as Ready Work", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const epic = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "e", persona: Persona.Pm });
+            await backend.workTracker.transition(epic.key, Status.ToDo);
+            await backend.workTracker.updateIssue(epic.key, { flagged: true });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.ready.some((i) => i.key === epic.key));
+            assert.deepEqual(result.onHold.map((i) => i.key), [epic.key]);
+        });
+    });
+
+    test("a flagged In Progress item stays in inProgress (carrying the flag), not onHold", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await todoStory(backend, "already started");
+            await backend.workTracker.assignIssue(story.key, CURRENT_USER);
+            await backend.workTracker.transition(story.key, Status.InProgress);
+            await backend.workTracker.updateIssue(story.key, { flagged: true });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.onHold, []);
+            const entry = result.inProgress.find((c) => c.issue.key === story.key);
+            assert.ok(entry, "still resumable");
+            assert.equal(entry?.issue.flagged, true);
+        });
+    });
+
+    test("onHold is sorted by priority like Ready Work", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const low = await todoStory(backend, "low");
+            const high = await todoStory(backend, "high");
+            await backend.workTracker.updateIssue(low.key, { priority: "Low", flagged: true });
+            await backend.workTracker.updateIssue(high.key, { priority: "Highest", flagged: true });
+
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.onHold.map((i) => i.key), [high.key, low.key]);
+        });
+    });
+});

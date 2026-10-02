@@ -250,9 +250,19 @@ export function toAttachmentRef(raw: { id: string; filename: string; size?: numb
     };
 }
 
-export function toIssue(raw: RawIssue, personaFieldId: string, aliases: TypeAliasMap = EMPTY_TYPE_ALIAS_MAP): Issue {
+/** TAI-390: the one option TAI sets/reads on Jira's multi-checkbox "Flagged" field. */
+export const JIRA_FLAG_OPTION = "Impediment";
+
+export function toIssue(
+    raw: RawIssue,
+    personaFieldId: string,
+    aliases: TypeAliasMap = EMPTY_TYPE_ALIAS_MAP,
+    flaggedFieldId: string | null = null
+): Issue {
     const f = raw.fields;
     const personaRaw = f[personaFieldId] as { value?: string } | null | undefined;
+    const flaggedRaw = flaggedFieldId ? (f[flaggedFieldId] as { value?: string }[] | null | undefined) : undefined;
+    const flagged = flaggedRaw?.some((o) => o?.value === JIRA_FLAG_OPTION) === true;
 
     return {
         key: toIssueKey(raw.key),
@@ -276,6 +286,7 @@ export function toIssue(raw: RawIssue, personaFieldId: string, aliases: TypeAlia
         // custom field, so it is intentionally never populated by this backend.
         ...(f.priority ? { priority: f.priority.name } : {}),
         labels: f.labels ?? [],
+        ...(flagged ? { flagged: true } : {}),
         createdAt: f.created,
         updatedAt: f.updated,
         comments: (f.comment?.comments ?? []).map(toComment),
@@ -329,7 +340,7 @@ export function toJql(filter: IssueFilter, aliases: TypeAliasMap = EMPTY_TYPE_AL
 }
 
 /** Fields to request explicitly — Jira omits custom fields unless asked. */
-export function issueFields(personaFieldId: string): string {
+export function issueFields(personaFieldId: string, flaggedFieldId: string | null = null): string {
     return [
         "project",
         "issuetype",
@@ -346,5 +357,6 @@ export function issueFields(personaFieldId: string): string {
         "comment",
         "attachment",
         personaFieldId,
+        ...(flaggedFieldId ? [flaggedFieldId] : []),
     ].join(",");
 }
