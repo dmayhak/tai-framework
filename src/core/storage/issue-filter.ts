@@ -6,7 +6,7 @@
  * path rather than through JQL (see `IssueFilter.readYourWrites`). Same posture as the other
  * shared storage gates: one copy, so the two backends can't drift on what a filter means.
  *
- * `limit` and `readYourWrites` shape the QUERY, not the match, so they are deliberately ignored.
+ * `limit`, `exhaustive` and `readYourWrites` shape the QUERY, not the match, so they are deliberately ignored.
  */
 
 import type { Issue, IssueFilter } from "./interface.js";
