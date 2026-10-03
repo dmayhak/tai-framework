@@ -70,6 +70,10 @@ import {
 
 const API = "/rest/api/2";
 
+// TAI-402: `exhaustive` searches page at Jira's per-request max, bounded so a bad query can't loop.
+const EXHAUSTIVE_PAGE_SIZE = 100;
+const MAX_EXHAUSTIVE_PAGES = 50;
+
 const noFlaggedFieldReason = (): string =>
     'This Jira site has no "Flagged" custom field (it comes with Jira Software), so TAI cannot set or clear a flag here. ' +
     "Use an `on-hold` label plus a comment saying what the work waits for instead.";
@@ -728,16 +732,33 @@ export function createJiraWorkTracker(
             // caught the first time this ran against the live site. `/search/jql` is its
             // replacement, and it exists under /rest/api/2 as well as /3, so we keep the v2
             // string-body semantics rather than being forced onto v3's ADF (rest-client.ts).
-            const res = await client.request<{ issues: RawIssue[] }>("POST", `${API}/search/jql`, {
-                jql,
-                fields: fields.split(","),
-                maxResults: filter.limit ?? DEFAULT_SEARCH_LIMIT,
-            });
-            // Note: this endpoint paginates with `nextPageToken`/`isLast`. Cursor pagination is
-            // deliberately deferred (interface.ts: `limit` bounds the result; no real project is
-            // near needing it) — but a single page is all we ask for, so results are bounded,
-            // never silently truncated mid-iteration.
-            const found = res.issues.map((r) => toIssue(r, personaFieldId, aliases, flaggedFieldId));
+            // Bounded: one page of `limit`. Exhaustive (TAI-402): follow `nextPageToken` until
+            // `isLast`, up to MAX_EXHAUSTIVE_PAGES so a runaway query can't loop forever.
+            const rawIssues: RawIssue[] = [];
+            let nextPageToken: string | undefined;
+            for (let page = 0; page < MAX_EXHAUSTIVE_PAGES; page++) {
+                const res: { issues: RawIssue[]; nextPageToken?: string; isLast?: boolean } = await client.request(
+                    "POST",
+                    `${API}/search/jql`,
+                    {
+                        jql,
+                        fields: fields.split(","),
+                        maxResults: filter.exhaustive ? EXHAUSTIVE_PAGE_SIZE : (filter.limit ?? DEFAULT_SEARCH_LIMIT),
+                        ...(nextPageToken ? { nextPageToken } : {}),
+                    }
+                );
+                rawIssues.push(...res.issues);
+                nextPageToken = res.nextPageToken;
+                if (!filter.exhaustive || res.isLast !== false || !nextPageToken) {
+                    nextPageToken = undefined;
+                    break;
+                }
+            }
+            if (nextPageToken) {
+                // Loud, not silent: an "exhaustive" result that was actually cut off is the bug this fixes.
+                throw new Error(`Exhaustive search still had more results after ${MAX_EXHAUSTIVE_PAGES} pages: ${jql}`);
+            }
+            const found = rawIssues.map((r) => toIssue(r, personaFieldId, aliases, flaggedFieldId));
 
             // TAI-381: the index above lags a few seconds behind a create. With `readYourWrites`,
             // also read the PARENT's own `subtasks` field (immediately consistent), fetch any
@@ -754,7 +775,7 @@ export function createJiraWorkTracker(
                     if (matchesIssueFilter(issue, filter)) found.push(issue);
                 }
             }
-            return found.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);
+            return filter.exhaustive ? found : found.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);
         },
     };
     return workTracker;

@@ -1063,3 +1063,62 @@ describe("flagged (TAI-390): Jira's Flagged field, discovered by name", () => {
         assert.deepEqual(puts, []);
     });
 });
+
+describe("search pagination (TAI-402)", () => {
+    const rawIssue = (n: number) => ({
+        key: `TAI-${n}`,
+        fields: {
+            project: { key: "TAI" },
+            issuetype: { name: "Story" },
+            summary: `S${n}`,
+            status: { name: "To Do" },
+            created: "2026-10-01T00:00:00.000-0600",
+            updated: "2026-10-01T00:00:00.000-0600",
+            [PERSONA_FIELD]: { value: "PM" },
+        },
+    });
+
+    /** Serves 120 issues in pages, honoring maxResults + nextPageToken like Jira's /search/jql. */
+    function pagedTracker(total: number) {
+        const bodies: { maxResults: number; nextPageToken?: string }[] = [];
+        const wt = trackerWith(
+            stubFetch((url, init) => {
+                assert.match(url, /\/rest\/api\/2\/search\/jql/);
+                const body = JSON.parse(String(init.body)) as { maxResults: number; nextPageToken?: string };
+                bodies.push(body);
+                const start = body.nextPageToken ? Number(body.nextPageToken) : 0;
+                const end = Math.min(start + body.maxResults, total);
+                const issues = Array.from({ length: end - start }, (_, i) => rawIssue(start + i + 1));
+                return json(end < total ? { issues, nextPageToken: String(end), isLast: false } : { issues, isLast: true });
+            })
+        );
+        return { wt, bodies };
+    }
+
+    it("a bounded search asks for one page of `limit` and never follows the cursor", async () => {
+        const { wt, bodies } = pagedTracker(120);
+        const found = await wt.search({ projectKey: "TAI" });
+        assert.equal(found.length, 50);
+        assert.equal(bodies.length, 1);
+        assert.equal(bodies[0]!.maxResults, 50);
+    });
+
+    it("an exhaustive search follows nextPageToken until isLast and returns every match", async () => {
+        const { wt, bodies } = pagedTracker(120);
+        const found = await wt.search({ projectKey: "TAI", exhaustive: true });
+        assert.equal(found.length, 120);
+        assert.equal(bodies.length, 2);
+        assert.equal(found[119]!.key, "TAI-120");
+    });
+
+    it("an exhaustive search over a result that fits in one page makes one request", async () => {
+        const { wt, bodies } = pagedTracker(7);
+        assert.equal((await wt.search({ projectKey: "TAI", exhaustive: true })).length, 7);
+        assert.equal(bodies.length, 1);
+    });
+
+    it("an exhaustive search that never ends throws rather than silently returning a truncated set", async () => {
+        const wt = trackerWith(stubFetch(() => json({ issues: [rawIssue(1)], nextPageToken: "x", isLast: false })));
+        await assert.rejects(() => wt.search({ projectKey: "TAI", exhaustive: true }), /Exhaustive search still had more results/);
+    });
+});

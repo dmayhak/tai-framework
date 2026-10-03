@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
-import { toHumanId, type HumanRef, type StorageBackend } from "../storage/interface.js";
+import { DEFAULT_SEARCH_LIMIT, toHumanId, type HumanRef, type StorageBackend } from "../storage/interface.js";
 import {
     toCommitSha,
     toPullRequestId,
@@ -1920,6 +1920,27 @@ describe("findReadyWork flagged items (TAI-390): the hybrid On hold view", () =>
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.deepEqual(result.onHold.map((i) => i.key), [high.key, low.key]);
+        });
+    });
+});
+
+describe("findReadyWork past the search limit (TAI-402)", () => {
+    test("every open Story is listed once there are more than DEFAULT_SEARCH_LIMIT of them", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const keys: string[] = [];
+            for (let i = 0; i < DEFAULT_SEARCH_LIMIT + 5; i++) {
+                const story = await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: StoryType.Story,
+                    summary: `Story ${i}`,
+                    persona: Persona.Pm,
+                });
+                await backend.workTracker.transition(story.key, Status.ToDo);
+                keys.push(story.key);
+            }
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            const listed = new Set(result.ready.map((i) => i.key as string));
+            assert.deepEqual(keys.filter((k) => !listed.has(k)), []);
         });
     });
 });

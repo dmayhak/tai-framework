@@ -148,6 +148,14 @@ export interface IssueFilter {
     // every backend applies DEFAULT_SEARCH_LIMIT below — never "everything."
     readonly limit?: number;
     /**
+     * TAI-402: return EVERY match, ignoring `limit` and `DEFAULT_SEARCH_LIMIT`. For callers whose
+     * answer is wrong if the result is cut off (readiness, Epic summaries, merge sync) -- a bounded
+     * search silently drops matches past the cap (Jira orders by key ASC, so the NEWEST tickets).
+     * Jira pages internally with `nextPageToken`; the filesystem backend simply doesn't slice. The
+     * default stays bounded so no caller gets "everything" by accident.
+     */
+    readonly exhaustive?: boolean;
+    /**
      * TAI-381: with `parentKey`, ALSO include the parent's own immediately-consistent subtasks.
      * Jira's search index lags a few seconds behind a create (measured live: 2-4s), so a plain
      * search can miss a subtask created moments ago -- which silently broke the downward cascade

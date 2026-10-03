@@ -55,7 +55,7 @@ import {
     isSubtaskReady,
     type Persona,
 } from "../schema/story-schema.js";
-import { DEFAULT_SEARCH_LIMIT, isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
+import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { readWorkStatus } from "../workspace/status.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -216,7 +216,7 @@ async function loadParentPrecedenceContext(
         // over.
         return null;
     }
-    const siblings = await workTracker.search({ projectKey, parentKey, limit: DEFAULT_SEARCH_LIMIT });
+    const siblings = await workTracker.search({ projectKey, parentKey, exhaustive: true });
     const presentSubtaskTypes = siblings.filter((s) => isSubtaskIssueType(s.issueType)).map((s) => s.issueType as SubtaskType);
     const doneSubtaskTypes = new Set(
         siblings
@@ -310,7 +310,7 @@ async function fetchOpenPRsByRepo(
  *
  * KNOWN SCALING CAVEAT (documented, not silently accepted, same as the pre-rev-52
  * version): this does one `getRemoteLinks` call per matching `In Progress` issue found
- * (bounded by `DEFAULT_SEARCH_LIMIT`) — fine at this project's current scale, revisit if a
+ * (searched exhaustively, TAI-402) — fine at this project's current scale, revisit if a
  * large volume of concurrently-in-progress work ever makes this real.
  */
 async function findSubtaskLinkedOpenPRs(
@@ -323,7 +323,7 @@ async function findSubtaskLinkedOpenPRs(
         projectKey,
         issueTypes,
         statuses: [Status.InProgress],
-        limit: DEFAULT_SEARCH_LIMIT,
+        exhaustive: true,
     });
     if (inProgress.length === 0) return [];
 
@@ -398,7 +398,7 @@ async function findStoryLinkedOpenPRs(
         projectKey,
         issueTypes: GOVERNANCE_ISSUE_TYPES,
         statuses: [Status.InProgress],
-        limit: DEFAULT_SEARCH_LIMIT,
+        exhaustive: true,
     });
     if (inProgressGovernance.length === 0) return [];
 
@@ -450,7 +450,7 @@ async function syncMergedIssues(
             ...GOVERNANCE_ISSUE_TYPES,
         ],
         statuses: [Status.InProgress],
-        limit: DEFAULT_SEARCH_LIMIT,
+        exhaustive: true,
     });
     if (inProgressCandidates.length === 0) return [];
 
@@ -507,7 +507,7 @@ async function syncTestTiersToToDo(
         if (!dev?.parentKey || checkedParents.has(dev.parentKey)) continue;
         checkedParents.add(dev.parentKey);
 
-        const siblings = await workTracker.search({ projectKey, parentKey: dev.parentKey, limit: DEFAULT_SEARCH_LIMIT });
+        const siblings = await workTracker.search({ projectKey, parentKey: dev.parentKey, exhaustive: true });
         for (const sibling of siblings) {
             if (!TEST_TIER_TYPES.has(sibling.issueType as SubtaskType) || sibling.status !== Status.Backlog) continue;
             const result = await workTracker.transition(sibling.key, Status.ToDo);
@@ -650,7 +650,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         projectKey: deps.projectKey,
         ...(persona ? { persona } : {}),
         statuses: OPEN_STATUSES,
-        limit: DEFAULT_SEARCH_LIMIT,
+        exhaustive: true,
     });
 
     const ready: Issue[] = [];
@@ -778,14 +778,14 @@ async function computeStaleLivingDocs(
     const snapshot = await readLivingDocSnapshot(taiRoot, projectKey, EPIC_SUMMARY_LIVING_DOC_TYPES[0]!);
     if (!snapshot) return [];
 
-    const epics = await workTracker.search({ projectKey, issueTypes: ["epic"], limit: DEFAULT_SEARCH_LIMIT });
+    const epics = await workTracker.search({ projectKey, issueTypes: ["epic"], exhaustive: true });
     const summaries: EpicSummary[] = [];
     for (const epic of epics) {
         const children = await workTracker.search({
             projectKey,
             parentKey: epic.key,
             issueTypes: EPIC_CHILD_ISSUE_TYPES,
-            limit: DEFAULT_SEARCH_LIMIT,
+            exhaustive: true,
         });
         summaries.push(computeEpicSummary(epic, children));
     }

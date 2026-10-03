@@ -732,7 +732,7 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
         async search(filter: IssueFilter): Promise<readonly Issue[]> {
             const issues = await readJsonDir<Issue>(issuesDir(rootDir, filter.projectKey));
             const results = issues.filter((i) => matchesIssueFilter(i, filter));
-            return results.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);
+            return filter.exhaustive ? results : results.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);
         },
     };
 
