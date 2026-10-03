@@ -15,7 +15,10 @@ gitignored). The journey:
 
 1. **Install TAI** once per machine: clone it to `~/.tai-framework`, `npm install`, then run
    `install-global` (see the README's *Install* section). This writes the `/tai-init` skill
-   (and the rest) for both Claude Code and Gemini CLI.
+   (and the rest) for both Claude Code and Gemini CLI. **A running Gemini CLI session does not
+   pick up refreshed skill files — quit and restart the process** (`/clear` is not enough). After
+   any `install-global` re-run, restart Gemini before trusting its behavior; an apparent failure
+   right after an update is often a stale skill, not a real gap.
 2. **Clone your project's repo** (or `cd` into the one you have).
 3. **Run `/tai-init`** in your assistant from inside that repo. It checks `init status`, and if
    the project isn't fully initialized it tells you to open a **separate terminal** and gives
@@ -160,6 +163,12 @@ created the first time a persona actually writes that doc type).
 ```bash
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init confluence
 ```
+
+**Space keys (TAI's own space is the worked example).** A Confluence space's *real* key can differ
+from the key you see: TAI's own space is keyed `TA` with `TAI` kept as an alias, and on a free plan
+the real key may not even be visible. Use whichever key `init confluence` discovered and recorded
+in `.env` (`TAI_SPACE_KEY`) — both resolve — and for raw page-create / space-key arguments use the
+alias that works on your site (`TAI` for TAI's own space), never one derived from the Jira key.
 
 Then open the new **Persona Roster** page and fill in the "Authorized humans" column —
 review-gate `Approved:`/`Rejected:` comment validation (brief §3.5) depends on it.

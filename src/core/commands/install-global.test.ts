@@ -47,6 +47,12 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("the tai-init skill tells the human a running Gemini session needs a full restart (TAI-397)", () => {
+        const init = files.find((f) => f.relativePath === ".gemini/skills/tai-init/SKILL.md")!;
+        assert.match(init.content, /quit and restart the Gemini process/);
+        assert.match(init.content, /`\/clear` is not enough/);
+    });
+
     test("Claude and Gemini versions of the same skill are byte-identical", () => {
         for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit"]) {
             const claude = files.find((f) => f.relativePath === `.claude/skills/${name}/SKILL.md`)!;

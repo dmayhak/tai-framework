@@ -4,7 +4,16 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-02 (rev 72 — **TAI-390: `flagged` is a first-class `Issue` field on
+> **Last updated:** 2026-10-02 (rev 73 — **TAI-397/400: session learnings that lived only in private
+> memory are now stated in TAI's own docs.** A new §4 bullet records how personas write Confluence
+> page content (one unwrapped line per paragraph/bullet, sequential list numbers, the `content=$(cat
+> file)` quoting rule); the authoring personas point at it; Ada's and Aria's real-links principle
+> also covers linking a doc to the parent Story; the setup checklist and `/tai-init` skill say a
+> Gemini CLI session needs a full restart to pick up refreshed skills and explain the `TA`/`TAI`
+> Confluence space alias; `CLAUDE.md` says to use the TAIT scratch project for throwaway tickets.
+> No behavior change.
+>
+> Prior: rev 72 — **TAI-390: `flagged` is a first-class `Issue` field on
 > both backends.** Work waiting on something external with no ticket is marked with Jira's Flag
 > (impediment), read and set through `Issue.flagged`/`IssuePatch.flagged` (`issue update <KEY>
 > flagged=true|false`): the Jira backend finds the "Flagged" custom field BY NAME like the Persona
@@ -1496,6 +1505,15 @@ These are settled. Change them deliberately and update this file if you do.
     further downstream steps depending on that gate proceed. An `Approved:` sign-off
     means something about the content actually reviewed, not just that a comment once
     existed.
+- **Writing Confluence page content (TAI-397).** TAI converts a persona's markdown to Confluence
+  storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
+  (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and
+  merges labeled sentences, so write **one unwrapped line per paragraph or bullet** (repo `.md` files
+  may wrap; page content may not); (2) **non-sequential ordered-list numbers** (`3b.`, a restart at
+  1.) render wrong, so keep numbers sequential. When passing content from a file to `page create` /
+  `page update`, write `"content=$(cat file)"` exactly like that — **unescaped**; an escaped
+  `\$(cat ...)` writes the literal text over the page — and re-read the page afterward to confirm. Every
+  persona that authors pages (Ada, Aria, Perry, Uma, Tessa) points here.
 - **Caching:** all relevant info (config, personas, Jira issues, Confluence pages) is cached
   locally in the same Jira-like folder structure to support offline work. **Full Confluence
   page content is cached** (it's input to many tasks). Each cached item stores a

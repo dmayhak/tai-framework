@@ -15,6 +15,10 @@ the brief deliberately rather than working around it.
   going forward.
 
 ## Dogfooding this repo (as opposed to a target project TAI manages)
+- **Live tests and throwaway tickets go in the TAIT scratch project, not TAI.** Anything created
+  only to try something live (a probe issue, a flag/cascade experiment, the live conformance run)
+  uses `TAIT`; real work lives in `TAI`. Clean up probe issues afterward (Cancel + the
+  `tai-conformance-fixture` label — Free-plan Jira can't delete).
 - **What `IntegrationTest` scope concretely means here:** extending `conformance.ts`
   (the suite that verifies the Jira and filesystem `StorageBackend`s behave identically)
   — but only when the Dev deliverable is actually wired into `WorkTracker`/`DocStore`. A

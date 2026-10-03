@@ -1902,7 +1902,11 @@ async function main(): Promise<void> {
         if (action === "create") {
             const [spaceKey, title, content, ...kv] = pageArgs;
             if (!spaceKey || !title || !content) {
-                throw new Error("Usage: page create <SPACE-KEY> <TITLE> <CONTENT> [parent=<PAGE-ID>]");
+                throw new Error(
+                    "Usage: page create <SPACE-KEY> <TITLE> <CONTENT> [parent=<PAGE-ID>]\n" +
+                        'Passing content from a file: pass "$(cat file)" unescaped and re-read the page afterward. ' +
+                        "One unwrapped line per paragraph/bullet; sequential list numbers (brief section 4)."
+                );
             }
             const fields = parseKeyValueArgs(kv);
             const input: CreatePageInput = {
@@ -1964,7 +1968,12 @@ async function main(): Promise<void> {
         if (action === "update") {
             const [pageId, ...kv] = pageArgs;
             if (!pageId || kv.length === 0) {
-                throw new Error("Usage: page update <PAGE-ID> [title=<TEXT>] [content=<TEXT>] [parent=<PAGE-ID>]");
+                throw new Error(
+                    "Usage: page update <PAGE-ID> [title=<TEXT>] [content=<TEXT>] [parent=<PAGE-ID>]\n" +
+                        'Passing content from a file: write "content=$(cat file)" exactly so, UNESCAPED (an escaped ' +
+                        "\\$(cat ...) writes the literal text over the page), and re-read the page afterward. " +
+                        "One unwrapped line per paragraph/bullet; sequential list numbers (brief section 4)."
+                );
             }
             const fields = parseKeyValueArgs(kv);
             const patch: PagePatch = {

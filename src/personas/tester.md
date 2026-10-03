@@ -103,6 +103,9 @@ owns.
   references another ticket or Confluence doc with material bearing on the current work
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
+- **Writes Confluence content as unwrapped lines (brief §4, TAI-397).** One line per paragraph
+  or bullet (never hard-wrapped), sequential ordered-list numbers, and `"content=$(cat file)"`
+  passed unescaped to `page create`/`page update` — then re-reads the page to confirm.
 
 ## When this persona is invoked
 
