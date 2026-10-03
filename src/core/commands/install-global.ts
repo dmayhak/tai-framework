@@ -398,7 +398,10 @@ function initSkillBody(taiHome: string): string {
         "```\n\n" +
         "This (re)writes all five skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`) " +
         "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
-        "`tai-framework` itself has been updated at its fixed location.\n\n" +
+        "`tai-framework` itself has been updated at its fixed location. **Gemini CLI does not pick up " +
+        "refreshed skill files in a running session — after an install/refresh, tell the human to " +
+        "quit and restart the Gemini process (`/clear` is not enough), and treat an odd Gemini " +
+        "result right after an update as a possibly stale skill before calling it a real gap.**\n\n" +
         "**Target-project setup (TAI-116 piece 3, TAI-130, TAI-368):** once the bootstrap above is " +
         "done, check whether the CURRENT project (cwd) still needs onboarding:\n\n" +
         "```bash\n" +
