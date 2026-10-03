@@ -7,6 +7,8 @@ import path from "node:path";
 import {
     parseReviewFindings,
     renderReviewFindings,
+    renderFindingsNextSteps,
+    renderFindingsPreview,
     partitionInlineFindings,
     isInlineEligible,
     renderInlineComment,
@@ -187,5 +189,47 @@ describe("renderInlineComment (TAI-207)", () => {
     it("omits the suggestion block when there's no fix", () => {
         const rendered = renderInlineComment(validFindings.findings[1]!);
         assert.ok(!rendered.includes("```suggestion"));
+    });
+});
+
+describe("render-findings next-step options (TAI-411)", () => {
+    const optionLines = (text: string) => text.split("\n").filter((l) => /^\d\. /.test(l));
+
+    it("lists the five numbered options and says nothing has been posted yet", () => {
+        const out = renderFindingsNextSteps("approve");
+        assert.match(out, /Nothing has been posted yet\./);
+        assert.deepEqual(
+            optionLines(out).map((l) => l.replace(" (suggested)", "")),
+            [
+                "1. post and approve",
+                "2. post the findings only",
+                "3. approve only (no comment)",
+                "4. post and request changes",
+                "5. neither",
+            ]
+        );
+    });
+
+    it("marks exactly the option matching the leaning as suggested", () => {
+        const suggested = (leaning: "approve" | "requestChanges" | "neither") =>
+            optionLines(renderFindingsNextSteps(leaning)).filter((l) => l.includes("(suggested)"));
+        assert.deepEqual(suggested("approve"), ["1. post and approve (suggested)"]);
+        assert.deepEqual(suggested("requestChanges"), ["4. post and request changes (suggested)"]);
+        assert.deepEqual(suggested("neither"), ["5. neither (suggested)"]);
+    });
+
+    it("the preview is the rendered findings followed by the options", () => {
+        const preview = renderFindingsPreview(validFindings);
+        assert.ok(preview.startsWith(renderReviewFindings(validFindings)));
+        assert.ok(preview.endsWith(renderFindingsNextSteps(validFindings.leaning)));
+    });
+
+    it("the options NEVER appear in renderReviewFindings -- that is the text comment-findings posts to the PR", () => {
+        for (const leaning of ["approve", "requestChanges", "neither"] as const) {
+            const posted = renderReviewFindings({ ...validFindings, leaning });
+            assert.ok(!posted.includes("Nothing has been posted yet"));
+            assert.ok(!posted.includes("What would you like to do"));
+            assert.equal(optionLines(posted).filter((l) => /post and approve|post the findings only/.test(l)).length, 0);
+        }
     });
 });

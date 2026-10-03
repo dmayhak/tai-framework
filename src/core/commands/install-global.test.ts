@@ -32,6 +32,21 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("the tai-pr skill tells the session to paste render-findings' numbered options and maps each number (TAI-411)", () => {
+        const pr = files.find((f) => f.relativePath === ".claude/skills/tai-pr/SKILL.md")!;
+        assert.match(pr.content, /numbered "what would you like to do\?" list/);
+        assert.match(pr.content, /never trim it/);
+        for (const mapping of [
+            /\*\*1\*\* post and approve/,
+            /\*\*2\*\* post the findings only/,
+            /\*\*3\*\* approve only/,
+            /\*\*4\*\* post and request changes/,
+            /\*\*5\*\* neither/,
+        ]) {
+            assert.match(pr.content, mapping);
+        }
+    });
+
     test("Claude and Gemini versions of the same skill are byte-identical", () => {
         for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit"]) {
             const claude = files.find((f) => f.relativePath === `.claude/skills/${name}/SKILL.md`)!;
