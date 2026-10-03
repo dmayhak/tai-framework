@@ -98,6 +98,7 @@ import {
 import {
     parseReviewFindings,
     renderReviewFindings,
+    renderFindingsPreview,
     partitionInlineFindings,
     renderInlineComment,
     type ReviewFinding,
@@ -1316,7 +1317,9 @@ async function main(): Promise<void> {
             const [findingsArg] = actionArgs;
             if (!findingsArg) throw new Error(usage);
             const findings = parseReviewFindings(findingsArg);
-            console.log(renderReviewFindings(findings));
+            // TAI-411: the preview carries the numbered next-step options; comment-findings (below) posts
+            // renderReviewFindings alone, so the options never reach the PR.
+            console.log(renderFindingsPreview(findings));
             return;
         }
 

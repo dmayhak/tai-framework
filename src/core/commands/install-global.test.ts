@@ -32,6 +32,21 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("the tai-pr skill tells the session to paste render-findings' numbered options and maps each number (TAI-411)", () => {
+        const pr = files.find((f) => f.relativePath === ".claude/skills/tai-pr/SKILL.md")!;
+        assert.match(pr.content, /numbered "what would you like to do\?" list/);
+        assert.match(pr.content, /never trim it/);
+        for (const mapping of [
+            /\*\*1\*\* post and approve/,
+            /\*\*2\*\* post the findings only/,
+            /\*\*3\*\* approve only/,
+            /\*\*4\*\* post and request changes/,
+            /\*\*5\*\* neither/,
+        ]) {
+            assert.match(pr.content, mapping);
+        }
+    });
+
     test("the tai-init skill tells the human a running Gemini session needs a full restart (TAI-397)", () => {
         const init = files.find((f) => f.relativePath === ".gemini/skills/tai-init/SKILL.md")!;
         assert.match(init.content, /quit and restart the Gemini process/);

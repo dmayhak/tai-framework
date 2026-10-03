@@ -246,7 +246,9 @@ function prSkillBody(taiHome: string): string {
         "previews TAI-207's inline-vs-summary split (next bullet) — a `critical`-severity " +
         "finding with a `line` is pulled out of its severity section and shown as a one-line " +
         "tally instead (e.g. \"🔴 — posted as inline comments\"), same as what `comment-findings` " +
-        "will actually do.\n" +
+        "will actually do. Its output ENDS with a numbered \"what would you like to do?\" list " +
+        "(TAI-411) — part of the same stdout, never something you write; `comment-findings` does " +
+        "not post it.\n" +
         "- `comment-findings` — same rendering as `render-findings`, but posts the result as the " +
         "PR's summary comment (via the same general-comment path `comment` uses). TAI-207: before " +
         "posting the summary, also posts one real inline PR comment (anchored to that exact file " +
@@ -334,7 +336,9 @@ function prSkillBody(taiHome: string): string {
         "human as chat content (TAI-258, found live 2026-08-27) — running the command is not " +
         "enough, and neither is referencing or summarizing what it said (\"rendered by " +
         "render-findings, leaning approve\" is NOT the findings). Quote the real markdown the " +
-        "command printed, in full, in the message the human actually reads. Do NOT, in this same " +
+        "command printed, in full — **including the numbered \"what would you like to do?\" list at " +
+        "its end (TAI-411), which is how the human learns their options; never trim it** — in the " +
+        "message the human actually reads. Do NOT, in this same " +
         "turn: run `git-pr comment-findings`, run `git-pr review`, or ask a question via any " +
         "interactive tool. End your turn right here and wait for the human's own next message — " +
         "do not try to keep going.\n\n" +
@@ -354,7 +358,10 @@ function prSkillBody(taiHome: string): string {
         "4. **When the human's own next message tells you what to do, that ordinary reply is " +
         "the trigger — not a same-turn continuation, not a special tool.** They'll say it in " +
         "plain language: \"post it and approve,\" \"don't post, request changes,\" \"neither,\" " +
-        "\"just approve, no comment needed,\" etc. — interpret it and act:\n" +
+        "\"just approve, no comment needed,\" etc. — or with a bare number from the list " +
+        "`render-findings` ended with (TAI-411): **1** post and approve, **2** post the findings " +
+        "only, **3** approve only (no comment), **4** post and request changes, **5** neither " +
+        "(nothing is run). Interpret it and act:\n" +
         "   - If they want the findings posted: run `git-pr comment-findings <REPO> [PR-ID] " +
         "@<path>` — the same file from step 2, never retyped or re-composed as prose.\n" +
         "   - If they want a decision recorded: run `git-pr review` with `approve` or " +

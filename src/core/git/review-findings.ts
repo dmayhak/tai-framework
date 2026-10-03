@@ -248,3 +248,33 @@ export function renderReviewFindings(
 
     return lines.join("\n");
 }
+
+const NEXT_STEP_OPTIONS: readonly { readonly text: string; readonly suggestedFor?: ReviewLeaning }[] = [
+    { text: "post and approve", suggestedFor: "approve" },
+    { text: "post the findings only" },
+    { text: "approve only (no comment)" },
+    { text: "post and request changes", suggestedFor: "requestChanges" },
+    { text: "neither", suggestedFor: "neither" },
+];
+
+/**
+ * TAI-411: the numbered "what next?" list shown after the findings preview. The review flow
+ * deliberately stops after printing the findings (TAI-202/203/209 -- no same-turn question), so this
+ * list is what tells the human what they can say next. It is produced HERE, deterministically, and
+ * arrives inside the stdout the session pastes verbatim -- never composed by the model.
+ *
+ * Used ONLY by `renderFindingsPreview` (the `render-findings` CLI action). It must never be added to
+ * `renderReviewFindings`, which `comment-findings` posts to the PR: this list is for the human at the
+ * terminal, not part of the review.
+ */
+export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
+    const lines = NEXT_STEP_OPTIONS.map(
+        (o, i) => `${i + 1}. ${o.text}${o.suggestedFor === leaning ? " (suggested)" : ""}`
+    );
+    return ["---", "Nothing has been posted yet. What would you like to do? Reply with a number or plain words:", ...lines].join("\n");
+}
+
+/** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
+export function renderFindingsPreview(findings: ReviewFindings): string {
+    return `${renderReviewFindings(findings)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
+}
