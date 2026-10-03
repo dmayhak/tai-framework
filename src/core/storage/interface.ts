@@ -142,10 +142,9 @@ export interface IssueFilter {
     readonly persona?: Persona;
     readonly parentKey?: IssueKey;
     readonly updatedSince?: string; // ISO — powers brief §7's bulk incremental-sync case
-    // Bounds result size. Full cursor pagination is deferred (documented, not built —
-    // no real project is anywhere near needing it yet); a Jira-backed implementation
-    // can page internally up to this bound without violating the interface. When omitted,
-    // every backend applies DEFAULT_SEARCH_LIMIT below — never "everything."
+    // Bounds result size. A single bounded search is one page; callers that need every match
+    // set `exhaustive` below instead (TAI-402). When both are omitted, every backend applies
+    // DEFAULT_SEARCH_LIMIT below — never "everything" by accident.
     readonly limit?: number;
     /**
      * TAI-402: return EVERY match, ignoring `limit` and `DEFAULT_SEARCH_LIMIT`. For callers whose
@@ -176,8 +175,9 @@ export interface IssueFilter {
  *
  * REGRESSION this fixes (TAI-15 code review): the filesystem backend used to return every
  * matching issue unbounded when `limit` was omitted, while the Jira backend capped at 50 —
- * real Jira has no unbounded fetch to offer (full cursor pagination is the deferred feature
- * noted above), so "unbounded" was never actually achievable on both backends, only one.
+ * real Jira has no unbounded fetch in one request (reaching everything takes the cursor paging
+ * that `IssueFilter.exhaustive` opts into, TAI-402), so a bare "unbounded" default was never
+ * achievable on both backends, only one.
  * A caller relying on "no limit means everything" would silently get truncated results the
  * moment the same code ran against Jira.
  */
