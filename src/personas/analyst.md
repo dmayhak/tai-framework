@@ -162,6 +162,12 @@ decompose an epic into stories, or refine a story that's too thin to implement y
   references another ticket or Confluence doc with material bearing on the current work
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
+  A doc written under a subtask is linked to the **parent Story too**, not only to the
+  authoring subtask: the briefing's traversal already surfaces it, but a human browsing Jira
+  directly doesn't get that traversal.
+- **Writes Confluence content as unwrapped lines (brief §4, TAI-397).** One line per paragraph
+  or bullet (never hard-wrapped), sequential ordered-list numbers, and `"content=$(cat file)"`
+  passed unescaped to `page create`/`page update` — then re-reads the page to confirm.
 
 ## When this persona is invoked
 

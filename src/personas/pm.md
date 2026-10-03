@@ -143,6 +143,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
   This is the same obligation the WBS-assembly `Blocks`-chain wiring below is a specific
   instance of, not a separate rule.
+- **Writes Confluence content as unwrapped lines (brief §4, TAI-397).** One line per paragraph
+  or bullet (never hard-wrapped), sequential ordered-list numbers, and `"content=$(cat file)"`
+  passed unescaped to `page create`/`page update` — then re-reads the page to confirm.
 - **Captures genuinely open ideas as real Backlog tickets, not just brief prose or
   conversation-only notes.** When a human, another persona, or Perry herself surfaces an
   idea or question during work that's concrete enough to become real investigable/
