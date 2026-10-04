@@ -1312,7 +1312,10 @@ export function defineStorageConformance(
             // A small `limit` stands in for DEFAULT_SEARCH_LIMIT so three children are enough to
             // tell "bounded" from "everything" without creating 50+ live fixtures. Real cursor
             // paging (>100 results) is covered by the stubbed Jira unit test.
-            async function epicWithChildren(count: number) {
+            // Both tests only read this fixture, so build it once (lazily) and share it.
+            let fixture: ReturnType<typeof buildEpicWithChildren> | undefined;
+            const epicWithChildren = () => (fixture ??= buildEpicWithChildren(3));
+            async function buildEpicWithChildren(count: number) {
                 const epic = track(
                     await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: "epic", summary: "Conformance: limit epic" })
                 );
@@ -1332,7 +1335,7 @@ export function defineStorageConformance(
             }
 
             it("a bounded search returns at most `limit`; an exhaustive one returns every match", async () => {
-                const { epic, keys } = await epicWithChildren(3);
+                const { epic, keys } = await epicWithChildren();
                 const all = () => h.backend.workTracker.search({ projectKey: h.projectKey, parentKey: epic.key, exhaustive: true });
                 const found = await eventually(all, (hits) => hits.length >= keys.length, `exhaustive search missing children of ${epic.key}`);
                 assert.deepEqual([...found.map((i) => i.key as string)].sort(), [...keys].sort());
@@ -1342,7 +1345,7 @@ export function defineStorageConformance(
             });
 
             it("exhaustive ignores `limit`, and still honors the other filter fields", async () => {
-                const { epic, keys } = await epicWithChildren(3);
+                const { epic, keys } = await epicWithChildren();
                 const filter = { projectKey: h.projectKey, parentKey: epic.key, exhaustive: true, limit: 1 };
                 const found = await eventually(
                     () => h.backend.workTracker.search(filter),
