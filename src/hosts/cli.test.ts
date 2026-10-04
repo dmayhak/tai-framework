@@ -347,6 +347,12 @@ describe("renderIssueSearchResults", () => {
         const notHit = renderIssueSearchResults(issues, { projectKey: "TAI", limit: 3 });
         assert.doesNotMatch(notHit, /Hit the search limit/);
     });
+
+    it("counts rows the backend skipped as unreadable toward the limit hint (TAI-405)", () => {
+        const one = [makeIssue({ key: toIssueKey("TAI-1") })];
+        assert.doesNotMatch(renderIssueSearchResults(one, { projectKey: "TAI", limit: 2 }), /Hit the search limit/);
+        assert.match(renderIssueSearchResults(one, { projectKey: "TAI", limit: 2 }, 1), /Hit the search limit \(2\)/);
+    });
 });
 
 describe("renderLinkedIssues", () => {
