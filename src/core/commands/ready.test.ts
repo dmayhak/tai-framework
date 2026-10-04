@@ -17,6 +17,7 @@ import {
     type PullRequestState,
     type RepoId,
 } from "../git/interface.js";
+import { UnreadableIssueError, takeUnreadableIssues } from "../storage/unreadable-issues.js";
 import { findReadyWork, findReadyPRWork } from "./ready.js";
 import { writeWorkStatus } from "../workspace/status.js";
 import { writeLivingDocSnapshot } from "../workspace/living-doc-staleness.js";
@@ -1941,6 +1942,55 @@ describe("findReadyWork past the search limit (TAI-402)", () => {
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             const listed = new Set(result.ready.map((i) => i.key as string));
             assert.deepEqual(keys.filter((k) => !listed.has(k)), []);
+        });
+    });
+});
+
+describe("findReadyWork with a ticket of an unmapped Jira type in the graph (TAI-405)", () => {
+    /** A tracker that, like Jira's getIssue, fails hard for one key -- and reads everything else normally. */
+    function unreadableAt(backend: StorageBackend, unreadableKey: string) {
+        const inner = backend.workTracker;
+        return Object.assign(Object.create(inner), {
+            async getIssue(key: string) {
+                if (key === unreadableKey) throw new UnreadableIssueError(key, "Task", `Unknown Jira issue type "Task".`);
+                return inner.getIssue(key as never);
+            },
+        }) as typeof inner;
+    }
+
+    test("a Story whose parent Epic cannot be read is still ready, and the skipped ticket is reported", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            takeUnreadableIssues();
+            const epic = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: "epic", summary: "Stray epic", persona: Persona.Pm });
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                parentKey: epic.key,
+                summary: "Child of an unreadable parent",
+                persona: Persona.Pm,
+            });
+            await backend.workTracker.transition(story.key, Status.ToDo);
+
+            const workTracker = unreadableAt(backend, epic.key);
+            const result = await findReadyWork({ workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.ready.some((i) => i.key === story.key));
+            assert.deepEqual(takeUnreadableIssues().map((i) => i.key), [epic.key]);
+        });
+    });
+
+    test("an unreadable depends-on blocker counts as still open: flagged in blockedBy, never excluded", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            takeUnreadableIssues();
+            const blocker = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Blocker", persona: Persona.Pm });
+            const dependent = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Dependent", persona: Persona.Pm });
+            await backend.workTracker.transition(dependent.key, Status.ToDo);
+            await backend.workTracker.createLink(dependent.key, DependencyRelation.DependsOn, blocker.key);
+
+            const workTracker = unreadableAt(backend, blocker.key);
+            const result = await findReadyWork({ workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.ready.some((i) => i.key === dependent.key));
+            assert.deepEqual(result.blockedBy.get(dependent.key), [blocker.key]);
+            takeUnreadableIssues();
         });
     });
 });

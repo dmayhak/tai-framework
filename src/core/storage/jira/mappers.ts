@@ -6,6 +6,7 @@
  * live (a persona quietly mapped to the wrong Jira option is far worse than a crash).
  */
 
+import { UnreadableIssueError } from "../unreadable-issues.js";
 import {
     Persona,
     Status,
@@ -96,6 +97,14 @@ export function toJiraIssueType(t: IssueType, aliases: TypeAliasMap = EMPTY_TYPE
     return aliases.toJira.get(t) ?? JIRA_ISSUE_TYPE[t];
 }
 
+/** Thrown for a Jira type TAI has no mapping for; `toIssue` upgrades it to an `UnreadableIssueError` that knows the key. */
+export class UnknownJiraIssueTypeError extends Error {
+    constructor(readonly typeName: string, message: string) {
+        super(message);
+        this.name = "UnknownJiraIssueTypeError";
+    }
+}
+
 export function fromJiraIssueType(name: string, aliases: TypeAliasMap = EMPTY_TYPE_ALIAS_MAP): IssueType {
     const aliased = aliases.fromJira.get(name);
     if (aliased !== undefined) return aliased;
@@ -104,7 +113,8 @@ export function fromJiraIssueType(name: string, aliases: TypeAliasMap = EMPTY_TY
     // project is provisioned differently than the schema believes — guessing would produce
     // a wrong-but-plausible Issue and corrupt everything downstream that routes on type.
     if (t === undefined) {
-        throw new Error(
+        throw new UnknownJiraIssueTypeError(
+            name,
             `Unknown Jira issue type "${name}". Provision it in Jira, add it to SubtaskType/StoryType, ` +
                 `or map it on the "Type Aliases" Confluence page (TAI-116 piece 4).`
         );
@@ -253,6 +263,16 @@ export function toAttachmentRef(raw: { id: string; filename: string; size?: numb
 /** TAI-390: the one option TAI sets/reads on Jira's multi-checkbox "Flagged" field. */
 export const JIRA_FLAG_OPTION = "Impediment";
 
+/** TAI-405: `fromJiraIssueType`, but an unmapped type surfaces as an `UnreadableIssueError` naming the ticket. */
+function issueTypeOrUnreadable(key: string, typeName: string, aliases: TypeAliasMap): IssueType {
+    try {
+        return fromJiraIssueType(typeName, aliases);
+    } catch (e) {
+        if (e instanceof UnknownJiraIssueTypeError) throw new UnreadableIssueError(key, e.typeName, e.message);
+        throw e;
+    }
+}
+
 export function toIssue(
     raw: RawIssue,
     personaFieldId: string,
@@ -267,7 +287,7 @@ export function toIssue(
     return {
         key: toIssueKey(raw.key),
         projectKey: f.project.key,
-        issueType: fromJiraIssueType(f.issuetype.name, aliases),
+        issueType: issueTypeOrUnreadable(raw.key, f.issuetype.name, aliases),
         summary: f.summary,
         // Explicit presence check, not truthy — a falsy check would collapse an
         // intentionally-cleared description ("") to the same undefined as a missing one,

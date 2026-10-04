@@ -11,6 +11,7 @@ import {
     type Page,
     type PageRef,
 } from "../interface.js";
+import { UnreadableIssueError, takeUnreadableIssues } from "../unreadable-issues.js";
 import { RestClient, apiTokenAuth } from "./rest-client.js";
 import { createJiraWorkTracker } from "./work-tracker.js";
 import { EMPTY_TYPE_ALIAS_MAP } from "./mappers.js";
@@ -1120,5 +1121,48 @@ describe("search pagination (TAI-402)", () => {
     it("an exhaustive search that never ends throws rather than silently returning a truncated set", async () => {
         const wt = trackerWith(stubFetch(() => json({ issues: [rawIssue(1)], nextPageToken: "x", isLast: false })));
         await assert.rejects(() => wt.search({ projectKey: "TAI", exhaustive: true }), /Exhaustive search still had more results/);
+    });
+});
+
+describe("unmapped Jira issue type (TAI-405)", () => {
+    const row = (key: string, type: string) => ({
+        key,
+        fields: {
+            project: { key: "TAI" },
+            issuetype: { name: type },
+            summary: `S ${key}`,
+            status: { name: "To Do" },
+            created: "2026-10-01T00:00:00.000-0600",
+            updated: "2026-10-01T00:00:00.000-0600",
+            [PERSONA_FIELD]: { value: "PM" },
+        },
+    });
+    const trackerFor = (rows: ReturnType<typeof row>[]) =>
+        trackerWith(
+            stubFetch((url) =>
+                /\/search\/jql/.test(url) ? json({ issues: rows, isLast: true }) : json(rows.find((r) => url.includes(`/issue/${r.key}`)))
+            )
+        );
+
+    it("search skips the row of an unmapped type, reports it, and still returns the others", async () => {
+        takeUnreadableIssues();
+        const found = await trackerFor([row("TAI-1", "Story"), row("TAI-2", "Task"), row("TAI-3", "Story")]).search({ projectKey: "TAI" });
+        assert.deepEqual(found.map((i) => i.key), ["TAI-1", "TAI-3"]);
+        assert.deepEqual(takeUnreadableIssues(), [{ key: "TAI-2", typeName: "Task" }]);
+    });
+
+    it("an unrelated mapping failure in a row is still fatal (only the unmapped-type case is skipped)", async () => {
+        const bad = row("TAI-2", "Story");
+        bad.fields.status = { name: "Nonsense" };
+        await assert.rejects(() => trackerFor([row("TAI-1", "Story"), bad]).search({ projectKey: "TAI" }));
+    });
+
+    it("reading that one issue by key still fails hard, naming the ticket and keeping the fix-it message", async () => {
+        const wt = trackerFor([row("TAI-2", "Task")]);
+        await assert.rejects(
+            () => wt.getIssue(toIssueKey("TAI-2")),
+            (e: unknown) =>
+                e instanceof UnreadableIssueError && e.key === "TAI-2" && e.typeName === "Task" && /Unknown Jira issue type "Task"/.test(e.message)
+        );
     });
 });

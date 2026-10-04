@@ -63,6 +63,7 @@ import {
     type EpicSummary,
 } from "../core/workspace/living-doc-staleness.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
+import { renderUnreadableIssuesNote, takeUnreadableIssues } from "../core/storage/unreadable-issues.js";
 import { installGlobal, defaultTaiHome, PM_KICKOFF_HINT } from "../core/commands/install-global.js";
 import {
     INIT_STEPS,
@@ -1610,7 +1611,10 @@ async function main(): Promise<void> {
             },
             persona
         );
-        console.log((fetchNote ? `${fetchNote}\n\n` : "") + renderReadyWork(result, arg));
+        const unreadableNote = renderUnreadableIssuesNote(takeUnreadableIssues());
+        console.log(
+            (fetchNote ? `${fetchNote}\n\n` : "") + renderReadyWork(result, arg) + (unreadableNote ? `\n\n${unreadableNote}` : "")
+        );
         return;
     }
 
@@ -1874,7 +1878,8 @@ async function main(): Promise<void> {
             const fields = parseKeyValueArgs(issueArgs);
             const filter = parseIssueSearchFilter(fields, config.projectKey);
             const issues = await config.backend.workTracker.search(filter);
-            console.log(renderIssueSearchResults(issues, filter));
+            const unreadableNote = renderUnreadableIssuesNote(takeUnreadableIssues());
+            console.log(renderIssueSearchResults(issues, filter) + (unreadableNote ? `\n\n${unreadableNote}` : ""));
             return;
         }
 
