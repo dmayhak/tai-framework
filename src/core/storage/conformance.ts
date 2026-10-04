@@ -1306,6 +1306,59 @@ export function defineStorageConformance(
             });
         });
 
+        // ---------- search past the limit (TAI-398/403) ----------
+
+        describe("WorkTracker: search limit vs exhaustive (TAI-398/403)", () => {
+            // A small `limit` stands in for DEFAULT_SEARCH_LIMIT so three children are enough to
+            // tell "bounded" from "everything" without creating 50+ live fixtures. Real cursor
+            // paging (>100 results) is covered by the stubbed Jira unit test.
+            // Both tests only read this fixture, so build it once (lazily) and share it.
+            let fixture: ReturnType<typeof buildEpicWithChildren> | undefined;
+            const epicWithChildren = () => (fixture ??= buildEpicWithChildren(3));
+            async function buildEpicWithChildren(count: number) {
+                const epic = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: "epic", summary: "Conformance: limit epic" })
+                );
+                const keys: string[] = [];
+                for (let i = 0; i < count; i++) {
+                    const child = track(
+                        await h.backend.workTracker.createIssue({
+                            projectKey: h.projectKey,
+                            issueType: StoryType.Story,
+                            parentKey: epic.key,
+                            summary: `Conformance: limit child ${i}`,
+                        })
+                    );
+                    keys.push(child.key);
+                }
+                return { epic, keys };
+            }
+
+            it("a bounded search returns at most `limit`; an exhaustive one returns every match", async () => {
+                const { epic, keys } = await epicWithChildren();
+                const all = () => h.backend.workTracker.search({ projectKey: h.projectKey, parentKey: epic.key, exhaustive: true });
+                const found = await eventually(all, (hits) => hits.length >= keys.length, `exhaustive search missing children of ${epic.key}`);
+                assert.deepEqual([...found.map((i) => i.key as string)].sort(), [...keys].sort());
+
+                const bounded = await h.backend.workTracker.search({ projectKey: h.projectKey, parentKey: epic.key, limit: 2 });
+                assert.equal(bounded.length, 2, "limit still bounds a non-exhaustive search");
+            });
+
+            it("exhaustive ignores `limit`, and still honors the other filter fields", async () => {
+                const { epic, keys } = await epicWithChildren();
+                const filter = { projectKey: h.projectKey, parentKey: epic.key, exhaustive: true, limit: 1 };
+                const found = await eventually(
+                    () => h.backend.workTracker.search(filter),
+                    (hits) => hits.length >= keys.length,
+                    `exhaustive+limit search missing children of ${epic.key}`
+                );
+                assert.equal(found.length, keys.length);
+
+                const none = await h.backend.workTracker.search({ ...filter, statuses: [Status.Done] });
+                assert.equal(none.length, 0, "exhaustive does not widen the filter, only the result cap");
+            });
+        });
+
         // ---------- read-your-write child lookup (TAI-381) ----------
 
         describe("WorkTracker: search with readYourWrites (TAI-381)", () => {
