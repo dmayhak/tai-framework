@@ -15,6 +15,8 @@ model: default          # inherits project default; overridable in persona confi
 permissions:
   create:
     - Epic                      # from Analyst's proposed decomposition, after human sign-off
+    - Kickoff                   # TAI-389/394 (human, 2026-10-05): the per-Epic Kickoff Story she gives every Epic in
+                                # grooming -- it was missing from this list even though item 1 already has her create it
     - Story
     - Bug                       # NOT decomposition-sourced like the others — a human can also
                                 # file a Bug directly without going through Perry at all
@@ -33,6 +35,26 @@ permissions:
                                    # Research is needed -- owner stays Analyst
     - Subtask:UxDesign            # same TAI-83 exception, same item-1 judgment moment as
                                    # Research above -- owner stays UX Designer
+    # TAI-389/394 (human, 2026-10-05): "if PM knows a task is needed, PM should be able to create it." Perry may
+    # create EVERY subtask type, SpikeTask included -- the TAI-83 rule (workflows/dependencies.md) already lets any
+    # persona create any subtask once it has real, in-context judgment that it is needed; this list had simply lagged
+    # behind it. Owner stays the type's fixed persona, and a SpikeTask needs its persona named at creation (TAI-409).
+    # Still not blind pre-population: a subtask is created because Perry concluded it is needed for THIS Story.
+    # (CodeReview is not listed: retired in rev 52, reviewing is a PR action, not a ticket.)
+    - Subtask:EpicReview
+    - Subtask:Feasibility
+    - Subtask:DesignReview
+    - Subtask:Database
+    - Subtask:Infra
+    - Subtask:Dev
+    - Subtask:IntegrationTest
+    - Subtask:SystemTest
+    - Subtask:E2ETest
+    - Subtask:UAT
+    - Subtask:Triage
+    - Subtask:Deploy
+    - Subtask:PostDeploy
+    - Subtask:SpikeTask
   workOn:
     - Epic                      # decompose an Epic into Stories/Subtasks directly (brief
                                 # §3.7); supersedes the original Analyst-proposes/PM-creates

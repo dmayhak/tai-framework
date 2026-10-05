@@ -4,7 +4,18 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-05 (rev 75 — **TAI-416/419: ranked assignee suggestions with reasons.**
+> **Last updated:** 2026-10-05 (rev 76 — **TAI-389/394: Perry may create `Kickoff` and every live subtask
+> type, `SpikeTask` included.** Found in the DesignReview of the grooming ADR (Confluence page 48463873, now
+> rev 5): `personas/pm.md`'s `create` grant omitted `Kickoff` (which she already creates per Epic) and covered
+> only five subtask types, contradicting the ADR's "tasks already known". Human decision: if the PM knows a
+> task is needed she should be able to create it. This aligns the grant with the TAI-83 rule that any persona
+> may create any subtask once it has real, in-context judgment that it is needed (not blind pre-population);
+> the owner stays the type's fixed persona, a `SpikeTask` still needs its persona named (TAI-409), everything
+> she creates lands in Backlog, and the retired `CodeReview` stays out. A test pins the grant.
+> `workflows/kickoff.md`'s "Perry never creates `EpicReview`" is now scoped to the initial Kickoff moment.
+> `TAI_STALE_BACKLOG_DAYS` is documented in `.env.example`.
+>
+> Prior: rev 75 — **TAI-416/419: ranked assignee suggestions with reasons.**
 > With 2 or more humans on a persona and nobody named, `issue create` now makes the ticket UNASSIGNED and
 > prints a ranked list (the session's human pinned first, "leave unassigned" always a choice) instead of
 > silently assigning the session's human; the create-time rev 54 shortcut is removed, the claim and

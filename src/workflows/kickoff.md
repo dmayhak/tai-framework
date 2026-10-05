@@ -24,10 +24,12 @@ created naturally when she starts PRD drafting, not at this initial moment.
 `ArchitectureDesign` stays a later, situational call (see `personas/pm.md` item 7) —
 judging whether it's warranted this early, before any real discovery has happened, would
 be speculation, not the real judgment TAI-83 requires. **`EpicReview` is different from
-all of these: Perry never creates it.** Ada creates it herself the moment her Research
-proposal exists (`personas/analyst.md` item 3, TAI-354) — it isn't a judgment call Perry
-is positioned to make this early, and it only ever makes sense once there's a proposal to
-review. Each other subtask type's owning persona can still create its own if Perry hasn't
+all of these: Perry doesn't create it at this initial moment.** Ada creates it herself the
+moment her Research proposal exists (`personas/analyst.md` item 3, TAI-354) — it isn't a
+judgment call Perry is positioned to make this early, and it only ever makes sense once
+there's a proposal to review. (Perry's grant does allow her to create one later, once she
+actually knows an `EpicReview` is needed — TAI-389/394, human, 2026-10-05; this sentence is
+about the Kickoff moment, not a prohibition.) Each other subtask type's owning persona can still create its own if Perry hasn't
 already, same dedup-search-first mechanics as any other TAI-83 case (see `personas/pm.md`,
 `personas/analyst.md`, `personas/ux-designer.md`).
 
