@@ -8,7 +8,7 @@ import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { reportUnreadableIssue, takeUnreadableIssues } from "../storage/unreadable-issues.js";
-import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv, type GroomingDeps } from "./groom.js";
+import { findGroomingWork, mapWithLimit, renderGroomingBriefing, staleBacklogDaysFromEnv, type GroomingDeps } from "./groom.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
 
@@ -175,6 +175,42 @@ describe("findGroomingWork (TAI-395, ADR page 48463873)", () => {
         });
     });
 
+    it("(h) shows the NEWEST unassigned tickets first, so the overflow is the older ones", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const made: string[] = [];
+            for (let i = 0; i < 17; i++) made.push((await mk(wt, { issueType: StoryType.Story, parentKey: epic.key })).key);
+            const result = await findGroomingWork(deps(wt, { needsAssigneeList: async (i) => `list ${i.key}` }));
+            assert.equal(result.needsAssignee[0]!.issue.key, made[made.length - 1], "newest first");
+            assert.ok(!result.needsAssignee.some((n) => n.issue.key === made[0]), "the oldest is in the overflow");
+            assert.equal(result.needsAssigneeOverflow, 2);
+        });
+    });
+
+    it("reads the blockers of many Backlog tickets with BOUNDED concurrency, not one at a time and not all at once", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const stories: string[] = [];
+            for (let i = 0; i < 14; i++) stories.push((await mk(wt, { issueType: StoryType.Story, parentKey: epic.key })).key);
+            let inFlight = 0;
+            let peak = 0;
+            const slow = Object.assign(Object.create(wt), {
+                getLinkedIssues: async (...args: Parameters<WorkTracker["getLinkedIssues"]>) => {
+                    inFlight++;
+                    peak = Math.max(peak, inFlight);
+                    await new Promise((r) => setTimeout(r, 15));
+                    inFlight--;
+                    return wt.getLinkedIssues(...args);
+                },
+            }) as WorkTracker;
+            const result = await findGroomingWork(deps(slow));
+            assert.ok(peak > 1, `reads should overlap (peak ${peak})`);
+            assert.ok(peak <= 5, `concurrency stays bounded (peak ${peak})`);
+            assert.deepEqual(result.promotionCandidates, [], "the results do not change");
+            assert.equal(stories.length, 14);
+        });
+    });
+
     it("an epic key narrows every section to that epic's children, their subtasks and the epic itself", async () => {
         await withTracker(async (wt) => {
             const mine = await mk(wt, { issueType: "epic" });
@@ -249,7 +285,7 @@ describe("renderGroomingBriefing (TAI-395)", () => {
         assert.match(out, /idle 90 days/);
         assert.match(out, /TAIT-2 \("Task"\)/);
         assert.match(out, /1\. Ann/);
-        assert.match(out, /and 2 more.*issue suggest/s);
+        assert.match(out, /and 2 older tickets.*issue suggest/s);
     });
 
     it("shows the per-list footer (assign command, interactive instruction) ONCE under section 8, not under every ticket", () => {
@@ -269,5 +305,26 @@ describe("renderGroomingBriefing (TAI-395)", () => {
         assert.match(out, /1\. Ann \(ann@x\.com\)/);
         assert.match(out, /To assign any of these: `issue assign <KEY> <EMAIL>`/);
         assert.match(out, /Leave unassigned/);
+    });
+});
+
+describe("mapWithLimit (TAI-395 review)", () => {
+    it("keeps the input order, runs at most `limit` at once, and handles an empty list", async () => {
+        let inFlight = 0;
+        let peak = 0;
+        const out = await mapWithLimit([5, 1, 4, 2, 3, 6], 2, async (n) => {
+            inFlight++;
+            peak = Math.max(peak, inFlight);
+            await new Promise((r) => setTimeout(r, n));
+            inFlight--;
+            return n * 10;
+        });
+        assert.deepEqual(out, [50, 10, 40, 20, 30, 60]);
+        assert.equal(peak, 2);
+        assert.deepEqual(await mapWithLimit([], 3, async (n: number) => n), []);
+    });
+
+    it("propagates a failure instead of swallowing it", async () => {
+        await assert.rejects(() => mapWithLimit([1, 2, 3], 2, async (n) => { if (n === 2) throw new Error("boom"); return n; }), /boom/);
     });
 });

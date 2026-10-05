@@ -67,6 +67,24 @@ export function staleBacklogDaysFromEnv(env: Readonly<Record<string, string | un
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_STALE_BACKLOG_DAYS;
 }
 
+/** Bounded concurrency for the per-ticket link reads (a big Backlog must not mean hundreds of sequential round trips). */
+const READ_CONCURRENCY = 5;
+
+/** Maps `items` through `fn` with at most `limit` in flight, returning results in INPUT order. */
+export async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let next = 0;
+    const worker = async (): Promise<void> => {
+        for (;;) {
+            const i = next++;
+            if (i >= items.length) return;
+            results[i] = await fn(items[i]!);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return results;
+}
+
 const keyNumber = (key: string): number => Number(/-(\d+)$/.exec(key)?.[1] ?? 0);
 const byKey = (a: Issue, b: Issue): number => keyNumber(a.key) - keyNumber(b.key);
 
@@ -106,11 +124,11 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
     const blockersOf = async (issue: Issue): Promise<{ readonly all: readonly IssueKey[]; readonly open: readonly IssueKey[] }> => {
         const links = await workTracker.getLinkedIssues(issue.key, DependencyRelation.DependsOn, "outgoing");
         const all = links.map((l) => l.key);
-        const openOnes: IssueKey[] = [];
-        for (const key of all) {
-            const blocker = await readIssue(key);
-            if (!blocker || (blocker.status !== Status.Done && blocker.status !== Status.Canceled)) openOnes.push(key);
-        }
+        const blockers = await Promise.all(all.map((key) => readIssue(key)));
+        const openOnes = all.filter((_, i) => {
+            const blocker = blockers[i];
+            return !blocker || (blocker.status !== Status.Done && blocker.status !== Status.Canceled);
+        });
         return { all, open: openOnes };
     };
 
@@ -132,18 +150,22 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
     const backlog = open.filter((i) => i.status === Status.Backlog).sort(byKey);
 
     // --- (b) Backlog Kickoff Stories awaiting sequencing ---
-    const backlogKickoffs: GroomingKickoffRow[] = [];
-    for (const issue of backlog.filter((i) => i.issueType === StoryType.Kickoff)) {
-        const epic = issue.parentKey ? await readIssue(issue.parentKey) : null;
-        backlogKickoffs.push({ issue, epic, openBlockers: (await blockersOf(issue)).open, flagged: isFlagged(issue) });
-    }
+    const backlogKickoffs: GroomingKickoffRow[] = await mapWithLimit(
+        backlog.filter((i) => i.issueType === StoryType.Kickoff),
+        READ_CONCURRENCY,
+        async (issue) => {
+            const epic = issue.parentKey ? await readIssue(issue.parentKey) : null;
+            return { issue, epic, openBlockers: (await blockersOf(issue)).open, flagged: isFlagged(issue) };
+        }
+    );
 
     // --- (c) Backlog tickets whose depends-on blockers are all done: promotion candidates ---
-    const promotionCandidates: Issue[] = [];
-    for (const issue of backlog.filter((i) => i.issueType !== StoryType.Kickoff && i.issueType !== "epic")) {
-        const { all, open: stillOpen } = await blockersOf(issue);
-        if (all.length > 0 && stillOpen.length === 0) promotionCandidates.push(issue);
-    }
+    const checked = await mapWithLimit(
+        backlog.filter((i) => i.issueType !== StoryType.Kickoff && i.issueType !== "epic"),
+        READ_CONCURRENCY,
+        async (issue) => ({ issue, ...(await blockersOf(issue)) })
+    );
+    const promotionCandidates = checked.filter((c) => c.all.length > 0 && c.open.length === 0).map((c) => c.issue);
 
     // --- (d) flagged, every open status ---
     const flagged = [...open].filter(isFlagged).sort(byKey);
@@ -157,7 +179,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
     // --- (h) tickets that need an assignee ---
     const needs = open
         .filter((i) => !i.assignee && i.persona && i.issueType !== "epic" && (i.status === Status.Backlog || i.status === Status.ToDo))
-        .sort(byKey);
+        .sort((a, b) => byKey(b, a)); // newest first: the overflow is the OLDER tickets
     const needsAssignee: { issue: Issue; list: string }[] = [];
     if (deps.needsAssigneeList) {
         for (const issue of needs.slice(0, MAX_NEEDS_ASSIGNEE)) {
@@ -247,7 +269,7 @@ export function renderGroomingBriefing(result: GroomingResult): string {
         );
     }
     if (result.needsAssigneeOverflow > 0) {
-        assignLines.push("", `…and ${result.needsAssigneeOverflow} more without an assignee; run \`issue suggest <KEY>\` for any of them.`);
+        assignLines.push("", `…and ${result.needsAssigneeOverflow} older tickets without an assignee; run \`issue suggest <KEY>\` for any of them.`);
     }
     section(8, "Tickets that need an assignee", assignLines);
 
