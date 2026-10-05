@@ -152,6 +152,13 @@ field as not found — that report **is** the concrete to-do list; keep provisio
 re-run until it says "All N required issue types are provisioned... Persona field was
 found."
 
+On a project that already has tickets, the same run also **reports tickets whose Jira issue
+type TAI does not map** (a default `Task`, say), with a count and example keys per type
+(TAI-413). It is report only and never fails the step: alias the type on the Type Aliases page
+if it means the same as a TAI type (then set the persona with `issue update <KEY>
+persona=<PERSONA>`), otherwise leave it unmanaged and work it outside TAI. Until then TAI skips
+those tickets, with a warning, whenever it searches.
+
 ## 2. Confluence
 
 Create a Confluence space for this project (any key — brief §4 rev 18 is explicit that
