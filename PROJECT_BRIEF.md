@@ -4,7 +4,24 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-05 (rev 76 — **TAI-389/394: Perry may create `Kickoff` and every live subtask
+> **Last updated:** 2026-10-05 (rev 77 — **TAI-389/395: `/tai-groom` — backlog grooming with Perry.** A sixth
+> global skill (Claude Code and Gemini CLI) loads Perry with a computed, read-only briefing of the board and
+> needs no ticket (`groom [EPIC-KEY]`; the optional epic key narrows every section to that epic). It
+> deliberately **reverses the 2026-08-25 "TAI builds no planning command" decision**: the recurring planning
+> meeting stays the human's own cadence, and this is what Perry brings to it. Eight numbered sections: epics
+> with nothing under them, Backlog Kickoff Stories awaiting sequencing, Backlog tickets whose depends-on blockers
+> are all done (promotion candidates), flagged tickets in every open status, approved epics with nothing
+> scheduled, Backlog tickets untouched past `TAI_STALE_BACKLOG_DAYS` (default 60), tickets TAI cannot read
+> (unmapped Jira type) and tickets that need an assignee (the TAI-416 ranked list). **Authority:** Perry creates
+> Backlog tickets, depends-on links and phase labels on her own; every Backlog → To Do move, epic approval
+> (scheduling a first wave counts), flag/unflag, Cancel and assignment is proposed as a batch and applied only
+> after the human confirms. Each session she also reconciles the work-breakdown document's Epic table with the
+> board by reading, not by parser; the document wins. **A human-gated item** (DesignReview, EpicReview, UAT) moves
+> to To Do the moment its last blocker finishes, by the persona that finished it (new §4 bullet; every persona
+> doc points at it). Sections (d) and (f) filter in memory over an exhaustive read of the open tickets.
+> ADR Confluence page 48463873 (rev 5).
+>
+> Prior: rev 76 — **TAI-389/394: Perry may create `Kickoff` and every live subtask
 > type, `SpikeTask` included.** Found in the DesignReview of the grooming ADR (Confluence page 48463873, now
 > rev 5): `personas/pm.md`'s `create` grant omitted `Kickoff` (which she already creates per Epic) and covered
 > only five subtask types, contradicting the ADR's "tasks already known". Human decision: if the PM knows a
@@ -1547,6 +1564,11 @@ These are settled. Change them deliberately and update this file if you do.
   `page update`, write `"content=$(cat file)"` exactly like that — **unescaped**; an escaped
   `\$(cat ...)` writes the literal text over the page — and re-read the page afterward to confirm. Every
   persona that authors pages (Ada, Aria, Perry, Uma, Tessa) points here.
+- **Unblocking human-gated work (TAI-389/395).** When a persona completes a subtask and that was the last open
+  blocker of a **DesignReview, EpicReview or UAT**, it moves that item from Backlog to To Do in the same turn — a
+  human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and says in its hand-off what it
+  unblocked. Anything else that became unblocked waits for grooming's promotion section, where Perry proposes it.
+  This is persona guidance, not a code gate; every persona doc carries a one-line pointer here.
 - **Offering the assignee list (TAI-416/419).** When `issue create` (or `issue suggest <KEY>`, or the
   transition-gate rejection) prints a "Needs an assignee" list, an **interactive** session offers it to the
   human — every candidate in the printed order with its reason, **plus "Leave unassigned"** — with its own

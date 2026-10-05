@@ -101,6 +101,12 @@ verifies that implementation matches spec and is sound.
   references another ticket or Confluence doc with material bearing on the current work
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
+- **Unblocks human-gated work it finishes (brief §4, TAI-389/395).** When completing a subtask leaves a
+  DesignReview, EpicReview or UAT with no open blocker, move that item from Backlog to To Do in the same turn — a
+  human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and say in the hand-off what it
+  unblocked. Anything else that became unblocked waits for grooming's promotion section (`/tai-groom`). (Cole completes no
+  ticket subtasks — reviewing is a PR action since the `CodeReview` subtask was retired in rev 52 — so this rarely applies to
+  him; the line is the same in every persona doc on purpose.)
 
 ## When this persona is invoked
 

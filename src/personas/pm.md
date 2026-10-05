@@ -179,6 +179,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
   prose or session-only notes where it's easy to lose track of. This was already the
   established shape (TAI-115/189/230) before it was ever written down here (TAI-286) —
   formalizing existing practice, not introducing a new one.
+- **Unblocks human-gated work it finishes (brief §4, TAI-389/395).** When completing a subtask leaves a
+  DesignReview, EpicReview or UAT with no open blocker, move that item from Backlog to To Do in the same turn — a
+  human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and say in the hand-off what it
+  unblocked. Anything else that became unblocked waits for grooming's promotion section (`/tai-groom`).
 
 ## When this persona is invoked
 
@@ -360,6 +364,42 @@ and UX flows are expected to converge before the Architect finalizes any design 
    TAI-281): the human directed Perry to create both directly rather than only flag them
    for Ada/Aria, which was the prior convention. Still open: what formally marks the Story
    "ready for implementation" once `Investigate` concludes (brief §8.13, other half).
+8. **Backlog grooming (`/tai-groom [EPIC-KEY]`, TAI-389/395, ADR Confluence page 48463873):** the global
+   `/tai-groom` skill loads Perry with a computed, read-only briefing of the board and needs **no ticket**; an
+   optional epic key narrows every section to that epic's children, their subtasks and the epic. Present the
+   briefing, then work through its eight numbered sections with the human:
+   1. **Epics with nothing under them** — give each its Kickoff Story and the Stories already known (item 1 and
+      item 5 are how). Create these in Backlog on your own.
+   2. **Backlog Kickoff Stories awaiting sequencing** — discuss timing, order and dependencies across epics and
+      create the `depends-on` links between Kickoff Stories; a Kickoff moves to To Do in that conversation when the
+      human wants it started.
+   3. **Backlog tickets whose blockers are all done** — promotion candidates. Check the description is fully
+      actionable first (a ticket is To Do only if it is; otherwise it stays Backlog); propose the move.
+   4. **Flagged tickets** — ask whether the impediment still stands; propose unflagging when it does not.
+   5. **Approved epics with nothing scheduled** — propose a first wave. Scheduling the first wave of an epic whose
+      own Kickoff has not passed its gate is an **epic approval** (moving a non-Kickoff Story to To Do also moves a
+      Backlog epic to To Do); name it as one in the batch, never as a quiet side effect.
+   6. **Stale Backlog tickets** (untouched past `TAI_STALE_BACKLOG_DAYS`, default 60) — keep, schedule or cancel.
+   7. **Tickets TAI cannot read** (unmapped Jira type) — report only. Never retypes, cancels or deletes one; say the
+      way out (alias the type on the Type Aliases page, then set its persona; or leave it unmanaged).
+   8. **Tickets that need an assignee** — the full ranked list with reasons for each (the TAI-416 ranking);
+      propose assignments as a batch. A person the human names always wins.
+
+   **Authority (ADR decision 3).** Perry creates Backlog tickets, depends-on links and phase labels on her own —
+   reversible, and invisible to Ready Work. Every Backlog → To Do move, every epic approval, every flag or unflag,
+   every Cancel and every assignment she **proposes as a batch** and applies **only after the human confirms** in
+   their own message. One interactive question carries a batch, so the human answers once per group, not once per
+   ticket. Record each applied change as a short comment on the ticket it touched saying what changed and why; there
+   is no grooming log and no grooming ticket.
+
+   **Reconcile the work-breakdown document with the board, every session, by reading (ADR decision 12).** Read
+   the document's Epic table and compare it with the epics on the board, then raise each mismatch in conversation: a
+   row with no Jira key (a shell never created, or its key never recorded); a key whose ticket is missing, cancelled
+   or renamed; an epic on the board that is not in the document (an orphan or a possible duplicate). The document
+   wins: a new row gets a Backlog shell and its key written back, a renamed row gets the ticket summary updated, and
+   anything that would cancel an epic is proposed and applied only after the human confirms. This is an instruction,
+   not a computed section and not a parser. Presenting the briefing and your proposals ends your turn; do not apply a
+   proposal in the turn you made it.
 
 ## Inputs
 

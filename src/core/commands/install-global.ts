@@ -403,7 +403,7 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts install-global\n` +
         "```\n\n" +
-        "This (re)writes all five skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`) " +
+        "This (re)writes all six skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`) " +
         "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
         "`tai-framework` itself has been updated at its fixed location. **Gemini CLI does not pick up " +
         "refreshed skill files in a running session — after an install/refresh, tell the human to " +
@@ -586,7 +586,39 @@ function auditSkillBody(taiHome: string): string {
     );
 }
 
-/** All 10 skill files (5 skills × 2 hosts) — identical content per skill across hosts, since
+function groomSkillBody(taiHome: string): string {
+    return (
+        "**What this is (TAI-389/395, ADR Confluence page 48463873):** a backlog-grooming session where YOU act as " +
+        "Perry (PM) over the whole board. It needs no ticket — that is the point: the conversation is about the board " +
+        "as a whole. (This deliberately reverses the 2026-08-25 \"TAI builds no planning command\" decision; the " +
+        "recurring planning meeting stays the human's own cadence, and this is what Perry brings to it.)\n\n" +
+        "Run this and read its full output. It takes an optional epic key: if one was given for this invocation, pass " +
+        "it as the one argument (it narrows every section to that epic's children, their subtasks and the epic itself); " +
+        "otherwise run with no argument for the whole board:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts groom [EPIC-KEY]\n` +
+        "```\n\n" +
+        "The output starts with a `# Persona: Perry (pm)` heading and Perry's own instructions, then a `---` separator, " +
+        "then the grooming briefing: eight numbered sections (epics with nothing under them, Backlog Kickoff Stories " +
+        "awaiting sequencing, Backlog tickets whose blockers are all done, flagged tickets, approved epics with nothing " +
+        "scheduled, stale Backlog tickets, tickets TAI cannot read, tickets that need an assignee). For the rest of this " +
+        "turn, act as that persona and follow its grooming behavior against the briefing. Present the briefing to the " +
+        "human first, then discuss it.\n\n" +
+        "**Authority (ADR decision 3).** Perry may create Backlog tickets, depends-on links and phase labels on her own — " +
+        "they are reversible and invisible to Ready Work. Every Backlog → To Do move, every epic approval (scheduling the " +
+        "first wave of an epic counts as one), every flag or unflag, every Cancel and every assignment she PROPOSES as a " +
+        "batch, and applies only after the human confirms in their own message. Carry a batch in one question per group, " +
+        "not one per ticket; record each applied change as a short comment on the ticket it touched.\n\n" +
+        "**Reconcile the work-breakdown document (ADR decision 12).** Read its Epic table and compare it with the epics on " +
+        "the board, by reading — not by parsing — and raise each mismatch in conversation: a row with no Jira key, a key " +
+        "whose ticket is missing, cancelled or renamed, an epic on the board that is not in the document. The document wins; " +
+        "anything that would cancel an epic is proposed and applied only after the human confirms.\n\n" +
+        "**Stop-and-wait.** Presenting the briefing and your proposals is the end of your turn: do not apply a proposed " +
+        "change in the same turn you proposed it, however obvious it looks."
+    );
+}
+
+/** All 12 skill files (6 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
     const skills: readonly { readonly name: string; readonly description: string; readonly body: string }[] = [
@@ -609,6 +641,14 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
             name: "tai-init",
             description: "Install/refresh TAI's own global skills, and (eventually) guide setup of a real target project (TAI-116)",
             body: initSkillBody(taiHome),
+        },
+        {
+            name: "tai-groom",
+            description:
+                "Backlog grooming session: loads Perry (PM) with a computed briefing of the whole board, or one epic, " +
+                "to sequence Kickoffs, schedule first waves and promote unblocked work -- proposals confirmed by the " +
+                "human, no ticket needed (TAI-389 ADR)",
+            body: groomSkillBody(taiHome),
         },
         {
             name: "tai-audit",

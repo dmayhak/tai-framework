@@ -26,6 +26,7 @@ import {
     parsePersonaArg,
     tryResolveCreateAssignee,
     resolveNamedAssignee,
+    renderGroomTurn,
     renderLinkedIssues,
     renderIssueDetail,
     renderReadyWork,
@@ -706,5 +707,12 @@ describe("resolveNamedAssignee (TAI-421)", () => {
         }, "del@example.com");
         assert.equal(r.assignee, undefined);
         assert.match(r.note!, /could not look up "del@example\.com" \(network down\)/);
+    });
+});
+
+describe("renderGroomTurn (TAI-395)", () => {
+    it("opens with the persona heading, then her instructions, a separator and the briefing, exactly like a work turn", () => {
+        const out = renderGroomTurn({ displayName: "Perry", id: "pm", prompt: "# Perry\n\nBe the PM." }, "# Grooming briefing\n\n## 1. x");
+        assert.equal(out, "# Persona: Perry (pm)\n\n# Perry\n\nBe the PM.\n\n---\n\n# Grooming briefing\n\n## 1. x");
     });
 });

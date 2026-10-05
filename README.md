@@ -79,7 +79,7 @@ writes global skill files for **both** Claude Code and Gemini CLI that point at 
 clone as TAI's fixed home; it doesn't copy files anywhere.
 
 This is a manual, one-time bootstrap by necessity: the `/tai-init`, `/tai-work`,
-`/tai-ready`, `/tai-pr`, and `/tai-audit` slash commands don't exist in your AI CLI until
+`/tai-ready`, `/tai-pr`, `/tai-audit`, and `/tai-groom` slash commands don't exist in your AI CLI until
 `install-global` has written them, so there's nothing to run *before* this step. Once it's
 done, those commands exist in every future session, in every project, on this machine —
 no re-bootstrap needed, and no separate install per project.
@@ -174,6 +174,7 @@ installed and a project is configured (or you're using the filesystem quickstart
 | `/tai-work <ISSUE-KEY>` | Load a ticket's briefing and invoke the persona that owns it — the entry point when you do. |
 | `/tai-pr create\|review\|merge` | Open, review, or merge a real PR for a `Dev` subtask, using TAI's own structured-findings review flow. |
 | `/tai-audit` | Report-only sweep of the open backlog for staleness/drift (stale notes, missing links, decision drift, …). |
+| `/tai-groom [epic]` | Backlog grooming with Perry (PM): a briefing of the whole board, or one epic — sequence Kickoffs, schedule a first wave, promote unblocked work, assign owners. Needs no ticket; every change is proposed and applied only after you confirm. |
 
 **A typical flow, end to end:**
 

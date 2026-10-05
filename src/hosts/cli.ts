@@ -127,6 +127,7 @@ import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
+import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -553,6 +554,11 @@ export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string 
                 : `(note: ${n.key}'s ${fields} changed since it was last read here — worth a fresh look.)`;
         })
         .join("\n");
+}
+
+/** TAI-395: a grooming turn is the same shape as a work turn -- persona heading, her instructions, `---`, the briefing. */
+export function renderGroomTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string): string {
+    return [`# Persona: ${persona.displayName} (${persona.id})`, "", persona.prompt, "", "---", "", briefing].join("\n");
 }
 
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
@@ -1646,6 +1652,39 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-389/395: `/tai-groom [EPIC-KEY]` -- loads Perry with a computed, read-only grooming briefing of the board
+    // (ADR page 48463873). No ticket needed; an optional epic key narrows every section to that epic.
+    if (subcommand === "groom") {
+        if (arg) {
+            const epic = await config.backend.workTracker.getIssue(toIssueKey(arg));
+            if (!epic) throw new Error(`${arg}: no such issue.`);
+            if (epic.issueType !== "epic") throw new Error(`${arg} is a ${epic.issueType}, not an epic -- /tai-groom takes an epic key (or none, for the whole board).`);
+        }
+        const pm = await loadPersonaConfig(config.backend.docStore, "pm", { spaceKey: config.spaceKey });
+        const evidenceCache = createEvidenceCache();
+        const result = await findGroomingWork({
+            workTracker: config.backend.workTracker,
+            projectKey: config.projectKey,
+            ...(arg ? { epicKey: arg } : {}),
+            staleBacklogDays: staleBacklogDaysFromEnv(),
+            needsAssigneeList: async (issue) =>
+                (
+                    await suggestAssignees(
+                        {
+                            workTracker: config.backend.workTracker,
+                            roster: await loadProjectRoster(config),
+                            areaWindowDays: areaWindowDaysFromEnv(),
+                            cache: evidenceCache,
+                        },
+                        issue,
+                        {}
+                    )
+                ).text,
+        });
+        console.log(renderGroomTurn(pm, renderGroomingBriefing(result)));
+        return;
+    }
+
     if (subcommand === "ready") {
         const persona = arg as Persona | undefined;
         const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
@@ -2116,7 +2155,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md|gemini-md`
     );
