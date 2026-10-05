@@ -1306,6 +1306,69 @@ export function defineStorageConformance(
             });
         });
 
+        // ---------- default persona on create (TAI-407/409/410) ----------
+
+        describe("WorkTracker: createIssue default persona (TAI-407/409/410)", () => {
+            it("a story-level ticket and an Epic with no persona default to PM", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: StoryType.Story, summary: "Conformance: default persona story" })
+                );
+                const epic = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: "epic", summary: "Conformance: default persona epic" })
+                );
+                assert.equal(story.persona, Persona.Pm);
+                assert.equal(epic.persona, Persona.Pm);
+            });
+
+            it("a subtask with no persona defaults to its type's owner", async () => {
+                const parent = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: StoryType.Story, summary: "Conformance: default persona parent" })
+                );
+                for (const [type, owner] of [
+                    [SubtaskType.Dev, Persona.Developer],
+                    [SubtaskType.IntegrationTest, Persona.Tester],
+                    [SubtaskType.ArchitectureDesign, Persona.Architect],
+                ] as const) {
+                    const sub = track(
+                        await h.backend.workTracker.createIssue({
+                            projectKey: h.projectKey,
+                            issueType: type,
+                            parentKey: parent.key,
+                            summary: `Conformance: default persona ${type}`,
+                        })
+                    );
+                    assert.equal(sub.persona, owner, type);
+                }
+            });
+
+            it("an explicit persona always wins over the default", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: explicit persona wins",
+                        persona: Persona.Architect,
+                    })
+                );
+                assert.equal(story.persona, Persona.Architect);
+            });
+
+            it("a SpikeTask with no persona has no default and is created persona-less", async () => {
+                const parent = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: StoryType.Story, summary: "Conformance: spike-task parent" })
+                );
+                const spike = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.SpikeTask,
+                        parentKey: parent.key,
+                        summary: "Conformance: persona-less spike task",
+                    })
+                );
+                assert.equal(spike.persona ?? null, null);
+            });
+        });
+
         // ---------- search past the limit (TAI-398/403) ----------
 
         describe("WorkTracker: search limit vs exhaustive (TAI-398/403)", () => {

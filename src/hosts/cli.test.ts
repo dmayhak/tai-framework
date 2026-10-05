@@ -22,6 +22,7 @@ import {
     resolveMergePersona,
     renderChangeNotes,
     renderIssueSearchResults,
+    PERSONA_LESS_CREATE_WARNING,
     renderLinkedIssues,
     renderIssueDetail,
     renderReadyWork,
@@ -621,5 +622,13 @@ describe("renderInitStepResult / renderInitStatus (TAI-349)", () => {
             },
         };
         assert.match(renderInitStatus(complete), /Perry/);
+    });
+});
+
+describe("PERSONA_LESS_CREATE_WARNING (TAI-409)", () => {
+    it("names the ticket and the command that fixes it", () => {
+        const w = PERSONA_LESS_CREATE_WARNING("TAI-9");
+        assert.match(w, /TAI-9 was created with NO persona/);
+        assert.match(w, /issue update TAI-9 persona=<PERSONA>/);
     });
 });

@@ -14,6 +14,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    Persona,
+    SUBTASK_OWNER,
+    defaultPersonaFor,
     StoryType,
     SubtaskType,
     resolveApplicablePrecedence,
@@ -423,5 +426,26 @@ describe("defaultTestTiersForBug (D5 expedited-path compression, TAI-119)", () =
             SubtaskType.Deploy,
         ];
         assert.ok(hasEdge(resolveApplicablePrecedence(StoryType.Bug, present), SubtaskType.IntegrationTest, SubtaskType.SystemTest));
+    });
+});
+
+describe("defaultPersonaFor (TAI-409)", () => {
+    const test = it;
+    test("a subtask gets SUBTASK_OWNER[type]; every subtask type with an owner matches", () => {
+        for (const type of Object.values(SubtaskType)) {
+            assert.equal(defaultPersonaFor(type), SUBTASK_OWNER[type], type);
+        }
+        assert.equal(defaultPersonaFor(SubtaskType.Dev), Persona.Developer);
+        assert.equal(defaultPersonaFor(SubtaskType.Triage), Persona.Tester);
+    });
+
+    test("story-level types and Epic default to PM", () => {
+        for (const type of [StoryType.Kickoff, StoryType.Spike, StoryType.Story, StoryType.Bug, "epic" as const]) {
+            assert.equal(defaultPersonaFor(type), Persona.Pm, type);
+        }
+    });
+
+    test("SpikeTask has no default owner", () => {
+        assert.equal(defaultPersonaFor(SubtaskType.SpikeTask), null);
     });
 });

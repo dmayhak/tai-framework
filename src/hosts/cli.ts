@@ -112,6 +112,7 @@ import { toRepoId, type GitHost, type GitMutationResult, type PullRequestComment
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
 import {
+    defaultPersonaFor,
     DependencyRelation,
     isSubtaskIssueType,
     Status,
@@ -987,6 +988,11 @@ export function resolveCreatePriority(
  * `skippedCount` (TAI-405) is how many rows the backend fetched but could not read (unmapped Jira type): they
  * count toward the cap, so a full page with one skipped row still shows the "hit the search limit" hint.
  */
+/** TAI-409: printed after a create that left the persona empty (only SpikeTask has no default). */
+export const PERSONA_LESS_CREATE_WARNING = (key: string): string =>
+    `WARNING: ${key} was created with NO persona. It cannot be driven with /tai-work and will not appear in a ` +
+    `persona-scoped /tai-ready. Set one now: issue update ${key} persona=<PERSONA>.`;
+
 export function renderIssueSearchResults(issues: readonly Issue[], filter: IssueFilter, skippedCount = 0): string {
     const scope = [
         `project: ${filter.projectKey}`,
@@ -1706,12 +1712,20 @@ async function main(): Promise<void> {
                         'display name ("Bug", "Dev", "CodeReview").\n' +
                         "  allowDuplicate=true opts out of the one-per-story-instance duplicate-subtask guard " +
                         "(TAI-226/228) -- only for a deliberate redo of a normally-singleton subtask type.\n" +
+                        "  persona= defaults to the type's owner (a subtask) or PM (story-level, Epic); only a spike-task " +
+                        "has no default -- ASK the human which persona before creating it (TAI-409).\n" +
                         "  A subtask with parent= but no explicit priority= inherits its parent's Priority " +
                         "automatically (TAI-292) -- pass priority= explicitly to override."
                 );
             }
             const fields = parseKeyValueArgs(kv);
-            const persona = fields["persona"] !== undefined ? (fields["persona"] as Persona) : undefined;
+            // TAI-409: an omitted persona= falls back to the documented default for the type (the
+            // owner for a subtask, PM for story-level and Epic), BEFORE assignment, so the
+            // assignment-helper sees the real persona. Only SpikeTask has no default.
+            const persona: Persona | undefined =
+                fields["persona"] !== undefined
+                    ? (fields["persona"] as Persona)
+                    : (defaultPersonaFor(issueType as StoryType | SubtaskType | "epic") ?? undefined);
 
             // TAI-249/260 ADR: pre-assign at creation via the assignment-helper -- both
             // halves of brief §5.5 (sole-candidate, and the ratified current-user shortcut
@@ -1753,6 +1767,7 @@ async function main(): Promise<void> {
             };
             const issue = await config.backend.workTracker.createIssue(input);
             console.log(renderIssueRef(issue));
+            if (!issue.persona) console.log(`\n${PERSONA_LESS_CREATE_WARNING(issue.key)}`);
             return;
         }
 

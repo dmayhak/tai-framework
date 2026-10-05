@@ -4,7 +4,17 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-02 (rev 73 — **TAI-397/400: session learnings that lived only in private
+> **Last updated:** 2026-10-05 (rev 74 — **TAI-407/409: the documented persona defaults are now
+> real.** Nothing in the code applied them: a bare create left the persona empty for every ticket
+> type, and `issue create` resolves an assignee only when a persona is set. Now an omitted persona
+> falls back to `SUBTASK_OWNER[type]` for a subtask and PM for every story-level ticket and Epic —
+> a shared pure `defaultPersonaFor`, called by `issue create` BEFORE assignment and applied by
+> `WorkTracker.createIssue` on both backends (an explicit `persona=` always wins). Only `SpikeTask`
+> has no default: the session asks the human which persona before creating it, and a create that
+> still ends persona-less is made anyway (a ticket is never lost) with a loud warning naming
+> `issue update <KEY> persona=`. Human-decided on TAI-408.
+>
+> Prior: rev 73 — **TAI-397/400: session learnings that lived only in private
 > memory are now stated in TAI's own docs.** A new §4 bullet records how personas write Confluence
 > page content (one unwrapped line per paragraph/bullet, sequential list numbers, the `content=$(cat
 > file)` quoting rule); the authoring personas point at it; Ada's and Aria's real-links principle
@@ -1969,7 +1979,9 @@ Subtask carries **two distinct fields**, never conflated:
    pattern, `workflows/*.md`), and is always overridable, exactly like `Deploy`/
    `PostDeploy`'s existing "default owner, overridable per instance" note. The ad-hoc
    `SpikeTask` subtask has no default and must have it set explicitly at creation, same as
-   it has no default human Assignee.
+   it has no default human Assignee (rev 74: the defaults above are applied in code on create;
+   for a `SpikeTask` the session asks the human which persona, and a create left persona-less
+   still succeeds with a loud warning).
 
 **Why a stored field, not a derived value:** since a human can appear under multiple
 personas in the Persona Roster, looking up "which persona is this" purely from roster
