@@ -39,7 +39,13 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { renderUnmappedTypesNote, scanProjectIssueTypes, summarizeUnmappedTypes, type UnmappedTypeGroup } from "./unmapped-types-report.js";
+import {
+    mappedIssueTypeNames,
+    renderUnmappedTypesNote,
+    scanProjectIssueTypes,
+    summarizeUnmappedTypes,
+    type UnmappedTypeGroup,
+} from "./unmapped-types-report.js";
 import { RestClient as JiraRestClient, apiTokenAuth as jiraApiTokenAuth } from "../storage/jira/rest-client.js";
 import { discoverPersonaFieldId } from "../storage/jira/work-tracker.js";
 import { JIRA_ISSUE_TYPE, toJiraIssueType, EMPTY_TYPE_ALIAS_MAP, type IssueType } from "../storage/jira/mappers.js";
@@ -225,7 +231,7 @@ export async function verifyJiraSetup(input: JiraVerifyInput): Promise<JiraVerif
     let unmappedTypes: readonly UnmappedTypeGroup[] = [];
     let scanNote: string | undefined;
     try {
-        const { rows, truncated } = await scanProjectIssueTypes(client, input.projectKey);
+        const { rows, truncated } = await scanProjectIssueTypes(client, input.projectKey, mappedIssueTypeNames(aliases));
         unmappedTypes = summarizeUnmappedTypes(rows, aliases);
         scanNote = renderUnmappedTypesNote(unmappedTypes, truncated);
     } catch (e) {

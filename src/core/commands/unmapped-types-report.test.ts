@@ -4,7 +4,13 @@ import assert from "node:assert/strict";
 import { RestClient as JiraRestClient, apiTokenAuth as jiraApiTokenAuth } from "../storage/jira/rest-client.js";
 import { parseTypeAliasesPage } from "../storage/jira/type-alias-config.js";
 import { EMPTY_TYPE_ALIAS_MAP } from "../storage/jira/mappers.js";
-import { renderUnmappedTypesNote, scanProjectIssueTypes, summarizeUnmappedTypes } from "./unmapped-types-report.js";
+import {
+    jqlQuote,
+    mappedIssueTypeNames,
+    renderUnmappedTypesNote,
+    scanProjectIssueTypes,
+    summarizeUnmappedTypes,
+} from "./unmapped-types-report.js";
 
 const rows = (...pairs: [string, string][]) => pairs.map(([key, typeName]) => ({ key, typeName }));
 
@@ -49,6 +55,19 @@ describe("renderUnmappedTypesNote (TAI-413)", () => {
     });
 });
 
+describe("mappedIssueTypeNames (TAI-413)", () => {
+    it("is every TAI display name plus every aliased native name, sorted and unique", () => {
+        const names = mappedIssueTypeNames(parseTypeAliasesPage("```yaml\nTask: story\nSub-task: dev\n```"));
+        assert.ok(names.includes("Story") && names.includes("Dev") && names.includes("Epic"));
+        assert.ok(names.includes("Task") && names.includes("Sub-task"), "aliased native names count as mapped");
+        assert.deepEqual(names, [...new Set(names)].sort());
+    });
+
+    it("without aliases it is just TAI's own display names", () => {
+        assert.ok(!mappedIssueTypeNames(EMPTY_TYPE_ALIAS_MAP).includes("Task"));
+    });
+});
+
 describe("scanProjectIssueTypes (TAI-413)", () => {
     function clientFor(pages: { issues: { key: string; fields: { issuetype: { name: string } } }[]; nextPageToken?: string; isLast: boolean }[]) {
         const seen: { jql: string; nextPageToken?: string }[] = [];
@@ -68,7 +87,7 @@ describe("scanProjectIssueTypes (TAI-413)", () => {
             { issues: [issue("P-1", "Story"), issue("P-2", "Task")], nextPageToken: "t1", isLast: false },
             { issues: [issue("P-3", "Task")], isLast: true },
         ]);
-        const result = await scanProjectIssueTypes(client, "P");
+        const result = await scanProjectIssueTypes(client, "P", ["Story", "Dev"]);
         assert.deepEqual(result.rows, rows(["P-1", "Story"], ["P-2", "Task"], ["P-3", "Task"]));
         assert.equal(result.truncated, false);
         assert.equal(seen.length, 2);
@@ -76,10 +95,23 @@ describe("scanProjectIssueTypes (TAI-413)", () => {
         assert.equal(seen[1]!.nextPageToken, "t1");
     });
 
+    it("asks Jira only for tickets whose type is NOT one of the mapped names, so the page holds the few that matter", async () => {
+        const { client, seen } = clientFor([{ issues: [issue("P-2", "Task")], isLast: true }]);
+        await scanProjectIssueTypes(client, "P", ["Story", "Dev"]);
+        assert.equal(seen[0]!.jql, 'project = "P" AND issuetype NOT IN ("Story", "Dev") ORDER BY key ASC');
+    });
+
+    it("escapes quotes and backslashes in the project key", async () => {
+        const { client, seen } = clientFor([{ issues: [], isLast: true }]);
+        await scanProjectIssueTypes(client, 'P"X\\', ["Story"]);
+        assert.match(seen[0]!.jql, /project = "P\\"X\\\\" AND/);
+        assert.equal(jqlQuote('a"b'), '"a\\"b"');
+    });
+
     it("stops at the page cap and says it was truncated instead of looping", async () => {
         const forever = { issues: [issue("P-1", "Task")], nextPageToken: "t", isLast: false };
         const { client, seen } = clientFor(Array.from({ length: 5 }, () => forever));
-        const result = await scanProjectIssueTypes(client, "P", 3);
+        const result = await scanProjectIssueTypes(client, "P", ["Story"], 3);
         assert.equal(result.truncated, true);
         assert.equal(seen.length, 3);
     });
