@@ -8,8 +8,11 @@
  * accidentally point these tests at the real `TAI` project. Only the site URL and
  * credentials come from the environment.
  */
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { Status } from "../../schema/story-schema.js";
-import { toHumanId, type IssueKey, type PageId } from "../interface.js";
+import { toHumanId, toIssueKey, type IssueKey, type PageId } from "../interface.js";
+import { UnreadableIssueError, takeUnreadableIssues } from "../unreadable-issues.js";
 import { RestClient, apiTokenAuth } from "./rest-client.js";
 import { createJiraBackend } from "./jira-backend.js";
 import { defineStorageConformance, type ConformanceHarness } from "../conformance.js";
@@ -112,3 +115,43 @@ defineStorageConformance(
     },
     { skip }
 );
+
+/**
+ * TAI-399/406: Jira-only, so it does NOT belong in the shared suite -- the filesystem backend
+ * cannot hold a ticket whose type TAI does not map. Relies on the long-standing stray "Task"
+ * issue on TAIT (found live 2026-10-02, TAI-399): an unfiltered search used to throw on it.
+ * That ticket (TAIT-2) carries the label `tai-fixture-unmapped-type` -- a deliberate, kept fixture,
+ * NOT a probe issue to clean up. If it is ever removed or retyped, recreate it (any issue of an
+ * unmapped type, e.g. "Task", in TAIT, with that label) -- the test fails loudly rather than
+ * passing without proving anything.
+ */
+describe(`jira (${PROJECT_KEY}): ticket of an unmapped issue type (TAI-399/406)`, { skip }, () => {
+    it("an unfiltered search skips it, reports it, and still returns the other tickets; reading it by key still fails hard", async () => {
+        const auth = apiTokenAuth(EMAIL!, API_TOKEN!);
+        const backend = await createJiraBackend({ siteUrl: SITE_URL!, spaceKey: SPACE_KEY, auth });
+
+        takeUnreadableIssues();
+        const found = await backend.workTracker.search({ projectKey: PROJECT_KEY, limit: 100 });
+        const skipped = takeUnreadableIssues();
+
+        assert.ok(
+            skipped.length > 0,
+            `expected at least one TAIT ticket of an unmapped type (the stray "Task"); none was skipped -- ` +
+                `create an issue of type "Task" in ${PROJECT_KEY} to restore this fixture`
+        );
+        assert.ok(found.length > 0, "the other tickets are still returned");
+        for (const s of skipped) {
+            assert.equal(
+                found.some((i) => i.key === s.key),
+                false,
+                `${s.key} must not be returned`
+            );
+        }
+
+        const first = skipped[0]!;
+        await assert.rejects(
+            () => backend.workTracker.getIssue(toIssueKey(first.key)),
+            (e: unknown) => e instanceof UnreadableIssueError && e.key === first.key && e.typeName === first.typeName
+        );
+    });
+});
