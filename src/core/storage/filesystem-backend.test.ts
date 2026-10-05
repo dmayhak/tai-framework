@@ -231,7 +231,7 @@ describe("issue CRUD", () => {
             // Brief §5.3 rev 27: `Backlog`, not `To Do`, is the default landing status.
             assert.equal(created.status, Status.Backlog);
             assert.equal(created.assignee, null);
-            assert.equal(created.persona, null);
+            assert.equal(created.persona, Persona.Pm, "TAI-409: story-level default");
             assert.deepEqual(created.labels, []);
             assert.deepEqual(created.comments, []);
 

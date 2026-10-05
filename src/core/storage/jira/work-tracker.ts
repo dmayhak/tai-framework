@@ -10,6 +10,7 @@
 
 import {
     Status,
+    defaultPersonaFor,
     isSubtaskIssueType,
     type Persona,
     type DependencyRelation,
@@ -309,8 +310,11 @@ export function createJiraWorkTracker(
                     throw new Error(duplicateSubtaskGateReason(input.parentKey, input.issueType, siblings[0]));
                 }
             }
+            // TAI-409: an omitted persona falls back to the documented default for the type.
+            const persona = input.persona ?? defaultPersonaFor(input.issueType) ?? undefined;
+            const withPersona = persona !== undefined ? { ...input, persona } : input;
             const created = await client.request<{ key: string }>("POST", `${API}/issue`, {
-                fields: toJiraFields(input, input),
+                fields: toJiraFields(withPersona, withPersona),
             });
             // Deliberate re-fetch. Jira's create response carries only key/id/self — it
             // echoes back neither custom fields nor server-set values (status, timestamps).

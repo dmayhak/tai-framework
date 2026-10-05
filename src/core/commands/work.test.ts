@@ -52,6 +52,8 @@ describe("prepareWorkTurn", () => {
                 issueType: StoryType.Story,
                 summary: "Unowned story",
             });
+            // TAI-409: a Story now defaults to PM on create, so clear it to model a persona-less ticket.
+            await backend.workTracker.updateIssue(story.key, { persona: null });
             await assert.rejects(
                 () => prepareWorkTurn({ backend, taiRoot, projectKey: "TAI", spaceKey: "TAI" }, story.key),
                 NoOwningPersonaError

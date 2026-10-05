@@ -169,6 +169,16 @@ export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
     [SubtaskType.Triage]: Persona.Tester,
 };
 
+/**
+ * TAI-409: the persona a new ticket gets when the creator names none (brief §5.6) --
+ * `SUBTASK_OWNER[type]` for a subtask, PM for every story-level ticket and Epic. `null` only for
+ * `SpikeTask`, which has no default owner and must be given one. An explicit persona always wins;
+ * this is only the fallback. Applied by `WorkTracker.createIssue` on every backend.
+ */
+export function defaultPersonaFor(issueType: StoryType | SubtaskType | "epic"): Persona | null {
+    return isSubtaskIssueType(issueType) ? SUBTASK_OWNER[issueType] : Persona.Pm;
+}
+
 // Which subtask types are valid/expected under each story type.
 // A subtask type CAN appear under multiple story types (e.g. Database
 // under both Spike and Story) — this is what allows DBA/DevOps work to

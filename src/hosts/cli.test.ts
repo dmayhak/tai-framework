@@ -22,6 +22,9 @@ import {
     resolveMergePersona,
     renderChangeNotes,
     renderIssueSearchResults,
+    PERSONA_LESS_CREATE_WARNING,
+    parsePersonaArg,
+    tryResolveCreateAssignee,
     renderLinkedIssues,
     renderIssueDetail,
     renderReadyWork,
@@ -621,5 +624,49 @@ describe("renderInitStepResult / renderInitStatus (TAI-349)", () => {
             },
         };
         assert.match(renderInitStatus(complete), /Perry/);
+    });
+});
+
+describe("PERSONA_LESS_CREATE_WARNING (TAI-409)", () => {
+    it("names the ticket and the command that fixes it", () => {
+        const w = PERSONA_LESS_CREATE_WARNING("TAI-9");
+        assert.match(w, /TAI-9 was created with NO persona/);
+        assert.match(w, /issue update TAI-9 persona=<PERSONA>/);
+    });
+});
+
+describe("persona= validation and create-time assignment safety (TAI-409 review)", () => {
+    it("parsePersonaArg accepts every real persona id and rejects a typo, naming the valid values", () => {
+        for (const id of ["analyst", "pm", "architect", "ux-designer", "developer", "dba", "code-reviewer", "tester", "devops"]) {
+            assert.equal(parsePersonaArg(id), id);
+        }
+        assert.throws(() => parsePersonaArg("developr"), /Unknown persona "developr"\. Expected one of: analyst, pm/);
+    });
+
+    it("issue update and issue search reject a bad persona= too, instead of passing it through", () => {
+        assert.throws(() => parseIssueUpdatePatch({ persona: "nope" }), /Unknown persona/);
+        assert.throws(() => parseIssueSearchFilter({ persona: "nope" }, "TAI"), /Unknown persona/);
+        assert.deepEqual(parseIssueUpdatePatch({ persona: "pm" }), { persona: "pm" });
+    });
+
+    it("tryResolveCreateAssignee passes the resolved assignee through", async () => {
+        const human = { id: toHumanId("a@b.c"), displayName: "A" };
+        assert.deepEqual(await tryResolveCreateAssignee(async () => ({ assignee: human, candidates: [human] })), {
+            assignee: human,
+            note: undefined,
+        });
+        assert.deepEqual(await tryResolveCreateAssignee(async () => ({ assignee: null, candidates: [] })), {
+            assignee: undefined,
+            note: undefined,
+        });
+    });
+
+    it("tryResolveCreateAssignee turns a roster failure into an unassigned create with a note, never a throw", async () => {
+        const result = await tryResolveCreateAssignee(async () => {
+            throw new Error('Persona Roster page "Persona Roster" not found');
+        });
+        assert.equal(result.assignee, undefined);
+        assert.match(result.note!, /Created UNASSIGNED/);
+        assert.match(result.note!, /Persona Roster page/);
     });
 });

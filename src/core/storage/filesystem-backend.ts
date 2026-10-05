@@ -12,7 +12,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { Status, SubtaskType, DependencyRelation } from "../schema/story-schema.js";
+import { Status, SubtaskType, DependencyRelation, defaultPersonaFor } from "../schema/story-schema.js";
 import {
     type StorageBackend,
     type WorkTracker,
@@ -396,7 +396,7 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 // TAI-291's conformance suite against it (TAI-299).
                 status: Status.Backlog,
                 assignee: input.assignee ?? null,
-                persona: input.persona ?? null,
+                persona: input.persona ?? defaultPersonaFor(input.issueType),
                 parentKey: input.parentKey,
                 component: input.component,
                 severity: input.severity,
