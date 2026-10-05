@@ -72,6 +72,16 @@ describe("rankAssignees (TAI-419 ADR decision 6)", () => {
         assert.deepEqual(ranked[0]!.reasons, ["you are creating it", "closed 2 tickets under component x"]);
     });
 
+    it("pinning the author of the work under review keeps the demotion reason and the demoted flag honest", () => {
+        const ranked = rankAssignees(
+            [ev("Ann", { continuity: { tier: 1, reasons: ["worked on this Story (TAI-1)"] }, authoredWorkUnderReview: true }), ev("Bo")],
+            { pin: human("Ann") }
+        );
+        assert.equal(ranked[0]!.candidate.displayName, "Ann");
+        assert.deepEqual(ranked[0]!.reasons, ["you are creating it", "worked on this Story (TAI-1)", "authored the work under review"]);
+        assert.equal(ranked[0]!.demoted, true);
+    });
+
     it("a pin that is not among the candidates changes nothing", () => {
         assert.deepEqual(names(rankAssignees([ev("Ann"), ev("Bo")], { pin: human("Zed") })), ["Ann", "Bo"]);
     });

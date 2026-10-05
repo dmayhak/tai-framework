@@ -84,7 +84,7 @@ export function rankAssignees(
     const index = ranked.findIndex((r) => samePerson(r.candidate, pin));
     if (index < 0) return ranked;
     const picked = ranked[index]!;
-    const pinned: RankedCandidate = { ...picked, reasons: [PIN_REASON, ...picked.reasons], demoted: false };
+    const pinned: RankedCandidate = { ...picked, reasons: [PIN_REASON, ...picked.reasons] };
     return [pinned, ...ranked.filter((_, i) => i !== index)];
 }
 

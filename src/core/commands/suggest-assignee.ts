@@ -7,7 +7,7 @@
 import { PERSONA_ROLE_LABEL } from "../schema/story-schema.js";
 import type { HumanRef, Issue } from "../storage/interface.js";
 import type { Roster } from "../personas/roster.js";
-import { gatherAssigneeEvidence, type EvidenceReader } from "../personas/assignee-evidence.js";
+import { gatherAssigneeEvidence, type EvidenceCache, type EvidenceReader } from "../personas/assignee-evidence.js";
 import { rankAssignees, renderRankedAssignees, type RankedCandidate } from "../personas/assignee-ranking.js";
 
 export interface SuggestAssigneesDeps {
@@ -16,6 +16,8 @@ export interface SuggestAssigneesDeps {
     readonly areaWindowDays?: number;
     readonly now?: Date;
     readonly onWarning?: (message: string) => void;
+    /** Share reads across many calls in one run (/tai-ready). */
+    readonly cache?: EvidenceCache;
 }
 
 export interface AssigneeSuggestion {
@@ -39,6 +41,7 @@ export async function suggestAssignees(
         ...(deps.areaWindowDays !== undefined ? { areaWindowDays: deps.areaWindowDays } : {}),
         ...(deps.now ? { now: deps.now } : {}),
         ...(deps.onWarning ? { onWarning: deps.onWarning } : {}),
+        ...(deps.cache ? { cache: deps.cache } : {}),
     });
     const ranked = rankAssignees(evidence, options.pin ? { pin: options.pin } : {});
     return { ranked, text: renderRankedAssignees({ issueKey: issue.key, personaLabel: PERSONA_ROLE_LABEL[issue.persona], ranked }) };

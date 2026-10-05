@@ -7,7 +7,7 @@ import path from "node:path";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type StorageBackend, type WorkTracker } from "../storage/interface.js";
-import { gatherAssigneeEvidence } from "./assignee-evidence.js";
+import { createEvidenceCache, gatherAssigneeEvidence } from "./assignee-evidence.js";
 import { rankAssignees } from "./assignee-ranking.js";
 
 const person = (name: string): HumanRef => ({ id: toHumanId(`acct-${name}`), displayName: name, email: `${name.toLowerCase()}@example.com` });
@@ -165,6 +165,52 @@ describe("gatherAssigneeEvidence (TAI-419 ADR decisions 7-9)", () => {
                 assert.equal(e.continuity, null);
                 assert.equal(e.openCount, null);
             }
+        });
+    });
+
+    it("a shared cache makes the candidate lookups and the open-ticket search happen once per run, not once per ticket (/tai-ready)", async () => {
+        await withTracker(async (wt) => {
+            const calls = { open: 0, resolve: 0, epicKids: 0 };
+            const counting = Object.assign(Object.create(wt), {
+                resolveHuman: async (e: string) => {
+                    calls.resolve++;
+                    return DIRECTORY.get(e) ?? null;
+                },
+                search: async (f: Parameters<WorkTracker["search"]>[0]) => {
+                    if (f.statuses?.includes(Status.InProgress)) calls.open++;
+                    if (f.parentKey && f.exhaustive && !f.issueTypes) calls.epicKids++;
+                    return wt.search(f);
+                },
+            }) as WorkTracker;
+            const epic = await mk(wt, { issueType: "epic" });
+            const a = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key });
+            const b = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key });
+            const c = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key });
+
+            const cache = createEvidenceCache();
+            for (const t of [a, b, c]) await gatherAssigneeEvidence(counting, t, roster, { cache });
+            assert.equal(calls.open, 1, "one open-ticket search for the whole run");
+            assert.equal(calls.resolve, roster.length, "each candidate resolved once");
+            assert.equal(calls.epicKids, 1, "the shared Epic's children read once");
+
+            // Without a cache nothing is shared (the pre-existing behavior for one-off callers).
+            calls.open = 0;
+            calls.resolve = 0;
+            for (const t of [a, b]) await gatherAssigneeEvidence(counting, t, roster);
+            assert.equal(calls.open, 2);
+            assert.equal(calls.resolve, roster.length * 2);
+        });
+    });
+
+    it("a cached result is identical to an uncached one", async () => {
+        await withTracker(async (wt) => {
+            const story = await mk(wt, { issueType: StoryType.Story });
+            await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: BO });
+            const test = await mk(wt, { issueType: SubtaskType.IntegrationTest, parentKey: story.key });
+            const plain = await gatherAssigneeEvidence(wt, test, roster);
+            const cache = createEvidenceCache();
+            await gatherAssigneeEvidence(wt, test, roster, { cache }); // warm
+            assert.deepEqual(await gatherAssigneeEvidence(wt, test, roster, { cache }), plain);
         });
     });
 });

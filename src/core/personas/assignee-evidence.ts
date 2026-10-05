@@ -32,10 +32,38 @@ const REVIEW_OF: Partial<Record<SubtaskType, SubtaskType>> = {
     [SubtaskType.DesignReview]: SubtaskType.ArchitectureDesign,
 };
 
+/**
+ * Per-run memo for callers that rank many tickets in one go (/tai-ready): candidate lookups, the Story/Epic
+ * child reads, the parent Story reads and the open-ticket load are shared instead of repeated per ticket
+ * (ADR "Consequences": the open-ticket search is shared across the run). Create one per CLI run and pass it in
+ * `EvidenceOptions.cache`; leave it out for a one-off ranking and nothing is shared.
+ */
+export interface EvidenceCache {
+    readonly resolved: Map<string, Promise<HumanRef | null>>;
+    readonly children: Map<string, Promise<readonly Issue[]>>;
+    readonly issues: Map<string, Promise<Issue | null>>;
+    readonly openCounts: Map<string, Promise<ReadonlyMap<string, number> | null>>;
+}
+
+export function createEvidenceCache(): EvidenceCache {
+    return { resolved: new Map(), children: new Map(), issues: new Map(), openCounts: new Map() };
+}
+
+function memo<T>(map: Map<string, Promise<T>> | undefined, key: string, make: () => Promise<T>): Promise<T> {
+    if (!map) return make();
+    let hit = map.get(key);
+    if (!hit) {
+        hit = make();
+        map.set(key, hit);
+    }
+    return hit;
+}
+
 export interface EvidenceOptions {
     readonly areaWindowDays?: number;
     readonly now?: Date;
     readonly onWarning?: (message: string) => void;
+    readonly cache?: EvidenceCache;
 }
 
 /** TAI_AREA_WINDOW_DAYS from a project's .env (ADR decision 8); anything unusable falls back to the default. */
@@ -71,9 +99,20 @@ export async function gatherAssigneeEvidence(
     }
 
     // The roster knows names and emails; ticket data holds real Jira identities. Match on the real id.
+    const cache = options.cache;
     const real = await Promise.all(
-        candidates.map((c) => (c.email ? workTracker.resolveHuman(c.email).catch(() => null) : Promise.resolve(null)))
+        candidates.map((c) =>
+            c.email
+                ? memo(cache?.resolved, c.email, () => workTracker.resolveHuman(c.email!).catch(() => null))
+                : Promise.resolve(null)
+        )
     );
+
+    /** Exhaustive children of one parent (a Story's subtasks, an Epic's Stories), shared per run. */
+    const childrenOf = (parentKey: IssueKey, what: string): Promise<readonly Issue[]> =>
+        memo(cache?.children, `${projectKey}/${parentKey}`, () =>
+            attempt(what, () => workTracker.search({ projectKey, parentKey, exhaustive: true }), [] as readonly Issue[])
+        );
 
     const continuity: ContinuityEntry[] = [];
     const authored = new Set<string>();
@@ -85,19 +124,21 @@ export async function gatherAssigneeEvidence(
     const parentKey = issue.parentKey;
     if (parentKey) {
         if (isSubtaskIssueType(issue.issueType)) {
-            const siblings = await attempt("the Story's other subtasks", () => workTracker.search({ projectKey, parentKey, exhaustive: true }), []);
+            const siblings = await childrenOf(parentKey, "the Story's other subtasks");
             for (const s of siblings) if (s.key !== issue.key) add(1, `worked on this Story (${s.key})`, s.assignee);
             const reviewed = REVIEW_OF[issue.issueType];
             if (reviewed) for (const s of siblings) if (s.issueType === reviewed && s.assignee) authored.add(s.assignee.id);
 
-            const story = await attempt("the parent Story", () => workTracker.getIssue(parentKey), null);
+            const story = await memo(cache?.issues, `${projectKey}/${parentKey}`, () =>
+                attempt("the parent Story", () => workTracker.getIssue(parentKey), null)
+            );
             if (story?.parentKey) {
                 const epicKey = story.parentKey;
-                const kids = await attempt("the Epic's tickets", () => workTracker.search({ projectKey, parentKey: epicKey, exhaustive: true }), []);
+                const kids = await childrenOf(epicKey, "the Epic's tickets");
                 for (const k of kids) if (k.key !== story.key) add(3, `worked on this Epic (${k.key})`, k.assignee);
             }
         } else {
-            const kids = await attempt("the Epic's tickets", () => workTracker.search({ projectKey, parentKey, exhaustive: true }), []);
+            const kids = await childrenOf(parentKey, "the Epic's tickets");
             for (const k of kids) if (k.key !== issue.key) add(3, `worked on this Epic (${k.key})`, k.assignee);
         }
     }
@@ -150,12 +191,18 @@ export async function gatherAssigneeEvidence(
     for (const label of issue.labels.slice(0, MAX_AREA_LABELS)) await countClosed(`past tickets labelled ${label}`, { labels: [label] }, `labelled ${label}`);
 
     // --- load: every open ticket, one search, grouped by assignee ---
-    const open = await attempt("open tickets", async () => {
-        const all = await workTracker.search({ projectKey, statuses: OPEN, exhaustive: true });
-        const counts = new Map<string, number>();
-        for (const t of all) if (t.assignee) counts.set(t.assignee.id, (counts.get(t.assignee.id) ?? 0) + 1);
-        return counts;
-    }, null);
+    const open = await memo(cache?.openCounts, projectKey, () =>
+        attempt<ReadonlyMap<string, number> | null>(
+            "open tickets",
+            async () => {
+                const all = await workTracker.search({ projectKey, statuses: OPEN, exhaustive: true });
+                const counts = new Map<string, number>();
+                for (const t of all) if (t.assignee) counts.set(t.assignee.id, (counts.get(t.assignee.id) ?? 0) + 1);
+                return counts;
+            },
+            null
+        )
+    );
 
     return candidates.map((candidate, i): CandidateEvidence => {
         const id = real[i]?.id;

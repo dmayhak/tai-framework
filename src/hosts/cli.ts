@@ -125,7 +125,7 @@ import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/stor
 import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
 import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
-import { areaWindowDaysFromEnv } from "../core/personas/assignee-evidence.js";
+import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 
 interface ResolvedConfig {
@@ -1648,6 +1648,7 @@ async function main(): Promise<void> {
         const persona = arg as Persona | undefined;
         const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
         const gitDeps = await tryResolveReadyGitDeps(config);
+        const evidenceCache = createEvidenceCache(); // TAI-419: shared across every ticket this run suggests for
         const result = await findReadyWork(
             {
                 workTracker: config.backend.workTracker,
@@ -1657,7 +1658,12 @@ async function main(): Promise<void> {
                 // TAI-419: the best assignee for each unassigned ready ticket (one line); the full list is `issue suggest`.
                 suggestAssignee: async (issue) => {
                     const { ranked } = await suggestAssignees(
-                        { workTracker: config.backend.workTracker, roster: await loadProjectRoster(config), areaWindowDays: areaWindowDaysFromEnv() },
+                        {
+                            workTracker: config.backend.workTracker,
+                            roster: await loadProjectRoster(config),
+                            areaWindowDays: areaWindowDaysFromEnv(),
+                            cache: evidenceCache,
+                        },
                         issue,
                         {}
                     );
