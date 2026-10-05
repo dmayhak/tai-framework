@@ -274,6 +274,20 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         assert.deepEqual(analystCreatedIssues.map((t) => (t.kind === "issue" ? t.issueType : null)), ["epic"]);
     });
 
+    it("Perry may create Kickoff and every live subtask type (TAI-394 review, human-decided 2026-10-05)", async () => {
+        const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
+        const issues = pm.permissions.create.filter((t) => t.kind === "issue").map((t) => (t.kind === "issue" ? t.issueType : null));
+        for (const type of ["epic", StoryType.Kickoff, StoryType.Story, StoryType.Bug, StoryType.Spike] as const) {
+            assert.ok(issues.includes(type), `create ${type}`);
+        }
+        const subtasks = new Set(pm.permissions.create.flatMap((t) => (t.kind === "subtask" ? [t.subtaskType] : [])));
+        for (const type of Object.values(SubtaskType)) {
+            if (type === SubtaskType.CodeReview) continue; // retired in rev 52: reviewing is a PR action, not a ticket
+            assert.ok(subtasks.has(type), `create Subtask:${type}`);
+        }
+        assert.ok(!subtasks.has(SubtaskType.CodeReview), "the retired CodeReview subtask is not granted");
+    });
+
     it("gitHost grants land on exactly the personas TAI-34's checkpoint chain names, nowhere else", async () => {
         const configs = await loadBuiltinPersonaConfigs();
         assert.deepEqual(
