@@ -1782,10 +1782,10 @@ async function main(): Promise<void> {
 
             // TAI-249/260 ADR: pre-assign at creation via the assignment-helper -- both
             // halves of brief §5.5 (sole-candidate, and the ratified current-user shortcut
-            // for 2+ candidates). `issue create` has no `assignee=` argument of its own, so
-            // this always applies whenever `persona` is set; a human can still reassign
-            // afterward via `issue assign`.
-            // TAI-421: assignee= names the person -- skip the helper entirely.
+            // for 2+ candidates). It applies whenever `persona` is set and no `assignee=` was
+            // given; a human can still reassign afterward via `issue assign`.
+            // TAI-421: an explicit assignee= names the person and takes precedence -- the helper
+            // is skipped entirely.
             const { assignee: resolvedAssignee, note: assignmentNote } =
                 fields["assignee"] !== undefined
                     ? await resolveNamedAssignee((email) => config.backend.workTracker.resolveHuman(email), fields["assignee"])
