@@ -1018,6 +1018,27 @@ export async function tryResolveCreateAssignee(
     }
 }
 
+/**
+ * TAI-421: `issue create assignee=<email>` -- a NAMED person always wins, with no prompt and no roster
+ * check (like `issue assign`). Resolved to the real Jira identity the same way `issue assign` does. A name
+ * that does not resolve still creates the ticket, unassigned, with a note ("never lose a ticket").
+ */
+export async function resolveNamedAssignee(
+    resolveHuman: (email: string) => Promise<HumanRef | null>,
+    named: string
+): Promise<{ assignee: HumanRef | undefined; note: string | undefined }> {
+    let human: HumanRef | null = null;
+    try {
+        human = await resolveHuman(named);
+    } catch (e) {
+        return { assignee: undefined, note: `Created UNASSIGNED: could not look up "${named}" (${(e as Error).message}). Assign it with issue assign.` };
+    }
+    if (!human) {
+        return { assignee: undefined, note: `Created UNASSIGNED: no Jira user found for "${named}". Assign it with issue assign.` };
+    }
+    return { assignee: human, note: undefined };
+}
+
 /** TAI-409: printed after a create that left the persona empty (only SpikeTask has no default). */
 export const PERSONA_LESS_CREATE_WARNING = (key: string): string =>
     `WARNING: ${key} was created with NO persona. It cannot be driven with /tai-work and will not appear in a ` +
@@ -1735,8 +1756,10 @@ async function main(): Promise<void> {
             if (!projectKey || !issueType || !summary) {
                 throw new Error(
                     "Usage: issue create <PROJECT-KEY> <ISSUE-TYPE> <SUMMARY> " +
-                        "[parent=<KEY>] [persona=<PERSONA>] [description=<TEXT>] [priority=<PRIORITY>] [labels=<a,b,c>] " +
+                        "[parent=<KEY>] [persona=<PERSONA>] [assignee=<EMAIL>] [description=<TEXT>] [priority=<PRIORITY>] [labels=<a,b,c>] " +
                         "[allowDuplicate=true]\n" +
+                        "  assignee=<EMAIL> names who gets the ticket: it always wins, with no prompt and no roster check " +
+                        "(TAI-421); an email that resolves to no Jira user creates the ticket UNASSIGNED with a note.\n" +
                         '  <ISSUE-TYPE> is TAI\'s own internal value (e.g. "bug", "dev", "code-review", ' +
                         '"integration-test") -- see StoryType/SubtaskType in story-schema.ts -- NOT the raw Jira ' +
                         'display name ("Bug", "Dev", "CodeReview").\n' +
@@ -1759,12 +1782,16 @@ async function main(): Promise<void> {
 
             // TAI-249/260 ADR: pre-assign at creation via the assignment-helper -- both
             // halves of brief §5.5 (sole-candidate, and the ratified current-user shortcut
-            // for 2+ candidates). `issue create` has no `assignee=` argument of its own, so
-            // this always applies whenever `persona` is set; a human can still reassign
-            // afterward via `issue assign`.
-            const { assignee: resolvedAssignee, note: assignmentNote } = persona
-                ? await tryResolveCreateAssignee(() => resolveIssueAssignment(config, persona))
-                : { assignee: undefined, note: undefined };
+            // for 2+ candidates). It applies whenever `persona` is set and no `assignee=` was
+            // given; a human can still reassign afterward via `issue assign`.
+            // TAI-421: an explicit assignee= names the person and takes precedence -- the helper
+            // is skipped entirely.
+            const { assignee: resolvedAssignee, note: assignmentNote } =
+                fields["assignee"] !== undefined
+                    ? await resolveNamedAssignee((email) => config.backend.workTracker.resolveHuman(email), fields["assignee"])
+                    : persona
+                      ? await tryResolveCreateAssignee(() => resolveIssueAssignment(config, persona))
+                      : { assignee: undefined, note: undefined };
 
             // TAI-292: only bother fetching the parent when its priority could actually
             // matter (priority= omitted, a parent was given) -- resolveCreatePriority
