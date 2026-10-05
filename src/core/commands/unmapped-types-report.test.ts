@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 
 import { RestClient as JiraRestClient, apiTokenAuth as jiraApiTokenAuth } from "../storage/jira/rest-client.js";
 import { parseTypeAliasesPage } from "../storage/jira/type-alias-config.js";
-import { EMPTY_TYPE_ALIAS_MAP } from "../storage/jira/mappers.js";
+import { EMPTY_TYPE_ALIAS_MAP, jqlString } from "../storage/jira/mappers.js";
 import {
-    jqlQuote,
     mappedIssueTypeNames,
     renderUnmappedTypesNote,
     scanProjectIssueTypes,
@@ -105,7 +104,7 @@ describe("scanProjectIssueTypes (TAI-413)", () => {
         const { client, seen } = clientFor([{ issues: [], isLast: true }]);
         await scanProjectIssueTypes(client, 'P"X\\', ["Story"]);
         assert.match(seen[0]!.jql, /project = "P\\"X\\\\" AND/);
-        assert.equal(jqlQuote('a"b'), '"a\\"b"');
+        assert.equal(jqlString('a"b'), '"a\\"b"');
     });
 
     it("stops at the page cap and says it was truncated instead of looping", async () => {

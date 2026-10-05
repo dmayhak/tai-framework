@@ -4,7 +4,19 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-05 (rev 74 — **TAI-407/409: the documented persona defaults are now
+> **Last updated:** 2026-10-05 (rev 75 — **TAI-416/419: ranked assignee suggestions with reasons.**
+> With 2 or more humans on a persona and nobody named, `issue create` now makes the ticket UNASSIGNED and
+> prints a ranked list (the session's human pinned first, "leave unassigned" always a choice) instead of
+> silently assigning the session's human; the create-time rev 54 shortcut is removed, the claim and
+> transition-time one stays. A named person (`assignee=`) always wins. The order is strict tiers —
+> continuity (same Story, a linked ticket, the same Epic; a Bug's Dev), then area knowledge from ticket
+> data (Done tickets with the same Component/labels within `TAI_AREA_WINDOW_DAYS`, default 90), then
+> open-ticket count — every line with its reason, and the author of work under review demoted, never
+> excluded. `IssueFilter` gains `component` and `labels`; a new `issue suggest <KEY>`, a `/tai-ready`
+> "needs an assignee" suggestion, and the transition-gate rejection all use the same ranking, computed
+> live and never stored. ADR Confluence page 50692097 (human-decided, 2026-10-05).
+>
+> Prior: rev 74 — **TAI-407/409: the documented persona defaults are now
 > real.** Nothing in the code applied them: a bare create left the persona empty for every ticket
 > type, and `issue create` resolves an assignee only when a persona is set. Now an omitted persona
 > falls back to `SUBTASK_OWNER[type]` for a subtask and PM for every story-level ticket and Epic —
@@ -1524,6 +1536,13 @@ These are settled. Change them deliberately and update this file if you do.
   `page update`, write `"content=$(cat file)"` exactly like that — **unescaped**; an escaped
   `\$(cat ...)` writes the literal text over the page — and re-read the page afterward to confirm. Every
   persona that authors pages (Ada, Aria, Perry, Uma, Tessa) points here.
+- **Offering the assignee list (TAI-416/419).** When `issue create` (or `issue suggest <KEY>`, or the
+  transition-gate rejection) prints a "Needs an assignee" list, an **interactive** session offers it to the
+  human — every candidate in the printed order with its reason, **plus "Leave unassigned"** — with its own
+  question tool (AskUserQuestion in Claude Code, the equivalent in Gemini CLI), then runs `issue assign
+  <KEY> <EMAIL>` for the pick. A non-interactive run, or no answer, leaves the ticket unassigned: a ticket
+  is never lost or blocked because assignment was unclear, and a named person (`assignee=`) always wins
+  without any list. The CLI prints the same instruction under every list, so no persona document repeats it.
 - **Caching:** all relevant info (config, personas, Jira issues, Confluence pages) is cached
   locally in the same Jira-like folder structure to support offline work. **Full Confluence
   page content is cached** (it's input to many tasks). Each cached item stores a
@@ -1913,17 +1932,16 @@ etc., differentiated by their type and their subtasks.
   sets `Assignee` **at creation time** rather than leaving it to be claimed later. Common
   cases: a solo developer (every persona maps to the same one person), or a team with a
   single PM/DBA/etc. When the roster lists **more than one** candidate for that persona,
-  TAI does **not blindly guess** — but it does check one thing first (rev 54): if the
-  **human currently driving the session** is among the candidates, that human is
-  auto-assigned, no prompt needed — the answer is unambiguous in practice even though the
-  roster lists more than one name. Only when the driving human ISN'T among the candidates
-  (or there's no resolvable session identity at all) does it fall back to the
-  assignment-helper (§5.6): surface the remaining candidates with their lightweight load
-  signals and let the human pick. This check applies at **both** creation time and the
-  transition-gate moment (a ticket that predates this rule, or was created by a different
-  session/human, still gets the same shortcut the first time someone tries to move it out
-  of `To Do`) — never a guess beyond "the person already here is an authorized candidate,"
-  and always overridable via a normal `issue assign`.
+  TAI does **not blindly guess**, and (rev 75) **does not assign the session's human at creation
+  either**: someone logging a ticket for a colleague must not become its owner. The ticket is created
+  **unassigned** and the assignment-helper (§5.6) prints the ranked candidates with a reason on every
+  line — the session's human pinned first when they are a candidate — and "leave unassigned" is always a
+  valid choice. A **named** person (`issue create assignee=`, `issue assign`) always wins with no list.
+  At **claim and transition time** the rev 54 shortcut stays: when a ticket is moved out of `To Do` and
+  the **human currently driving the session** is among the candidates, that human is assigned (a ticket
+  that predates this rule, or was created by a different session, still gets it) — never a guess beyond
+  "the person already here is an authorized candidate," and always overridable via a normal
+  `issue assign`.
 - Ready, unassigned tickets are **claimable.** People *should* work their own tickets, but
   we deliberately do **not** hard-lock *who* may pick a ticket up — people take time off,
   need help, hand work off. (Distinct from the rule above, which lock*s* that *somebody* is
@@ -1993,10 +2011,14 @@ already stated for `SUBTASK_OWNER`).
 
 **Assignment-helper (answers "does TAI help PM assign tickets to humans"):** when a
 ticket needs a human `Assignee`, TAI looks up which humans are listed under that ticket's
-`persona` field in the **Persona Roster**, and surfaces the candidates — plus lightweight
-signals
-(current open-ticket count per person, whether one already has a branch/related work in
-flight) — to whoever is driving the PM/Orchestrator session. Once a human is picked, **TAI
+`persona` field in the **Persona Roster**, **ranks** them (rev 75, ADR page 50692097) and surfaces the list
+with a **reason on every line** to whoever is driving the session. The order is strict tiers, never a
+score: **continuity** first (assigned to a sibling under the same Story, to a ticket linked to this one, or
+to a ticket under the same Epic; for a Bug, the Dev of the Story it relates to), then **area knowledge** from
+ticket data (who was assigned Done tickets with the same Component or labels within the window), then the
+**open-ticket count**, then name. The author of the work under review is **demoted** below the rest with a
+visible reason, never excluded (solo developers and one-off exceptions still work). Git-history signals
+are a later ticket. The list is computed live and never stored. Once a human is picked, **TAI
 performs the actual Jira `Assignee`-set call itself**, under the driving human's own
 already-authenticated MCP session (§3.2) — no separate manual Jira login/assignment step
 is needed. A human can always reassign directly in Jira too; that's an ordinary override,

@@ -4,7 +4,8 @@
  *
  * Brief §5.5's two rules in one function: pre-assign when exactly one Persona Roster
  * candidate exists, and the ratified extension — when 2+ candidates exist, auto-assign the
- * CURRENT session's human if they're one of the candidates, rather than always asking.
+ * CURRENT session's human if they're one of the candidates, rather than always asking (since
+ * TAI-419 only at claim/transition time, not at creation; the ranked list lives in `assignee-ranking.ts`).
  * Neither rule guesses beyond that: with 2+ candidates and no matching current human, a
  * human must pick (the caller surfaces `candidates`, never invents an assignee).
  *
@@ -37,20 +38,28 @@ export interface AssignmentResolution {
  * Resolves who should be assigned a ticket whose owning persona is `persona`:
  * - Exactly one roster candidate: that human, unconditionally (brief §5.5, pre-existing).
  * - 2+ candidates, current session's human is among them: that human (TAI-249 ADR
- *   extension) — `currentHuman` is matched via `sameHuman` (id, then email, then
+ *   extension; NOT at creation since TAI-419 -- see `options.atCreate`) — `currentHuman` is matched via `sameHuman` (id, then email, then
  *   case-insensitive display name), same matching this codebase already uses everywhere
  *   else a `HumanRef` gets compared against a roster entry.
  * - Otherwise (2+ candidates and no match, or zero candidates): `assignee: null` — the
  *   caller must surface `candidates` and let a human pick. Never guesses further.
  */
-export function resolveAssignment(roster: Roster, persona: Persona, currentHuman: HumanRef | null): AssignmentResolution {
+export function resolveAssignment(
+    roster: Roster,
+    persona: Persona,
+    currentHuman: HumanRef | null,
+    options: { readonly atCreate?: boolean } = {}
+): AssignmentResolution {
     const candidates = roster.humansFor(persona);
 
     if (candidates.length === 1) {
         return { assignee: candidates[0]!, candidates };
     }
 
-    if (candidates.length > 1 && currentHuman) {
+    // TAI-416/419 ADR decision 2: at CREATE the session's human is no longer silently assigned when several
+    // humans hold the persona (someone logging a ticket for a colleague must not become its owner); they get a
+    // ranked list with themselves pinned first instead. The shortcut stays at claim and transition time.
+    if (candidates.length > 1 && currentHuman && !options.atCreate) {
         const match = candidates.find((c) => sameHuman(c, currentHuman));
         if (match) return { assignee: match, candidates };
     }

@@ -19,5 +19,7 @@ export function matchesIssueFilter(issue: Issue, filter: IssueFilter): boolean {
     if (filter.persona && issue.persona !== filter.persona) return false;
     if (filter.parentKey && issue.parentKey !== filter.parentKey) return false;
     if (filter.updatedSince && issue.updatedAt < filter.updatedSince) return false;
+    if (filter.component && issue.component !== filter.component) return false;
+    if (filter.labels?.length && !filter.labels.every((l) => issue.labels.includes(l))) return false;
     return true;
 }

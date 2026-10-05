@@ -103,6 +103,10 @@ export interface FindReadyWorkDeps {
     /** rev 52: the "PR Reviewers" roster (`git/pr-reviewers.ts`) readyToReview checks
      *  eligibility against. readyToReview is empty without this. */
     readonly prReviewers?: readonly HumanRef[];
+    /** TAI-419: one line ("Ann (worked on this Story (TAI-1))") naming the best assignee for a ticket that needs
+     *  one, or null. Only asked for ready tickets that have a persona and no assignee; a failure skips that ticket.
+     *  Omitted = /tai-ready makes no suggestions (and reads no roster). */
+    readonly suggestAssignee?: (issue: Issue) => Promise<string | null>;
 }
 
 export interface ReadyToReviewCandidate {
@@ -192,6 +196,9 @@ export interface ReadyWorkResult {
      *  `workspace/living-doc-staleness.ts`. Empty whenever no snapshot has ever been taken
      *  (not itself a staleness signal) or nothing has moved since. */
     readonly staleLivingDocs: readonly StaleEpic[];
+    /** TAI-419 (ADR decision 13c): the best assignee suggestion for each unassigned ready ticket, keyed by issue key.
+     *  Empty when `suggestAssignee` was not supplied. Informational only -- never excludes anything. */
+    readonly assigneeSuggestions: ReadonlyMap<IssueKey, string>;
 }
 
 interface ParentPrecedenceContext {
@@ -787,7 +794,20 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
     const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);
 
-    return { ready, onHold, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy, staleLivingDocs };
+    const assigneeSuggestions = new Map<IssueKey, string>();
+    if (deps.suggestAssignee) {
+        for (const issue of ready) {
+            if (issue.assignee || !issue.persona) continue;
+            try {
+                const suggestion = await deps.suggestAssignee(issue);
+                if (suggestion) assigneeSuggestions.set(issue.key, suggestion);
+            } catch {
+                // A suggestion is a convenience; one that cannot be computed must never fail /tai-ready.
+            }
+        }
+    }
+
+    return { ready, onHold, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy, staleLivingDocs, assigneeSuggestions };
 }
 
 /** TAI-302/319: short-circuits before fetching a single Epic/child when no snapshot has ever

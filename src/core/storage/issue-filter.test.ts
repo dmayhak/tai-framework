@@ -13,6 +13,8 @@ const issue = (over: Record<string, unknown> = {}): Issue =>
         assignee: { id: "u1", displayName: "U" },
         persona: "developer",
         parentKey: "TAI-10",
+        component: "tai-framework",
+        labels: ["backend", "urgent"],
         updatedAt: "2026-10-02T10:00:00.000Z",
         ...over,
     }) as unknown as Issue;
@@ -37,6 +39,17 @@ describe("matchesIssueFilter (TAI-381)", () => {
         assert.equal(matchesIssueFilter(issue(), f({ parentKey: "TAI-99" as never })), false);
         assert.equal(matchesIssueFilter(issue(), f({ updatedSince: "2026-10-02T09:00:00.000Z" })), true);
         assert.equal(matchesIssueFilter(issue(), f({ updatedSince: "2026-10-02T11:00:00.000Z" })), false);
+    });
+
+    it("component matches exactly and labels requires every listed label (TAI-419)", () => {
+        const f = (extra: Partial<IssueFilter>): IssueFilter => ({ projectKey: "TAI", ...extra });
+        assert.equal(matchesIssueFilter(issue(), f({ component: "tai-framework" })), true);
+        assert.equal(matchesIssueFilter(issue(), f({ component: "other" })), false);
+        assert.equal(matchesIssueFilter(issue({ component: undefined }), f({ component: "tai-framework" })), false);
+        assert.equal(matchesIssueFilter(issue(), f({ labels: ["backend"] })), true);
+        assert.equal(matchesIssueFilter(issue(), f({ labels: ["backend", "urgent"] })), true);
+        assert.equal(matchesIssueFilter(issue(), f({ labels: ["backend", "missing"] })), false);
+        assert.equal(matchesIssueFilter(issue({ labels: [] }), f({ labels: ["backend"] })), false);
     });
 
     it("ignores limit and readYourWrites (those shape the query, not the match)", () => {

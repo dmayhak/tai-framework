@@ -315,7 +315,7 @@ export function toIssue(
 
 // ---------- IssueFilter -> JQL ----------
 
-function jqlString(s: string): string {
+export function jqlString(s: string): string {
     // JQL string literals: backslash and double-quote need escaping.
     return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
@@ -354,6 +354,12 @@ export function toJql(filter: IssueFilter, aliases: TypeAliasMap = EMPTY_TYPE_AL
     if (filter.updatedSince) {
         // Powers brief §7's bulk "what changed since last sync" query.
         clauses.push(`updated >= ${jqlString(filter.updatedSince)}`);
+    }
+    if (filter.component) {
+        clauses.push(`component = ${jqlString(filter.component)}`);
+    }
+    for (const label of filter.labels ?? []) {
+        clauses.push(`labels = ${jqlString(label)}`);
     }
 
     return `${clauses.join(" AND ")} ORDER BY key ASC`;

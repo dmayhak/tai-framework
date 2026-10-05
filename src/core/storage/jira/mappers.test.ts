@@ -304,6 +304,13 @@ describe("toIssue", () => {
 });
 
 describe("toJql", () => {
+    it("component and labels become component = / labels = clauses, one per label (TAI-419)", () => {
+        const jql = toJql({ projectKey: "TAI", component: "tai-framework", labels: ["backend", 'we"ird'] });
+        assert.match(jql, /AND component = "tai-framework"/);
+        assert.match(jql, /AND labels = "backend"/);
+        assert.match(jql, /AND labels = "we\\"ird"/);
+    });
+
     it("always scopes to the project", () => {
         assert.match(toJql({ projectKey: "TAI" }), /^project = "TAI"/);
     });

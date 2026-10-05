@@ -184,7 +184,19 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         readyToMerge: [],
         blockedBy: new Map(),
         staleLivingDocs: [],
+        assigneeSuggestions: new Map(),
     };
+
+    it("a ready ticket with a suggestion shows 'needs an assignee' and the best candidate with the reason (TAI-419)", () => {
+        const issue = makeIssue({ key: toIssueKey("TAI-5") });
+        const out = renderReadyWork({
+            ...emptyResult,
+            ready: [issue],
+            assigneeSuggestions: new Map([[issue.key, "Ann (worked on this Story (TAI-1))"]]),
+        });
+        assert.match(out, /TAI-5\*\*.*needs an assignee — suggest: Ann \(worked on this Story \(TAI-1\)\)/);
+        assert.doesNotMatch(renderReadyWork({ ...emptyResult, ready: [issue] }), /needs an assignee/);
+    });
 
     it("has no On hold section when nothing is held", () => {
         assert.ok(!renderReadyWork({ ...emptyResult, ready: [makeIssue()] }).includes("On hold"));

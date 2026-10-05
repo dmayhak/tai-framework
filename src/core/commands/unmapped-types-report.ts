@@ -10,7 +10,7 @@
  * exactly what the backend means by it: neither a TAI type nor on the Type Aliases page.
  */
 
-import { fromJiraIssueType, JIRA_ISSUE_TYPE, UnknownJiraIssueTypeError, type TypeAliasMap } from "../storage/jira/mappers.js";
+import { fromJiraIssueType, JIRA_ISSUE_TYPE, jqlString, UnknownJiraIssueTypeError, type TypeAliasMap } from "../storage/jira/mappers.js";
 import type { RestClient } from "../storage/jira/rest-client.js";
 import { UNMAPPED_TYPE_FIX_PATH } from "../storage/unreadable-issues.js";
 
@@ -73,11 +73,6 @@ interface SearchPage {
     readonly isLast?: boolean;
 }
 
-/** Quotes a JQL string literal, escaping backslashes and double quotes. */
-export function jqlQuote(value: string): string {
-    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
 /** Every Jira issue-type name TAI maps: its own display names plus the project's aliased native names. */
 export function mappedIssueTypeNames(aliases: TypeAliasMap): readonly string[] {
     return [...new Set([...Object.values(JIRA_ISSUE_TYPE), ...aliases.fromJira.keys()])].sort();
@@ -99,7 +94,7 @@ export async function scanProjectIssueTypes(
     let nextPageToken: string | undefined;
     for (let page = 0; page < maxPages; page++) {
         const res: SearchPage = await client.request("POST", "/rest/api/2/search/jql", {
-            jql: `project = ${jqlQuote(projectKey)} AND issuetype NOT IN (${mappedNames.map(jqlQuote).join(", ")}) ORDER BY key ASC`,
+            jql: `project = ${jqlString(projectKey)} AND issuetype NOT IN (${mappedNames.map(jqlString).join(", ")}) ORDER BY key ASC`,
             fields: ["issuetype"],
             maxResults: PAGE_SIZE,
             ...(nextPageToken ? { nextPageToken } : {}),
