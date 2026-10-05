@@ -120,8 +120,10 @@ defineStorageConformance(
  * TAI-399/406: Jira-only, so it does NOT belong in the shared suite -- the filesystem backend
  * cannot hold a ticket whose type TAI does not map. Relies on the long-standing stray "Task"
  * issue on TAIT (found live 2026-10-02, TAI-399): an unfiltered search used to throw on it.
- * If that ticket is ever removed or retyped, recreate it (any issue of an unmapped type, e.g.
- * "Task", in TAIT) -- the test fails loudly rather than passing without proving anything.
+ * That ticket (TAIT-2) carries the label `tai-fixture-unmapped-type` -- a deliberate, kept fixture,
+ * NOT a probe issue to clean up. If it is ever removed or retyped, recreate it (any issue of an
+ * unmapped type, e.g. "Task", in TAIT, with that label) -- the test fails loudly rather than
+ * passing without proving anything.
  */
 describe(`jira (${PROJECT_KEY}): ticket of an unmapped issue type (TAI-399/406)`, { skip }, () => {
     it("an unfiltered search skips it, reports it, and still returns the other tickets; reading it by key still fails hard", async () => {
