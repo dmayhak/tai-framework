@@ -228,12 +228,13 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
                         projectFound: false,
                         missingIssueTypes: [],
                         personaFieldFound: false,
+                        unmappedTypes: [],
                         detail: `Project "${input.projectKey}" not found (or this API token can't see it) at ${input.siteUrl}.`,
                     };
                 }
                 return opts.jiraOk === false
-                    ? { ok: false, projectFound: true, missingIssueTypes: ["Dev"], personaFieldFound: true, detail: "Missing issue type(s): Dev." }
-                    : { ok: true, projectFound: true, missingIssueTypes: [], personaFieldFound: true, detail: "All required issue types present." };
+                    ? { ok: false, projectFound: true, missingIssueTypes: ["Dev"], personaFieldFound: true, unmappedTypes: [], detail: "Missing issue type(s): Dev." }
+                    : { ok: true, projectFound: true, missingIssueTypes: [], personaFieldFound: true, unmappedTypes: [], detail: "All required issue types present." };
             },
             setupConfluence: async () => {
                 calls.push("setupConfluence");

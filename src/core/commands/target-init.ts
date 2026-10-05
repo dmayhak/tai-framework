@@ -39,6 +39,13 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import {
+    mappedIssueTypeNames,
+    renderUnmappedTypesNote,
+    scanProjectIssueTypes,
+    summarizeUnmappedTypes,
+    type UnmappedTypeGroup,
+} from "./unmapped-types-report.js";
 import { RestClient as JiraRestClient, apiTokenAuth as jiraApiTokenAuth } from "../storage/jira/rest-client.js";
 import { discoverPersonaFieldId } from "../storage/jira/work-tracker.js";
 import { JIRA_ISSUE_TYPE, toJiraIssueType, EMPTY_TYPE_ALIAS_MAP, type IssueType } from "../storage/jira/mappers.js";
@@ -145,6 +152,9 @@ export interface JiraVerifyResult {
     readonly projectFound: boolean;
     readonly missingIssueTypes: readonly string[];
     readonly personaFieldFound: boolean;
+    /** TAI-413: tickets already in the project whose Jira issue type TAI does not map (grouped; empty when none
+     *  or when the scan could not run). Report only -- never affects `ok`. */
+    readonly unmappedTypes: readonly UnmappedTypeGroup[];
     readonly detail: string;
 }
 
@@ -179,6 +189,7 @@ export async function verifyJiraSetup(input: JiraVerifyInput): Promise<JiraVerif
             projectFound: false,
             missingIssueTypes: [],
             personaFieldFound: false,
+            unmappedTypes: [],
             detail: `Project "${input.projectKey}" not found (or this API token can't see it) at ${input.siteUrl}.`,
         };
     }
@@ -215,7 +226,26 @@ export async function verifyJiraSetup(input: JiraVerifyInput): Promise<JiraVerif
               .filter((s): s is string => s !== null)
               .join(" ");
 
-    return { ok, projectFound: true, missingIssueTypes, personaFieldFound, detail };
+    // TAI-413: show legacy tickets of an unmapped type once, here, instead of as per-search warnings.
+    // Report only and best-effort: a scan that cannot run is noted, never an init failure.
+    let unmappedTypes: readonly UnmappedTypeGroup[] = [];
+    let scanNote: string | undefined;
+    try {
+        const { rows, truncated } = await scanProjectIssueTypes(client, input.projectKey, mappedIssueTypeNames(aliases));
+        unmappedTypes = summarizeUnmappedTypes(rows, aliases);
+        scanNote = renderUnmappedTypesNote(unmappedTypes, truncated);
+    } catch (e) {
+        scanNote = `(Could not scan existing tickets for unmapped issue types: ${(e as Error).message}.)`;
+    }
+
+    return {
+        ok,
+        projectFound: true,
+        missingIssueTypes,
+        personaFieldFound,
+        unmappedTypes,
+        detail: scanNote ? `${detail}\n\n${scanNote}` : detail,
+    };
 }
 
 // ---------- Step: Confluence setup ----------

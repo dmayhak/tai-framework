@@ -200,6 +200,49 @@ describe("verifyJiraSetup", () => {
         assert.equal(result.projectFound, true);
     });
 
+    const ALL_TYPES = [
+        "Epic", "Story", "Bug", "Kickoff", "Spike", "Research", "EpicReview", "Requirements", "UxDesign", "Investigate",
+        "Feasibility", "ArchitectureDesign", "DesignReview", "Database", "Infra", "Dev", "CodeReview", "IntegrationTest",
+        "SystemTest", "E2ETest", "UAT", "Triage", "Deploy", "PostDeploy", "SpikeTask",
+    ];
+    const CREATEMETA = "GET /rest/api/2/issue/createmeta?projectKeys=PROJ&expand=projects.issuetypes";
+    const baseRoutes = () => ({
+        [CREATEMETA]: () => json({ projects: [{ issuetypes: ALL_TYPES.map((name) => ({ name })) }] }),
+        "GET /rest/api/2/field": () => json([{ id: "customfield_10105", name: "Persona", custom: true }]),
+    });
+    const verify = (routes: Record<string, () => Response>) =>
+        verifyJiraSetup({ siteUrl: "https://example.atlassian.net", email: "a@b.c", apiToken: "tok", projectKey: "PROJ", fetchImpl: stubFetch(routes) });
+    const ticket = (key: string, type: string) => ({ key, fields: { issuetype: { name: type } } });
+
+    it("TAI-413: reports existing tickets of an unmapped issue type, with the fix path, and stays ok", async () => {
+        const result = await verify({
+            ...baseRoutes(),
+            "POST /rest/api/2/search/jql": () =>
+                json({ issues: [ticket("PROJ-1", "Story"), ticket("PROJ-2", "Task"), ticket("PROJ-3", "Task")], isLast: true }),
+        });
+        assert.equal(result.ok, true, "a report never fails the step");
+        assert.deepEqual(result.unmappedTypes, [{ typeName: "Task", count: 2, exampleKeys: ["PROJ-2", "PROJ-3"] }]);
+        assert.match(result.detail, /"Task" — 2 tickets \(e\.g\. PROJ-2, PROJ-3\)/);
+        assert.match(result.detail, /Type Aliases Confluence page/);
+        assert.match(result.detail, /nothing was changed/i);
+    });
+
+    it("TAI-413: a project with only mapped types has no report", async () => {
+        const result = await verify({
+            ...baseRoutes(),
+            "POST /rest/api/2/search/jql": () => json({ issues: [ticket("PROJ-1", "Story"), ticket("PROJ-2", "Dev")], isLast: true }),
+        });
+        assert.deepEqual(result.unmappedTypes, []);
+        assert.doesNotMatch(result.detail, /issue type TAI does not map/);
+    });
+
+    it("TAI-413: a scan that cannot run is noted but never fails the init step", async () => {
+        const result = await verify(baseRoutes()); // the search route is unstubbed -> the scan throws
+        assert.equal(result.ok, true);
+        assert.deepEqual(result.unmappedTypes, []);
+        assert.match(result.detail, /Could not scan existing tickets for unmapped issue types/);
+    });
+
     it("reports the project itself as not found rather than throwing", async () => {
         const fetchImpl = stubFetch({
             "GET /rest/api/2/issue/createmeta?projectKeys=NOPE&expand=projects.issuetypes": () =>

@@ -46,13 +46,17 @@ export function takeUnreadableIssues(): readonly UnreadableIssue[] {
     return all;
 }
 
+/** The way out for a ticket of an unmapped Jira type -- shared by the per-search note and the setup report (TAI-413). */
+export const UNMAPPED_TYPE_FIX_PATH =
+    `If the type means the same as a TAI type, alias it on the Type Aliases Confluence page, then set the persona with ` +
+    `\`issue update <KEY> persona=<PERSONA>\`; otherwise leave it unmanaged and work it outside TAI.`;
+
 /** The one-line note the CLI renderers append, naming each skipped ticket and the way out. */
 export function renderUnreadableIssuesNote(issues: readonly UnreadableIssue[]): string | undefined {
     if (issues.length === 0) return undefined;
     const list = issues.map((i) => `${i.key} ("${i.typeName}")`).join(", ");
     return (
         `_Skipped ${issues.length} ticket${issues.length === 1 ? "" : "s"} TAI cannot read (Jira issue type not mapped): ${list}. ` +
-        `If the type means the same as a TAI type, alias it on the Type Aliases Confluence page, then set the persona with ` +
-        `\`issue update <KEY> persona=<PERSONA>\`; otherwise leave it unmanaged and work it outside TAI._`
+        `${UNMAPPED_TYPE_FIX_PATH}_`
     );
 }
