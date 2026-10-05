@@ -23,6 +23,13 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(groom.content, /Backlog → To Do move, every epic approval/);
         assert.match(groom.content, /only after the human confirms/i);
         assert.match(groom.content, /one question per group|once per group/i);
+        // TAI-423 (found live in Gemini CLI): the briefing is SHOWN before any question, and no question is asked in the same turn
+        assert.match(groom.content, /Show the briefing first/i);
+        assert.match(groom.content, /ordinary chat text/i);
+        assert.match(groom.content, /all eight numbered sections/i);
+        assert.match(groom.content, /including the ones that say None/i);
+        assert.match(groom.content, /Do NOT, in this same turn, ask a question with an interactive tool/i);
+        assert.match(groom.content, /human's own NEXT message/i);
         // read, don't parse: the work-breakdown reconciliation (decision 12) is an instruction, not a section
         assert.match(groom.content, /work-breakdown/i);
         // the ticketless entry deliberately reverses the 2026-08-25 no-planning-command decision

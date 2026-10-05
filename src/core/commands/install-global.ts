@@ -602,13 +602,21 @@ function groomSkillBody(taiHome: string): string {
         "then the grooming briefing: eight numbered sections (epics with nothing under them, Backlog Kickoff Stories " +
         "awaiting sequencing, Backlog tickets whose blockers are all done, flagged tickets, approved epics with nothing " +
         "scheduled, stale Backlog tickets, tickets TAI cannot read, tickets that need an assignee). For the rest of this " +
-        "turn, act as that persona and follow its grooming behavior against the briefing. Present the briefing to the " +
-        "human first, then discuss it.\n\n" +
+        "turn, act as that persona and follow its grooming behavior against the briefing.\n\n" +
+        "**Show the briefing first — before any question (TAI-423, found live in Gemini CLI, which asked a question " +
+        "with no briefing on screen).** A tool call's own output is not reliably visible to the human as chat (TAI-258), " +
+        "so running the command is not showing it. Your reply must contain the briefing as ordinary chat text: all eight " +
+        "numbered sections, in order, including the ones that say None. (Section 8's long ranked lists may be compacted to " +
+        "each ticket's key, title, top candidate and the reason, but never omit a ticket the briefing lists.) Then give " +
+        "your proposals as a short numbered list. Do NOT, in this same turn, ask a question with an interactive tool: end " +
+        "your turn there and wait for the human's own NEXT message. The batch-confirmation question belongs to the turn " +
+        "after the human has seen the briefing and replied.\n\n" +
         "**Authority (ADR decision 3).** Perry may create Backlog tickets, depends-on links and phase labels on her own — " +
         "they are reversible and invisible to Ready Work. Every Backlog → To Do move, every epic approval (scheduling the " +
         "first wave of an epic counts as one), every flag or unflag, every Cancel and every assignment she PROPOSES as a " +
-        "batch, and applies only after the human confirms in their own message. Carry a batch in one question per group, " +
-        "not one per ticket; record each applied change as a short comment on the ticket it touched.\n\n" +
+        "batch, and applies only after the human confirms in their own message. When you do ask (in a later turn), carry a " +
+        "batch in one question per group, not one per ticket; record each applied change as a short comment on the " +
+        "ticket it touched.\n\n" +
         "**Reconcile the work-breakdown document (ADR decision 12).** Read its Epic table and compare it with the epics on " +
         "the board, by reading — not by parsing — and raise each mismatch in conversation: a row with no Jira key, a key " +
         "whose ticket is missing, cancelled or renamed, an epic on the board that is not in the document. The document wins; " +
