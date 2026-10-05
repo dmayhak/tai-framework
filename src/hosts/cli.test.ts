@@ -25,6 +25,7 @@ import {
     PERSONA_LESS_CREATE_WARNING,
     parsePersonaArg,
     tryResolveCreateAssignee,
+    resolveNamedAssignee,
     renderLinkedIssues,
     renderIssueDetail,
     renderReadyWork,
@@ -668,5 +669,30 @@ describe("persona= validation and create-time assignment safety (TAI-409 review)
         assert.equal(result.assignee, undefined);
         assert.match(result.note!, /Created UNASSIGNED/);
         assert.match(result.note!, /Persona Roster page/);
+    });
+});
+
+describe("resolveNamedAssignee (TAI-421)", () => {
+    const del = { id: toHumanId("acct-1"), displayName: "Del", email: "del@example.com" };
+
+    it("resolves the named person to the real identity", async () => {
+        assert.deepEqual(await resolveNamedAssignee(async (e) => (e === "del@example.com" ? del : null), "del@example.com"), {
+            assignee: del,
+            note: undefined,
+        });
+    });
+
+    it("a name that resolves to nobody still lets the ticket be created, unassigned, with a note", async () => {
+        const r = await resolveNamedAssignee(async () => null, "ghost@example.com");
+        assert.equal(r.assignee, undefined);
+        assert.match(r.note!, /Created UNASSIGNED: no Jira user found for "ghost@example\.com"/);
+    });
+
+    it("a failed lookup is also non-fatal for the create", async () => {
+        const r = await resolveNamedAssignee(async () => {
+            throw new Error("network down");
+        }, "del@example.com");
+        assert.equal(r.assignee, undefined);
+        assert.match(r.note!, /could not look up "del@example\.com" \(network down\)/);
     });
 });
