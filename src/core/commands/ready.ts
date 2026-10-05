@@ -56,6 +56,7 @@ import {
     type Persona,
 } from "../schema/story-schema.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
+import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
 import { readWorkStatus } from "../workspace/status.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -203,12 +204,30 @@ interface ParentPrecedenceContext {
     readonly priority: string | undefined;
 }
 
+/**
+ * TAI-405: `getIssue` fails hard on a ticket whose Jira type TAI does not map (reading one issue by
+ * key is deliberately strict), but readiness walks parents and blockers that may be such a ticket.
+ * Treat it as unreadable -- null, reported once -- instead of crashing the whole briefing.
+ */
+async function getIssueOrUnreadable(workTracker: WorkTracker, key: IssueKey): Promise<Issue | null | "unreadable"> {
+    try {
+        return await workTracker.getIssue(key);
+    } catch (e) {
+        if (e instanceof UnreadableIssueError) {
+            reportUnreadableIssue({ key: e.key, typeName: e.typeName });
+            return "unreadable";
+        }
+        throw e;
+    }
+}
+
 async function loadParentPrecedenceContext(
     workTracker: WorkTracker,
     projectKey: string,
     parentKey: IssueKey
 ): Promise<ParentPrecedenceContext | null> {
-    const parent = await workTracker.getIssue(parentKey);
+    const found = await getIssueOrUnreadable(workTracker, parentKey);
+    const parent = found === "unreadable" ? null : found;
     if (!parent || !isStoryIssueType(parent.issueType)) {
         // No parent, or a parent that isn't a Story-level ticket (e.g. an Epic) — no
         // SUBTASK_PRECEDENCE graph applies. Conservatively not "ready" via this path rather
@@ -246,7 +265,13 @@ async function findOpenDependsOnBlockers(workTracker: WorkTracker, issue: Issue)
 
     const blockers: IssueKey[] = [];
     for (const link of links) {
-        const blocker = await workTracker.getIssue(link.key);
+        const found = await getIssueOrUnreadable(workTracker, link.key);
+        // An unreadable blocker's status is unknown, so it stays an open blocker (flagged, never excluded).
+        if (found === "unreadable") {
+            blockers.push(link.key);
+            continue;
+        }
+        const blocker = found;
         if (blocker && blocker.status !== Status.Done && blocker.status !== Status.Canceled) {
             blockers.push(link.key);
         }
@@ -503,7 +528,8 @@ async function syncTestTiersToToDo(
     const synced: IssueKey[] = [];
     const checkedParents = new Set<IssueKey>();
     for (const { devSubtaskKey } of devLinked) {
-        const dev = await workTracker.getIssue(devSubtaskKey);
+        const found = await getIssueOrUnreadable(workTracker, devSubtaskKey);
+        const dev = found === "unreadable" ? null : found;
         if (!dev?.parentKey || checkedParents.has(dev.parentKey)) continue;
         checkedParents.add(dev.parentKey);
 
@@ -626,7 +652,8 @@ async function findTerminalAncestor(
         if (!current.parentKey) return null;
         let parent = ancestorCache.get(current.parentKey);
         if (parent === undefined) {
-            parent = await workTracker.getIssue(current.parentKey);
+            const found = await getIssueOrUnreadable(workTracker, current.parentKey);
+            parent = found === "unreadable" ? null : found; // unreadable ancestor: not terminal, as far as TAI can tell
             ancestorCache.set(current.parentKey, parent);
         }
         if (!parent) return null; // malformed/missing data -- not this function's job to flag

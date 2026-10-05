@@ -35,6 +35,7 @@ import {
     toPageId,
     DEFAULT_SEARCH_LIMIT,
 } from "../interface.js";
+import { UnreadableIssueError, reportUnreadableIssue } from "../unreadable-issues.js";
 import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
@@ -73,6 +74,23 @@ const API = "/rest/api/2";
 // TAI-402: `exhaustive` searches page at Jira's per-request max, bounded so a bad query can't loop.
 const EXHAUSTIVE_PAGE_SIZE = 100;
 const MAX_EXHAUSTIVE_PAGES = 50;
+
+/** TAI-405: report an unmapped-type ticket and yield undefined; any other failure still throws. */
+function skipUnreadable(e: unknown): undefined {
+    if (e instanceof UnreadableIssueError) {
+        reportUnreadableIssue({ key: e.key, typeName: e.typeName });
+        return undefined;
+    }
+    throw e;
+}
+
+function readOrSkip<T>(read: () => T): T | undefined {
+    try {
+        return read();
+    } catch (e) {
+        return skipUnreadable(e);
+    }
+}
 
 const noFlaggedFieldReason = (): string =>
     'This Jira site has no "Flagged" custom field (it comes with Jira Software), so TAI cannot set or clear a flag here. ' +
@@ -758,7 +776,12 @@ export function createJiraWorkTracker(
                 // Loud, not silent: an "exhaustive" result that was actually cut off is the bug this fixes.
                 throw new Error(`Exhaustive search still had more results after ${MAX_EXHAUSTIVE_PAGES} pages: ${jql}`);
             }
-            const found = rawIssues.map((r) => toIssue(r, personaFieldId, aliases, flaggedFieldId));
+            // TAI-405: a row of an unmapped Jira type is skipped and reported, not fatal for the whole search.
+            const found: Issue[] = [];
+            for (const r of rawIssues) {
+                const issue = readOrSkip(() => toIssue(r, personaFieldId, aliases, flaggedFieldId));
+                if (issue) found.push(issue);
+            }
 
             // TAI-381: the index above lags a few seconds behind a create. With `readYourWrites`,
             // also read the PARENT's own `subtasks` field (immediately consistent), fetch any
@@ -771,8 +794,8 @@ export function createJiraWorkTracker(
                 const have = new Set(found.map((i) => i.key as string));
                 for (const sub of parent?.fields?.subtasks ?? []) {
                     if (have.has(sub.key)) continue;
-                    const issue = await fetchIssue(toIssueKey(sub.key));
-                    if (matchesIssueFilter(issue, filter)) found.push(issue);
+                    const issue = await fetchIssue(toIssueKey(sub.key)).catch(skipUnreadable);
+                    if (issue && matchesIssueFilter(issue, filter)) found.push(issue);
                 }
             }
             return filter.exhaustive ? found : found.slice(0, filter.limit ?? DEFAULT_SEARCH_LIMIT);

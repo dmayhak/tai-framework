@@ -63,6 +63,7 @@ import {
     type EpicSummary,
 } from "../core/workspace/living-doc-staleness.js";
 import { materializePrecedenceLinks } from "../core/commands/link-precedence.js";
+import { renderUnreadableIssuesNote, takeUnreadableIssues } from "../core/storage/unreadable-issues.js";
 import { installGlobal, defaultTaiHome, PM_KICKOFF_HINT } from "../core/commands/install-global.js";
 import {
     INIT_STEPS,
@@ -982,7 +983,11 @@ export function resolveCreatePriority(
     return undefined;
 }
 
-export function renderIssueSearchResults(issues: readonly Issue[], filter: IssueFilter): string {
+/**
+ * `skippedCount` (TAI-405) is how many rows the backend fetched but could not read (unmapped Jira type): they
+ * count toward the cap, so a full page with one skipped row still shows the "hit the search limit" hint.
+ */
+export function renderIssueSearchResults(issues: readonly Issue[], filter: IssueFilter, skippedCount = 0): string {
     const scope = [
         `project: ${filter.projectKey}`,
         filter.statuses ? `status: ${filter.statuses.join(", ")}` : undefined,
@@ -1014,7 +1019,7 @@ export function renderIssueSearchResults(issues: readonly Issue[], filter: Issue
     }
 
     const effectiveLimit = filter.limit ?? DEFAULT_SEARCH_LIMIT;
-    if (issues.length >= effectiveLimit) {
+    if (issues.length + skippedCount >= effectiveLimit) {
         lines.push(
             `_Hit the search limit (${effectiveLimit}) — more matches may exist. Re-run with a higher ` +
                 `limit= to confirm this is everything before treating it as a complete sweep._`
@@ -1610,7 +1615,10 @@ async function main(): Promise<void> {
             },
             persona
         );
-        console.log((fetchNote ? `${fetchNote}\n\n` : "") + renderReadyWork(result, arg));
+        const unreadableNote = renderUnreadableIssuesNote(takeUnreadableIssues());
+        console.log(
+            (fetchNote ? `${fetchNote}\n\n` : "") + renderReadyWork(result, arg) + (unreadableNote ? `\n\n${unreadableNote}` : "")
+        );
         return;
     }
 
@@ -1874,7 +1882,11 @@ async function main(): Promise<void> {
             const fields = parseKeyValueArgs(issueArgs);
             const filter = parseIssueSearchFilter(fields, config.projectKey);
             const issues = await config.backend.workTracker.search(filter);
-            console.log(renderIssueSearchResults(issues, filter));
+            const unreadable = takeUnreadableIssues();
+            const unreadableNote = renderUnreadableIssuesNote(unreadable);
+            console.log(
+                renderIssueSearchResults(issues, filter, unreadable.length) + (unreadableNote ? `\n\n${unreadableNote}` : "")
+            );
             return;
         }
 
