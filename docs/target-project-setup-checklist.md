@@ -242,16 +242,24 @@ its own, so `init status` is unaffected.
 
 ## Suggested team rituals (not a verified `init` step)
 
-TAI deliberately doesn't build or tickle any of this itself (human-decided 2026-08-25) —
+TAI doesn't build or tickle the *schedule* for any of this (human-decided 2026-08-25) —
 recurring reminders are a job calendar apps already do well (real notifications,
 timezones, snoozing), and reinventing that inside TAI would be worse than just using one.
 Worth setting up now, while you're already thinking about how this project runs:
 
 - **A recurring prioritization/planning meeting** — the vehicle for moving tickets
   `Backlog → To Do` (and back, if priorities shift) and for setting/adjusting `Priority`.
-  Both stay a soft, human-judged call in native Jira's own Backlog view (rev 29, brief
-  §8.28) — no `tai-planning` command, no automation. Set yourself a recurring calendar
-  reminder for it; no suggested cadence — whatever fits this team.
+  Set yourself a recurring calendar reminder for it; no suggested cadence — whatever fits
+  this team. **`/tai-groom` is what Perry brings to that meeting (TAI-389/395, human-decided
+  2026-10-02 — this reverses the 2026-08-25 "no planning command" decision).** Run
+  `/tai-groom` (the whole board) or `/tai-groom <EPIC-KEY>` (one epic): she shows what
+  needs grooming — epics with nothing under them, Kickoff Stories to sequence, Backlog
+  tickets whose blockers are done, flagged and stale tickets, tickets that need an
+  assignee — and proposes the changes. She creates Backlog tickets, links and phase
+  labels on her own; every `Backlog → To Do` move, epic approval, flag, cancel and
+  assignment is proposed as a batch and applied only after you confirm. The meeting
+  itself, and its cadence, stay yours. A Backlog ticket untouched for 60 days shows up
+  as stale; set `TAI_STALE_BACKLOG_DAYS` in `.env` to change that.
 - **A recurring standup**, if this team wants one — same reasoning, same "your calendar,
   not TAI's job" answer.
 

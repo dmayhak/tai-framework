@@ -9,12 +9,28 @@ import { renderGlobalSkillFiles, installGlobal, defaultTaiHome } from "./install
 describe("renderGlobalSkillFiles", () => {
     const files = renderGlobalSkillFiles("/home/x/.tai-framework");
 
-    test("produces 10 files -- 5 skills x 2 hosts", () => {
-        assert.equal(files.length, 10);
+    test("produces 12 files -- 6 skills x 2 hosts", () => {
+        assert.equal(files.length, 12);
+    });
+
+    test("the tai-groom skill runs groom [EPIC-KEY], acts as Perry, and never applies a change without the human's own confirmation (TAI-395)", () => {
+        const groom = files.find((f) => f.relativePath === ".claude/skills/tai-groom/SKILL.md")!;
+        assert.match(groom.content, /cli\.ts groom \[EPIC-KEY\]/);
+        assert.match(groom.content, /act as that persona|act as Perry/i);
+        assert.match(groom.content, /optional epic key/i);
+        // authority (ADR decision 3): creates on her own; proposes the rest as a batch
+        assert.match(groom.content, /Backlog tickets, depends-on links and phase labels/);
+        assert.match(groom.content, /Backlog → To Do move, every epic approval/);
+        assert.match(groom.content, /only after the human confirms/i);
+        assert.match(groom.content, /one question per group|once per group/i);
+        // read, don't parse: the work-breakdown reconciliation (decision 12) is an instruction, not a section
+        assert.match(groom.content, /work-breakdown/i);
+        // the ticketless entry deliberately reverses the 2026-08-25 no-planning-command decision
+        assert.match(groom.content, /needs no ticket/i);
     });
 
     test("covers both hosts for every skill name", () => {
-        for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit"]) {
+        for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit", "tai-groom"]) {
             assert.ok(files.some((f) => f.relativePath === `.claude/skills/${name}/SKILL.md`));
             assert.ok(files.some((f) => f.relativePath === `.gemini/skills/${name}/SKILL.md`));
         }
@@ -54,7 +70,7 @@ describe("renderGlobalSkillFiles", () => {
     });
 
     test("Claude and Gemini versions of the same skill are byte-identical", () => {
-        for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit"]) {
+        for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit", "tai-groom"]) {
             const claude = files.find((f) => f.relativePath === `.claude/skills/${name}/SKILL.md`)!;
             const gemini = files.find((f) => f.relativePath === `.gemini/skills/${name}/SKILL.md`)!;
             assert.equal(claude.content, gemini.content);
@@ -202,7 +218,7 @@ describe("installGlobal", () => {
             const result = await installGlobal(taiHome, homedir);
 
             assert.equal(result.taiHome, taiHome);
-            assert.equal(result.written.length, 10);
+            assert.equal(result.written.length, 12);
 
             const claudeWork = await readFile(path.join(homedir, ".claude/skills/tai-work/SKILL.md"), "utf-8");
             assert.match(claudeWork, /name: tai-work/);
@@ -226,7 +242,7 @@ describe("installGlobal", () => {
             await installGlobal(taiHome, homedir);
             const second = await installGlobal(taiHome, homedir);
 
-            assert.equal(second.written.length, 10);
+            assert.equal(second.written.length, 12);
         } finally {
             await rm(dir, { recursive: true, force: true });
         }

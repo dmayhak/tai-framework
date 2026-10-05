@@ -274,6 +274,25 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         assert.deepEqual(analystCreatedIssues.map((t) => (t.kind === "issue" ? t.issueType : null)), ["epic"]);
     });
 
+    it("every persona doc carries the human-gated unblock rule (TAI-395, ADR decision 11)", async () => {
+        const configs = await loadBuiltinPersonaConfigs();
+        for (const [id, config] of configs) {
+            assert.match(config.prompt, /Unblocks human-gated work/, `${id} should carry the unblock rule`);
+            assert.match(config.prompt, /DesignReview, EpicReview or UAT/, `${id} should name the human-gated types`);
+        }
+    });
+
+    it("Perry's doc carries the grooming behavior: the briefing sections, the authority split, the reconciliation (TAI-395)", async () => {
+        const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
+        assert.match(pm.prompt, /\/tai-groom/);
+        assert.match(pm.prompt, /Backlog tickets, depends-on links and phase labels/);
+        assert.match(pm.prompt, /proposes? .* as a batch/is);
+        assert.match(pm.prompt, /only after the human confirms/i);
+        assert.match(pm.prompt, /work-breakdown/i);
+        assert.match(pm.prompt, /document\s+wins/i);
+        assert.match(pm.prompt, /never retypes, cancels or deletes/i);
+    });
+
     it("Perry may create Kickoff and every live subtask type (TAI-394 review, human-decided 2026-10-05)", async () => {
         const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
         const issues = pm.permissions.create.filter((t) => t.kind === "issue").map((t) => (t.kind === "issue" ? t.issueType : null));
