@@ -6,6 +6,7 @@
  * live (a persona quietly mapped to the wrong Jira option is far worse than a crash).
  */
 
+import { parseUpdatedSince } from "../issue-filter.js";
 import { UnreadableIssueError } from "../unreadable-issues.js";
 import {
     Persona,
@@ -355,11 +356,8 @@ export function toJql(filter: IssueFilter, aliases: TypeAliasMap = EMPTY_TYPE_AL
         // Powers brief §7's bulk "what changed since last sync" query.
         // Epoch milliseconds, not the ISO string: found live (TAI-420) that Jira silently matches NOTHING for
         // `updated >= "2026-07-07T18:50:16.985Z"` (no error, zero rows), while an epoch value is exact and
-        // timezone-free. An unparseable value throws -- it must never become a query that matches nothing.
-        const sinceMs = Date.parse(filter.updatedSince);
-        if (Number.isNaN(sinceMs)) {
-            throw new Error(`Invalid updatedSince "${filter.updatedSince}" -- expected an ISO date-time such as 2026-10-02T10:00:00Z.`);
-        }
+        // timezone-free. `parseUpdatedSince` is the shared strict contract (ISO only) and throws on anything else.
+        const sinceMs = parseUpdatedSince(filter.updatedSince);
         clauses.push(`updated >= ${sinceMs}`);
     }
     if (filter.component) {

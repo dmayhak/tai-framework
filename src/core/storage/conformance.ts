@@ -175,13 +175,13 @@ export function defineStorageConformance(
 
         /** TAI-381: re-runs `read` until `done(value)` holds, but ONLY on a backend whose search is
          *  eventually consistent (otherwise one check, so a real bug there is not hidden by polling). */
-        async function eventually<T>(read: () => Promise<T>, done: (value: T) => boolean, what: string): Promise<T> {
+        async function eventually<T>(read: () => Promise<T>, done: (value: T) => boolean, what: string | (() => string)): Promise<T> {
             const budgetMs = h.capabilities.searchIsEventuallyConsistent ? 20000 : 0;
             const deadline = Date.now() + budgetMs;
             for (;;) {
                 const value = await read();
                 if (done(value)) return value;
-                if (Date.now() >= deadline) assert.fail(`${what} (not visible after ${budgetMs}ms)`);
+                if (Date.now() >= deadline) assert.fail(`${typeof what === "function" ? what() : what} (not visible after ${budgetMs}ms)`);
                 await new Promise((r) => setTimeout(r, 750));
             }
         }
@@ -1379,10 +1379,20 @@ export function defineStorageConformance(
                 const target = await subtask(story.key, SubtaskType.IntegrationTest, "Conformance: signals target");
                 await h.backend.workTracker.updateIssue(target.key, { component: "tai-framework" });
                 const targetNow = (await h.backend.workTracker.getIssue(target.key))!;
+                let last: Awaited<ReturnType<typeof gatherAssigneeEvidence>>[number] | undefined;
                 const evidence = await eventually(
-                    async () => (await gatherAssigneeEvidence(withDirectory(h.backend.workTracker), targetNow, [candidate], { onWarning: () => {} }))[0]!,
+                    async () => (last = (await gatherAssigneeEvidence(withDirectory(h.backend.workTracker), targetNow, [candidate], { onWarning: () => {} }))[0]!),
                     (e) => e.continuity !== null && e.area !== null && (e.openCount ?? 0) >= 1,
-                    "ranking evidence"
+                    () =>
+                        `ranking evidence incomplete -- still missing: ${
+                            [
+                                last?.continuity === null ? "continuity" : null,
+                                last?.area === null ? "area knowledge" : null,
+                                (last?.openCount ?? 0) < 1 ? "open-ticket load" : null,
+                            ]
+                                .filter(Boolean)
+                                .join(", ") || "nothing (condition changed)"
+                        }`
                 );
                 assert.equal(evidence.continuity?.tier, 1, "assigned to a sibling under the same Story");
                 assert.match(evidence.continuity!.reasons[0]!, /^worked on this Story \(/);

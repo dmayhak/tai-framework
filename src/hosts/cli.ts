@@ -926,7 +926,9 @@ export function renderCascadeWarnings(warnings: readonly CascadeWarning[] | unde
 /** Pure filter-construction for `issue search` (TAI-268) — separated from the `main()`
  *  branch that calls it so it's unit-testable without a real backend. `fields` is whatever
  *  `parseKeyValueArgs` produced from the trailing CLI args; `defaultProjectKey` is
- *  `config.projectKey`, used whenever no explicit `projectKey=` override was given. */
+ *  `config.projectKey`, used whenever no explicit `projectKey=` override was given.
+ *  `updatedSince=` takes an ISO 8601 date (2026-10-02) or a date-time with a timezone (2026-10-02T10:00:00Z);
+ *  relative forms such as -7d are rejected (TAI-420 review). */
 export function parseIssueSearchFilter(fields: Readonly<Record<string, string>>, defaultProjectKey: string): IssueFilter {
     return {
         projectKey: fields["projectKey"] ?? defaultProjectKey,

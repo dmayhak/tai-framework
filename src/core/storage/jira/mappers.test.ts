@@ -319,6 +319,7 @@ describe("toJql", () => {
 
     it("an updatedSince that is not a date THROWS rather than building a query that matches nothing", () => {
         assert.throws(() => toJql({ projectKey: "TAI", updatedSince: "last tuesday" }), /Invalid updatedSince "last tuesday"/);
+        assert.throws(() => toJql({ projectKey: "TAI", updatedSince: "-7d" }), /Invalid updatedSince/);
     });
 
     it("always scopes to the project", () => {
