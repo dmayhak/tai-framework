@@ -142,6 +142,10 @@ export interface IssueFilter {
     readonly persona?: Persona;
     readonly parentKey?: IssueKey;
     readonly updatedSince?: string; // ISO — powers brief §7's bulk incremental-sync case
+    /** TAI-419: the ticket's Component, exact match (area-knowledge signal for assignee ranking). */
+    readonly component?: string;
+    /** TAI-419: the ticket must carry EVERY listed label. */
+    readonly labels?: readonly string[];
     // Bounds result size. A single bounded search is one page; callers that need every match
     // set `exhaustive` below instead (TAI-402). When both are omitted, every backend applies
     // DEFAULT_SEARCH_LIMIT below — never "everything" by accident.

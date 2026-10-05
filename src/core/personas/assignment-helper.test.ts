@@ -18,6 +18,24 @@ const multiCandidateRoster = parseRoster(
 
 const zeroCandidateRoster = parseRoster("| Persona | Humans |\n| --- | --- |\n| PM | ada (ada@example.com) |");
 
+describe("resolveAssignment at creation (TAI-419 ADR decision 2: the rev 54 shortcut is removed at create)", () => {
+    it("sole candidate: still pre-assigned at create", () => {
+        const result = resolveAssignment(soleCandidateRoster, Persona.Developer, null, { atCreate: true });
+        assert.equal(result.assignee?.email, "del@mayhak.com");
+    });
+
+    it("2+ candidates and the session's human is one of them: NOT auto-assigned at create (they get the pinned list instead)", () => {
+        const result = resolveAssignment(multiCandidateRoster, Persona.Pm, human("p", "perry", "perry@example.com"), { atCreate: true });
+        assert.equal(result.assignee, null);
+        assert.equal(result.candidates.length, 2);
+    });
+
+    it("the same case without atCreate (claim / transition time) still auto-assigns, unchanged", () => {
+        const result = resolveAssignment(multiCandidateRoster, Persona.Pm, human("p", "perry", "perry@example.com"));
+        assert.equal(result.assignee?.email, "perry@example.com");
+    });
+});
+
 describe("resolveAssignment", () => {
     it("sole candidate: assigns unconditionally, regardless of currentHuman (brief §5.5, pre-existing rule)", () => {
         const result = resolveAssignment(soleCandidateRoster, Persona.Developer, null);

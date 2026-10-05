@@ -123,8 +123,10 @@ import {
 } from "../core/schema/story-schema.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
-import { loadRoster } from "../core/personas/roster.js";
+import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
+import { areaWindowDaysFromEnv } from "../core/personas/assignee-evidence.js";
+import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -252,6 +254,17 @@ async function resolveConfig(): Promise<ResolvedConfig> {
     throw new Error(`Unknown TAI_BACKEND "${backendKind}" — expected "jira" or "filesystem".`);
 }
 
+/** The Persona Roster, read once per CLI run (a create needs it for the assignment AND for the ranked list). */
+const rosterByConfig = new WeakMap<ResolvedConfig, Promise<Roster>>();
+function loadProjectRoster(config: ResolvedConfig): Promise<Roster> {
+    let roster = rosterByConfig.get(config);
+    if (!roster) {
+        roster = loadRoster(config.backend.docStore, { spaceKey: config.spaceKey, projectKey: config.projectKey });
+        rosterByConfig.set(config, roster);
+    }
+    return roster;
+}
+
 /**
  * Loads the Persona Roster and resolves an assignment for `persona` via the
  * assignment-helper (TAI-249/260 ADR) — shared by `issue create`'s pre-assign path and
@@ -269,53 +282,17 @@ async function resolveConfig(): Promise<ResolvedConfig> {
  * entry) or no matching real Jira user can't be resolved this way — treated as
  * unresolved, falling through to candidate-surfacing, not a crash.
  */
-async function resolveIssueAssignment(config: ResolvedConfig, persona: Persona): Promise<AssignmentResolution> {
-    const roster = await loadRoster(config.backend.docStore, { spaceKey: config.spaceKey, projectKey: config.projectKey });
-    const resolved = resolveAssignment(roster, persona, config.currentHuman);
+async function resolveIssueAssignment(
+    config: ResolvedConfig,
+    persona: Persona,
+    options: { readonly atCreate?: boolean } = {}
+): Promise<AssignmentResolution> {
+    const roster = await loadProjectRoster(config);
+    const resolved = resolveAssignment(roster, persona, config.currentHuman, options);
     if (!resolved.assignee) return resolved;
 
     const real = resolved.assignee.email ? await config.backend.workTracker.resolveHuman(resolved.assignee.email) : null;
     return { assignee: real, candidates: resolved.candidates };
-}
-
-// Open, non-terminal statuses — same "still needs an owner" set the assignment gate itself
-// cares about (Done/Canceled are exempt from the gate; an open-ticket load signal should
-// count the same statuses that gate is actually protecting).
-const OPEN_STATUSES: readonly Status[] = [Status.Backlog, Status.ToDo, Status.InProgress, Status.InReview];
-
-/**
- * Renders `candidates` for a rejection message, each with brief §5.6's "current open-ticket
- * count" load signal (one `search` per candidate — candidate lists are small, a handful of
- * roster entries per persona, never a real cost concern). The other named signal, "whether
- * one already has a branch/related work in flight," is deliberately NOT computed here — it
- * needs `GitHost` awareness this command has no existing dependency on, and no `issue`
- * subcommand wires one today; adding it now would be scope beyond what's asked (revisit if
- * a real need shows up, same posture as `tryResolveReadyGitDeps`'s own git-awareness gating).
- *
- * `candidates` are `resolveAssignment`'s raw, roster-sourced output — SYNTHETIC email-derived
- * ids (`roster.ts`'s `parseHumanCell`), not real Jira `accountId`s. `search`'s `assignee`
- * filter needs the real id (same boundary `resolveIssueAssignment` already crosses for the
- * one *picked* assignee) — each candidate is re-resolved through `resolveHuman` here too,
- * before searching, or the count would silently read 0 for everyone. Found in review
- * (TAI-260, PR #71): the first version of this function searched on the synthetic id
- * directly, which never matches a real ticket.
- */
-async function formatAssignmentCandidates(
-    workTracker: Pick<WorkTracker, "search" | "resolveHuman">,
-    projectKey: string,
-    persona: Persona,
-    candidates: readonly HumanRef[]
-): Promise<string> {
-    const lines = await Promise.all(
-        candidates.map(async (c) => {
-            const who = c.email ? `${c.displayName} (${c.email})` : c.displayName;
-            const real = c.email ? await workTracker.resolveHuman(c.email) : null;
-            if (!real) return `  - ${who} — open-ticket count unavailable (no resolvable Jira user)`;
-            const open = await workTracker.search({ projectKey, assignee: real.id, statuses: OPEN_STATUSES });
-            return `  - ${who} — ${open.length} open ticket${open.length === 1 ? "" : "s"}`;
-        })
-    );
-    return `Candidates for ${PERSONA_ROLE_LABEL[persona]}:\n${lines.join("\n")}`;
 }
 
 const TEST_TIER_TYPES: ReadonlySet<string> = new Set([
@@ -640,6 +617,13 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
         return blockers && blockers.length > 0 ? ` ⚠️ blocked by ${blockers.join(", ")} (open)` : "";
     };
 
+    // TAI-419 (ADR decision 13c): an unassigned ready ticket shows the single best suggestion with its reason; the
+    // full ranked list is `issue suggest <KEY>` (and /tai-groom). Informational only.
+    const assigneeSuggestionNote = (key: IssueKey) => {
+        const suggestion = result.assigneeSuggestions.get(key);
+        return suggestion ? ` — needs an assignee — suggest: ${suggestion}` : "";
+    };
+
     // TAI-196/200: top section — already-started work, split out from genuinely-not-started
     // Ready Work below. A Dev subtask with an open PR is ALWAYS In Progress (rev 52 — it
     // stays open until the PR merges), so this is the only place the TAI-217/219
@@ -683,7 +667,8 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             const parentNote = issue.parentKey ? `, parent: ${issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
-                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote})${blockedFlag(issue.key)}`
+                    `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote})${blockedFlag(issue.key)}` +
+                    assigneeSuggestionNote(issue.key)
             );
             actionableCount++;
         };
@@ -1669,6 +1654,16 @@ async function main(): Promise<void> {
                 taiRoot: config.taiRoot,
                 projectKey: config.projectKey,
                 ...(gitDeps ?? {}),
+                // TAI-419: the best assignee for each unassigned ready ticket (one line); the full list is `issue suggest`.
+                suggestAssignee: async (issue) => {
+                    const { ranked } = await suggestAssignees(
+                        { workTracker: config.backend.workTracker, roster: await loadProjectRoster(config), areaWindowDays: areaWindowDaysFromEnv() },
+                        issue,
+                        {}
+                    );
+                    const top = ranked[0];
+                    return top ? `${top.candidate.displayName} (${top.reasons[0] ?? "no signal"})` : null;
+                },
             },
             persona
         );
@@ -1760,6 +1755,9 @@ async function main(): Promise<void> {
                         "[allowDuplicate=true]\n" +
                         "  assignee=<EMAIL> names who gets the ticket: it always wins, with no prompt and no roster check " +
                         "(TAI-421); an email that resolves to no Jira user creates the ticket UNASSIGNED with a note.\n" +
+                        "  With 2+ humans on the persona and nobody named, the ticket is created UNASSIGNED and a ranked " +
+                        "'Needs an assignee' list is printed (see also: issue suggest <KEY>) -- offer it to the human, " +
+                        "including 'Leave unassigned' (TAI-419).\n" +
                         '  <ISSUE-TYPE> is TAI\'s own internal value (e.g. "bug", "dev", "code-review", ' +
                         '"integration-test") -- see StoryType/SubtaskType in story-schema.ts -- NOT the raw Jira ' +
                         'display name ("Bug", "Dev", "CodeReview").\n' +
@@ -1780,17 +1778,18 @@ async function main(): Promise<void> {
                     ? parsePersonaArg(fields["persona"])
                     : (defaultPersonaFor(issueType as StoryType | SubtaskType | "epic") ?? undefined);
 
-            // TAI-249/260 ADR: pre-assign at creation via the assignment-helper -- both
-            // halves of brief §5.5 (sole-candidate, and the ratified current-user shortcut
-            // for 2+ candidates). It applies whenever `persona` is set and no `assignee=` was
-            // given; a human can still reassign afterward via `issue assign`.
+            // TAI-249/260 ADR, amended by TAI-416/419: pre-assign at creation via the assignment-helper -- the sole
+            // roster candidate only. With 2+ candidates the ticket is created UNASSIGNED and the ranked list is
+            // printed below (the session's human pinned first); the old create-time shortcut that silently assigned
+            // the session's human is gone (it stays at claim/transition time). It applies whenever `persona` is
+            // set and no `assignee=` was given; a human can still reassign afterward via `issue assign`.
             // TAI-421: an explicit assignee= names the person and takes precedence -- the helper
             // is skipped entirely.
             const { assignee: resolvedAssignee, note: assignmentNote } =
                 fields["assignee"] !== undefined
                     ? await resolveNamedAssignee((email) => config.backend.workTracker.resolveHuman(email), fields["assignee"])
                     : persona
-                      ? await tryResolveCreateAssignee(() => resolveIssueAssignment(config, persona))
+                      ? await tryResolveCreateAssignee(() => resolveIssueAssignment(config, persona, { atCreate: true }))
                       : { assignee: undefined, note: undefined };
 
             // TAI-292: only bother fetching the parent when its priority could actually
@@ -1823,6 +1822,20 @@ async function main(): Promise<void> {
             const issue = await config.backend.workTracker.createIssue(input);
             console.log(renderIssueRef(issue));
             if (assignmentNote) console.log(`\n${assignmentNote}`);
+            // TAI-419: still unassigned under a persona (2+ candidates, nobody named) -> the ranked list, the
+            // session's human pinned first. The ticket already exists; "leave unassigned" is a valid outcome.
+            if (!issue.assignee && issue.persona) {
+                try {
+                    const suggestion = await suggestAssignees(
+                        { workTracker: config.backend.workTracker, roster: await loadProjectRoster(config), areaWindowDays: areaWindowDaysFromEnv() },
+                        issue,
+                        { pin: config.currentHuman }
+                    );
+                    console.log(`\n${suggestion.text}`);
+                } catch {
+                    // A roster that cannot be read was already explained by the assignment note above.
+                }
+            }
             if (!issue.persona) console.log(`\n${PERSONA_LESS_CREATE_WARNING(issue.key)}`);
             return;
         }
@@ -1865,7 +1878,7 @@ async function main(): Promise<void> {
             if (!result.ok && isAssignmentGateReason(result.reason)) {
                 const issue = await config.backend.workTracker.getIssue(key);
                 if (issue?.persona) {
-                    const { assignee, candidates } = await resolveIssueAssignment(config, issue.persona);
+                    const { assignee } = await resolveIssueAssignment(config, issue.persona);
                     if (assignee) {
                         const assigned = await config.backend.workTracker.assignIssue(key, assignee);
                         if (assigned.ok) {
@@ -1878,13 +1891,14 @@ async function main(): Promise<void> {
                             // session).
                             autoAssignFailure = `Auto-assign to ${assignee.displayName} failed: ${assigned.reason}`;
                         }
-                    } else if (candidates.length > 0) {
-                        enrichedCandidates = await formatAssignmentCandidates(
-                            config.backend.workTracker,
-                            config.projectKey,
-                            issue.persona,
-                            candidates
-                        );
+                    } else {
+                        enrichedCandidates = (
+                            await suggestAssignees(
+                                { workTracker: config.backend.workTracker, roster: await loadProjectRoster(config), areaWindowDays: areaWindowDaysFromEnv() },
+                                issue,
+                                {}
+                            )
+                        ).text;
                     }
                 }
             }
@@ -1896,6 +1910,22 @@ async function main(): Promise<void> {
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")
             );
+            return;
+        }
+
+        // TAI-419: the ranked "needs an assignee" list for one existing ticket -- read-only, same function as the
+        // create output, the transition-gate rejection and /tai-ready's top suggestion.
+        if (action === "suggest") {
+            const [issueKey] = issueArgs;
+            if (!issueKey) throw new Error("Usage: issue suggest <ISSUE-KEY>");
+            const issue = await config.backend.workTracker.getIssue(toIssueKey(issueKey));
+            if (!issue) throw new Error(`No issue ${issueKey}.`);
+            const suggestion = await suggestAssignees(
+                { workTracker: config.backend.workTracker, roster: await loadProjectRoster(config), areaWindowDays: areaWindowDaysFromEnv() },
+                issue,
+                {}
+            );
+            console.log(suggestion.text);
             return;
         }
 
@@ -1974,7 +2004,7 @@ async function main(): Promise<void> {
         }
 
         throw new Error(
-            `Unknown issue action "${action}" -- expected "create", "update", "transition", "assign", "comment", ` +
+            `Unknown issue action "${action}" -- expected "create", "update", "transition", "assign", "suggest", "comment", ` +
                 `"link", "search", or "get".`
         );
     }

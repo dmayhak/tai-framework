@@ -1994,3 +1994,60 @@ describe("findReadyWork with a ticket of an unmapped Jira type in the graph (TAI
         });
     });
 });
+
+describe("findReadyWork: 'needs an assignee' suggestions (TAI-419)", () => {
+    test("an unassigned ready ticket with a persona gets the suggestion; an assigned one does not", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const unassigned = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "No owner", persona: Persona.Pm });
+            const assigned = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Owned",
+                persona: Persona.Pm,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(unassigned.key, Status.ToDo);
+            await backend.workTracker.transition(assigned.key, Status.ToDo);
+
+            const asked: string[] = [];
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                suggestAssignee: async (issue) => {
+                    asked.push(issue.key);
+                    return "Ann (worked on this Story (TAI-1))";
+                },
+            });
+            assert.deepEqual(asked, [unassigned.key]);
+            assert.equal(result.assigneeSuggestions.get(unassigned.key), "Ann (worked on this Story (TAI-1))");
+            assert.equal(result.assigneeSuggestions.has(assigned.key), false);
+        });
+    });
+
+    test("with no suggestAssignee dependency there are no suggestions and nothing is computed", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const t = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "No owner", persona: Persona.Pm });
+            await backend.workTracker.transition(t.key, Status.ToDo);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.equal(result.assigneeSuggestions.size, 0);
+        });
+    });
+
+    test("a suggestion that fails is skipped, never failing the whole /tai-ready", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const t = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "No owner", persona: Persona.Pm });
+            await backend.workTracker.transition(t.key, Status.ToDo);
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                suggestAssignee: async () => {
+                    throw new Error("roster page missing");
+                },
+            });
+            assert.ok(result.ready.some((i) => i.key === t.key));
+            assert.equal(result.assigneeSuggestions.size, 0);
+        });
+    });
+});
