@@ -311,6 +311,17 @@ describe("toJql", () => {
         assert.match(jql, /AND labels = "we\\"ird"/);
     });
 
+    it("updatedSince becomes epoch milliseconds: Jira silently matches NOTHING for an ISO date-time with T/Z (found live, TAI-420)", () => {
+        const jql = toJql({ projectKey: "TAI", updatedSince: "2026-10-02T10:00:00.000Z" });
+        assert.match(jql, /AND updated >= 1790935200000/);
+        assert.doesNotMatch(jql, /T10:00/);
+    });
+
+    it("an updatedSince that is not a date THROWS rather than building a query that matches nothing", () => {
+        assert.throws(() => toJql({ projectKey: "TAI", updatedSince: "last tuesday" }), /Invalid updatedSince "last tuesday"/);
+        assert.throws(() => toJql({ projectKey: "TAI", updatedSince: "-7d" }), /Invalid updatedSince/);
+    });
+
     it("always scopes to the project", () => {
         assert.match(toJql({ projectKey: "TAI" }), /^project = "TAI"/);
     });
@@ -327,8 +338,8 @@ describe("toJql", () => {
     });
 
     it("supports the bulk incremental-sync query (brief §7)", () => {
-        const jql = toJql({ projectKey: "TAI", updatedSince: "2026-07-13 09:00" });
-        assert.match(jql, /updated >= "2026-07-13 09:00"/);
+        const jql = toJql({ projectKey: "TAI", updatedSince: "2026-07-13T09:00:00Z" });
+        assert.match(jql, /updated >= 1783933200000/);
     });
 
     it("escapes quotes so a crafted value cannot break out of the literal", () => {

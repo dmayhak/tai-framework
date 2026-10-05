@@ -141,7 +141,10 @@ export interface IssueFilter {
     readonly assignee?: HumanId;
     readonly persona?: Persona;
     readonly parentKey?: IssueKey;
-    readonly updatedSince?: string; // ISO — powers brief §7's bulk incremental-sync case
+    /** ISO 8601 date (2026-10-02) or date-time WITH a timezone (2026-10-02T10:00:00Z) -- powers brief §7's bulk
+     *  incremental-sync case. Anything else (relative offsets like -7d, a bare local time) is rejected by every
+     *  backend (`parseUpdatedSince`); it is compared as an instant, never as text. */
+    readonly updatedSince?: string;
     /** TAI-419: the ticket's Component, exact match (area-knowledge signal for assignee ranking). */
     readonly component?: string;
     /** TAI-419: the ticket must carry EVERY listed label. */
