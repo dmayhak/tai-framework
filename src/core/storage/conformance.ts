@@ -27,13 +27,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { Persona, Status, StoryType, SubtaskType, DependencyRelation } from "../schema/story-schema.js";
+import { gatherAssigneeEvidence } from "../personas/assignee-evidence.js";
 import {
     type StorageBackend,
     type IssueKey,
     type PageId,
     type HumanRef,
+    type WorkTracker,
     StorageConnectivityError,
     isFlagged,
+    toHumanId,
 } from "./interface.js";
 import { refreshIssue } from "../cache/issue-cache.js";
 import { refreshPage } from "../cache/page-cache.js";
@@ -1303,6 +1306,110 @@ export function defineStorageConformance(
                     `${issue.key} still shows flagged in search`
                 );
                 assert.equal(isFlagged(again.find((i) => i.key === issue.key)!), false);
+            });
+        });
+
+        // ---------- component / labels filters and the ranking signals (TAI-416/419/420) ----------
+
+        describe("WorkTracker: component and labels filters, and the assignee-ranking signals (TAI-416/420)", () => {
+            // The "candidate" is the harness's real assignable human: the roster knows people by email, so the
+            // evidence loader is handed a directory that maps that email to the backend's real identity.
+            const CANDIDATE_EMAIL = "conformance-candidate@example.com";
+            const withDirectory = (wt: WorkTracker): WorkTracker =>
+                Object.assign(Object.create(wt), {
+                    resolveHuman: async (email: string) => (email === CANDIDATE_EMAIL ? h.validAssignee : wt.resolveHuman(email)),
+                }) as WorkTracker;
+            const candidate: HumanRef = { id: toHumanId(CANDIDATE_EMAIL), displayName: "Conformance Candidate", email: CANDIDATE_EMAIL };
+
+            async function subtask(parent: IssueKey, type: SubtaskType, summary: string, extra: { assignee?: HumanRef } = {}) {
+                return track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: type,
+                        parentKey: parent,
+                        allowDuplicate: true,
+                        summary,
+                        ...extra,
+                    })
+                );
+            }
+
+            it("search filters by component and by labels (every listed label), and the signals read back through the real tracker", async () => {
+                const story = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: StoryType.Story, summary: "Conformance: ranking signals story" })
+                );
+                // open and assigned: same-Story continuity + load + matching component/labels
+                const open = await subtask(story.key, SubtaskType.Dev, "Conformance: signals open dev", { assignee: h.validAssignee });
+                await h.backend.workTracker.updateIssue(open.key, { component: "tai-framework", labels: ["conf-x", "conf-y"] });
+                // Done and assigned: area knowledge (same Component, within the window)
+                const done = await subtask(story.key, SubtaskType.Dev, "Conformance: signals done dev", { assignee: h.validAssignee });
+                await h.backend.workTracker.updateIssue(done.key, { component: "tai-framework", labels: ["conf-x"] });
+                assert.equal((await h.backend.workTracker.transition(done.key, Status.Done)).ok, true, "the fixture must really be Done");
+                // unassigned, component only
+                const bare = await subtask(story.key, SubtaskType.Dev, "Conformance: signals bare dev");
+                await h.backend.workTracker.updateIssue(bare.key, { component: "tai-framework" });
+
+                const under = (extra: Record<string, unknown>) => async () =>
+                    (await h.backend.workTracker.search({ projectKey: h.projectKey, parentKey: story.key, ...extra } as never))
+                        .map((i) => i.key as string)
+                        .sort();
+                const keys = (...issues: { key: IssueKey }[]) => issues.map((i) => i.key as string).sort();
+
+                assert.deepEqual(
+                    await eventually(under({ component: "tai-framework" }), (k) => k.length === 3, "component filter"),
+                    keys(open, done, bare)
+                );
+                assert.deepEqual(
+                    await eventually(under({ labels: ["conf-x"] }), (k) => k.length === 2, "one-label filter"),
+                    keys(open, done)
+                );
+                assert.deepEqual(
+                    await eventually(under({ labels: ["conf-x", "conf-y"] }), (k) => k.length === 1, "every-label filter"),
+                    keys(open)
+                );
+                // updatedSince is an instant: a past one keeps these, a future one matches nothing. Found live (TAI-420):
+                // Jira silently matched NOTHING for an ISO date-time string, so this proves it on a real backend.
+                const dayMs = 86_400_000;
+                await eventually(under({ updatedSince: new Date(Date.now() - dayMs).toISOString() }), (k) => k.length === 3, "updatedSince in the past");
+                assert.deepEqual(await under({ updatedSince: new Date(Date.now() + dayMs).toISOString() })(), [], "nothing was updated in the future");
+                assert.deepEqual(await under({ labels: ["conf-missing"] })(), [], "a label nobody carries matches nothing");
+                assert.deepEqual(await under({ component: "no-such-component-xyz" })(), [], "a component nobody carries matches nothing");
+
+                // the evidence loader, end to end against this backend, for a new ticket in the same area
+                const target = await subtask(story.key, SubtaskType.IntegrationTest, "Conformance: signals target");
+                await h.backend.workTracker.updateIssue(target.key, { component: "tai-framework" });
+                const targetNow = (await h.backend.workTracker.getIssue(target.key))!;
+                const evidence = await eventually(
+                    async () => (await gatherAssigneeEvidence(withDirectory(h.backend.workTracker), targetNow, [candidate], { onWarning: () => {} }))[0]!,
+                    (e) => e.continuity !== null && e.area !== null && (e.openCount ?? 0) >= 1,
+                    "ranking evidence"
+                );
+                assert.equal(evidence.continuity?.tier, 1, "assigned to a sibling under the same Story");
+                assert.match(evidence.continuity!.reasons[0]!, /^worked on this Story \(/);
+                assert.ok(evidence.area!.count >= 1, "closed a Done ticket under the same Component within the window");
+                assert.ok((evidence.openCount ?? 0) >= 1, "the open sibling counts as load");
+            });
+
+            it("a ticket linked to the target gives tier-2 continuity, read through the real link API", async () => {
+                const other = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: linked ticket (assigned)",
+                        assignee: h.validAssignee,
+                    })
+                );
+                const target = track(
+                    await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: StoryType.Story, summary: "Conformance: link target" })
+                );
+                await h.backend.workTracker.createLink(target.key, DependencyRelation.RelatesTo, other.key);
+                const evidence = await eventually(
+                    async () => (await gatherAssigneeEvidence(withDirectory(h.backend.workTracker), target, [candidate], { onWarning: () => {} }))[0]!,
+                    (e) => e.continuity !== null,
+                    "linked-ticket continuity"
+                );
+                assert.equal(evidence.continuity?.tier, 2);
+                assert.deepEqual(evidence.continuity?.reasons, [`worked on related ticket ${other.key}`]);
             });
         });
 
