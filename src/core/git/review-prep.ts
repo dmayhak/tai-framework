@@ -183,8 +183,8 @@ function boundStat(stat: string, range: string): string {
  *  otherwise a bounded number of line windows plus how to continue. */
 function omittedEntry(f: DiffFile, range: string, fetchLimit: number): string[] {
     const base = `git diff ${shellWord(range)} -- ${shellQuote(f.path)}`;
-    // `budget` is what THIS output has left; a follow-up command's own output is limited by the host,
-    // not by this output, so a file is only windowed when one command could not hold it (`fetchLimit`).
+    // A follow-up command's own output is limited by the host, not by this output, so a file is only
+    // windowed when one command could not hold it (`fetchLimit`).
     if (f.patch.length <= fetchLimit) return [`- \`${base}\``];
     const total = f.patch.split("\n").length - (f.patch.endsWith("\n") ? 1 : 0);
     const avgLine = Math.max(1, f.patch.length / total);
