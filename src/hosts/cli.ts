@@ -111,6 +111,8 @@ import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from ".
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
+import { gatherDiff, renderReviewPrep } from "../core/git/review-prep.js";
+import { renderPersonaTurn } from "../core/persona/turn.js";
 import {
     defaultPersonaFor,
     DependencyRelation,
@@ -558,7 +560,7 @@ export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string 
 
 /** TAI-395: a grooming turn is the same shape as a work turn -- persona heading, her instructions, `---`, the briefing. */
 export function renderGroomTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string): string {
-    return [`# Persona: ${persona.displayName} (${persona.id})`, "", persona.prompt, "", "---", "", briefing].join("\n");
+    return renderPersonaTurn(persona, briefing);
 }
 
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
@@ -1353,6 +1355,7 @@ async function main(): Promise<void> {
         const [action, ...actionArgs] = [arg, ...rest];
         const usage =
             "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
+            "     | git-pr review-prep <REPO> [PR-ID]   (read-only: loads the Code Reviewer persona, the PR and its diff -- the review flow's entry point, TAI-425)\n" +
             "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
             "     | git-pr comment <REPO> [PR-ID] <BODY>\n" +
             "     | git-pr comments <REPO> [PR-ID]   (read-only: list ALL comments on a PR -- run before merge)\n" +
@@ -1375,6 +1378,43 @@ async function main(): Promise<void> {
             // TAI-411: the preview carries the numbered next-step options; comment-findings (below) posts
             // renderReviewFindings alone, so the options never reach the PR.
             console.log(renderFindingsPreview(findings));
+            return;
+        }
+
+        // TAI-425 ADR (page 52559873): the review flow's entry point. Read-only; loads Cole through
+        // loadPersonaConfig exactly as work/groom load theirs, so the persona, the PR, the diff and the review
+        // steps are all in the output the session reads. Roster-gated FIRST (refuses before printing anything).
+        if (action === "review-prep") {
+            const [repoArg, prIdArg] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
+            const repo = toRepoId(repoArg);
+
+            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            const pr = await gitHost.getPullRequest(repo, prId);
+            if (!pr) throw new Error(`PR ${prId} not found on ${repo}.`);
+            if (pr.state !== "open") throw new Error(`PR ${prId} on ${repo} is ${pr.state} -- there is nothing left to review.`);
+
+            const persona = await loadPersonaConfig(config.backend.docStore, "code-reviewer", { spaceKey: config.spaceKey });
+            // Best effort: a lookup failure only costs the "Linked ticket" line, never the review.
+            const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, pr.url).catch(() => null);
+            const diff = await gatherDiff({
+                cwd: process.cwd(),
+                repo: repoArg,
+                sourceBranch: pr.sourceBranch,
+                destinationBranch: pr.destinationBranch,
+            });
+
+            console.log(
+                renderReviewPrep({
+                    persona: { displayName: persona.displayName, id: persona.id, prompt: persona.prompt },
+                    repo: repoArg,
+                    pr,
+                    actingHuman: currentHuman,
+                    linkedKey,
+                    diff,
+                })
+            );
             return;
         }
 
@@ -1631,7 +1671,7 @@ async function main(): Promise<void> {
         }
 
         throw new Error(
-            `Unknown git-pr action "${action}" — expected "create", "review", "comment", "render-findings", ` +
+            `Unknown git-pr action "${action}" — expected "create", "review-prep", "review", "comment", "render-findings", ` +
                 `"comment-findings", "unapprove", or "merge".`
         );
     }

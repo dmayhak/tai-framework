@@ -59,19 +59,24 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
-    test("the tai-pr skill tells the session to paste render-findings' numbered options and maps each number (TAI-411)", () => {
+    test("the tai-pr review flow is one command, `git-pr review-prep`, and the skill no longer carries the review steps (TAI-425)", () => {
         const pr = files.find((f) => f.relativePath === ".claude/skills/tai-pr/SKILL.md")!;
-        assert.match(pr.content, /numbered "what would you like to do\?" list/);
-        assert.match(pr.content, /never trim it/);
-        for (const mapping of [
-            /\*\*1\*\* post and approve/,
-            /\*\*2\*\* post the findings only/,
-            /\*\*3\*\* approve only/,
-            /\*\*4\*\* post and request changes/,
-            /\*\*5\*\* neither/,
-        ]) {
-            assert.match(pr.content, mapping);
-        }
+        assert.match(pr.content, /git-pr review-prep <REPO> \[PR-ID\]/);
+        assert.match(pr.content, /Follow its output exactly, as that persona/);
+        assert.match(pr.content, /do NOT read the persona file yourself/i);
+        assert.match(pr.content, /Do NOT fetch or diff the PR by hand/);
+        assert.match(pr.content, /Never skip straight to `review`/);
+        assert.match(pr.content, /No condition ever auto-approves/);
+        // moved into review-prep's own output (core/git/review-prep.ts), so there is one copy:
+        assert.doesNotMatch(pr.content, /"leaningReason"/);
+        assert.doesNotMatch(pr.content, /\*\*1\*\* post and approve/);
+        assert.doesNotMatch(pr.content, /code-reviewer\.md/);
+        assert.doesNotMatch(pr.content, /git diff\s+origin/);
+    });
+
+    test("tai-ready's review line points at review-prep, not a hand-run fetch/diff (TAI-425)", () => {
+        const ready = files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!;
+        assert.match(ready.content, /git-pr review-prep/);
     });
 
     test("the tai-init skill tells the human a running Gemini session needs a full restart (TAI-397)", () => {
