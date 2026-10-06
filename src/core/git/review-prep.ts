@@ -29,8 +29,10 @@ const execFileAsync = promisify(execFile);
 export const OUTPUT_BUDGET = 24_000;
 /** The diff always gets at least this much, however large the persona and instructions are. */
 export const DIFF_FLOOR = 4_000;
-/** Window size of the per-chunk commands for a file too big to show in one piece. */
+/** Largest window (in lines) of the per-chunk commands for a file too big for one command's output; the
+ *  actual window shrinks for long lines so each window stays under 80% of the host's output limit. */
 export const CHUNK_LINES = 300;
+const MIN_CHUNK_LINES = 50;
 
 const MAX_DESCRIPTION_CHARS = 2_000;
 
@@ -155,7 +157,7 @@ function plural(n: number, one: string, many: string): string {
 /** The diff section. `budget` is the characters this section may use; whole files are shown in diff
  *  order until one does not fit, and everything from there on is listed with the exact command to
  *  read it (ADR decision 9) — never cut mid-file, never silent. */
-export function renderChanges(diff: DiffResult, budget: number): string {
+export function renderChanges(diff: DiffResult, budget: number, fetchLimit: number = OUTPUT_BUDGET): string {
     const lines: string[] = ["## Changes", ""];
 
     if (diff.kind === "unavailable") {
@@ -198,15 +200,18 @@ export function renderChanges(diff: DiffResult, budget: number): string {
         );
         for (const f of omitted) {
             const base = `git diff ${shellWord(diff.range)} -- ${shellQuote(f.path)}`;
-            if (f.patch.length <= budget) {
+            // `budget` is what THIS output has left; a follow-up command's own output is limited by the host,
+            // not by this output, so a file is only windowed when one command could not hold it (`fetchLimit`).
+            if (f.patch.length <= fetchLimit) {
                 lines.push(`- \`${base}\``);
                 continue;
             }
-            // Too big to fetch in one piece without being truncated itself: read it in windows.
             const total = f.patch.split("\n").length - (f.patch.endsWith("\n") ? 1 : 0);
-            lines.push(`- \`${f.path}\` is too large to read in one piece; read it in ${CHUNK_LINES}-line windows:`);
-            for (let start = 1; start <= total; start += CHUNK_LINES) {
-                lines.push(`  - \`${base} | sed -n '${start},${start + CHUNK_LINES - 1}p'\``);
+            const avgLine = Math.max(1, f.patch.length / total);
+            const window = Math.min(CHUNK_LINES, Math.max(MIN_CHUNK_LINES, Math.floor((fetchLimit * 0.8) / avgLine)));
+            lines.push(`- \`${f.path}\` is too large to read in one piece; read it in ${window}-line windows:`);
+            for (let start = 1; start <= total; start += window) {
+                lines.push(`  - \`${base} | sed -n '${start},${start + window - 1}p'\``);
             }
         }
     }

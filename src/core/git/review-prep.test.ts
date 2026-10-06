@@ -141,13 +141,24 @@ describe("renderChanges", () => {
 
     it("gives a file larger than the whole budget chunk commands, not one command", () => {
         const lines = CHUNK_LINES * 2 + 50;
-        const huge = { path: "huge.ts", patch: "diff --git a/huge.ts b/huge.ts\n" + "+aaaaaaaaaaaaaaaaaaaa\n".repeat(lines) };
-        const out = renderChanges(okDiff([huge]), 1_000);
+        // 100-character lines: 650 lines is 65k characters, over a 40k single-command limit; windows stay 300 lines.
+        const huge = { path: "huge.ts", patch: "diff --git a/huge.ts b/huge.ts\n" + `+${"a".repeat(98)}\n`.repeat(lines) };
+        const out = renderChanges(okDiff([huge]), 1_000, 40_000);
         assert.match(out, /DIFF NOT SHOWN IN FULL/);
         assert.match(out, new RegExp(`sed -n '1,${CHUNK_LINES}p'`));
         assert.match(out, new RegExp(`sed -n '${CHUNK_LINES + 1},${CHUNK_LINES * 2}p'`));
         assert.match(out, new RegExp(`sed -n '${CHUNK_LINES * 2 + 1},${CHUNK_LINES * 3}p'`));
         assert.doesNotMatch(out, /aaaaaaaaaa/);
+    });
+
+    it("shrinks the window for long lines, and uses one command for a file one command can hold", () => {
+        const longLines = { path: "wide.ts", patch: "diff --git a/wide.ts b/wide.ts\n" + `+${"b".repeat(498)}\n`.repeat(400) };
+        const out = renderChanges(okDiff([longLines]), 1_000, 40_000);
+        assert.match(out, /64-line windows/); // floor(40000 * 0.8 / 500)
+        assert.match(out, /sed -n '1,64p'/);
+        const fits = renderChanges(okDiff([{ path: "mid.ts", patch: "diff --git a/mid.ts b/mid.ts\n" + "+x\n".repeat(2_000) }]), 1_000, 40_000);
+        assert.doesNotMatch(fits, /windows/);
+        assert.match(fits, /git diff origin\/master\.\.\.origin\/TAI-9-thing -- 'mid\.ts'`/);
     });
 
     it("says plainly that no diff is available, with the reason, and prints no patch", () => {
