@@ -4,7 +4,19 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-05 (rev 77 — **TAI-389/395: `/tai-groom` — backlog grooming with Perry.** A sixth
+> **Last updated:** 2026-10-06 (rev 78 — **TAI-425/428: `git-pr review-prep` — the review flow loads the Code
+> Reviewer through the CLI.** A read-only command, `git-pr review-prep <REPO> [PR-ID]` (no issue key), is now the
+> entry point of `/tai-pr`'s review flow, the way `work` and `groom` load their personas: it refuses up front if the
+> acting human is not on the "PR Reviewers" roster, then prints Cole's own instructions (`loadPersonaConfig`, so a
+> team's extension applies) under a `# Persona: Cole (code-reviewer)` heading, the PR's details and linked ticket,
+> the review steps for THIS PR (findings JSON schema, `render-findings` then stop-and-wait, the numbered options,
+> the exact `comment-findings`/`review` commands) and the diff, last. The steps moved out of the skill body into
+> code so there is one copy and they sit in the output the session just read (the TAI-423 class of failure). The
+> diff is local git as before (no GitHost change); the whole output is budgeted (`OUTPUT_BUDGET`, 24,000 characters)
+> with the diff last and a visible "DIFF NOT SHOWN IN FULL" edge listing the exact per-file (or 300-line-chunk)
+> commands. Self-review is a note, never a block (§4, open item 8.3). ADR Confluence page 52559873 (rev 2).
+>
+> Prior: rev 77 — **TAI-389/395: `/tai-groom` — backlog grooming with Perry.** A sixth
 > global skill (Claude Code and Gemini CLI) loads Perry with a computed, read-only briefing of the board and
 > needs no ticket (`groom [EPIC-KEY]`; the optional epic key narrows every section to that epic). It
 > deliberately **reverses the 2026-08-25 "TAI builds no planning command" decision**: the recurring planning
@@ -1415,6 +1427,11 @@ work's briefing (§3.6) and invokes its owning persona directly. `/tai-ready [pe
 answers "what's ready for you to do" when the human doesn't have a specific key in mind
 yet. Both are thin wrappers over the same briefing-then-invoke flow — there's no
 separate code path for "starting fresh" vs. "resuming."
+
+**Review has no ticket entry (rev 78, TAI-425).** The `CodeReview` subtask is retired (rev 52), so the Code
+Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs
+`git-pr review-prep <REPO> [PR-ID]` — same persona-heading-then-body shape as `work` and `groom`, keyed by a PR
+instead of a ticket. A ticketless `/tai-review` skill was considered and deferred.
 
 ### 3.9 Comment Conventions (rev 11 — formalized here, previously design-notes-only)
 

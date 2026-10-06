@@ -131,9 +131,10 @@ function readySkillBody(taiHome: string): string {
         "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +
         "- **PRs ready for your review** — open PRs where the current human (`BITBUCKET_EMAIL`) is " +
         "on the \"PR Reviewers\" roster and hasn't yet decided. Picking this line's number means " +
-        "doing a REAL review (TAI-187) — see `tai-pr`'s own skill for the full flow (fetch the " +
-        "diff, apply Cole's rules, present findings, then ask separately whether to post and " +
-        "whether to approve) — never just running `git-pr review` straight off the number.\n" +
+        "doing a REAL review (TAI-187) — see `tai-pr`'s own skill for the full flow (it runs " +
+        "`git-pr review-prep`, which loads Cole, the PR and its diff and carries the review steps — " +
+        "present the findings, then ask separately whether to post and whether to approve) — never just " +
+        "running `git-pr review` straight off the number.\n" +
         "- **Open PRs ready to test** — `Dev` subtasks with a linked, open PR, full stop. Testing " +
         "runs in parallel with review, not gated behind it.\n" +
         "- **Approved PRs ready to merge** — the same `Dev`-subtask/PR pairs as above, additionally " +
@@ -188,8 +189,8 @@ function prSkillBody(taiHome: string): string {
         "stop\" trap, just one step earlier).\n\n" +
         "Once the human's own next message picks a line: map it back to that exact line (by its " +
         "position in the shared numbering) and take the action its section describes — for a " +
-        "\"ready for your review\" line, that means doing the real review flow below (fetch, " +
-        "diff, findings, stop — never skip straight to `git-pr review`); for a \"ready to merge\" " +
+        "\"ready for your review\" line, that means doing the real review flow below (run " +
+        "`git-pr review-prep` and follow its output — never skip straight to `git-pr review`); for a \"ready to merge\" " +
         "line, picking that number IS the explicit instruction to merge, but approval does not finish " +
         "a PR: do the **comments-before-merge step below** (`git-pr comments`, then decide) BEFORE " +
         "running `git-pr merge <ISSUE-KEY> <REPO>`. A number with no corresponding line, or " +
@@ -201,6 +202,7 @@ function prSkillBody(taiHome: string): string {
         "blob), so a multi-word title/description/comment survives intact:\n\n" +
         "```\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review-prep <REPO> [PR-ID]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment <REPO> [PR-ID] <BODY>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comments <REPO> [PR-ID]\n` +
@@ -209,7 +211,7 @@ function prSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr unapprove <REPO> [PR-ID]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n` +
         "```\n\n" +
-        "**`review`/`comment`/`comment-findings`/`unapprove` take NO `<ISSUE-KEY>`** — unlike " +
+        "**`review-prep`/`review`/`comment`/`comment-findings`/`unapprove` take NO `<ISSUE-KEY>`** — unlike " +
         "`create`/`merge`, none is scoped to one issue at all (rev 52, TAI-159 ADR): each resolves " +
         "the acting human from `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` and checks them against the " +
         "\"PR Reviewers\" roster, rejecting if they aren't listed. Passing an issue key as the " +
@@ -233,6 +235,9 @@ function prSkillBody(taiHome: string): string {
         "best-effort, a resolution failure for one reviewer still lets the PR itself get created. " +
         "There is no CodeReview subtask to link to anymore (retired rev 52) — nothing further to " +
         "wire up manually.\n" +
+        "- `review-prep` (TAI-425) — read-only; the entry point of the review flow below. Loads the Code " +
+        "Reviewer persona, the PR's details, this PR's review steps and its diff in one output. Takes no " +
+        "`<ISSUE-KEY>`; roster-gated like `review`, but refuses up front.\n" +
         "- `review` — records a real approve/request-changes decision on the PR itself. This is " +
         "the roster-gated review action `readyToReview` surfaces (no Jira subtask involved at " +
         "all) — nothing else to transition afterward.\n" +
@@ -289,101 +294,22 @@ function prSkillBody(taiHome: string): string {
         "NOT merge automatically — report it and ask the human first. If you are unsure which " +
         "bucket a comment is in, it is review-worthy. Verify a reviewer's factual claims against " +
         "reality before acting on them (they can be wrong). Never silently drop a comment.\n\n" +
-        "**Doing an actual review (TAI-187), not just recording a decision:** when the human asks " +
-        "to review a PR — including picking a numbered \"PRs ready for your review\" line from " +
-        "`/tai-ready`'s output — do the real review yourself, inline, in this same session, " +
-        "before touching `review`/`comment` at all:\n\n" +
-        "1. Fetch and diff the PR's actual branches (`/tai-ready`'s line shows `sourceBranch → " +
-        "destinationBranch`; `git-pr create`'s own confirmation and the Bitbucket PR page also " +
-        "show them): `git fetch origin <sourceBranch>` then `git diff " +
-        "origin/<destinationBranch>...origin/<sourceBranch>`.\n" +
-        `2. Read \`${taiHome}/src/personas/code-reviewer.md\` and apply Cole's Core Principles to ` +
-        "what the diff actually changed — the same standard a human reviewer on the \"PR " +
-        "Reviewers\" roster would apply. Build your findings as a single structured JSON object " +
-        "(TAI-209 ADR) — never prose — conforming to:\n\n" +
-        "```json\n" +
-        "{\n" +
-        '  "overview": "2-3 sentence high-level assessment",\n' +
-        '  "findings": [\n' +
-        "    {\n" +
-        '      "severity": "critical|suggestion|nitpick|good",\n' +
-        '      "category": "Security|Performance|Logic|Style|Architecture|...",\n' +
-        '      "title": "brief title",\n' +
-        '      "file": "path/to/file.ts",\n' +
-        '      "line": 42,\n' +
-        '      "issue": "one short paragraph, no line breaks",\n' +
-        '      "fix": "exact replacement for the single line at \\"line\\", or omit"\n' +
-        "    }\n" +
-        "  ],\n" +
-        '  "leaning": "approve|requestChanges|neither",\n' +
-        '  "leaningReason": "one sentence — your own rationale, never a decision"\n' +
-        "}\n" +
+        "**Doing an actual review (TAI-187, TAI-425):** when the human asks to review a PR — including " +
+        "picking a numbered \"PRs ready for your review\" line from `/tai-ready`'s or this skill's own list — " +
+        "run EXACTLY this and read its full output:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review-prep <REPO> [PR-ID]\n` +
         "```\n\n" +
-        "`line`, when given, is the line number in the NEW (current) version of the file — " +
-        "the same numbering the diff's `+` side uses. A finding about a deleted line, or " +
-        "one you can only place on the old side of the diff, should omit `line` rather than " +
-        "guess at a new-side number (TAI-207: `line` now anchors a real inline PR comment, " +
-        "not just cosmetic text — a wrong or old-side line number posts to the wrong place " +
-        "or gets rejected by Bitbucket outright).\n" +
-        "`line`/`fix` are optional per finding, everything else is required. An empty " +
-        "`findings` array is a valid, preferred outcome for clean code — don't invent issues to " +
-        "justify the review. Write this JSON to a temporary file (your host's own scratch/temp " +
-        "location if it has one, otherwise any plain temp path) — every command below takes it as " +
-        "`@<path>`, never as prose you type into the command yourself.\n" +
-        "3. **Run `git-pr render-findings @<path>`, then paste its ENTIRE stdout verbatim into " +
-        "your own reply as ordinary chat text — then STOP. This is the complete output of " +
-        "\"review this PR,\" full stop.** A tool call's own output is not reliably visible to the " +
-        "human as chat content (TAI-258, found live 2026-08-27) — running the command is not " +
-        "enough, and neither is referencing or summarizing what it said (\"rendered by " +
-        "render-findings, leaning approve\" is NOT the findings). Quote the real markdown the " +
-        "command printed, in full — **including the numbered \"what would you like to do?\" list at " +
-        "its end (TAI-411), which is how the human learns their options; never trim it** — in the " +
-        "message the human actually reads. Do NOT, in this same " +
-        "turn: run `git-pr comment-findings`, run `git-pr review`, or ask a question via any " +
-        "interactive tool. End your turn right here and wait for the human's own next message — " +
-        "do not try to keep going.\n\n" +
-        "TAI-202/TAI-203 (found live, 2026-08-25 — two same-turn wordings tried and failed the " +
-        "same way before landing on this design): a session that skips straight to a question " +
-        "with no findings shown leaves the human unable to answer it; a session that shows " +
-        "findings and then tries to immediately ask a question in the same turn reliably just " +
-        "stops after stating its own recommendation — a polished \"Findings... I'd lean " +
-        "approve\" write-up reads as a complete, satisfying answer, and no amount of \"don't " +
-        "stop\" wording in this file fixed that. **Don't try to word around it a third time** — " +
-        "stopping after step 3 is correct behavior, not a bug to prompt-engineer away. TAI-209 " +
-        "ADR (2026-08-27): moving findings to structured JSON removes the specific narrative-" +
-        "conclusion trap at its root — you never compose the write-up yourself, `render-findings`' " +
-        "own deterministic stdout is what the human sees — but the stop-and-wait boundary stays " +
-        "exactly as strict as before. Don't relax it just because the text is machine-rendered " +
-        "now.\n\n" +
-        "4. **When the human's own next message tells you what to do, that ordinary reply is " +
-        "the trigger — not a same-turn continuation, not a special tool.** They'll say it in " +
-        "plain language: \"post it and approve,\" \"don't post, request changes,\" \"neither,\" " +
-        "\"just approve, no comment needed,\" etc. — or with a bare number from the list " +
-        "`render-findings` ended with (TAI-411): **1** post and approve, **2** post the findings " +
-        "only, **3** approve only (no comment), **4** post and request changes, **5** neither " +
-        "(nothing is run). Interpret it and act:\n" +
-        "   - If they want the findings posted: run `git-pr comment-findings <REPO> [PR-ID] " +
-        "@<path>` — the same file from step 2, never retyped or re-composed as prose.\n" +
-        "   - If they want a decision recorded: run `git-pr review` with `approve` or " +
-        "`requestChanges` — only ever because they said so explicitly; \"neither\"/no clear " +
-        "decision means no `review` call at all.\n" +
-        "   - If their reply is genuinely ambiguous about either the posting or the decision, " +
-        "ask ONE clarifying question, not two separate ones — bundle both the comment-posting " +
-        "choice and the approve/request-changes decision into a single `AskUserQuestion` call " +
-        "(one call, multiple sub-questions), pre-filled with your own stated leaning from the " +
-        "findings as the suggested answer for the human to confirm or override rather than " +
-        "leaving both blank. Confirmed working live (2026-08-25, Gemini CLI): a human reply of " +
-        "just \"post and review\" produced exactly this — one bundled question (\"PR Comment: " +
-        "yes, post comment\" / \"PR Decision: Approve\") the human could confirm in a single " +
-        "step, not a guess and not two back-and-forths.\n\n" +
-        "This applies even when you already know the diff well (e.g. you wrote it earlier this " +
-        "session) — reviewing and recording a decision are still two separate steps, and the " +
-        "human still decides the outcome of each, every time. Never chain straight from reading a " +
-        "diff into `review`/`merge` on your own initiative — only run either because the human " +
-        "explicitly asked for that specific action, in their own message. No condition here ever " +
-        "auto-approves (brief §3.4: human sign-off is the default) — running `review`/`comment` " +
-        "without the human having actually said to, in their own words, is always wrong, however " +
-        "clean the diff looked.\n\n" +
+        "It is read-only. It refuses at once if the acting human is not on the \"PR Reviewers\" roster, and " +
+        "otherwise prints the Code Reviewer persona's own instructions (a `# Persona: Cole (code-reviewer)` " +
+        "heading, like `/tai-work`), the PR's details, the review steps for THIS PR with its exact commands, " +
+        "and the diff. **Follow its output exactly, as that persona** — including its findings format and its " +
+        "stop-and-wait rule. Do NOT fetch or diff the PR by hand, do NOT read the persona file yourself, and " +
+        "do NOT run `render-findings`, `comment-findings`, `review` or `comment` until the output's own steps " +
+        "say to. Never skip straight to `review`.\n\n" +
+        "This applies even when you already know the diff well (e.g. you wrote it earlier this session): the " +
+        "human decides the outcome of every review, every time, in their own words. No condition ever " +
+        "auto-approves (brief §3.4: human sign-off is the default).\n\n" +
         "If the command errors, report the error to the human rather than guessing or proceeding " +
         "anyway."
     );
