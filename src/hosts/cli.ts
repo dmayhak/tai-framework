@@ -1381,11 +1381,6 @@ async function main(): Promise<void> {
             return;
         }
 
-        // rev 52 (TAI-159 ADR): review/comment are roster-gated, not persona-gated — no
-        // <ISSUE-KEY> at all (there's no CodeReview subtask left to resolve permission
-        // through; see resolveReviewerGitHost's own comment). Handled separately from
-        // create/merge, which still resolve permission from an <ISSUE-KEY>'s persona field
-        // as before.
         // TAI-425 ADR (page 52559873): the review flow's entry point. Read-only; loads Cole through
         // loadPersonaConfig exactly as work/groom load theirs, so the persona, the PR, the diff and the review
         // steps are all in the output the session reads. Roster-gated FIRST (refuses before printing anything).
@@ -1423,6 +1418,11 @@ async function main(): Promise<void> {
             return;
         }
 
+        // rev 52 (TAI-159 ADR): review/comment are roster-gated, not persona-gated — no
+        // <ISSUE-KEY> at all (there's no CodeReview subtask left to resolve permission
+        // through; see resolveReviewerGitHost's own comment). Handled separately from
+        // create/merge, which still resolve permission from an <ISSUE-KEY>'s persona field
+        // as before.
         if (action === "review") {
             const [repoArg, ...gitArgs] = actionArgs;
             if (!repoArg) throw new Error(usage);
