@@ -28,6 +28,10 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(groom.content, /ordinary chat text/i);
         assert.match(groom.content, /all eight numbered sections/i);
         assert.match(groom.content, /including the ones that say None/i);
+        // verbatim, from the heading down (the mechanical rule tai-pr uses), with no compaction loophole
+        assert.match(groom.content, /# Grooming briefing/);
+        assert.match(groom.content, /verbatim/i);
+        assert.doesNotMatch(groom.content, /may be compacted/i);
         assert.match(groom.content, /Do NOT, in this same turn, ask a question with an interactive tool/i);
         assert.match(groom.content, /human's own NEXT message/i);
         // read, don't parse: the work-breakdown reconciliation (decision 12) is an instruction, not a section

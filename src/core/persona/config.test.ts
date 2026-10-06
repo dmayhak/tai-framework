@@ -293,6 +293,7 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         assert.match(pm.prompt, /never retypes, cancels or deletes/i);
         // TAI-423: briefing shown in chat first, no question in the same turn
         assert.match(pm.prompt, /Show the briefing first/i);
+        assert.match(pm.prompt, /verbatim/i);
         assert.match(pm.prompt, /put no question in the same turn/i);
     });
 

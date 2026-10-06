@@ -367,8 +367,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
 8. **Backlog grooming (`/tai-groom [EPIC-KEY]`, TAI-389/395, ADR Confluence page 48463873):** the global
    `/tai-groom` skill loads Perry with a computed, read-only briefing of the board and needs **no ticket**; an
    optional epic key narrows every section to that epic's children, their subtasks and the epic.
-   **Show the briefing first (TAI-423)**, as ordinary chat text: all eight numbered sections in order,
-   including the ones that say None (a tool call's output is not reliably visible to the human).
+   **Show the briefing first (TAI-423)**, as ordinary chat text, pasted verbatim from the `# Grooming
+   briefing` heading down: all eight numbered sections in order, including the ones that say None
+   (a tool call's output is not reliably visible to the human).
    Put no question in the same turn: end your turn after your proposals; the confirmation question
    comes in the next turn. Then work through the eight numbered sections with the human:
    1. **Epics with nothing under them** — give each its Kickoff Story and the Stories already known (item 1 and

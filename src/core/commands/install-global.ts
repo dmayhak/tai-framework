@@ -605,9 +605,10 @@ function groomSkillBody(taiHome: string): string {
         "turn, act as that persona and follow its grooming behavior against the briefing.\n\n" +
         "**Show the briefing first — before any question (TAI-423, found live in Gemini CLI, which asked a question " +
         "with no briefing on screen).** A tool call's own output is not reliably visible to the human as chat (TAI-258), " +
-        "so running the command is not showing it. Your reply must contain the briefing as ordinary chat text: all eight " +
-        "numbered sections, in order, including the ones that say None. (Section 8's long ranked lists may be compacted to " +
-        "each ticket's key, title, top candidate and the reason, but never omit a ticket the briefing lists.) Then give " +
+        "so running the command is not showing it. Your reply must contain the briefing as ordinary chat text: paste " +
+        "everything from the `# Grooming briefing` heading down to the end of the briefing, verbatim — all eight " +
+        "numbered sections, in order, including the ones that say None; never trim, reorder or summarize it (the persona " +
+        "instructions above that heading are for you, not for the human). Then give " +
         "your proposals as a short numbered list. Do NOT, in this same turn, ask a question with an interactive tool: end " +
         "your turn there and wait for the human's own NEXT message. The batch-confirmation question belongs to the turn " +
         "after the human has seen the briefing and replied.\n\n" +
