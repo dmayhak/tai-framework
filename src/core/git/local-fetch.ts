@@ -26,6 +26,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 
 import { readJsonFile, writeJsonFile } from "../cache/paths.js";
+import { runRemoteGit } from "./remote-git.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -64,6 +65,16 @@ async function tryGit(args: readonly string[], cwd: string): Promise<string | nu
     }
 }
 
+/** `tryGit` for a command that reaches the remote: same collapse-to-null, but through `runRemoteGit` so an
+ *  unrunnable (empty) `core.sshCommand` gets its one retry (TAI-431/433). */
+async function tryRemoteGit(args: readonly string[], cwd: string): Promise<string | null> {
+    try {
+        return (await runRemoteGit(args, cwd)).trim();
+    } catch {
+        return null;
+    }
+}
+
 /** Local-only default-branch resolution — no Bitbucket/GitHost dependency. Tries the
  *  cached `origin/HEAD` symref first (fast, no network); falls back to `ls-remote`
  *  (one network round-trip) when that symref was never set, which is common on a clone
@@ -72,7 +83,7 @@ async function resolveDefaultBranch(cwd: string): Promise<string | null> {
     const symref = await tryGit(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd);
     if (symref) return symref.replace(/^origin\//, "");
 
-    const lsRemote = await tryGit(["ls-remote", "--symref", "origin", "HEAD"], cwd);
+    const lsRemote = await tryRemoteGit(["ls-remote", "--symref", "origin", "HEAD"], cwd);
     if (!lsRemote) return null;
     const match = lsRemote.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD/m);
     return match?.[1] ?? null;
@@ -106,7 +117,7 @@ export async function refreshLocalDefaultBranch(
     if (!hasOrigin) return { kind: "no-remote" };
 
     try {
-        await git(["fetch", "origin"], cwd);
+        await runRemoteGit(["fetch", "origin"], cwd);
     } catch (err) {
         return { kind: "fetch-failed", message: (err as Error).message };
     }

@@ -20,6 +20,7 @@ import {
     type DiffResult,
     type ReviewPrepInput,
 } from "./review-prep.js";
+import { withFakeSshAndEmptySshCommand } from "./fake-ssh.testing.js";
 import type { PullRequestRef } from "./interface.js";
 import type { HumanId } from "../storage/interface.js";
 
@@ -380,6 +381,18 @@ describe("gatherDiff (real git)", () => {
             assert.match(d.stat, /2 files changed/);
             assert.deepEqual(d.files.map((f) => f.path).sort(), ["a.txt", "new file.txt"]);
             assert.match(d.files.find((f) => f.path === "a.txt")!.patch, /\+two/);
+        });
+    });
+
+    it("still gets the diff under an empty core.sshCommand (Gemini CLI's shell), by retrying with GIT_SSH_COMMAND=ssh (TAI-431/433)", async () => {
+        await withClone(async ({ clone }) => {
+            const remote = (await git(["remote", "get-url", "origin"], clone)).trim();
+            await git(["remote", "set-url", "origin", `ssh://fakehost${remote}`], clone);
+            await withFakeSshAndEmptySshCommand(async (ssh) => {
+                const d = await gatherDiff({ cwd: clone, repo: "acme/widgets", sourceBranch: "feature", destinationBranch: "master" });
+                assert.equal(d.kind, "ok", d.kind === "unavailable" ? d.reason : "");
+                assert.ok((await ssh.invocations()) >= 1);
+            });
         });
     });
 
