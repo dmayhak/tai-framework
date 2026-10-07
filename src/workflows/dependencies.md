@@ -91,6 +91,18 @@ precedence and continues. This has always been true of every edge in this graph,
 just the ones added most recently; it's stated here once, generally, rather than
 repeated at each individual gate.
 
+**One exception to "nothing visible" — Kickoff (TAI-373).** A Kickoff creates its subtasks
+lazily, so an absent-but-now-unblocked subtask there is the *expected* next step, not an
+omission. For an `In Progress` Kickoff only, `/tai-ready` therefore prints a numbered
+"Subtasks ready to create" line naming the types the graph now allows but which do not exist
+(`unblockedAbsentSubtaskTypes()`, e.g. `EXA-2: Requirements and UxDesign are unblocked -- run
+/tai-work EXA-2 (Perry)`), and does not print "Nothing is currently ready to start" beside it.
+It is a hint, not automation: nothing is created, and creating the subtasks stays the PM's
+judgment call. A type needs at least one prerequisite in the graph, all Done/Canceled, to be
+hinted (a root such as `Research`, or a type whose prerequisites were never created, is just
+absent), and `ArchitectureDesign` (optional under a Kickoff) is never hinted. A normal Story
+gets no hint: an absent `ArchitectureDesign`/`Database` there is usually a deliberate omission.
+
 ### Current default shape (Story/Bug)
 ```
 ArchitectureDesign ─> DesignReview ─┐

@@ -10,7 +10,8 @@
  * Stories awaiting sequencing, (c) Backlog tickets whose depends-on blockers are all done, (d) flagged tickets,
  * (e) approved epics with nothing scheduled, (f) Backlog tickets untouched past the stale threshold, (g) tickets
  * TAI cannot read (unmapped Jira type, decision 13), (h) tickets that need an assignee (decision 14). TAI-373's
- * unblocked-but-uncreated subtasks are a ninth section once that Story lands.
+ * unblocked-but-uncreated Kickoff subtasks shipped as a `/tai-ready` section instead ("Subtasks ready to create"),
+ * not a ninth section here.
  *
  * Sections (d) and (f) have no search filter to lean on (no flagged filter; `updatedSince` only means "since"),
  * so they read every open ticket once, exhaustively, and filter in memory (ADR Consequences).
