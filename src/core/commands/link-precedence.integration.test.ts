@@ -88,6 +88,17 @@ describe("link-precedence against a real Jira backend (TAIT)", { skip }, () => {
             summary: "TAI-100 fixture: precedence link Story",
         });
         track(story.key);
+        // The edge under test must still exist in SUBTASK_PRECEDENCE for a Story. ArchitectureDesign -> Dev
+        // is the direct edge kept for the no-DesignReview case (TAI-396: the old Dev -> CodeReview edge was
+        // retired in rev 52, so a fixture built around it never materializes a link).
+        const architectureDesign = await workTracker.createIssue({
+            projectKey: PROJECT_KEY,
+            issueType: SubtaskType.ArchitectureDesign,
+            summary: "TAI-100 fixture: ArchitectureDesign",
+            persona: Persona.Architect,
+            parentKey: story.key,
+        });
+        track(architectureDesign.key);
         const dev = await workTracker.createIssue({
             projectKey: PROJECT_KEY,
             issueType: SubtaskType.Dev,
@@ -96,33 +107,28 @@ describe("link-precedence against a real Jira backend (TAIT)", { skip }, () => {
             parentKey: story.key,
         });
         track(dev.key);
-        const codeReview = await workTracker.createIssue({
-            projectKey: PROJECT_KEY,
-            issueType: SubtaskType.CodeReview,
-            summary: "TAI-100 fixture: CodeReview",
-            persona: Persona.CodeReviewer,
-            parentKey: story.key,
-        });
-        track(codeReview.key);
 
         await waitForSubtasks(story.key, 2);
         const first = await materializePrecedenceLinks(workTracker, story.key);
         assert.equal(first.warning, null);
         assert.ok(
-            first.results.some((r) => r.beforeKey === dev.key && r.afterKey === codeReview.key && r.created),
-            "expected a newly-created Dev -> CodeReview edge"
+            first.results.some((r) => r.beforeKey === architectureDesign.key && r.afterKey === dev.key && r.created),
+            "expected a newly-created ArchitectureDesign -> Dev edge"
         );
 
-        const linked = await workTracker.getLinkedIssues(codeReview.key, DependencyRelation.DependsOn, "outgoing");
-        assert.ok(linked.some((l) => l.key === dev.key), "Jira's own API must report the real Blocks link back");
+        const linked = await workTracker.getLinkedIssues(dev.key, DependencyRelation.DependsOn, "outgoing");
+        assert.ok(
+            linked.some((l) => l.key === architectureDesign.key),
+            "Jira's own API must report the real Blocks link back"
+        );
 
         const second = await materializePrecedenceLinks(workTracker, story.key);
-        const secondEdge = second.results.find((r) => r.beforeKey === dev.key && r.afterKey === codeReview.key);
+        const secondEdge = second.results.find((r) => r.beforeKey === architectureDesign.key && r.afterKey === dev.key);
         assert.equal(secondEdge?.created, false, "a second call against the live backend must not recreate the link");
 
-        const linkedAgain = await workTracker.getLinkedIssues(codeReview.key, DependencyRelation.DependsOn, "outgoing");
+        const linkedAgain = await workTracker.getLinkedIssues(dev.key, DependencyRelation.DependsOn, "outgoing");
         assert.equal(
-            linkedAgain.filter((l) => l.key === dev.key).length,
+            linkedAgain.filter((l) => l.key === architectureDesign.key).length,
             1,
             "Jira itself must show exactly one link, not a duplicate"
         );
@@ -135,6 +141,14 @@ describe("link-precedence against a real Jira backend (TAIT)", { skip }, () => {
             summary: "TAI-118 fixture: retry-without-pre-wait Story",
         });
         track(story.key);
+        const architectureDesign = await workTracker.createIssue({
+            projectKey: PROJECT_KEY,
+            issueType: SubtaskType.ArchitectureDesign,
+            summary: "TAI-118 fixture: ArchitectureDesign",
+            persona: Persona.Architect,
+            parentKey: story.key,
+        });
+        track(architectureDesign.key);
         const dev = await workTracker.createIssue({
             projectKey: PROJECT_KEY,
             issueType: SubtaskType.Dev,
@@ -143,14 +157,6 @@ describe("link-precedence against a real Jira backend (TAIT)", { skip }, () => {
             parentKey: story.key,
         });
         track(dev.key);
-        const codeReview = await workTracker.createIssue({
-            projectKey: PROJECT_KEY,
-            issueType: SubtaskType.CodeReview,
-            summary: "TAI-118 fixture: CodeReview",
-            persona: Persona.CodeReviewer,
-            parentKey: story.key,
-        });
-        track(codeReview.key);
 
         // Deliberately NO waitForSubtasks() call here — this is the exact real-world shape
         // (front-load subtasks, immediately run link-precedence) TAI-118 exists to fix.
@@ -162,7 +168,7 @@ describe("link-precedence against a real Jira backend (TAIT)", { skip }, () => {
 
         assert.equal(warning, null, "the retry should have converged well within the 4-attempt budget");
         assert.ok(
-            results.some((r) => r.beforeKey === dev.key && r.afterKey === codeReview.key && r.created),
+            results.some((r) => r.beforeKey === architectureDesign.key && r.afterKey === dev.key && r.created),
             "the edge should be created even without a test-side pre-wait, proving the production retry works"
         );
     });
