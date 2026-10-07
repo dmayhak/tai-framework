@@ -102,6 +102,8 @@ judgment call. A type needs at least one prerequisite in the graph, all Done/Can
 hinted (a root such as `Research`, or a type whose prerequisites were never created, is just
 absent), and `ArchitectureDesign` (optional under a Kickoff) is never hinted. A normal Story
 gets no hint: an absent `ArchitectureDesign`/`Database` there is usually a deliberate omission.
+A Kickoff that skips `Requirements` or `UxDesign` on purpose records it with a first-line `Skipped: <type> — <reason>`
+comment on the Kickoff (TAI-443, brief §3.9); the hint omits any type so named, re-read on every call.
 
 ### Current default shape (Story/Bug)
 ```

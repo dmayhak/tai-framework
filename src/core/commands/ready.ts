@@ -59,6 +59,7 @@ import {
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
 import { readWorkStatus } from "../workspace/status.js";
+import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
@@ -811,8 +812,10 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
             parentContexts.set(issue.key, ctx);
         }
         if (!ctx) continue;
+        // TAI-443: a `Skipped:` comment on the Kickoff records a deliberate omission; re-read each call, never cached.
+        const skipped = skippedSubtaskTypeTokens(issue.comments);
         const types = unblockedAbsentSubtaskTypes(ctx.storyType, ctx.presentSubtaskTypes, ctx.doneSubtaskTypes).filter(
-            (t) => !OPTIONAL_KICKOFF_SUBTASK_TYPES.has(t)
+            (t) => !OPTIONAL_KICKOFF_SUBTASK_TYPES.has(t) && !skipped.has(normalizeSubtaskTypeToken(t))
         );
         if (types.length > 0) unblockedSubtaskHints.push({ story: issue, types });
     }

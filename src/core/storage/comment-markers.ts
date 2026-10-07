@@ -18,7 +18,7 @@
 
 import type { Comment } from "./interface.js";
 
-export type CommentMarkerKind = "Q" | "Approved" | "Rejected";
+export type CommentMarkerKind = "Q" | "Approved" | "Rejected" | "Skipped";
 
 export interface ParsedCommentMarker {
     readonly kind: CommentMarkerKind;
@@ -27,6 +27,8 @@ export interface ParsedCommentMarker {
     /** Free text after the marker/target — the question (`Q:`), sign-off notes
      *  (`Approved:`), or rejection reason (`Rejected:`). */
     readonly note?: string;
+    /** `Skipped:`'s named subtask types, normalized by `normalizeSubtaskTypeToken` (TAI-443). */
+    readonly skippedTypes?: readonly string[];
     readonly comment: Comment;
 }
 
@@ -34,8 +36,16 @@ const MARKER_KINDS: Readonly<Record<string, CommentMarkerKind>> = {
     q: "Q",
     approved: "Approved",
     rejected: "Rejected",
+    skipped: "Skipped",
 };
-const MARKER_PATTERN = /^\s*(Q|Approved|Rejected)\s*:\s*(.*)$/i;
+const MARKER_PATTERN = /^\s*(Q|Approved|Rejected|Skipped)\s*:\s*(.*)$/i;
+// Where `Skipped:`'s type list ends and its reason begins: an em/en dash, or a spaced hyphen(s).
+const SKIPPED_REASON_SEPARATOR = /\s*[\u2014\u2013]\s*|\s+--?\s+/;
+
+/** "ux-design", "UxDesign" and "ux_design" all name the same subtask type. */
+export function normalizeSubtaskTypeToken(token: string): string {
+    return token.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
 /**
  * Parses the marker on a single comment, or null if it isn't one. Only the FIRST line is
@@ -49,6 +59,17 @@ export function parseCommentMarker(comment: Comment): ParsedCommentMarker | null
 
     const kind = MARKER_KINDS[match[1]!.toLowerCase()]!;
     const rest = match[2]!.trim();
+
+    if (kind === "Skipped") {
+        // TAI-443: "Skipped: ux-design, requirements — backend-only epic". Types before the separator, reason after.
+        const [typesPart = "", ...reasonParts] = rest.split(SKIPPED_REASON_SEPARATOR);
+        const skippedTypes = typesPart
+            .split(/[\s,]+|\band\b/i)
+            .map(normalizeSubtaskTypeToken)
+            .filter((t) => t !== "" && t !== "and");
+        const note = reasonParts.join(" ").trim();
+        return { kind, comment, skippedTypes, ...(note ? { note } : {}) };
+    }
 
     if (kind !== "Rejected") {
         return { kind, comment, ...(rest ? { note: rest } : {}) };
@@ -65,4 +86,16 @@ export function parseCommentMarker(comment: Comment): ParsedCommentMarker | null
 /** Parses markers from every comment, dropping non-marker comments. */
 export function parseCommentMarkers(comments: readonly Comment[]): readonly ParsedCommentMarker[] {
     return comments.map(parseCommentMarker).filter((m): m is ParsedCommentMarker => m !== null);
+}
+
+/**
+ * Every subtask type a Kickoff's `Skipped:` comments name (TAI-443), normalized. Always re-derived from the
+ * comments handed in -- an edited or deleted marker is reflected on the next call (brief §3.9).
+ */
+export function skippedSubtaskTypeTokens(comments: readonly Comment[]): ReadonlySet<string> {
+    const tokens = new Set<string>();
+    for (const marker of parseCommentMarkers(comments)) {
+        if (marker.kind === "Skipped") for (const t of marker.skippedTypes ?? []) tokens.add(t);
+    }
+    return tokens;
 }
