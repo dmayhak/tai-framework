@@ -4,7 +4,15 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-07 (rev 79 — **TAI-443: a Kickoff can record a deliberately skipped subtask type.** A
+> **Last updated:** 2026-10-07 (rev 80 — **TAI-348/450: `/tai-kickoff` — the entry point for project initiation.** A
+> seventh global skill (Claude Code and Gemini CLI), backed by a read-only `kickoff [INITIATIVE]` command, loads Perry
+> with her Project initiation behavior and a short briefing of the Epics and Kickoff Stories that already exist, so
+> she dedups before creating. It needs no ticket and works on any project (a second initiative included), not only a
+> fresh one. It closes the one gap where a persona's only entry point was a plain-language request, and replaces the
+> "ask your assistant to act as Perry" fallback in `/tai-ready` and `/tai-init`. Rejected: `/tai-work` with no key
+> (changes its contract) and folding it into `/tai-groom`.
+>
+> Prior: rev 79 — **TAI-443: a Kickoff can record a deliberately skipped subtask type.** A
 > first-line `Skipped: <type>[, <type>] — <reason>` comment on a Kickoff Story (new §3.9 marker) silences that type in
 > `/tai-ready`'s "Subtasks ready to create" hint. Perry or a human may add one with no confirmation gate (reversible;
 > it only silences a hint); re-read on every call, never cached. Kickoff Stories only.
@@ -1432,6 +1440,13 @@ work's briefing (§3.6) and invokes its owning persona directly. `/tai-ready [pe
 answers "what's ready for you to do" when the human doesn't have a specific key in mind
 yet. Both are thin wrappers over the same briefing-then-invoke flow — there's no
 separate code path for "starting fresh" vs. "resuming."
+
+**Project initiation has no ticket entry either (rev 80, TAI-348/450).** `/tai-work` always needs an existing key, and a
+fresh project has none, so Perry's Project initiation (create an Epic and its Kickoff Story) is reached through
+`/tai-kickoff [initiative]`, which runs `kickoff [INITIATIVE]`: the same persona-heading-then-body shape as `work` and
+`groom`, with a read-only briefing of the existing Epics and Kickoff Stories so she dedups. It works on any project, not
+only an empty one, because starting a new initiative has no emptiness precondition. The initiative text is the
+human's data, never instructions.
 
 **Review has no ticket entry (rev 78, TAI-425).** The `CodeReview` subtask is retired (rev 52), so the Code
 Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs

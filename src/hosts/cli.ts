@@ -131,6 +131,7 @@ import { resolveAssignment, type AssignmentResolution } from "../core/personas/a
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
+import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -561,6 +562,11 @@ export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string 
 
 /** TAI-395: a grooming turn is the same shape as a work turn -- persona heading, her instructions, `---`, the briefing. */
 export function renderGroomTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string): string {
+    return renderPersonaTurn(persona, briefing);
+}
+
+/** TAI-450: a kickoff turn is the same shape too -- persona heading, her instructions, `---`, the briefing. */
+export function renderKickoffTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string): string {
     return renderPersonaTurn(persona, briefing);
 }
 
@@ -1178,13 +1184,11 @@ export async function renderIssueDetail(
 // conditionally instead, so it reads correctly whether this is a fresh project or a
 // re-run against an already-active one. Deliberately does NOT say "run /tai-work" --
 // found live the same day that /tai-work always requires an existing <ISSUE-KEY> (brief
-// §3.8), which doesn't exist yet on a genuinely fresh project; there is no dedicated
-// command for this bootstrap step today (see TAI-348 -- a one-time-use `tai-kickoff`
-// command and extending `/tai-work` to accept no key were both considered and rejected,
-// see PM_KICKOFF_HINT's own comment for why). Shares its actual wording with
+// §3.8), which doesn't exist yet on a genuinely fresh project. TAI-450 (the TAI-348 decision)
+// shipped the real command, `/tai-kickoff`; this hint names it. Shares its actual wording with
 // `/tai-ready`'s empty-list fallback (`readySkillBody`) via `PM_KICKOFF_HINT` rather than
 // duplicating it, so the two surfaces can't drift apart.
-const NEXT_STEP_HINT = `If this is a fresh project with nothing in it yet: there's no dedicated command for this yet (TAI-348) -- ${PM_KICKOFF_HINT}.`;
+const NEXT_STEP_HINT = `If this is a fresh project with nothing in it yet: ${PM_KICKOFF_HINT}.`;
 
 /** `label` (TAI-377) overrides only the DISPLAYED heading, never the step key -- `claude-md` is also
  *  the recorded `init-state.json` key, so renaming it would orphan existing state files. `init run`
@@ -1753,6 +1757,21 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-450 (TAI-348 decision): `/tai-kickoff [INITIATIVE...]` -- loads Perry with her Project initiation behavior
+    // and a read-only briefing of the Epics and Kickoff Stories that already exist, so she dedups. No ticket needed.
+    // The initiative is every remaining word, so an unquoted multi-word description survives.
+    if (subcommand === "kickoff") {
+        const pm = await loadPersonaConfig(config.backend.docStore, "pm", { spaceKey: config.spaceKey });
+        const description = [arg, ...rest].filter((w): w is string => w !== undefined).join(" ");
+        const context = await findKickoffContext({
+            workTracker: config.backend.workTracker,
+            projectKey: config.projectKey,
+            ...(description ? { description } : {}),
+        });
+        console.log(renderKickoffTurn(pm, renderKickoffBriefing(context)));
+        return;
+    }
+
     if (subcommand === "ready") {
         const persona = arg as Persona | undefined;
         const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
@@ -2223,7 +2242,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md|gemini-md`
     );

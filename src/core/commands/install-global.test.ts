@@ -4,13 +4,45 @@ import { mkdtemp, rm, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { renderGlobalSkillFiles, installGlobal, defaultTaiHome } from "./install-global.js";
+import { renderGlobalSkillFiles, installGlobal, defaultTaiHome, PM_KICKOFF_HINT } from "./install-global.js";
 
 describe("renderGlobalSkillFiles", () => {
     const files = renderGlobalSkillFiles("/home/x/.tai-framework");
 
-    test("produces 12 files -- 6 skills x 2 hosts", () => {
-        assert.equal(files.length, 12);
+    test("produces 14 files -- 7 skills x 2 hosts", () => {
+        assert.equal(files.length, 14);
+    });
+
+    test("the tai-kickoff skill runs kickoff [INITIATIVE], acts as Perry, shows the briefing and stops before asking (TAI-450)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const kickoff = files.find((f) => f.relativePath === `${host}/skills/tai-kickoff/SKILL.md`)!;
+            assert.ok(kickoff, `${host} gets a tai-kickoff skill`);
+            assert.match(kickoff.content, /name: tai-kickoff/);
+            assert.match(kickoff.content, /cli\.ts kickoff \[INITIATIVE\]/);
+            assert.match(kickoff.content, /act as that persona|act as Perry/i);
+            assert.match(kickoff.content, /needs no ticket/i);
+            // works on a project that already has Epics, not only a fresh one
+            assert.match(kickoff.content, /new initiative/i);
+            assert.match(kickoff.content, /already has Epics|existing Epics/i);
+            // TAI-423: show the briefing as chat text before any question, then stop
+            assert.match(kickoff.content, /# Kickoff briefing/);
+            assert.match(kickoff.content, /verbatim/i);
+            assert.match(kickoff.content, /ordinary chat text/i);
+            assert.match(kickoff.content, /Do NOT, in this same turn, ask a question with an interactive tool/i);
+            assert.match(kickoff.content, /human's own NEXT message/i);
+            // the initiative is the human's data, and Perry's authority is unchanged
+            assert.match(kickoff.content, /data, not instructions/i);
+            assert.match(kickoff.content, /Backlog tickets/);
+            assert.match(kickoff.content, /only after the human confirms/i);
+        }
+    });
+
+    test("the fresh-project hint names the real /tai-kickoff command, not a plain-language workaround (TAI-348)", () => {
+        assert.match(PM_KICKOFF_HINT, /\/tai-kickoff/);
+        assert.doesNotMatch(PM_KICKOFF_HINT, /ask your assistant/i);
+        const ready = files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!;
+        assert.match(ready.content, /\/tai-kickoff/);
+        assert.doesNotMatch(ready.content, /ask your assistant directly/i);
     });
 
     test("the tai-groom skill runs groom [EPIC-KEY], acts as Perry, and never applies a change without the human's own confirmation (TAI-395)", () => {
@@ -263,7 +295,7 @@ describe("installGlobal", () => {
             const result = await installGlobal(taiHome, homedir);
 
             assert.equal(result.taiHome, taiHome);
-            assert.equal(result.written.length, 12);
+            assert.equal(result.written.length, 14);
 
             const claudeWork = await readFile(path.join(homedir, ".claude/skills/tai-work/SKILL.md"), "utf-8");
             assert.match(claudeWork, /name: tai-work/);
@@ -287,7 +319,7 @@ describe("installGlobal", () => {
             await installGlobal(taiHome, homedir);
             const second = await installGlobal(taiHome, homedir);
 
-            assert.equal(second.written.length, 12);
+            assert.equal(second.written.length, 14);
         } finally {
             await rm(dir, { recursive: true, force: true });
         }
