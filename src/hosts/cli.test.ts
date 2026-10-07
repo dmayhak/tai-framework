@@ -27,6 +27,7 @@ import {
     tryResolveCreateAssignee,
     resolveNamedAssignee,
     renderGroomTurn,
+    renderKickoffTurn,
     renderLinkedIssues,
     renderIssueDetail,
     renderReadyWork,
@@ -709,6 +710,15 @@ describe("resolveNamedAssignee (TAI-421)", () => {
         }, "del@example.com");
         assert.equal(r.assignee, undefined);
         assert.match(r.note!, /could not look up "del@example\.com" \(network down\)/);
+    });
+});
+
+describe("renderKickoffTurn (TAI-450)", () => {
+    it("is the persona heading, her instructions, a --- separator, then the briefing, in that order", () => {
+        const out = renderKickoffTurn({ displayName: "Perry", id: "pm", prompt: "# Perry\n\nBe the PM." }, "# Kickoff briefing\n\n## Existing Epics");
+        assert.match(out, /^# Persona: Perry \(pm\)/);
+        assert.ok(out.indexOf("Be the PM.") < out.indexOf("---"));
+        assert.ok(out.indexOf("---") < out.indexOf("# Kickoff briefing"));
     });
 });
 

@@ -174,17 +174,16 @@ installed and a project is configured (or you're using the filesystem quickstart
 | `/tai-work <ISSUE-KEY>` | Load a ticket's briefing and invoke the persona that owns it — the entry point when you do. |
 | `/tai-pr create\|review\|merge` | Open, review, or merge a real PR for a `Dev` subtask, using TAI's own structured-findings review flow. |
 | `/tai-audit` | Report-only sweep of the open backlog for staleness/drift (stale notes, missing links, decision drift, …). |
+| `/tai-kickoff [initiative]` | Start a project or a new initiative with Perry (PM): she checks what Epics and Kickoffs already exist, then creates the Epic + Kickoff Story. Needs no ticket, and works on a fresh project or one that already has Epics. |
 | `/tai-groom [epic]` | Backlog grooming with Perry (PM): a briefing of the whole board, or one epic — sequence Kickoffs, schedule a first wave, promote unblocked work, assign owners. Needs no ticket; every change is proposed and applied only after you confirm. |
 
 **A typical flow, end to end:**
 
 ```
 you> /tai-ready
-      → empty backlog; it tells you to ask your assistant to act as Perry (PM)
-        and kick off a new project (there's no dedicated bootstrap command yet
-        for a genuinely fresh project — see PROJECT_BRIEF.md's open questions)
+      → empty backlog; it tells you to run /tai-kickoff
 
-you> "act as Perry and kick off a project for <your idea>"
+you> /tai-kickoff <your idea>
       → Perry creates the Epic + Kickoff Story, then Ada (Analyst) does real
         discovery with you, proposes an Epic/Story breakdown, and you discuss
         and probe it together before anything downstream is created

@@ -11,7 +11,8 @@ implementation work is scheduled.
 
 ## Who creates it
 **PM** creates the initial Jira shell for a new initiative — an Epic plus this
-Kickoff Story — then, per the general TAI-83 "Eager Subtask Creation" exception
+Kickoff Story (reached through `/tai-kickoff [initiative]`, TAI-348/450, which needs no ticket and
+works on a fresh project or one that already has Epics) — then, per the general TAI-83 "Eager Subtask Creation" exception
 (`workflows/dependencies.md`), creates whichever of the subtasks below she's already
 judged appropriate to start (rev 66, found live 2026-09-24 — supersedes the prior
 "PM creates the container, not the subtasks" framing, which contradicted TAI-83's own

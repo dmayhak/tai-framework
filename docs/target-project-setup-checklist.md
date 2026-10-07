@@ -276,9 +276,8 @@ already recorded done. Safe to run `/tai-init` (and `init run`) again after any 
 ## What's next once "Fully initialized" (TAI-349)
 
 `init status`/`init claude-md` print a next-step hint once every step is done. For a
-genuinely fresh project (nothing in Jira yet): there's no dedicated command for this today
-(TAI-348, open design question) — ask your assistant directly to act as Perry (PM) and
-kick off the project, per `personas/pm.md`'s "Project initiation" behavior. She creates the
+genuinely fresh project (nothing in Jira yet): run `/tai-kickoff` (TAI-348/450) to have
+Perry (PM) start the project, per `personas/pm.md`'s "Project initiation" behavior. She creates the
 initial Epic + Kickoff Story and decides which subtasks to start with. For a re-run against
 an already-active project, ignore the hint — it's worded to apply either way since this
 step has no live check for whether an Epic already exists.
