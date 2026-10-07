@@ -1,7 +1,7 @@
 {
-  // Build config: same as tsconfig.json but excludes test files so they
-  // don't emit into dist/. `typecheck` still uses tsconfig.json, which
+  // Build config: same as tsconfig.json but excludes test files and test-support
+  // files (*.testing.ts) so they don't emit into dist/. `typecheck` still uses tsconfig.json, which
   // includes tests, so they are type-checked even though they aren't built.
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.testing.ts"]
 }

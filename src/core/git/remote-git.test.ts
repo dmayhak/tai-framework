@@ -43,6 +43,21 @@ describe("runRemoteGit (injected runner)", () => {
         assert.equal(calls.length, 1);
     });
 
+    it("runs the first attempt in the given env too, not only the retry (PR 151 review)", async () => {
+        const calls: Array<NodeJS.ProcessEnv | undefined> = [];
+        const runner: GitRunner = async (_args, o) => {
+            calls.push(o.env);
+            if (calls.length === 1) throw CANNOT_RUN;
+            return "fetched";
+        };
+        const env = { PATH: "/bin", MARKER: "x" };
+        await runRemoteGit(["fetch", "origin"], "/x", { runner, env });
+        assert.equal(calls[0]!["MARKER"], "x");
+        assert.equal(calls[1]!["MARKER"], "x");
+        assert.equal(calls[1]!["GIT_SSH_COMMAND"], "ssh");
+        assert.equal(calls[0]!["GIT_SSH_COMMAND"], undefined);
+    });
+
     it("retries once with GIT_SSH_COMMAND=ssh when the first attempt fails with 'cannot run'", async () => {
         const calls: Array<NodeJS.ProcessEnv | undefined> = [];
         const runner: GitRunner = async (_args, o) => {
@@ -52,7 +67,6 @@ describe("runRemoteGit (injected runner)", () => {
         };
         assert.equal(await runRemoteGit(["fetch", "origin"], "/x", { runner, env: { PATH: "/bin" } }), "fetched");
         assert.equal(calls.length, 2);
-        assert.equal(calls[0], undefined);
         assert.equal(calls[1]!["GIT_SSH_COMMAND"], "ssh");
         assert.equal(calls[1]!["PATH"], "/bin"); // the rest of the environment is kept
     });

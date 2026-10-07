@@ -57,7 +57,7 @@ export async function runRemoteGit(args: readonly string[], cwd: string, options
     const runner = options.runner ?? defaultGitRunner;
     const env = options.env ?? process.env;
     try {
-        return await runner(args, { cwd });
+        return await runner(args, options.env ? { cwd, env: options.env } : { cwd });
     } catch (err) {
         if (!isUnrunnableSshCommand(err) || env["GIT_SSH_COMMAND"]) throw err;
         return runner(args, { cwd, env: { ...env, GIT_SSH_COMMAND: "ssh" } });
