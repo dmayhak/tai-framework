@@ -21,6 +21,7 @@ import {
     SubtaskType,
     resolveApplicablePrecedence,
     isSubtaskReady,
+    unblockedAbsentSubtaskTypes,
     getNewPrecedenceEdgesForInsertedSubtask,
     defaultTestTiersForBug,
     EXPEDITED_BUG_PRIORITY,
@@ -447,5 +448,43 @@ describe("defaultPersonaFor (TAI-409)", () => {
 
     test("SpikeTask has no default owner", () => {
         assert.equal(defaultPersonaFor(SubtaskType.SpikeTask), null);
+    });
+});
+
+describe("unblockedAbsentSubtaskTypes (TAI-373)", () => {
+    const K = StoryType.Kickoff;
+
+    it("EpicReview Done unblocks the absent Requirements and UxDesign (the EXA-2 case)", () => {
+        const present = [SubtaskType.Research, SubtaskType.EpicReview];
+        const done = new Set([SubtaskType.Research, SubtaskType.EpicReview]);
+        assert.deepEqual(unblockedAbsentSubtaskTypes(K, present, done), [SubtaskType.Requirements, SubtaskType.UxDesign]);
+    });
+
+    it("an unfinished prerequisite unblocks nothing downstream of it", () => {
+        const present = [SubtaskType.Research, SubtaskType.EpicReview];
+        assert.deepEqual(unblockedAbsentSubtaskTypes(K, present, new Set([SubtaskType.Research])), []);
+    });
+
+    it("a type that already exists is never hinted, even once unblocked", () => {
+        const present = [SubtaskType.Research, SubtaskType.EpicReview, SubtaskType.Requirements];
+        const done = new Set([SubtaskType.Research, SubtaskType.EpicReview]);
+        assert.deepEqual(unblockedAbsentSubtaskTypes(K, present, done), [SubtaskType.UxDesign]);
+    });
+
+    it("a root type with no prerequisites (Research) is absent, not 'newly unblocked'", () => {
+        assert.deepEqual(unblockedAbsentSubtaskTypes(K, [], new Set()), []);
+    });
+
+    it("a Canceled prerequisite counts as finished, same as isSubtaskReady", () => {
+        // doneSubtaskTypes already folds Canceled in (ready.ts), so the set is all the function sees.
+        const present = [SubtaskType.Research];
+        assert.deepEqual(unblockedAbsentSubtaskTypes(K, present, new Set([SubtaskType.Research])), [SubtaskType.EpicReview]);
+    });
+
+    it("a type needing BOTH prerequisites waits for both (ArchitectureDesign needs Requirements and UxDesign)", () => {
+        const all = [SubtaskType.Research, SubtaskType.EpicReview, SubtaskType.Requirements, SubtaskType.UxDesign];
+        const onlyReq = new Set([SubtaskType.Research, SubtaskType.EpicReview, SubtaskType.Requirements]);
+        assert.ok(!unblockedAbsentSubtaskTypes(K, all, onlyReq).includes(SubtaskType.ArchitectureDesign));
+        assert.ok(unblockedAbsentSubtaskTypes(K, all, new Set(all)).includes(SubtaskType.ArchitectureDesign));
     });
 });

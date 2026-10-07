@@ -478,6 +478,30 @@ export function isSubtaskReady(
     return applicable.every((rule) => doneSubtaskTypes.has(rule.before));
 }
 
+/**
+ * TAI-373: the subtask types that are absent from a story instance but whose precedence
+ * prerequisites are ALL present and finished -- i.e. work the graph now allows that nobody has
+ * created yet. Unlike `isSubtaskReady` (a root with no applicable rules is always ready), a type
+ * only counts here when the graph gives it at least one prerequisite and every one of them is
+ * Done/Canceled: a root type such as Research, or a type whose prerequisites were never created,
+ * is not "newly unblocked", it is just absent. Pure; callers decide which story types care.
+ */
+export function unblockedAbsentSubtaskTypes(
+    storyType: StoryType,
+    presentSubtaskTypes: SubtaskType[],
+    doneSubtaskTypes: Set<SubtaskType>
+): SubtaskType[] {
+    const present = new Set(presentSubtaskTypes);
+    const rules = SUBTASK_PRECEDENCE[storyType];
+    const candidates = new Set<SubtaskType>();
+    for (const rule of rules) {
+        if (!present.has(rule.after)) candidates.add(rule.after);
+    }
+    return [...candidates].filter((type) =>
+        rules.filter((rule) => rule.after === type).every((rule) => doneSubtaskTypes.has(rule.before))
+    );
+}
+
 // ---------- D5: Bug expedited-path test-tier compression (TAI-119) ----------
 
 /** Native Jira Priority value treated as "Priority=1 (Urgent/Emergency)" for D5's

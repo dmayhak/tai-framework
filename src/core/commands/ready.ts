@@ -53,6 +53,7 @@ import {
     isStoryIssueType,
     isSubtaskIssueType,
     isSubtaskReady,
+    unblockedAbsentSubtaskTypes,
     type Persona,
 } from "../schema/story-schema.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
@@ -154,6 +155,17 @@ export interface InProgressCandidate {
     readonly hasLocalHistory: boolean;
 }
 
+/** TAI-373: an In Progress Kickoff Story whose precedence graph now allows subtask types nobody has created
+ *  yet. Informational and never auto-created -- making them is the PM's judgment call (Perry's `/tai-work`). */
+export interface UnblockedSubtaskHint {
+    readonly story: Issue;
+    readonly types: readonly SubtaskType[];
+}
+
+/** Kickoff's optional subtask types: a Kickoff may deliberately never have one, so its absence is not a "next step"
+ *  and a hint for it would nag forever (TAI-373 -- same noise concern as a normal Story's optional types). */
+const OPTIONAL_KICKOFF_SUBTASK_TYPES: ReadonlySet<SubtaskType> = new Set([SubtaskType.ArchitectureDesign]);
+
 export interface ReadyWorkResult {
     /** Genuinely not-yet-started (`Status.ToDo` for a subtask that's also precedence-ready,
      *  or any open story-level ticket at ToDo — see `isSubtaskReady`). `InProgress`/
@@ -196,6 +208,11 @@ export interface ReadyWorkResult {
      *  `workspace/living-doc-staleness.ts`. Empty whenever no snapshot has ever been taken
      *  (not itself a staleness signal) or nothing has moved since. */
     readonly staleLivingDocs: readonly StaleEpic[];
+    /** TAI-373: In Progress Kickoff Stories with unblocked-but-uncreated subtasks (e.g. EpicReview Done, so
+     *  Requirements and UxDesign are allowed but absent). Readiness is computed only from tickets that exist, so
+     *  without this the next step is invisible. Kickoff only (it creates subtasks lazily; on a normal Story an
+     *  absent type is usually a deliberate omission). Respects the persona filter via the Story's own persona. */
+    readonly unblockedSubtaskHints: readonly UnblockedSubtaskHint[];
     /** TAI-419 (ADR decision 13c): the best assignee suggestion for each unassigned ready ticket, keyed by issue key.
      *  Empty when `suggestAssignee` was not supplied. Informational only -- never excludes anything. */
     readonly assigneeSuggestions: ReadonlyMap<IssueKey, string>;
@@ -782,6 +799,25 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     }
     inProgress.sort((a, b) => priorityRank(a.issue.priority) - priorityRank(b.issue.priority));
 
+    // TAI-373: only Kickoff Stories that are actively In Progress (an In Review Kickoff is waiting on its review
+    // gate, not on new subtasks). Candidates come from `inProgressIssues`, so the persona filter and the
+    // terminal-ancestor exclusion above already applied.
+    const unblockedSubtaskHints: UnblockedSubtaskHint[] = [];
+    for (const issue of inProgressIssues) {
+        if (issue.issueType !== StoryType.Kickoff || issue.status !== Status.InProgress) continue;
+        let ctx = parentContexts.get(issue.key);
+        if (ctx === undefined) {
+            ctx = await loadParentPrecedenceContext(deps.workTracker, deps.projectKey, issue.key);
+            parentContexts.set(issue.key, ctx);
+        }
+        if (!ctx) continue;
+        const types = unblockedAbsentSubtaskTypes(ctx.storyType, ctx.presentSubtaskTypes, ctx.doneSubtaskTypes).filter(
+            (t) => !OPTIONAL_KICKOFF_SUBTASK_TYPES.has(t)
+        );
+        if (types.length > 0) unblockedSubtaskHints.push({ story: issue, types });
+    }
+    unblockedSubtaskHints.sort((a, b) => priorityRank(a.story.priority) - priorityRank(b.story.priority));
+
     // TAI-266 (TAI-243 ADR decision #3): the same open-DependsOn-blocker check applies to
     // BOTH `ready` and `inProgress` — an In Progress item can newly become blocked if a
     // DependsOn link is added or its blocker reopens after work already started.
@@ -807,7 +843,18 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         }
     }
 
-    return { ready, onHold, inProgress, readyToReview, readyToTest, readyToMerge, blockedBy, staleLivingDocs, assigneeSuggestions };
+    return {
+        ready,
+        onHold,
+        inProgress,
+        unblockedSubtaskHints,
+        readyToReview,
+        readyToTest,
+        readyToMerge,
+        blockedBy,
+        staleLivingDocs,
+        assigneeSuggestions,
+    };
 }
 
 /** TAI-302/319: short-circuits before fetching a single Epic/child when no snapshot has ever

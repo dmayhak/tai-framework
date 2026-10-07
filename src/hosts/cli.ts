@@ -120,6 +120,7 @@ import {
     Status,
     SubtaskType,
     PERSONA_ROLE_LABEL,
+    DEFAULT_PERSONA_DISPLAY_NAME,
     Persona,
     type StoryType,
 } from "../core/schema/story-schema.js";
@@ -612,6 +613,17 @@ function splitTasksAndStories<T>(
     return { tasks, stories };
 }
 
+/** "ux-design" -> "UxDesign": the subtask type names people actually say (and Jira shows). */
+function subtaskTypeLabel(type: SubtaskType): string {
+    return type.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+}
+
+/** "A", "A and B", "A, B and C". */
+function joinSubtaskTypeLabels(types: readonly SubtaskType[]): string {
+    const labels = types.map(subtaskTypeLabel);
+    return labels.length <= 1 ? (labels[0] ?? "") : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
 export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>>, persona?: string): string {
     const lines: string[] = [`# Ready work${persona ? ` for ${persona}` : ""}`, ""];
     const counter = numberedLines();
@@ -667,9 +679,12 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
         lines.push("");
     }
 
-    lines.push("## Ready Work", "");
+    // TAI-373: a hint is actionable, so "Nothing is currently ready to start." must not be printed beside one --
+    // with nothing else ready the hints section below stands alone (no empty Ready Work heading).
+    const hasHints = result.unblockedSubtaskHints.length > 0;
+    if (result.ready.length > 0 || !hasHints) lines.push("## Ready Work", "");
     if (result.ready.length === 0) {
-        lines.push("Nothing is currently ready to start.");
+        if (!hasHints) lines.push("Nothing is currently ready to start.");
     } else {
         const renderReadyLine = (issue: (typeof result.ready)[number]) => {
             const parentNote = issue.parentKey ? `, parent: ${issue.parentKey}` : "";
@@ -689,6 +704,19 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
         if (readyStories.length > 0) {
             lines.push("### Stories", "");
             readyStories.forEach(renderReadyLine);
+        }
+    }
+    // TAI-373: Kickoff Stories whose precedence now allows subtasks that do not exist yet. Nothing is created
+    // automatically -- the next /tai-work on the Story re-engages the PM, who judges and creates them.
+    if (hasHints) {
+        lines.push("", "## Subtasks ready to create", "");
+        for (const hint of result.unblockedSubtaskHints) {
+            const owner = DEFAULT_PERSONA_DISPLAY_NAME[(hint.story.persona as Persona | undefined) ?? Persona.Pm] ?? hint.story.persona;
+            lines.push(
+                `${counter.next()}. **${hint.story.key}**: ${joinSubtaskTypeLabels(hint.types)} ${hint.types.length === 1 ? "is" : "are"} unblocked ` +
+                    `-- run /tai-work ${hint.story.key} (${owner})`
+            );
+            actionableCount++;
         }
     }
     // TAI-390 (TAI-389 ADR decision 8): flagged To Do items wait here, out of Ready Work. Numbered

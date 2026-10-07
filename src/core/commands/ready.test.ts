@@ -2051,3 +2051,95 @@ describe("findReadyWork: 'needs an assignee' suggestions (TAI-419)", () => {
         });
     });
 });
+
+describe("findReadyWork: unblocked-but-uncreated Kickoff subtasks (TAI-373)", () => {
+    async function kickoffWith(backend: StorageBackend, done: SubtaskType[], extra: SubtaskType[] = [], status = Status.InProgress) {
+        const kickoff = await backend.workTracker.createIssue({
+            projectKey: "TAI",
+            issueType: StoryType.Kickoff,
+            summary: "Kickoff",
+            persona: Persona.Pm,
+            assignee: CURRENT_USER,
+        });
+        for (const type of [...done, ...extra]) {
+            const sub = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: type,
+                summary: type,
+                parentKey: kickoff.key,
+                assignee: CURRENT_USER,
+            });
+            if (done.includes(type)) await backend.workTracker.transition(sub.key, Status.Done);
+        }
+        if (status !== Status.Backlog) await backend.workTracker.transition(kickoff.key, status);
+        return kickoff;
+    }
+
+    test("EpicReview Done on an In Progress Kickoff hints the absent Requirements and UxDesign", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const kickoff = await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview]);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.equal(result.unblockedSubtaskHints.length, 1);
+            assert.equal(result.unblockedSubtaskHints[0]!.story.key, kickoff.key);
+            assert.deepEqual(result.unblockedSubtaskHints[0]!.types, [SubtaskType.Requirements, SubtaskType.UxDesign]);
+        });
+    });
+
+    test("no hint once those subtasks exist (nothing is absent)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview], [SubtaskType.Requirements, SubtaskType.UxDesign]);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.unblockedSubtaskHints, []);
+        });
+    });
+
+    test("ArchitectureDesign (optional under a Kickoff) is never hinted even when both its prerequisites are Done", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview, SubtaskType.Requirements, SubtaskType.UxDesign]);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.unblockedSubtaskHints, []);
+        });
+    });
+
+    test("only an In Progress Kickoff is hinted: In Review (waiting on its gate) and To Do are not", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview], [], Status.InReview);
+            await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview], [], Status.ToDo);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.unblockedSubtaskHints, []);
+        });
+    });
+
+    test("a normal Story gets no hint, however much of its graph is Done (absent types there are deliberate)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: StoryType.Story,
+                summary: "Story",
+                persona: Persona.Pm,
+                assignee: CURRENT_USER,
+            });
+            const design = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.ArchitectureDesign,
+                summary: "Design",
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+            });
+            await backend.workTracker.transition(design.key, Status.Done);
+            await backend.workTracker.transition(story.key, Status.InProgress);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.deepEqual(result.unblockedSubtaskHints, []);
+        });
+    });
+
+    test("the persona filter applies: another persona's Kickoff is not hinted", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview]);
+            const asDeveloper = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" }, Persona.Developer);
+            assert.deepEqual(asDeveloper.unblockedSubtaskHints, []);
+            const asPm = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" }, Persona.Pm);
+            assert.equal(asPm.unblockedSubtaskHints.length, 1);
+        });
+    });
+});

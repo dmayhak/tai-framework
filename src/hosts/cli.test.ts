@@ -181,6 +181,7 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         ready: [],
         onHold: [],
         inProgress: [],
+        unblockedSubtaskHints: [],
         readyToReview: [],
         readyToTest: [],
         readyToMerge: [],
@@ -725,7 +726,7 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
 
     it("renderReadyWork points the review line at git-pr review-prep", () => {
         const out = renderReadyWork({
-            ready: [], onHold: [], inProgress: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [],
+            ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [],
             blockedBy: new Map(), staleLivingDocs: [], assigneeSuggestions: new Map(),
         });
         assert.match(out, /git-pr review-prep ws\/repo 9/);
@@ -736,5 +737,57 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
         const out = renderPRReadyWork({ readyToReview: [candidate], readyToMerge: [] } as never);
         assert.match(out, /git-pr review-prep ws\/repo 9/);
         assert.doesNotMatch(out, /git-pr review <REPO> approve/);
+    });
+});
+
+describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
+    const base = {
+        ready: [],
+        onHold: [],
+        inProgress: [],
+        unblockedSubtaskHints: [],
+        readyToReview: [],
+        readyToTest: [],
+        readyToMerge: [],
+        blockedBy: new Map(),
+        staleLivingDocs: [],
+        assigneeSuggestions: new Map(),
+    };
+    const kickoff = makeIssue({ key: toIssueKey("EXA-2"), persona: "pm" as never, status: Status.InProgress });
+
+    it("names the unblocked types, the command and the owner, and drops 'Nothing is currently ready'", () => {
+        const out = renderReadyWork({
+            ...base,
+            unblockedSubtaskHints: [{ story: kickoff, types: [SubtaskType.Requirements, SubtaskType.UxDesign] }],
+        });
+        assert.match(out, /1\. \*\*EXA-2\*\*: Requirements and UxDesign are unblocked -- run \/tai-work EXA-2 \(Perry\)/);
+        assert.doesNotMatch(out, /Nothing is currently ready to start/);
+        assert.match(out, /Reply with a number/);
+    });
+
+    it("a single type reads 'is unblocked'; three read 'A, B and C'", () => {
+        const one = renderReadyWork({ ...base, unblockedSubtaskHints: [{ story: kickoff, types: [SubtaskType.EpicReview] }] });
+        assert.match(one, /EpicReview is unblocked/);
+        const three = renderReadyWork({
+            ...base,
+            unblockedSubtaskHints: [{ story: kickoff, types: [SubtaskType.EpicReview, SubtaskType.Requirements, SubtaskType.UxDesign] }],
+        });
+        assert.match(three, /EpicReview, Requirements and UxDesign are unblocked/);
+    });
+
+    it("hints are numbered after Ready Work items on the shared counter", () => {
+        const out = renderReadyWork({
+            ...base,
+            ready: [makeIssue({ key: toIssueKey("TAI-1") })],
+            unblockedSubtaskHints: [{ story: kickoff, types: [SubtaskType.Requirements] }],
+        });
+        assert.match(out, /1\. \*\*TAI-1\*\*/);
+        assert.match(out, /2\. \*\*EXA-2\*\*/);
+        assert.ok(out.indexOf("## Ready Work") < out.indexOf("## Subtasks ready to create"));
+    });
+
+    it("with no hints and nothing ready, the empty message is unchanged", () => {
+        assert.match(renderReadyWork(base), /Nothing is currently ready to start\./);
+        assert.ok(!renderReadyWork(base).includes("Subtasks ready to create"));
     });
 });
