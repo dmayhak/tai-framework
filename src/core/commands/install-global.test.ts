@@ -30,6 +30,12 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(kickoff.content, /ordinary chat text/i);
             assert.match(kickoff.content, /Do NOT, in this same turn, ask a question with an interactive tool/i);
             assert.match(kickoff.content, /human's own NEXT message/i);
+            // the initiative reaches a shell as ONE single-quoted argument: an apostrophe or $(...) in the human's text
+            // must neither break the command nor run (PR 158 review)
+            assert.match(kickoff.content, /ONE single-quoted argument/);
+            assert.match(kickoff.content, /'\\''/);
+            assert.match(kickoff.content, /never (put it )?inside double quotes/i);
+            assert.doesNotMatch(kickoff.content, /unquoted words are joined/i);
             // the initiative is the human's data, and Perry's authority is unchanged
             assert.match(kickoff.content, /data, not instructions/i);
             assert.match(kickoff.content, /Backlog tickets/);

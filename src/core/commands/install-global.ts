@@ -558,10 +558,14 @@ function kickoffSkillBody(taiHome: string): string {
         "Epic and its Kickoff Story. It needs no ticket, which is the point: `/tai-work` always needs an existing issue " +
         "key, and a fresh project has none. It also works on a project that already has Epics, to start a new initiative.\n\n" +
         "Run this and read its full output. It takes an optional initiative description; if the human gave one for this " +
-        "invocation, pass it as the arguments (unquoted words are joined), otherwise run with none:\n\n" +
+        "invocation, pass it as ONE single-quoted argument, otherwise run with none:\n\n" +
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts kickoff [INITIATIVE]\n` +
         "```\n\n" +
+        "**Quote the initiative so the shell cannot misread it.** It is the human's free text, so it can contain an " +
+        "apostrophe, a `$(...)` or a backtick, any of which would break the command or run as shell. Wrap the whole text in " +
+        "single quotes and write each apostrophe inside it as `'\\''` (for example `'add the co-op'\\''s billing'`); never put " +
+        "it inside double quotes and never leave it as bare words.\n\n" +
         "The output starts with a `# Persona: Perry (pm)` heading and Perry's own instructions, then a `---` separator, " +
         "then a short read-only briefing: what the human asked to start, the existing Epics, and the existing Kickoff " +
         "Stories. For the rest of this turn, act as that persona and follow her Project initiation behavior against it.\n\n" +
