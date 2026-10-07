@@ -99,8 +99,9 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(init, /onboard|set up|setup/i);
         for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit", "tai-groom"]) {
             const d = description(name);
-            // ' #' would start a YAML comment and silently truncate the description. (A ': ' inside is strictly
-            // invalid in a plain scalar too, and tai-groom's description has one, but both hosts load it -- left alone.)
+            // The description is written as an UNQUOTED YAML scalar, in which ': ' is a mapping indicator (invalid,
+            // 'mapping values are not allowed here') and ' #' starts a comment (silently truncates it) -- TAI-438.
+            assert.ok(!d.includes(": "), `${name}: description must not contain ': '`);
             assert.ok(!d.includes(" #"), `${name}: description must not contain ' #'`);
             assert.doesNotMatch(d, /^["'\[{&*!|>%@`-]/, `${name}: description must not start with a YAML indicator`);
         }
