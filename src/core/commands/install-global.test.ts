@@ -80,10 +80,12 @@ describe("renderGlobalSkillFiles", () => {
     });
 
     test("skill descriptions are current: tai-pr no longer names the retired CodeReview subtask, tai-init no longer says 'eventually' (TAI-435)", () => {
+        // The whole frontmatter shape, anchored: name, then exactly one description line, then the closing rule.
+        // (A bare /^description: (.*)$/m can never see a newline, so it could not catch a broken description.)
         const description = (name: string): string => {
             const f = files.find((x) => x.relativePath === `.claude/skills/${name}/SKILL.md`)!;
-            const m = f.content.match(/^description: (.*)$/m);
-            assert.ok(m, `${name} has a description line`);
+            const m = f.content.match(new RegExp(`^---\\nname: ${name}\\ndescription: ([^\\n]+)\\n---\\n`));
+            assert.ok(m, `${name}: frontmatter is exactly '---', name, one description line, '---'`);
             return m![1]!;
         };
         const pr = description("tai-pr");
@@ -96,7 +98,11 @@ describe("renderGlobalSkillFiles", () => {
         assert.doesNotMatch(init, /eventually/i);
         assert.match(init, /onboard|set up|setup/i);
         for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit", "tai-groom"]) {
-            assert.ok(description(name).length > 0 && !description(name).includes("\n"), `${name}: a single-line description`);
+            const d = description(name);
+            // ' #' would start a YAML comment and silently truncate the description. (A ': ' inside is strictly
+            // invalid in a plain scalar too, and tai-groom's description has one, but both hosts load it -- left alone.)
+            assert.ok(!d.includes(" #"), `${name}: description must not contain ' #'`);
+            assert.doesNotMatch(d, /^["'\[{&*!|>%@`-]/, `${name}: description must not start with a YAML indicator`);
         }
     });
 
