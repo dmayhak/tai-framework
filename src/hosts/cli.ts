@@ -713,7 +713,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
         for (const c of result.readyToReview) {
             lines.push(
                 `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
-                    `${c.pullRequest.destinationBranch}) — \`git-pr review <REPO> approve|requestChanges\` to record it`
+                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep ${c.pullRequest.repo} ${c.pullRequest.id}\``
             );
             actionableCount++;
         }
@@ -760,7 +760,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
 /** Lighter sibling to `renderReadyWork` (TAI-211/212) — just the two PR-review-mode
  *  sections, no general ready list, no in-flight section. Same "reply with a number"
  *  numbered-line convention `tai-ready` already uses. */
-function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>): string {
+export function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>): string {
     const lines: string[] = ["# PRs ready for you", ""];
     const counter = numberedLines();
     let actionableCount = 0;
@@ -770,7 +770,7 @@ function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>):
         for (const c of result.readyToReview) {
             lines.push(
                 `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
-                    `${c.pullRequest.destinationBranch}) — \`git-pr review <REPO> approve|requestChanges\` to record it`
+                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep ${c.pullRequest.repo} ${c.pullRequest.id}\``
             );
             actionableCount++;
         }
