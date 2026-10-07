@@ -2142,4 +2142,47 @@ describe("findReadyWork: unblocked-but-uncreated Kickoff subtasks (TAI-373)", ()
             assert.equal(asPm.unblockedSubtaskHints.length, 1);
         });
     });
+
+    describe("Skipped: marker (TAI-443)", () => {
+        async function ready(backend: StorageBackend, taiRoot: string) {
+            return findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+        }
+
+        test("a Skipped: marker drops just the named type from the hint", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const kickoff = await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview]);
+                await backend.workTracker.addComment(kickoff.key, "Skipped: ux-design \u2014 backend-only epic");
+                const result = await ready(backend, taiRoot);
+                assert.deepEqual(result.unblockedSubtaskHints[0]!.types, [SubtaskType.Requirements]);
+            });
+        });
+
+        test("skipping every unblocked type removes the hint entirely", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const kickoff = await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview]);
+                await backend.workTracker.addComment(kickoff.key, "Skipped: requirements, ux-design");
+                const result = await ready(backend, taiRoot);
+                assert.deepEqual(result.unblockedSubtaskHints, []);
+            });
+        });
+
+        test("editing the marker is honored on the next call -- never cached", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const kickoff = await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview]);
+                const marker = await backend.workTracker.addComment(kickoff.key, "Skipped: requirements, ux-design");
+                assert.deepEqual((await ready(backend, taiRoot)).unblockedSubtaskHints, []);
+                await backend.workTracker.editComment(kickoff.key, marker.id, "Skipped: ux-design");
+                assert.deepEqual((await ready(backend, taiRoot)).unblockedSubtaskHints[0]!.types, [SubtaskType.Requirements]);
+            });
+        });
+
+        test("a marker naming a type that is not currently hinted changes nothing", async () => {
+            await withBackend(async (backend, taiRoot) => {
+                const kickoff = await kickoffWith(backend, [SubtaskType.Research, SubtaskType.EpicReview]);
+                await backend.workTracker.addComment(kickoff.key, "Skipped: deploy");
+                const result = await ready(backend, taiRoot);
+                assert.deepEqual(result.unblockedSubtaskHints[0]!.types, [SubtaskType.Requirements, SubtaskType.UxDesign]);
+            });
+        });
+    });
 });

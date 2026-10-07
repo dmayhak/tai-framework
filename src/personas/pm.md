@@ -183,6 +183,14 @@ and UX flows are expected to converge before the Architect finalizes any design 
   DesignReview, EpicReview or UAT with no open blocker, move that item from Backlog to To Do in the same turn — a
   human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and say in the hand-off what it
   unblocked. Anything else that became unblocked waits for grooming's promotion section (`/tai-groom`).
+- **Records a deliberately skipped Kickoff subtask (brief §3.9, TAI-443).** When she judges a Kickoff does not need
+  `Requirements` or `UxDesign` (e.g. a backend-only epic), she posts a comment on the Kickoff whose **first line**
+  starts with `Skipped:`, so `/tai-ready` stops listing it under "Subtasks ready to create":
+  `npx tsx src/hosts/cli.ts issue comment <KICKOFF-KEY> "Skipped: ux-design — <reason>"`. The type list comes
+  first (comma- or "and"-separated; `ux-design`, `UxDesign` and `ux design` all work) and the reason follows a
+  dash (`—`, `–`, ` - ` or ` -- `); put the marker at the very start of the comment, not after other text. No
+  confirmation is needed (reversible; it only silences a hint), and it does not stop the subtask being created
+  later. Editing or deleting the comment brings the hint back.
 
 ## When this persona is invoked
 

@@ -4,7 +4,12 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-06 (rev 78 — **TAI-425/428: `git-pr review-prep` — the review flow loads the Code
+> **Last updated:** 2026-10-07 (rev 79 — **TAI-443: a Kickoff can record a deliberately skipped subtask type.** A
+> first-line `Skipped: <type>[, <type>] — <reason>` comment on a Kickoff Story (new §3.9 marker) silences that type in
+> `/tai-ready`'s "Subtasks ready to create" hint. Perry or a human may add one with no confirmation gate (reversible;
+> it only silences a hint); re-read on every call, never cached. Kickoff Stories only.
+>
+> Prior: rev 78 — **TAI-425/428: `git-pr review-prep` — the review flow loads the Code
 > Reviewer through the CLI.** A read-only command, `git-pr review-prep <REPO> [PR-ID]` (no issue key), is now the
 > entry point of `/tai-pr`'s review flow, the way `work` and `groom` load their personas: it refuses up front if the
 > acting human is not on the "PR Reviewers" roster, then prints Cole's own instructions (`loadPersonaConfig`, so a
@@ -1438,7 +1443,7 @@ instead of a ticket. A ticketless `/tai-review` skill was considered and deferre
 TAI's own comment-scanning logic (§3.6) is what interprets these — none of them are
 native Jira/Confluence features (plain Jira comments have no built-in resolved flag;
 Confluence's native inline-comment resolve checkmark exists but isn't used for this, see
-below). All three apply to **both** Jira issue comments and Confluence comments
+below). All four apply to **both** Jira issue comments and Confluence comments
 (page-level and inline) — not just Jira.
 
 - **`Q:`** — an open question. Native reply-threading (Jira) or the comment/reply
@@ -1451,6 +1456,12 @@ below). All three apply to **both** Jira issue comments and Confluence comments
   preferred; when absent, TAI infers intent from the comment text, escalating to a human
   only if genuinely ambiguous (humans can't be relied on to type structured markers every
   time) — the **marker-with-inference-fallback** pattern.
+- **`Skipped: <subtask-type>[, <type>...] — <reason>`** (TAI-443) — on a Kickoff Story: the named
+  subtask types were left out on purpose, so `/tai-ready`'s "Subtasks ready to create" hint stops listing
+  them. Type names are case- and hyphen-insensitive (`ux-design`, `UxDesign`, `ux design`); the reason must
+  follow a dash (`—`, `–`, ` - ` or ` -- `) and is free text — without a dash the whole line is read as the
+  type list. Perry or a human may post one with no confirmation gate — it only silences a hint, and editing
+  or deleting the comment brings the hint back. It does not stop anyone creating the subtask later.
 
 **Why not Confluence's native inline-comment resolve checkmark:** considered and
 rejected as the signal for any of the above, for two concrete reasons — (1) the
