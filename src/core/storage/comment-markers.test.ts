@@ -25,6 +25,26 @@ describe("Skipped: marker (TAI-443)", () => {
         ]);
     });
 
+    test("a type spelled with a space instead of a hyphen still names that type", () => {
+        assert.ok(parseCommentMarker(comment("Skipped: ux design — backend-only"))?.skippedTypes?.includes("uxdesign"));
+        assert.ok(parseCommentMarker(comment("Skipped: requirements, ux design"))?.skippedTypes?.includes("uxdesign"));
+        assert.ok(parseCommentMarker(comment("Skipped: requirements, ux design"))?.skippedTypes?.includes("requirements"));
+    });
+
+    test("every reason separator ends the type list: em dash, en dash, ' - ' and ' -- '", () => {
+        for (const sep of ["\u2014", "\u2013", " - ", " -- "]) {
+            const m = parseCommentMarker(comment(`Skipped: ux-design ${sep} backend-only epic`));
+            assert.deepEqual(m?.skippedTypes, ["uxdesign"], `separator ${JSON.stringify(sep)}`);
+            assert.equal(m?.note, "backend-only epic", `separator ${JSON.stringify(sep)}`);
+        }
+    });
+
+    test("a hyphen inside a word does not end the type list", () => {
+        const m = parseCommentMarker(comment("Skipped: ux-design, epic-review"));
+        assert.deepEqual(m?.skippedTypes, ["uxdesign", "epicreview"]);
+        assert.equal(m?.note, undefined);
+    });
+
     test("a marker with no types is a marker with an empty list", () => {
         assert.deepEqual(parseCommentMarker(comment("Skipped: — because"))?.skippedTypes, []);
     });

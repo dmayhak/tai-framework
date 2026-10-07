@@ -63,10 +63,12 @@ export function parseCommentMarker(comment: Comment): ParsedCommentMarker | null
     if (kind === "Skipped") {
         // TAI-443: "Skipped: ux-design, requirements — backend-only epic". Types before the separator, reason after.
         const [typesPart = "", ...reasonParts] = rest.split(SKIPPED_REASON_SEPARATOR);
-        const skippedTypes = typesPart
-            .split(/[\s,]+|\band\b/i)
-            .map(normalizeSubtaskTypeToken)
-            .filter((t) => t !== "" && t !== "and");
+        // Segments split on commas and the word "and"; a multi-word segment ("ux design") also counts joined, so a
+        // space typed for a hyphen still names the type.
+        const skippedTypes = typesPart.split(/\s*,\s*|\s+and\s+/i).flatMap((segment) => {
+            const words = segment.split(/\s+/).map(normalizeSubtaskTypeToken).filter((w) => w !== "");
+            return words.length > 1 ? [words.join(""), ...words] : words;
+        });
         const note = reasonParts.join(" ").trim();
         return { kind, comment, skippedTypes, ...(note ? { note } : {}) };
     }
