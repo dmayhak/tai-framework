@@ -569,12 +569,12 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
         },
         {
             name: "tai-pr",
-            description: "Create, review, or merge a real git PR for a Dev/CodeReview subtask (TAI-34 ADR)",
+            description: "Review a PR as the Code Reviewer (git-pr review-prep), or create/merge a real git PR for a ticket (TAI-34 ADR, TAI-425)",
             body: prSkillBody(taiHome),
         },
         {
             name: "tai-init",
-            description: "Install/refresh TAI's own global skills, and (eventually) guide setup of a real target project (TAI-116)",
+            description: "Install/refresh TAI's own global skills, and onboard the current project to TAI via init run/status (TAI-116, TAI-360)",
             body: initSkillBody(taiHome),
         },
         {

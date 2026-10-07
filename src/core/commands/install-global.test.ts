@@ -79,6 +79,27 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(ready.content, /git-pr review-prep/);
     });
 
+    test("skill descriptions are current: tai-pr no longer names the retired CodeReview subtask, tai-init no longer says 'eventually' (TAI-435)", () => {
+        const description = (name: string): string => {
+            const f = files.find((x) => x.relativePath === `.claude/skills/${name}/SKILL.md`)!;
+            const m = f.content.match(/^description: (.*)$/m);
+            assert.ok(m, `${name} has a description line`);
+            return m![1]!;
+        };
+        const pr = description("tai-pr");
+        assert.doesNotMatch(pr, /CodeReview/);
+        assert.match(pr, /review/i);
+        assert.match(pr, /git-pr review-prep/);
+        assert.match(pr, /create/i);
+        assert.match(pr, /merge/i);
+        const init = description("tai-init");
+        assert.doesNotMatch(init, /eventually/i);
+        assert.match(init, /onboard|set up|setup/i);
+        for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit", "tai-groom"]) {
+            assert.ok(description(name).length > 0 && !description(name).includes("\n"), `${name}: a single-line description`);
+        }
+    });
+
     test("the tai-init skill tells the human a running Gemini session needs a full restart (TAI-397)", () => {
         const init = files.find((f) => f.relativePath === ".gemini/skills/tai-init/SKILL.md")!;
         assert.match(init.content, /quit and restart the Gemini process/);
