@@ -718,9 +718,9 @@ describe("renderGroomTurn (TAI-395)", () => {
     });
 });
 
-describe("the 'ready for your review' line names review-prep, not the decision command (TAI-430)", () => {
+describe("the 'ready for your review' line names review-prep with the PR's real repo and id (TAI-430)", () => {
     const candidate = {
-        pullRequest: { url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" },
+        pullRequest: { id: "9", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" },
     } as never;
 
     it("renderReadyWork points the review line at git-pr review-prep", () => {
@@ -728,13 +728,13 @@ describe("the 'ready for your review' line names review-prep, not the decision c
             ready: [], onHold: [], inProgress: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [],
             blockedBy: new Map(), staleLivingDocs: [], assigneeSuggestions: new Map(),
         });
-        assert.match(out, /git-pr review-prep <REPO> \[PR-ID\]/);
+        assert.match(out, /git-pr review-prep ws\/repo 9/);
         assert.doesNotMatch(out, /git-pr review <REPO> approve/);
     });
 
     it("renderPRReadyWork (pr-ready) does too", () => {
         const out = renderPRReadyWork({ readyToReview: [candidate], readyToMerge: [] } as never);
-        assert.match(out, /git-pr review-prep <REPO> \[PR-ID\]/);
+        assert.match(out, /git-pr review-prep ws\/repo 9/);
         assert.doesNotMatch(out, /git-pr review <REPO> approve/);
     });
 });

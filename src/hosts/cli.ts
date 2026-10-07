@@ -713,7 +713,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
         for (const c of result.readyToReview) {
             lines.push(
                 `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
-                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep <REPO> [PR-ID]\` (TAI-430)`
+                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep ${c.pullRequest.repo} ${c.pullRequest.id}\` (TAI-430)`
             );
             actionableCount++;
         }
@@ -770,7 +770,7 @@ export function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRW
         for (const c of result.readyToReview) {
             lines.push(
                 `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
-                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep <REPO> [PR-ID]\` (TAI-430)`
+                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep ${c.pullRequest.repo} ${c.pullRequest.id}\` (TAI-430)`
             );
             actionableCount++;
         }
