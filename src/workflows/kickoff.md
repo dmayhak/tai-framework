@@ -66,8 +66,9 @@ Architect finalizes any design (see `personas/ux-designer.md`).
 `workflows/dependencies.md`'s Layer 2 note (TAI-355): the next `/tai-work`/`/tai-ready`
 invocation is what actually re-engages a persona to continue, same as everywhere else in
 TAI. For a Kickoff specifically, `/tai-ready` now says what to run next: once a subtask's
-prerequisites are all Done it lists the subtask types that are unblocked but not created yet (TAI-373). A type left out on purpose is silenced with a first-line
-`Skipped: ux-design — backend-only epic` comment on the Kickoff (TAI-443, brief §3.9).
+prerequisites are all Done it lists the subtask types that are unblocked but not created yet (TAI-373). A type
+left out on purpose is silenced with a first-line `Skipped: ux-design — backend-only epic` comment on the Kickoff
+(TAI-443, brief §3.9).
 
 ## EpicReview gate (mandatory, human-gated, TAI-354)
 
