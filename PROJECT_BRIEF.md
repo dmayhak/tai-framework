@@ -1458,8 +1458,8 @@ below). All four apply to **both** Jira issue comments and Confluence comments
   time) — the **marker-with-inference-fallback** pattern.
 - **`Skipped: <subtask-type>[, <type>...] — <reason>`** (TAI-443) — on a Kickoff Story: the named
   subtask types were left out on purpose, so `/tai-ready`'s "Subtasks ready to create" hint stops listing
-  them. Type names are case- and hyphen-insensitive (`ux-design`, `UxDesign`); the reason after the dash is
-  free text. Perry or a human may post one with no confirmation gate — it only silences a hint, and editing
+  them. Type names are case- and hyphen-insensitive (`ux-design`, `UxDesign`, `ux design`); the reason must follow a
+  dash (`—`, `–`, ` - ` or ` -- `) and is free text — without a dash the whole line is read as the type list. Perry or a human may post one with no confirmation gate — it only silences a hint, and editing
   or deleting the comment brings the hint back. It does not stop anyone creating the subtask later.
 
 **Why not Confluence's native inline-comment resolve checkmark:** considered and
