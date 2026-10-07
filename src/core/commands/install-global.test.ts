@@ -79,6 +79,33 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(ready.content, /git-pr review-prep/);
     });
 
+    test("skill descriptions are current: tai-pr no longer names the retired CodeReview subtask, tai-init no longer says 'eventually' (TAI-435)", () => {
+        // The whole frontmatter shape, anchored: name, then exactly one description line, then the closing rule.
+        // (A bare /^description: (.*)$/m can never see a newline, so it could not catch a broken description.)
+        const description = (name: string): string => {
+            const f = files.find((x) => x.relativePath === `.claude/skills/${name}/SKILL.md`)!;
+            const m = f.content.match(new RegExp(`^---\\nname: ${name}\\ndescription: ([^\\n]+)\\n---\\n`));
+            assert.ok(m, `${name}: frontmatter is exactly '---', name, one description line, '---'`);
+            return m![1]!;
+        };
+        const pr = description("tai-pr");
+        assert.doesNotMatch(pr, /CodeReview/);
+        assert.match(pr, /review/i);
+        assert.match(pr, /git-pr review-prep/);
+        assert.match(pr, /create/i);
+        assert.match(pr, /merge/i);
+        const init = description("tai-init");
+        assert.doesNotMatch(init, /eventually/i);
+        assert.match(init, /onboard|set up|setup/i);
+        for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit", "tai-groom"]) {
+            const d = description(name);
+            // ' #' would start a YAML comment and silently truncate the description. (A ': ' inside is strictly
+            // invalid in a plain scalar too, and tai-groom's description has one, but both hosts load it -- left alone.)
+            assert.ok(!d.includes(" #"), `${name}: description must not contain ' #'`);
+            assert.doesNotMatch(d, /^["'\[{&*!|>%@`-]/, `${name}: description must not start with a YAML indicator`);
+        }
+    });
+
     test("the tai-init skill tells the human a running Gemini session needs a full restart (TAI-397)", () => {
         const init = files.find((f) => f.relativePath === ".gemini/skills/tai-init/SKILL.md")!;
         assert.match(init.content, /quit and restart the Gemini process/);
