@@ -18,6 +18,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import { renderPersonaTurn } from "../persona/turn.js";
+import { runRemoteGit } from "./remote-git.js";
 import { sameHuman } from "../personas/roster.js";
 import type { HumanRef } from "../storage/interface.js";
 import type { PullRequestRef } from "./interface.js";
@@ -135,7 +136,8 @@ export async function gatherDiff(input: GatherDiffInput): Promise<DiffResult> {
     const src = input.sourceBranch;
     const dest = input.destinationBranch;
     try {
-        await git(
+        // Through runRemoteGit: an empty core.sshCommand (Gemini CLI's shell) gets its one retry (TAI-431/433).
+        await runRemoteGit(
             ["fetch", "origin", `+refs/heads/${src}:refs/remotes/origin/${src}`, `+refs/heads/${dest}:refs/remotes/origin/${dest}`],
             input.cwd
         );

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { lastFetchPath, refreshLocalDefaultBranch, renderLocalFetchNote } from "./local-fetch.js";
+import { withFakeSshAndEmptySshCommand } from "./fake-ssh.testing.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -197,6 +198,35 @@ describe("refreshLocalDefaultBranch", () => {
             assert.equal(outcome.kind, "fast-forwarded");
             assert.equal((outcome as { branch: string }).branch, "master");
             assert.equal(await git(["rev-parse", "master"], local), newSha);
+        });
+    });
+});
+
+describe("refreshLocalDefaultBranch under an empty core.sshCommand (TAI-431/433)", () => {
+    // Gemini CLI's shell sets core.sshCommand to the empty string; the fake ssh serves ssh://fakehost/<path> locally.
+
+    it("still fetches and fast-forwards, by retrying with GIT_SSH_COMMAND=ssh", async () => {
+        await withRemoteAndClone(async ({ remote, local, taiRoot }) => {
+            await git(["remote", "set-url", "origin", `ssh://fakehost${remote}`], local);
+            const newSha = await advanceRemote(path.dirname(remote), remote);
+            await withFakeSshAndEmptySshCommand(async (ssh) => {
+                const outcome = await refreshLocalDefaultBranch(local, taiRoot);
+                assert.equal(outcome.kind, "fast-forwarded");
+                assert.equal(await git(["rev-parse", "master"], local), newSha);
+                assert.ok((await ssh.invocations()) >= 1);
+            });
+        });
+    });
+
+    it("also resolves the default branch through ls-remote (no cached origin/HEAD) via the same retry", async () => {
+        await withRemoteAndClone(async ({ remote, local, taiRoot }) => {
+            await git(["remote", "set-url", "origin", `ssh://fakehost${remote}`], local);
+            await git(["remote", "set-head", "origin", "-d"], local);
+            await withFakeSshAndEmptySshCommand(async () => {
+                const outcome = await refreshLocalDefaultBranch(local, taiRoot);
+                assert.notEqual(outcome.kind, "fetch-failed", JSON.stringify(outcome));
+                assert.equal(outcome.kind, "up-to-date");
+            });
         });
     });
 });
