@@ -580,7 +580,7 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
         {
             name: "tai-groom",
             description:
-                "Backlog grooming session: loads Perry (PM) with a computed briefing of the whole board, or one epic, " +
+                "Backlog grooming session -- loads Perry (PM) with a computed briefing of the whole board, or one epic, " +
                 "to sequence Kickoffs, schedule first waves and promote unblocked work -- proposals confirmed by the " +
                 "human, no ticket needed (TAI-389 ADR)",
             body: groomSkillBody(taiHome),
