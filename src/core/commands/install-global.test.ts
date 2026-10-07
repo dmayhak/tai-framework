@@ -101,7 +101,8 @@ describe("renderGlobalSkillFiles", () => {
             const d = description(name);
             // The description is written as an UNQUOTED YAML scalar, in which ': ' is a mapping indicator (invalid,
             // 'mapping values are not allowed here') and ' #' starts a comment (silently truncates it) -- TAI-438.
-            assert.ok(!d.includes(": "), `${name}: description must not contain ': '`);
+            // (A trailing ':' is the same indicator: a colon followed by the end of the line.)
+            assert.ok(!d.includes(": ") && !d.endsWith(":"), `${name}: description must not contain ': ' or end with ':'`);
             assert.ok(!d.includes(" #"), `${name}: description must not contain ' #'`);
             assert.doesNotMatch(d, /^["'\[{&*!|>%@`-]/, `${name}: description must not start with a YAML indicator`);
         }
