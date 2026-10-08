@@ -642,6 +642,9 @@ describe("transition", () => {
             const wt = trackerWith(
                 stubFetch((url, init) => {
                     const path = url.split("atlassian.net")[1]?.split("?")[0] ?? "";
+                    // TAI-476: the precedence gate's sibling lookup. These fixtures have no siblings; it is
+                    // answered here and kept out of `calls`, which records the cascade's own traffic.
+                    if (path === "/rest/api/2/search/jql") return json({ issues: [] });
                     calls.push(`${init.method ?? "GET"} ${path}`);
                     const match = path.match(/^\/rest\/api\/2\/issue\/([A-Za-z0-9-]+)(\/transitions)?$/);
                     if (!match) throw new Error(`unexpected call: ${path}`);

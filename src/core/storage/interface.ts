@@ -257,6 +257,12 @@ export type MutationResult =
 
 export class StorageConnectivityError extends Error {}
 
+export interface TransitionOptions {
+    /** Start the subtask even though a precedence prerequisite is open (TAI-476). Bypasses ONLY
+     *  the precedence gate — never the assignment gate or a review gate. */
+    readonly overridePrecedence?: boolean;
+}
+
 // ---------- WorkTracker ----------
 
 export interface WorkTracker {
@@ -268,7 +274,11 @@ export interface WorkTracker {
     // precedence-derived "ready/blocked" (that's isSubtaskReady() /
     // resolveApplicablePrecedence() in story-schema.ts, computed over already-fetched
     // Issue data; no storage call needed for it).
-    transition(key: IssueKey, target: Status): Promise<MutationResult>;
+    //
+    // TAI-476: starting a subtask is refused while a sibling upstream of it is open
+    // (precedence-gate.ts); `options.overridePrecedence` bypasses that one gate and leaves a
+    // comment on the ticket naming what was bypassed.
+    transition(key: IssueKey, target: Status, options?: TransitionOptions): Promise<MutationResult>;
     getAvailableTransitions(key: IssueKey): Promise<readonly Status[]>;
     // Mirrors transition()'s rejection shape — brief §5.6 explicitly reuses the
     // transition pattern for assignment rejection ("the same kind of unplanned

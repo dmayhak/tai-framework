@@ -30,6 +30,7 @@ import { Persona, Status, StoryType, SubtaskType, DependencyRelation } from "../
 import { gatherAssigneeEvidence } from "../personas/assignee-evidence.js";
 import {
     type StorageBackend,
+    type Issue,
     type IssueKey,
     type PageId,
     type HumanRef,
@@ -725,6 +726,95 @@ export function defineStorageConformance(
         // to construct that scenario against. The best-effort try/catch around the cascade
         // still exists for a genuine connectivity fault or a future gate, just not something
         // this conformance harness can currently trigger.
+        // ---------- The subtask precedence gate (TAI-476) ----------
+
+        // The shared predicates (precedence-gate.ts) are unit-tested on their own; this checks that each
+        // backend wires them into transition() and behaves identically. The gate reads siblings through
+        // search, which lags a create on Jira (TAI-381), so each case first waits for the siblings to be
+        // visible.
+        describe("WorkTracker: transition() and the subtask precedence gate (TAI-476)", () => {
+            async function storyWith(...types: SubtaskType[]) {
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: precedence story",
+                        assignee: h.validAssignee,
+                    })
+                );
+                const subtasks = new Map<SubtaskType, Issue>();
+                for (const issueType of types) {
+                    subtasks.set(
+                        issueType,
+                        track(
+                            await h.backend.workTracker.createIssue({
+                                projectKey: h.projectKey,
+                                issueType,
+                                parentKey: story.key,
+                                summary: `Conformance: precedence ${issueType}`,
+                                assignee: h.validAssignee,
+                            })
+                        )
+                    );
+                }
+                await eventually(childKeys(story.key), (found) => found.length === types.length, "the story's subtasks");
+                return (type: SubtaskType) => subtasks.get(type)!.key;
+            }
+
+            it("refuses to start a subtask while a sibling upstream of it is open, naming the blocker", async () => {
+                const key = await storyWith(SubtaskType.ArchitectureDesign, SubtaskType.Dev);
+                const result = await h.backend.workTracker.transition(key(SubtaskType.Dev), Status.InProgress);
+                assert.equal(result.ok, false);
+                if (!result.ok) assert.ok(result.reason.includes(key(SubtaskType.ArchitectureDesign)), result.reason);
+                assert.equal((await h.backend.workTracker.getIssue(key(SubtaskType.Dev)))?.status, Status.Backlog);
+            });
+
+            it("allows it once the prerequisite is Done", async () => {
+                const key = await storyWith(SubtaskType.ArchitectureDesign, SubtaskType.Dev);
+                assert.equal((await h.backend.workTracker.transition(key(SubtaskType.ArchitectureDesign), Status.Done)).ok, true);
+                await eventually(
+                    () => h.backend.workTracker.search({ projectKey: h.projectKey, statuses: [Status.Done] }),
+                    (done) => done.some((i) => i.key === key(SubtaskType.ArchitectureDesign)),
+                    "the finished prerequisite"
+                );
+                assert.equal((await h.backend.workTracker.transition(key(SubtaskType.Dev), Status.InProgress)).ok, true);
+            });
+
+            it("an override starts it anyway and leaves a comment naming what was bypassed", async () => {
+                const key = await storyWith(SubtaskType.ArchitectureDesign, SubtaskType.Dev);
+                const result = await h.backend.workTracker.transition(key(SubtaskType.Dev), Status.InProgress, {
+                    overridePrecedence: true,
+                });
+                assert.equal(result.ok, true);
+                const dev = await h.backend.workTracker.getIssue(key(SubtaskType.Dev));
+                assert.equal(dev?.status, Status.InProgress);
+                const comment = dev?.comments.find((c) => c.body.startsWith("Precedence override:"));
+                assert.ok(comment, "the bypass must be recorded on the ticket");
+                assert.ok(comment.body.includes(key(SubtaskType.ArchitectureDesign)));
+            });
+
+            it("an override leaves no comment when nothing was actually bypassed", async () => {
+                const key = await storyWith(SubtaskType.Dev);
+                const result = await h.backend.workTracker.transition(key(SubtaskType.Dev), Status.InProgress, {
+                    overridePrecedence: true,
+                });
+                assert.equal(result.ok, true);
+                assert.deepEqual((await h.backend.workTracker.getIssue(key(SubtaskType.Dev)))?.comments, []);
+            });
+
+            it("a test tier may start once Dev has started, but not before", async () => {
+                const key = await storyWith(SubtaskType.Dev, SubtaskType.IntegrationTest);
+                assert.equal((await h.backend.workTracker.transition(key(SubtaskType.IntegrationTest), Status.InProgress)).ok, false);
+                assert.equal((await h.backend.workTracker.transition(key(SubtaskType.Dev), Status.InProgress)).ok, true);
+                await eventually(
+                    () => h.backend.workTracker.search({ projectKey: h.projectKey, statuses: [Status.InProgress] }),
+                    (started) => started.some((i) => i.key === key(SubtaskType.Dev)),
+                    "the started Dev subtask"
+                );
+                assert.equal((await h.backend.workTracker.transition(key(SubtaskType.IntegrationTest), Status.InProgress)).ok, true);
+            });
+        });
+
         // ---------- Kickoff exemption and the To Do cascade (TAI-374/387/388) ----------
 
         // The shared `upwardCascadeTarget` (cascade-gate.ts) is imported by both backends; this checks that each

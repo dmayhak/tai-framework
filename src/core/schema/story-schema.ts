@@ -409,7 +409,7 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
 // (brief §8.13) — this is why there's no Investigate -> Dev edge (yet).
 
 /** Every subtask type upstream of `target` in the story type's graph, present or not. */
-function ancestorsOf(storyType: StoryType, target: SubtaskType): Set<SubtaskType> {
+export function upstreamSubtaskTypes(storyType: StoryType, target: SubtaskType): Set<SubtaskType> {
     const rules = SUBTASK_PRECEDENCE[storyType];
     const seen = new Set<SubtaskType>();
     const visit = (type: SubtaskType): void => {
@@ -449,7 +449,7 @@ export function resolveApplicablePrecedence(
     for (const after of present) {
         const candidates = [...nearestPresent(after, new Set(), new Set())];
         for (const before of candidates) {
-            const impliedByAnother = candidates.some((other) => other !== before && ancestorsOf(storyType, other).has(before));
+            const impliedByAnother = candidates.some((other) => other !== before && upstreamSubtaskTypes(storyType, other).has(before));
             if (!impliedByAnother) result.push({ before, after });
         }
     }
@@ -469,7 +469,7 @@ export function isSubtaskReady(
     doneSubtaskTypes: Set<SubtaskType>
 ): boolean {
     const present = new Set(presentSubtaskTypes);
-    for (const ancestor of ancestorsOf(storyType, target)) {
+    for (const ancestor of upstreamSubtaskTypes(storyType, target)) {
         if (present.has(ancestor) && !doneSubtaskTypes.has(ancestor)) return false;
     }
     return true;

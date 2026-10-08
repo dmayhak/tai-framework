@@ -297,13 +297,24 @@ should be recorded, not just the link itself.
 ## Enforcement: Jira Links vs. TAI's Own Orchestration
 Creating a Jira link (`Blocks`, etc.) is informational for humans looking
 at the board — Jira does not, by default, prevent someone from
-transitioning a "blocked" ticket to In Progress. Two options, not
-mutually exclusive:
-- TAI's own orchestrator reads the same precedence graph internally to
-  decide what to dispatch to which persona next, independent of whether
-  Jira visually shows the block.
-- Jira Automation rules could be added to hard-enforce transition
-  guards, but that's a separate, optional layer on top.
+transitioning a "blocked" ticket to In Progress.
+
+**TAI's own `transition()` does (TAI-476).** Starting a subtask — moving it into
+`In Progress` or `In Review` — is refused while a present subtask upstream of it in
+`SUBTASK_PRECEDENCE` is still open, on every backend (`precedence-gate.ts`). The
+rejection names the blocking subtasks. Three things to know:
+- **Test tiers and `UAT` may start once `Dev` has started**, not only once it is Done:
+  `Dev` stays `In Progress` until its PR merges and testing happens before the merge.
+  `/tai-ready`'s `readyToTest` list stays the guide for *when* (it also wants an open PR).
+- **Resuming is not gated** — only starting. A subtask already `In Progress` is never
+  refused.
+- **The human may override:** `issue transition <KEY> "In Progress" force=true` starts it
+  anyway and leaves a `Precedence override:` comment on the ticket naming what was
+  bypassed. A persona uses it only when the human says so. It bypasses only this gate,
+  never the assignment gate or a review gate.
+
+Story-level `depends-on` links are not enforced at transition; `/tai-ready` holds those
+tickets back. Jira Automation rules could add a native guard as an optional layer on top.
 
 ## Decided
 

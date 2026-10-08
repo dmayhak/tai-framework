@@ -525,7 +525,8 @@ describe("findReadyWork in-progress split", () => {
                 parentKey: story.key,
                 assignee: CURRENT_USER,
             });
-            await backend.workTracker.transition(dev.key, Status.InProgress);
+            // TAI-476: transition() now refuses this start, so the fixture reaches the state through the override.
+            await backend.workTracker.transition(dev.key, Status.InProgress, { overridePrecedence: true });
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(result.inProgress.some((c) => c.issue.key === dev.key), "already-started work is never silently dropped");

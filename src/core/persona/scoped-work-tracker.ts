@@ -29,6 +29,7 @@ import type {
     IssueLink,
     IssuePatch,
     MutationResult,
+    TransitionOptions,
     PageId,
     RemoteLink,
     WorkTracker,
@@ -92,7 +93,7 @@ export class PersonaScopedWorkTracker implements WorkTracker {
         return this.inner.updateIssue(key, patch);
     }
 
-    async transition(key: IssueKey, target: Status): Promise<MutationResult> {
+    async transition(key: IssueKey, target: Status, options?: TransitionOptions): Promise<MutationResult> {
         if (isCompletingTransition(target)) {
             const current = await this.inner.getIssue(key);
             if (current && !canComplete(this.persona, current)) {
@@ -102,7 +103,7 @@ export class PersonaScopedWorkTracker implements WorkTracker {
                 };
             }
         }
-        return this.inner.transition(key, target);
+        return this.inner.transition(key, target, options);
     }
 
     getAvailableTransitions(key: IssueKey): Promise<readonly Status[]> {
