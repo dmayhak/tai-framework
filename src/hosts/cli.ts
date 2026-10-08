@@ -104,7 +104,7 @@ import {
     renderInlineComment,
     type ReviewFinding,
 } from "../core/git/review-findings.js";
-import { loadPersonaConfig } from "../core/persona/config.js";
+import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/config.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
@@ -150,6 +150,34 @@ interface ResolvedConfig {
      *  `TAI_HUMAN_EMAIL` unset) -- the shortcut simply doesn't apply then, same as today's
      *  "always ask" behavior. */
     readonly currentHuman: HumanRef | null;
+    /** TAI-477: the persona this command says it is acting as (`--as <id>`), validated against the
+     *  project's personas. Absent when the command did not say -- then the action is unattributed;
+     *  nothing guesses. */
+    readonly actingPersona?: string;
+}
+
+/**
+ * TAI-477: takes a LEADING `--as <persona>` (or `--as=<persona>`) off the CLI arguments. Only the
+ * leading position is read, so the same text inside a later argument (a comment body, a title) is
+ * left alone. The id's shape is checked here; whether the project has such a persona is checked
+ * once the project config is loaded (`resolveActingPersonaId`).
+ */
+export function extractActingPersona(args: readonly string[]): { actingPersona: string | undefined; args: string[] } {
+    const [first, second, ...rest] = args;
+    let id: string | undefined;
+    let remaining: string[];
+    if (first === "--as") {
+        if (second === undefined) throw new Error("--as needs a persona id, e.g. --as developer.");
+        id = second;
+        remaining = rest;
+    } else if (first?.startsWith("--as=")) {
+        id = first.slice("--as=".length);
+        remaining = args.slice(1);
+    } else {
+        return { actingPersona: undefined, args: [...args] };
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(id)) throw new Error(`"${id}" is not a persona id (--as takes one, e.g. --as developer).`);
+    return { actingPersona: id, args: remaining };
 }
 
 // Loads `.env` from the current working directory into `process.env`, if present —
@@ -1217,7 +1245,8 @@ export function renderInitStatus(state: InitState): string {
 
 async function main(): Promise<void> {
     loadDotEnv();
-    const [, , subcommand, arg, ...rest] = process.argv;
+    const { actingPersona, args } = extractActingPersona(process.argv.slice(2));
+    const [subcommand, arg, ...rest] = args;
 
     // TAI-126: install-global runs before resolveConfig() -- it's a bootstrap step for
     // TAI itself (writing global skill files), not a project-scoped operation, so it must
@@ -1370,10 +1399,18 @@ async function main(): Promise<void> {
     // initialized for TAI yet (or init didn't finish) -- surface that plainly rather than
     // a bare "Missing required environment variable X", so a persona/human hitting this
     // knows to run /tai-init rather than guessing which env var to hand-add.
-    const config = await resolveConfig().catch((err: unknown) => {
+    const baseConfig = await resolveConfig().catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(`${message}\n\nThis project doesn't look initialized for TAI yet -- run /tai-init first.`);
     });
+    // TAI-477: a named acting persona must be one this project has. Nothing consumes it yet beyond
+    // carrying it on the config: the stamp (TAI-475) and grant warnings (TAI-478) will.
+    const config: ResolvedConfig = actingPersona
+        ? {
+              ...baseConfig,
+              actingPersona: await resolveActingPersonaId(baseConfig.backend.docStore, actingPersona, { spaceKey: baseConfig.spaceKey }),
+          }
+        : baseConfig;
 
     // TAI-130: a state file that EXISTS but is incomplete means a prior /tai-init run was
     // interrupted -- warn (stderr, non-fatal) rather than block, since work may still

@@ -197,7 +197,7 @@ whom — rather than working around a spec gap silently.
   reviews synced out-of-band. No separate Deploy subtask needed for framework-internal
   work; a Story with a genuine deploy step still routes that through DevOps as usual.
 - **Before merging — read the comments, even on an approved PR (TAI-382/383).** Approval is
-  a decision, not the end of the PR. Run `git-pr comments <REPO> [PR-ID]` first and read ALL of
+  a decision, not the end of the PR. Run `{{TAI_CLI}} git-pr comments <REPO> [PR-ID]` first and read ALL of
   them (a second reviewer's, anything after the last commit). For each: a **very minor** fix (a
   typo, wording, a rename; no behavior change) — fix it, run the tests, push, note it on the
   PR, and merge without asking; otherwise file a ticket or skip it with a stated reason, and

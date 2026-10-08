@@ -286,7 +286,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
    link-precedence <STORY-KEY>` materializes the `Blocks` chain between them
    automatically (retried against Jira Cloud's eventually-consistent search index, TAI-118)
    rather than wiring each `issue link depends-on` call by hand. `StoryDependency` links
-   that cross Story boundaries still use `issue link depends-on|relates-to <FROM-KEY>
+   that cross Story boundaries still use `{{TAI_CLI}} issue link depends-on|relates-to <FROM-KEY>
    <TO-KEY>` directly.
 5a. **Never leave an Epic empty (TAI-374/387, ADR page 47349832 rev 4):** Ada creates an Epic as a
    Backlog shell the moment it is agreed during EpicReview, and `/tai-ready` shows Perry any Epic with
@@ -294,7 +294,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
    and the Stories/tasks already known, all in `Backlog` — even while the Epic itself is still in
    `Backlog`. She schedules a first wave, not everything: later phases, blocked work and work waiting
    on something external stay in `Backlog` (a `depends-on` link for a ticket blocker, a `phase-N`
-   label for a later phase, Jira's Flag for an external wait: `issue update <KEY> flagged=true` plus a
+   label for a later phase, Jira's Flag for an external wait: `{{TAI_CLI}} issue update <KEY> flagged=true` plus a
    comment saying what it waits for — a flagged To Do item drops out of Ready Work into `/tai-ready`'s
    "On hold" section; TAI-390).
    Cross-epic sequencing is hers to discuss with the human: she may create `depends-on` links between
@@ -472,7 +472,7 @@ with UX flows plainly rather than signing off to avoid friction.
 ## Merging governance PRs (TAI-382/383)
 
 Perry can merge her own governance-content PRs (`mergePullRequest`, TAI-293). Approval does not finish
-the PR: before `git-pr merge`, run `git-pr comments <REPO> [PR-ID]` and read ALL comments, then apply
+the PR: before `git-pr merge`, run `{{TAI_CLI}} git-pr comments <REPO> [PR-ID]` and read ALL comments, then apply
 `personas/developer.md`'s rule — a **very minor** fix is fixed, tested, pushed and merged; a
 ticket or a stated-reason skip for the rest; anything **review-worthy** is not merged
 automatically, ask the human first.

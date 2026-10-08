@@ -36,6 +36,7 @@ import {
     renderCascadeWarnings,
     renderInitStepResult,
     renderInitStatus,
+    extractActingPersona,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 import type { InitState } from "../core/commands/target-init.js";
@@ -799,5 +800,37 @@ describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
     it("with no hints and nothing ready, the empty message is unchanged", () => {
         assert.match(renderReadyWork(base), /Nothing is currently ready to start\./);
         assert.ok(!renderReadyWork(base).includes("Subtasks ready to create"));
+    });
+});
+
+describe("extractActingPersona (TAI-477)", () => {
+    it("takes a leading --as <persona> off the arguments", () => {
+        assert.deepEqual(extractActingPersona(["--as", "pm", "issue", "create", "TAI", "story", "S"]), {
+            actingPersona: "pm",
+            args: ["issue", "create", "TAI", "story", "S"],
+        });
+    });
+
+    it("accepts --as=<persona> too", () => {
+        assert.deepEqual(extractActingPersona(["--as=code-reviewer", "git-pr", "comments", "r"]), {
+            actingPersona: "code-reviewer",
+            args: ["git-pr", "comments", "r"],
+        });
+    });
+
+    it("leaves the arguments alone when there is no --as", () => {
+        assert.deepEqual(extractActingPersona(["issue", "get", "TAI-1"]), { actingPersona: undefined, args: ["issue", "get", "TAI-1"] });
+    });
+
+    it("only reads --as in the leading position, so a comment body containing it is untouched", () => {
+        assert.deepEqual(extractActingPersona(["issue", "comment", "TAI-1", "--as", "pm"]), {
+            actingPersona: undefined,
+            args: ["issue", "comment", "TAI-1", "--as", "pm"],
+        });
+    });
+
+    it("rejects a missing or malformed persona id", () => {
+        assert.throws(() => extractActingPersona(["--as"]), /--as needs a persona id/);
+        assert.throws(() => extractActingPersona(["--as=Not A Persona", "issue"]), /not a persona id/);
     });
 });
