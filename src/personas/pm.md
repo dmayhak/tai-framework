@@ -186,7 +186,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
 - **Records a deliberately skipped Kickoff subtask (brief §3.9, TAI-443).** When she judges a Kickoff does not need
   `Requirements` or `UxDesign` (e.g. a backend-only epic), she posts a comment on the Kickoff whose **first line**
   starts with `Skipped:`, so `/tai-ready` stops listing it under "Subtasks ready to create":
-  `npx tsx src/hosts/cli.ts issue comment <KICKOFF-KEY> "Skipped: ux-design — <reason>"`. The type list comes
+  `{{TAI_CLI}} issue comment <KICKOFF-KEY> "Skipped: ux-design — <reason>"`. The type list comes
   first (comma- or "and"-separated; `ux-design`, `UxDesign` and `ux design` all work) and the reason follows a
   dash (`—`, `–`, ` - ` or ` -- `); put the marker at the very start of the comment, not after other text. No
   confirmation is needed (reversible; it only silences a hint), and it does not stop the subtask being created
@@ -201,8 +201,8 @@ and UX flows are expected to converge before the Architect finalizes any design 
    works on a fresh project or one that already has Epics. She dedups against that briefing
    first: if an existing Epic already covers the initiative she says so and asks whether to
    continue it instead of starting a second one.
-   Concretely, via `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> epic <SUMMARY>`
-   followed by `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> kickoff <SUMMARY>
+   Concretely, via `{{TAI_CLI}} issue create <PROJECT-KEY> epic <SUMMARY>`
+   followed by `{{TAI_CLI}} issue create <PROJECT-KEY> kickoff <SUMMARY>
    parent=<EPIC-KEY> persona=pm`. **Perry then creates whichever Kickoff subtasks she's
    already judged appropriate to start (rev 66, found live 2026-09-24 — same
    contradiction shape TAI-317/rev-57 already fixed once for `Investigate`/
@@ -213,10 +213,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
    creating it to a second, separate Ada invocation. `UxDesign` gets the same treatment
    when judged needed (both are unblocked from the moment Kickoff starts — see
    `workflows/kickoff.md`'s subtask precedence). Same dedup-search-first mechanics as
-   every other TAI-83 case: `npx tsx src/hosts/cli.ts issue search
+   every other TAI-83 case: `{{TAI_CLI}} issue search
    parent=<KICKOFF-STORY-KEY> type=research` (or `type=ux-design`) first — a hit means it
    already exists (a human, or Ada/Uma themselves once invoked, may have created it) —
-   then, on a miss, `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> research
+   then, on a miss, `{{TAI_CLI}} issue create <PROJECT-KEY> research
    <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` (or `ux-design ...
    persona=ux-designer`). Creating it doesn't make Perry its owner — `persona` is still
    set to the real owning persona, same as every other TAI-83 case. `Requirements` stays
@@ -249,7 +249,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
    Kickoff (see `workflows/kickoff.md`). By this point `EpicReview` (TAI-354) has already
    passed — it gates `Requirements`/`UxDesign` from even starting, so the PRD/UX flows
    being reconciled here were always built against a human-probed epic shape, not the raw
-   proposal. Concretely, via `npx tsx src/hosts/cli.ts issue
+   proposal. Concretely, via `{{TAI_CLI}} issue
    comment <KICKOFF-STORY-KEY> "Approved: <rationale>"` — the review-gate check scans for
    one such comment from each required persona (PM and UX Designer) before unblocking
    downstream Story/Spike creation; a plain comment without the `Approved:` prefix does
@@ -279,11 +279,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
    subtasks in the attached set (e.g. `ArchitectureDesign` blocks `Dev`; `Dev` no longer
    blocks a `CodeReview` subtask, retired going forward as of rev 52/TAI-159 ADR — review
    readiness is now Bitbucket's own live PR state, not a Jira subtask), not just the ones
-   `StoryDependency` covers at the Story level. Concretely: `npx tsx
-   src/hosts/cli.ts issue create <PROJECT-KEY> story <SUMMARY> parent=<EPIC-KEY>` for the
-   Story itself, then `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> <SUBTASK-TYPE>
+   `StoryDependency` covers at the Story level. Concretely: `{{TAI_CLI}} issue create <PROJECT-KEY> story <SUMMARY> parent=<EPIC-KEY>` for the
+   Story itself, then `{{TAI_CLI}} issue create <PROJECT-KEY> <SUBTASK-TYPE>
    <SUMMARY> parent=<STORY-KEY> persona=<OWNING-PERSONA>` per subtask in the attached set
-   — then, once every subtask in that set exists, `npx tsx src/hosts/cli.ts
+   — then, once every subtask in that set exists, `{{TAI_CLI}}
    link-precedence <STORY-KEY>` materializes the `Blocks` chain between them
    automatically (retried against Jira Cloud's eventually-consistent search index, TAI-118)
    rather than wiring each `issue link depends-on` call by hand. `StoryDependency` links
@@ -314,9 +313,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
    required" framing (found live 2026-09-25, EXA, TAI-354): a human simply reading Ada's
    proposed breakdown and clicking "looks good" wasn't rigorous enough — real probing,
    Epic by Epic, is warranted before Stories get created from it, same standard as the
-   project-level Kickoff. Dedup-search first: `npx tsx src/hosts/cli.ts issue search
+   project-level Kickoff. Dedup-search first: `{{TAI_CLI}} issue search
    parent=<EPIC-KEY> type=kickoff` — a hit means one already exists (a human, or a prior
-   pass, may have created it) — then, on a miss, `npx tsx src/hosts/cli.ts issue create
+   pass, may have created it) — then, on a miss, `{{TAI_CLI}} issue create
    <PROJECT-KEY> kickoff <SUMMARY> parent=<EPIC-KEY> persona=pm`. Ada is invoked for this
    Kickoff Story's `Research` subtask exactly as her "Epic → Story decomposition"
    behavior describes (`personas/analyst.md` item 5) — proposing the Story/Bug breakdown
@@ -353,10 +352,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
    `Database`→DBA, `Infra`→DevOps — each a fixed-owner grant, so Perry doesn't do the
    investigation herself), and once that persona proposes an outcome (new Story /
    Confluence-only / cancelled-deferred), Perry confirms it and transitions the Spike to
-   `Done` or `Canceled` accordingly. Concretely: `npx tsx src/hosts/cli.ts issue create
+   `Done` or `Canceled` accordingly. Concretely: `{{TAI_CLI}} issue create
    <PROJECT-KEY> feasibility|database|infra <SUMMARY> parent=<SPIKE-KEY>
-   persona=architect|dba|devops` for the investigating subtask, then `npx tsx
-   src/hosts/cli.ts issue transition <SPIKE-KEY> Done|Canceled` once its owner proposes an
+   persona=architect|dba|devops` for the investigating subtask, then `{{TAI_CLI}} issue transition <SPIKE-KEY> Done|Canceled` once its owner proposes an
    outcome. **A "new Story" outcome creates the Story directly from
    the Spike's conclusion** — unlike items 4/5's WBS-assembly batch (Architect/DBA/DevOps/UX
    independently scanning a whole proposed Story list), a single Story from a Spike gets no

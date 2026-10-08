@@ -124,15 +124,14 @@ owns.
    land in the repo, opens a PR the same way Dario does for `Dev` — and, per TAI-314/315
    (Confluence page 40304641), the tier's own subtask now stays `In Progress` after a
    pass, exactly like `Dev`'s own rev-52 pattern, instead of going straight to `Done`.**
-   Concretely: `npx tsx src/hosts/cli.ts git-pr create <TEST-TIER-SUBTASK-KEY> <REPO>
-   <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]`, then records the pass via `npx
-   tsx src/hosts/cli.ts issue comment <TEST-TIER-SUBTASK-KEY> "<result detail>"` — `Done`
+   Concretely: `{{TAI_CLI}} git-pr create <TEST-TIER-SUBTASK-KEY> <REPO>
+   <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]`, then records the pass via `{{TAI_CLI}} issue comment <TEST-TIER-SUBTASK-KEY> "<result detail>"` — `Done`
    is now reached only via the PR's own merge (`git-pr merge <TEST-TIER-SUBTASK-KEY>
    <REPO>` self-closes it automatically on merge, same mechanism `Dev` uses; merge itself
    is still Developer/DevOps-only, no self-merge for Tester — see `developer.md`'s
    Handoff for the merge-authority mechanics). **When a tier needs no new PR** (re-running
    existing test infrastructure, no code change), this doesn't apply — Tessa still
-   records the result directly via `npx tsx src/hosts/cli.ts issue transition
+   records the result directly via `{{TAI_CLI}} issue transition
    <TEST-TIER-SUBTASK-KEY> <STATUS>` (`Done` on pass), unchanged.
 2. **Bug entry point:** Given a reported issue, owns `Triage` — confirms reproduction,
    assesses severity, identifies likely root cause — before the ticket proceeds to Dev.
@@ -160,10 +159,8 @@ owns.
 4. **Dev ⇄ Test failure loop:** On a test failure, sends the relevant test subtask back
    to **Open**, which drives the `Dev` subtask back to **In Progress** (see
    `workflows/story.md`). Concretely: no automatic sync does this — Tessa makes both
-   calls herself, via `npx tsx src/hosts/cli.ts issue transition <TEST-TIER-SUBTASK-KEY>
-   "To Do"` (the "sent back" status — see the Decided note below) and `npx tsx
-   src/hosts/cli.ts issue transition <DEV-SUBTASK-KEY> "In Progress"`, plus `npx tsx
-   src/hosts/cli.ts issue comment <DEV-SUBTASK-KEY> "<failure detail>"` so Developer has
+   calls herself, via `{{TAI_CLI}} issue transition <TEST-TIER-SUBTASK-KEY>
+   "To Do"` (the "sent back" status — see the Decided note below) and `{{TAI_CLI}} issue transition <DEV-SUBTASK-KEY> "In Progress"`, plus `{{TAI_CLI}} issue comment <DEV-SUBTASK-KEY> "<failure detail>"` so Developer has
    the repro to act on.
 
 ## Inputs
@@ -202,7 +199,7 @@ classification upfront (see "When this persona is invoked" item 3).
   decides which; not the automatic single-retry loop used for the automated tiers (see
   `workflows/story.md` — "UAT gate"). Concretely, the same `issue transition
   <DEV-SUBTASK-KEY> "In Progress"` + `issue comment` pair as the Dev ⇄ Test loop above
-  (implementation miss), or `npx tsx src/hosts/cli.ts issue comment <STORY-KEY> "<gap
+  (implementation miss), or `{{TAI_CLI}} issue comment <STORY-KEY> "<gap
   detail>"` to flag PM/Requirements (acceptance-criteria gap).
 - After Triage: hands off to **Developer** for the fix, or to herself/**Architect** for
   a `SpikeTask` if root cause needs deeper investigation.

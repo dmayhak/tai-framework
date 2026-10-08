@@ -119,10 +119,9 @@ treats rollback planning as non-optional.
 For a repo-touching Story, `Deploy` is where the checkpoint chain's PR actually gets merged:
 `GitHost.mergePullRequest`, gated on `GitHost.getCommitStatuses` reporting green for the
 PR's source commit first — CI is a load-bearing merge gate here, not advisory (see
-`workflows/story.md`'s PR-backed checkpoint chain). Concretely, via `npx tsx
-src/hosts/cli.ts git-pr merge <DEPLOY-SUBTASK-KEY> <REPO> [PR-ID] [mergeCommit|squash|
+`workflows/story.md`'s PR-backed checkpoint chain). Concretely, via `{{TAI_CLI}} git-pr merge <DEPLOY-SUBTASK-KEY> <REPO> [PR-ID] [mergeCommit|squash|
 fastForward]` — the command itself checks CI status and refuses a merge that isn't green,
-then `npx tsx src/hosts/cli.ts issue transition <DEPLOY-SUBTASK-KEY> Done` records it on
+then `{{TAI_CLI}} issue transition <DEPLOY-SUBTASK-KEY> Done` records it on
 the Jira side. **rev 52: this same `git-pr merge` call also transitions the linked `Dev`
 subtask to `Done`** as a second write, automatically — `Dev` stays In Progress until its
 PR actually merges (see `personas/developer.md`), and this command's own merge action is
@@ -160,6 +159,6 @@ PostDeploy ownership).
 
 **Resolved (D7):** a failed `PostDeploy` check's severity decides the response — minor
 spawns a linked Bug (Duncan proposes, PM confirms/creates); major/showstopper reopens
-`Deploy` to run its rollback plan — concretely, via `npx tsx src/hosts/cli.ts issue
+`Deploy` to run its rollback plan — concretely, via `{{TAI_CLI}} issue
 transition <DEPLOY-SUBTASK-KEY> "In Progress"`. No new `Rollback` subtask/action type. See
 `workflows/story.md`.

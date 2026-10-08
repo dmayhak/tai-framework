@@ -118,11 +118,11 @@ verifies that implementation matches spec and is sound.
    a CodeReview subtask — there isn't one). A review decision is **one call**, not two —
    `GitHost.reviewPullRequest` writes the real PR directly; there's no parallel Jira
    subtask transition anymore (rev 52 removed that side, not just relocated it).
-   **Entry point (TAI-425): `npx tsx src/hosts/cli.ts git-pr review-prep <REPO> [PR-ID]`** — read-only;
+   **Entry point (TAI-425): `{{TAI_CLI}} git-pr review-prep <REPO> [PR-ID]`** — read-only;
    refuses up front if the current human is not on the roster, then prints this persona's own
    instructions (so a team's extension applies), the PR, its linked ticket, the review steps for that PR
    and the diff — follow its output exactly. The decision itself is concretely, via
-   `npx tsx src/hosts/cli.ts git-pr review <REPO> [PR-ID]
+   `{{TAI_CLI}} git-pr review <REPO> [PR-ID]
    <approve|requestChanges> [COMMENT]` — **no `<ISSUE-KEY>` argument.** Authorization is
    the "PR Reviewers" roster check itself (the command rejects a human who isn't listed);
    there's no issue key to resolve a persona grant through. Multiple reviewers can each
