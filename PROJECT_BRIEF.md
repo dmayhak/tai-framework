@@ -1943,8 +1943,9 @@ exactly one `Assignee` (§5.5's hard gate), and there's no honest single assigne
   never mirrored into a Jira subtask. (`CodeReview` stays in the schema permanently for
   parsing historical tickets — see the ADR; it just isn't minted for new work.)
 - **`Dev` stays `In Progress` until its PR actually merges, not until the PR opens** — a
-  unit of work isn't really done until it's merged. Verified this doesn't create a cycle
-  with `Deploy`, which is gated only by the test tiers, never directly by `Dev`.
+  unit of work isn't really done until it's merged. `Deploy` ships what is
+  already merged, so it waits on `Dev` being Done as well as on the test tiers and UAT (TAI-456/TAI-463); no
+  cycle, since `Dev`'s own Done comes from the merge, not from `Deploy`.
 - **Test-tier readiness moves off the static precedence graph onto three new
   live-computed `/tai-ready` lists** — `readyToReview` (open PRs where the current human
   is an eligible reviewer, per a new "PR Reviewers" roster), `readyToTest` (In-Progress
