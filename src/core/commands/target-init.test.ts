@@ -755,7 +755,7 @@ describe("writeClaudeMdPointer", () => {
             assert.match(content, /My Project/);
             assert.match(content, /Some existing notes\./);
             assert.match(content, /\.tai-framework-v2/);
-            assert.ok(!content.includes("/home/x/.tai-framework\`"), "stale pointer should be replaced, not duplicated");
+            assert.ok(!content.includes("/home/x/.tai-framework`"), "stale pointer should be replaced, not duplicated");
         });
     });
 });

@@ -142,7 +142,7 @@ describe("renderGlobalSkillFiles", () => {
             // (A trailing ':' is the same indicator: a colon followed by the end of the line.)
             assert.ok(!d.includes(": ") && !d.endsWith(":"), `${name}: description must not contain ': ' or end with ':'`);
             assert.ok(!d.includes(" #"), `${name}: description must not contain ' #'`);
-            assert.doesNotMatch(d, /^["'\[{&*!|>%@`-]/, `${name}: description must not start with a YAML indicator`);
+            assert.doesNotMatch(d, /^["'[{&*!|>%@`-]/, `${name}: description must not start with a YAML indicator`);
         }
     });
 

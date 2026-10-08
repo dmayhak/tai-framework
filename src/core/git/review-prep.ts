@@ -47,6 +47,7 @@ const MAX_DESCRIPTION_CHARS = 2_000;
 /** Branch names come from the git host, so they are untrusted input to a local git call. Refuses
  *  what could turn into an option or a refspec (leading "-", ":"), and whitespace/control characters. */
 export function assertSafeBranchName(name: string): void {
+    // eslint-disable-next-line no-control-regex -- rejecting control characters is the point
     if (name.length === 0 || name.startsWith("-") || name.includes(":") || /[\s\x00-\x1f\x7f]/.test(name)) {
         throw new Error(`Refusing unsafe branch name ${JSON.stringify(name)} — not passed to git.`);
     }
@@ -68,7 +69,7 @@ export function shellQuote(s: string): string {
 
 /** Quotes only when the word has characters a shell would act on. */
 function shellWord(s: string): string {
-    return /^[A-Za-z0-9._\/@=+,:-]+$/.test(s) ? s : shellQuote(s);
+    return /^[A-Za-z0-9._/@=+,:-]+$/.test(s) ? s : shellQuote(s);
 }
 
 // ---------- diff gathering ----------

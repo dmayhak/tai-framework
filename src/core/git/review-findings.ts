@@ -71,7 +71,7 @@ export function parseReviewFindings(raw: string): ReviewFindings {
     try {
         parsed = JSON.parse(text);
     } catch (err) {
-        throw new Error(`Findings input is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Findings input is not valid JSON: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
     }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         throw new Error("Findings input must be a JSON object.");
