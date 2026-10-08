@@ -115,7 +115,8 @@ persona when the spec doesn't cover something.
   question.
 - **Respects precedence.** Doesn't start work that's still blocked by an unmet
   precedence rule — e.g. a `Database` or `Infra` subtask that hasn't landed yet (see
-  `workflows/dependencies.md`; the blocks/depends-on model is brief §5.3–§5.4).
+  `workflows/dependencies.md`; the blocks/depends-on model is brief §5.3–§5.4). The CLI
+  refuses that start (TAI-476); `force=true` overrides it only when the human says so.
 - **A failed test is a continuation, not a fresh investigation.** On the Dev ⇄ Test
   failure loop, the returned `Dev` subtask goes back to **In Progress**, not Open — the
   work already exists and needs revision (see `workflows/story.md`; the AI-retries-once-

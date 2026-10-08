@@ -64,6 +64,7 @@ function workSkillBody(taiHome: string): string {
         "```\n\n" +
         "Verify from that command's own output that the transition actually succeeded before " +
         "doing any work — never after. A rejection (no assignee, an unmet precedence gate, etc.) " +
+        "is never worked around with `force=true` on your own: that override is the human's call. A rejection " +
         "is a hard stop: report it to the human rather than retrying or proceeding with the work " +
         "anyway.\n\n" +
         `Then run this and read its full output, substituting <ISSUE-KEY> with whatever key was ` +

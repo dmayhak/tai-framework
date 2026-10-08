@@ -24,6 +24,7 @@ import {
     type IssuePatch,
     type IssueFilter,
     type MutationResult,
+    type TransitionOptions,
     type CascadeWarning,
     type IssueLink,
     type Comment,
@@ -40,6 +41,7 @@ import { UnreadableIssueError, reportUnreadableIssue } from "../unreadable-issue
 import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
+import { precedenceGateApplies, openPrerequisites, precedenceGateReason, precedenceOverrideComment } from "../precedence-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
 import { reparentViolation } from "../reparent-gate.js";
 import { labelViolation } from "../label-gate.js";
@@ -360,8 +362,10 @@ export function createJiraWorkTracker(
          * the reason is journaled verbatim, and it escalates to a human with NO retry.
          * Returning the reason unaltered is what makes that possible.
          */
-        async transition(key: IssueKey, target: Status): Promise<MutationResult> {
+        async transition(key: IssueKey, target: Status, options?: TransitionOptions): Promise<MutationResult> {
             return asMutation(async (warnCascade, addAffected) => {
+                // TAI-476: the open prerequisites an override bypassed, recorded on the ticket below.
+                let bypassed: readonly Issue[] = [];
                 // TAI's OWN checkpoints are checked BEFORE calling Jira (§3.3: "We check
                 // conditions *before* ever calling the Jira 'transition' API"). These are two
                 // of them, not Jira rules.
@@ -398,6 +402,26 @@ export function createJiraWorkTracker(
                         const check = checkReviewGate(current, roster);
                         if (!check.ok) {
                             throw new JiraRejection(reviewGateReason(key, check.missing), 409);
+                        }
+                    }
+                    // TAI-476: the subtask precedence gate -- same shared predicates as the
+                    // filesystem backend. Checked before the parent cascade below, so a refused
+                    // start moves nothing.
+                    if (precedenceGateApplies(current, target) && current.parentKey) {
+                        // A parent that cannot be read (missing, or an unmapped Jira type) gives no
+                        // graph to check against -- no gate, same as a parent that is not a
+                        // story-level ticket.
+                        const parent = await workTracker.getIssue(current.parentKey).catch((e: unknown) => {
+                            if (e instanceof UnreadableIssueError) return null;
+                            throw e;
+                        });
+                        const siblings = parent
+                            ? await workTracker.search({ projectKey: current.projectKey, parentKey: current.parentKey, exhaustive: true })
+                            : [];
+                        const open = parent ? openPrerequisites(current, parent, siblings) : [];
+                        if (open.length > 0) {
+                            if (!options?.overridePrecedence) throw new JiraRejection(precedenceGateReason(key, target, open), 409);
+                            bypassed = open;
                         }
                     }
                     // TAI-220/221/222: parent-status cascade -- move the parent first
@@ -464,6 +488,9 @@ export function createJiraWorkTracker(
                 await client.request("POST", `${API}/issue/${key}/transitions`, {
                     transition: { id: match.id },
                 });
+                if (bypassed.length > 0) {
+                    await workTracker.addComment(key, precedenceOverrideComment(target, bypassed));
+                }
                 const updated = await fetchIssue(key);
 
                 // TAI-267 (TAI-247 ADR): downward/terminal cascade -- the closing counterpart

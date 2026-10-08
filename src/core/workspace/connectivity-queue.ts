@@ -47,6 +47,7 @@ import {
     type IssueLink,
     type IssuePatch,
     type MutationResult,
+    type TransitionOptions,
     type PageId,
     type RemoteLink,
     type WorkTracker,
@@ -64,6 +65,7 @@ interface QueuedTransition {
     readonly method: "transition";
     readonly key: IssueKey;
     readonly target: Status;
+    readonly options?: TransitionOptions;
 }
 interface QueuedAssignIssue {
     readonly method: "assignIssue";
@@ -111,11 +113,11 @@ export class ConnectivityQueuedWorkTracker implements WorkTracker {
         }
     }
 
-    async transition(key: IssueKey, target: Status): Promise<MutationResult> {
+    async transition(key: IssueKey, target: Status, options?: TransitionOptions): Promise<MutationResult> {
         try {
-            return await this.inner.transition(key, target);
+            return await this.inner.transition(key, target, options);
         } catch (err) {
-            return this.queueOrRethrow(err, { method: "transition", key, target });
+            return this.queueOrRethrow(err, { method: "transition", key, target, ...(options ? { options } : {}) });
         }
     }
 
@@ -219,7 +221,7 @@ async function invokeQueuedCall(inner: WorkTracker, call: QueuedCall): Promise<u
         case "addComment":
             return inner.addComment(call.key, call.body);
         case "transition":
-            return inner.transition(call.key, call.target);
+            return inner.transition(call.key, call.target, call.options);
         case "assignIssue":
             return inner.assignIssue(call.key, call.human);
     }

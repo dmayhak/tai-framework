@@ -22,6 +22,7 @@ import {
     type IssuePatch,
     type IssueFilter,
     type MutationResult,
+    type TransitionOptions,
     type CascadeWarning,
     type IssueLink,
     type Comment,
@@ -41,6 +42,7 @@ import {
 } from "./interface.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "./assignment-gate.js";
 import { reviewGateApplies, checkReviewGate, reviewGateReason } from "./review-gate.js";
+import { precedenceGateApplies, openPrerequisites, precedenceGateReason, precedenceOverrideComment } from "./precedence-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "./duplicate-subtask-gate.js";
 import { reparentViolation } from "./reparent-gate.js";
 import { labelViolation } from "./label-gate.js";
@@ -457,7 +459,7 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
         // backend previously allowed an unassigned issue into In Progress while the Jira
         // backend blocked it, which is exactly the kind of behavioral divergence types alone
         // can't catch.
-        async transition(key: IssueKey, target: Status): Promise<MutationResult> {
+        async transition(key: IssueKey, target: Status, options?: TransitionOptions): Promise<MutationResult> {
             const existing = await mustGetIssue(rootDir, key);
             if (violatesAssignmentGate(target, existing.assignee)) {
                 return { ok: false, reason: entryGateReason(key, target) };
@@ -478,6 +480,22 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                 const check = checkReviewGate(existing, roster);
                 if (!check.ok) {
                     return { ok: false, reason: reviewGateReason(key, check.missing) };
+                }
+            }
+            // TAI-476: the subtask precedence gate -- same shared predicates as the Jira backend.
+            // Checked before the parent cascade below, so a refused start moves nothing.
+            let bypassed: readonly Issue[] = [];
+            if (precedenceGateApplies(existing, target) && existing.parentKey) {
+                // A parent that cannot be read gives no graph to check against -- no gate, same as a
+                // parent that is not a story-level ticket.
+                const parent = await workTracker.getIssue(existing.parentKey);
+                const siblings = parent
+                    ? await workTracker.search({ projectKey: existing.projectKey, parentKey: existing.parentKey, exhaustive: true })
+                    : [];
+                const open = parent ? openPrerequisites(existing, parent, siblings) : [];
+                if (open.length > 0) {
+                    if (!options?.overridePrecedence) return { ok: false, reason: precedenceGateReason(key, target, open) };
+                    bypassed = open;
                 }
             }
             // TAI-220/221/222: parent-status cascade -- move the parent first (best-effort),
@@ -521,8 +539,12 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
                     cascadeWarnings.push({ key: existing.parentKey, reason });
                 }
             }
-            const updated: Issue = { ...existing, status: target, updatedAt: new Date().toISOString() };
+            let updated: Issue = { ...existing, status: target, updatedAt: new Date().toISOString() };
             await writeIssueFile(rootDir, updated);
+            if (bypassed.length > 0) {
+                await workTracker.addComment(key, precedenceOverrideComment(target, bypassed));
+                updated = await mustGetIssue(rootDir, key);
+            }
 
             // TAI-267 (TAI-247 ADR): downward/terminal cascade -- the closing counterpart to
             // the upward cascade above. Runs AFTER this issue's own transition has already

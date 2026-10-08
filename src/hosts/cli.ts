@@ -1995,10 +1995,18 @@ async function main(): Promise<void> {
         }
 
         if (action === "transition") {
-            const [issueKey, status] = issueArgs;
-            if (!issueKey || !status) throw new Error("Usage: issue transition <ISSUE-KEY> <STATUS>");
+            const [issueKey, status, ...kv] = issueArgs;
+            if (!issueKey || !status) {
+                throw new Error(
+                    "Usage: issue transition <ISSUE-KEY> <STATUS> [force=true]\n" +
+                        "  force=true starts a subtask even though a precedence prerequisite is still open (TAI-476). It is the " +
+                        "human's call: use it only when the human says so. A comment on the ticket records what was bypassed. " +
+                        "It does not bypass the assignment gate or a review gate."
+                );
+            }
             const key = toIssueKey(issueKey);
-            let result = await config.backend.workTracker.transition(key, status as Status);
+            const options = parseKeyValueArgs(kv)["force"] === "true" ? { overridePrecedence: true } : undefined;
+            let result = await config.backend.workTracker.transition(key, status as Status, options);
             let enrichedCandidates: string | undefined;
             let autoAssignFailure: string | undefined;
 
@@ -2015,7 +2023,7 @@ async function main(): Promise<void> {
                     if (assignee) {
                         const assigned = await config.backend.workTracker.assignIssue(key, assignee);
                         if (assigned.ok) {
-                            result = await config.backend.workTracker.transition(key, status as Status);
+                            result = await config.backend.workTracker.transition(key, status as Status, options);
                         } else {
                             // Falls through to reporting the ORIGINAL transition rejection
                             // below (no retry attempted), but the human also sees WHY the

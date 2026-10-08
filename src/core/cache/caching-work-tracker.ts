@@ -32,6 +32,7 @@ import type {
     IssueLink,
     IssuePatch,
     MutationResult,
+    TransitionOptions,
     PageId,
     RemoteLink,
     WorkTracker,
@@ -52,8 +53,8 @@ export class CachingWorkTracker implements WorkTracker {
         return issue;
     }
 
-    async transition(key: IssueKey, target: Status): Promise<MutationResult> {
-        const result = await this.inner.transition(key, target);
+    async transition(key: IssueKey, target: Status, options?: TransitionOptions): Promise<MutationResult> {
+        const result = await this.inner.transition(key, target, options);
         await this.cacheMutationResult(result);
         return result;
     }

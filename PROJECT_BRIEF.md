@@ -1775,7 +1775,10 @@ is unchanged), with specific
 per-type loop-backs documented in `workflows/story.md`/`bug.md` (Dev ⇄ Test,
 ArchitectureDesign ⇄ DesignReview, UAT rejection routing). "Ready" vs. "blocked" is
 **derived**, not a stored status — computed from `SUBTASK_PRECEDENCE`
-(`isSubtaskReady()`/`resolveApplicablePrecedence()`, `schema/story-schema.ts`). Still
+(`isSubtaskReady()`/`resolveApplicablePrecedence()`, `schema/story-schema.ts`). The same graph is
+**enforced when a subtask is started** (TAI-476, `storage/precedence-gate.ts`): `transition()` refuses the
+start while a present subtask upstream is open, a test tier or UAT may start once `Dev` has started, and
+`force=true` is the human's override, recorded as a comment on the ticket. Still
 open: whether a business ever needs to customize this default lifecycle per-project,
 beyond the built-in loop-backs already modeled.
 
