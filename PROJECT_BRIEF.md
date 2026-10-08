@@ -2692,7 +2692,8 @@ each new persona to help build the next.
 - **Session bootstrap files:** `CLAUDE.md` and `GEMINI.md` at repo root both point every
   session to **read this brief first.**
 - **Persona/agent definitions:** markdown + YAML front-matter (parseable, human-editable,
-  reviewable in PRs).
+  reviewable in PRs). A persona doc writes a CLI command as `{{TAI_CLI}} <subcommand> …`; `loadPersonaConfig`
+  fills the placeholder with the running install's own invocation, so the command works from any target project (TAI-465).
 
 ---
 

@@ -16,6 +16,9 @@ import {
     parsePermissionTarget,
     parsePersonasOverridePage,
     parseUpdateGrant,
+    fillCliPlaceholder,
+    taiCliCommand,
+    TAI_CLI_PLACEHOLDER,
     type PersonaConfig,
 } from "./config.js";
 
@@ -577,5 +580,56 @@ describe("mergePersonaConfig", () => {
         });
         assert.deepEqual(merged.permissions.cannotApprove, ["own-output"]);
         assert.deepEqual(merged.permissions.create, [{ kind: "subtask", subtaskType: SubtaskType.Deploy }]);
+    });
+});
+
+describe("TAI CLI placeholder (TAI-465)", () => {
+    it("fillCliPlaceholder replaces every occurrence with the given command", () => {
+        const text = `Run \`${TAI_CLI_PLACEHOLDER} issue get X\`, then \`${TAI_CLI_PLACEHOLDER} ready\`.`;
+        assert.equal(fillCliPlaceholder(text, "tai"), "Run `tai issue get X`, then `tai ready`.");
+    });
+
+    it("taiCliCommand names this install's own cli.ts by absolute path, not a path relative to the working directory", () => {
+        const command = taiCliCommand();
+        const match = /^npx --prefix (\S+) tsx (\S+)$/.exec(command);
+        assert.ok(match, command);
+        assert.ok(path.isAbsolute(match[1]!), command);
+        assert.equal(match[2], path.join(match[1]!, "src/hosts/cli.ts"));
+    });
+
+    it("taiCliCommand quotes an install path that contains a space", () => {
+        assert.equal(
+            taiCliCommand("/opt/my tools/tai"),
+            "npx --prefix '/opt/my tools/tai' tsx '/opt/my tools/tai/src/hosts/cli.ts'"
+        );
+    });
+
+    it("loadPersonaConfig returns a prompt with the placeholder filled in, extension prose included", async () => {
+        const docStore = new FakeDocStore();
+        docStore.seed("TA", "developer", `Team rule: run \`${TAI_CLI_PLACEHOLDER} ready\` first.`);
+        const config = await loadPersonaConfig(docStore, "developer", { spaceKey: "TA" });
+        assert.ok(!config.prompt.includes(TAI_CLI_PLACEHOLDER));
+        assert.ok(config.prompt.includes(`${taiCliCommand()} git-pr create`));
+        assert.ok(config.prompt.includes(`run \`${taiCliCommand()} ready\` first`));
+    });
+
+    it("no persona or workflow doc carries a CLI command relative to the TAI checkout", async () => {
+        const { readFile, readdir } = await import("node:fs/promises");
+        const root = path.resolve(import.meta.dirname, "../..");
+        for (const dir of ["personas", "workflows"]) {
+            for (const entry of await readdir(path.join(root, dir))) {
+                if (!entry.endsWith(".md")) continue;
+                const text = await readFile(path.join(root, dir, entry), "utf8");
+                assert.ok(!/npx\s+tsx\s+src\/hosts\/cli\.ts/.test(text), `${dir}/${entry} still has a relative CLI command`);
+            }
+        }
+    });
+
+    it("every built-in persona that names a CLI command does so through the placeholder", async () => {
+        const builtins = await loadBuiltinPersonaConfigs();
+        for (const [id, config] of builtins) {
+            assert.ok(!config.prompt.includes("src/hosts/cli.ts"), `${id} names cli.ts directly`);
+        }
+        assert.ok(builtins.get("pm")!.prompt.includes(`${TAI_CLI_PLACEHOLDER} issue create`));
     });
 });

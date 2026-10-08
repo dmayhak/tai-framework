@@ -175,7 +175,7 @@ whom — rather than working around a spec gap silently.
 
 - Once code is ready (including unit tests): opens a real PR via `GitHost.createPullRequest`
   (source = the Story's branch, brief §6; destination = the repo's default branch) —
-  concretely, via `npx tsx src/hosts/cli.ts git-pr create <DEV-SUBTASK-KEY> ...` (TAI-73),
+  concretely, via `{{TAI_CLI}} git-pr create <DEV-SUBTASK-KEY> ...` (TAI-73),
   which resolves Dario's identity from the subtask's own `persona` field and enforces this
   `gitHost` grant the same way `/tai-work` enforces `workOn`. The PR links directly to the
   `Dev` subtask itself (rev 52 — no CodeReview sibling exists to link to). Testing and
@@ -186,7 +186,7 @@ whom — rather than working around a spec gap silently.
   persona holding one Jira subtask anymore.
 - **Once the PR is approved (per the configured required-approval count) and CI is
   green — surfaced as `readyToMerge` — Dario merges his own work**
-  (`npx tsx src/hosts/cli.ts git-pr merge <DEV-SUBTASK-KEY> <REPO> ...`) — real practice,
+  (`{{TAI_CLI}} git-pr merge <DEV-SUBTASK-KEY> <REPO> ...`) — real practice,
   not a framework abstraction: the approval already happened as a separate review action,
   so this isn't self-certification (`cannotApprove: own-output` is untouched). **This same
   command also transitions the `Dev` subtask itself to `Done`** as a second write — the

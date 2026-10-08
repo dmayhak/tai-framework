@@ -94,7 +94,7 @@ already applied to PR reviews/merges (`workflows/story.md`) and `UAT`. However t
 transition actually happens — the CLI command below, a human clicking the transition
 directly in Jira, or another AI session with its own Jira access acting on the human's
 behalf — TAI reads the resulting Jira state, not the mechanism that produced it. Nothing
-here requires the transition to come from `npx tsx src/hosts/cli.ts issue transition`
+here requires the transition to come from TAI's own `issue transition` command
 specifically; that's one concrete way to do it, not the only valid one.
 
 **Not the same gate as the PM+UX Kickoff Review Gate below.** That gate converges the PRD

@@ -449,6 +449,27 @@ export function mergePersonaConfig(
     };
 }
 
+// ---------- The TAI CLI placeholder (TAI-465) ----------
+
+/** What a persona doc writes in place of the CLI invocation, e.g. `{{TAI_CLI}} issue get <KEY>`.
+ *  A path such as `src/hosts/cli.ts` only exists in the TAI checkout, so a command written that
+ *  way fails in every target project; `loadPersonaConfig` fills this in with `taiCliCommand()`. */
+export const TAI_CLI_PLACEHOLDER = "{{TAI_CLI}}";
+
+function shellQuote(value: string): string {
+    return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+/** The command that runs THIS install's CLI from any working directory. `root` defaults to the
+ *  checkout this module was loaded from. */
+export function taiCliCommand(root: string = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")): string {
+    return `npx --prefix ${shellQuote(root)} tsx ${shellQuote(path.join(root, "src/hosts/cli.ts"))}`;
+}
+
+export function fillCliPlaceholder(text: string, command: string = taiCliCommand()): string {
+    return text.replaceAll(TAI_CLI_PLACEHOLDER, command);
+}
+
 // ---------- I/O: loading built-ins from disk ----------
 
 /** Default location of the bundled `.md` files, resolved relative to this module. Callers
@@ -527,5 +548,6 @@ export async function loadPersonaConfig(
     const extensionPage = await docStore.getPage({ spaceKey: opts.spaceKey, title: personaId } satisfies PageRef);
     if (extensionPage) extension = parseExtensionPage(extensionPage.content);
 
-    return mergePersonaConfig(base, override, extension);
+    const merged = mergePersonaConfig(base, override, extension);
+    return { ...merged, prompt: fillCliPlaceholder(merged.prompt) };
 }

@@ -198,11 +198,10 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
    a **second pass or a peer**, not the same Architect instance that authored the design
    (soft self-authored-review separation, brief §4 / §8.3; overridable for a solo
    architect).
-   Concretely: `npx tsx src/hosts/cli.ts issue transition <DESIGNREVIEW-SUBTASK-KEY>
+   Concretely: `{{TAI_CLI}} issue transition <DESIGNREVIEW-SUBTASK-KEY>
    Done` records a pass. A failed `DesignReview` sends `ArchitectureDesign` back to In
-   Progress, retry once then escalate to a human (see `workflows/story.md`) — via `npx
-   tsx src/hosts/cli.ts issue transition <ARCHITECTUREDESIGN-SUBTASK-KEY> "In Progress"`
-   plus `npx tsx src/hosts/cli.ts issue comment <ARCHITECTUREDESIGN-SUBTASK-KEY> "<required
+   Progress, retry once then escalate to a human (see `workflows/story.md`) — via `{{TAI_CLI}} issue transition <ARCHITECTUREDESIGN-SUBTASK-KEY> "In Progress"`
+   plus `{{TAI_CLI}} issue comment <ARCHITECTUREDESIGN-SUBTASK-KEY> "<required
    changes>"` — same reopen-with-required-changes shape `developer.md`'s Dev ⇄ Test
    failure loop uses.
 6. **Architecture Overview (TAI-307):** produces and maintains the *one* living page

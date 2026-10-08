@@ -111,15 +111,15 @@ implementation code; she decides how a user actually moves through what's being 
    (see `workflows/kickoff.md`). **The `UxDesign` subtask itself usually already exists**
    (rev 66, found live 2026-09-24) — Perry creates it eagerly at Project Initiation under
    the general TAI-83 exception (`personas/pm.md` item 1) when she judges it needed. Uma
-   dedup-searches first (`npx tsx src/hosts/cli.ts issue search
+   dedup-searches first (`{{TAI_CLI}} issue search
    parent=<KICKOFF-STORY-KEY> type=ux-design`) and only creates her own on a miss —
-   concretely, via `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> ux-design
+   concretely, via `{{TAI_CLI}} issue create <PROJECT-KEY> ux-design
    <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=ux-designer` — same dedup-search-first
    mechanics as any other TAI-83 case (`workflows/dependencies.md`'s "Eager Subtask
    Creation" section).
 2. **Kickoff review gate:** Jointly with the PM, signs off that UX flows and PRD
    requirements actually agree with each other before any Story/Spike tickets are
-   created. Concretely, via `npx tsx src/hosts/cli.ts issue comment <KICKOFF-STORY-KEY>
+   created. Concretely, via `{{TAI_CLI}} issue comment <KICKOFF-STORY-KEY>
    "Approved: <rationale>"` — the review-gate check scans for one such comment from each
    required persona (PM and UX Designer); a plain comment without the `Approved:` prefix
    does not count.

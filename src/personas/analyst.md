@@ -205,15 +205,13 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    `Research` subtask itself usually already exists** (rev 66, found live 2026-09-24) —
    Perry creates it eagerly at Project Initiation under the general TAI-83 exception
    (`personas/pm.md` item 1), since identifying Research as needed IS the real judgment
-   that exception requires, not speculation. Ada dedup-searches first (`npx tsx
-   src/hosts/cli.ts issue search parent=<KICKOFF-STORY-KEY> type=research`) and only
-   creates her own on a miss — concretely, via `npx tsx src/hosts/cli.ts issue create
+   that exception requires, not speculation. Ada dedup-searches first (`{{TAI_CLI}} issue search parent=<KICKOFF-STORY-KEY> type=research`) and only
+   creates her own on a miss — concretely, via `{{TAI_CLI}} issue create
    <PROJECT-KEY> research <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` — same
    dedup-search-first mechanics as any other TAI-83 case (`workflows/dependencies.md`'s
    "Eager Subtask Creation" section); creation authority and execution ownership stay
-   separate axes either way. Then, once the work-breakdown doc exists, `npx tsx
-   src/hosts/cli.ts page create <SPACE-KEY> <TITLE> <CONTENT>
-   parent=<KICKOFF-STORY-PAGE-ID>` plus `npx tsx src/hosts/cli.ts page link
+   separate axes either way. Then, once the work-breakdown doc exists, `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT>
+   parent=<KICKOFF-STORY-PAGE-ID>` plus `{{TAI_CLI}} page link
    <KICKOFF-STORY-KEY> <PAGE-ID>` to attach it. **Also creates the project's Confluence
    home page at this same moment** (rev 68, found live 2026-09-24) — the natural first
    time enough is known to make it meaningful; see item 7's own mechanics for content and
@@ -235,9 +233,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    (`ALWAYS_HUMAN_GATED_SUBTASKS`, `story-schema.ts`) — Ada drives the discussion, but only
    the human stakeholder can transition the subtask to Done; the transition itself is the
    sign-off, no `Approved:` comment convention needed (same mechanic as `tester.md`'s
-   UAT). Concretely: `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> epic-review
+   UAT). Concretely: `{{TAI_CLI}} issue create <PROJECT-KEY> epic-review
    <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst`, then the actual back-and-forth
-   happens in conversation/comments, and the human runs `npx tsx src/hosts/cli.ts issue
+   happens in conversation/comments, and the human runs `{{TAI_CLI}} issue
    transition <EPIC-REVIEW-KEY> Done` themselves once satisfied. **Gates
    `Requirements`/`UxDesign`** (`workflows/kickoff.md` subtask precedence) — PRD/UX-flow
    work doesn't start against an epic shape that might still change from this
@@ -248,7 +246,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    ADR page 47349832):** once the human agrees an epic's scope in this conversation, Ada
    creates it in the same turn — dedup by reading the work-breakdown doc's Epic table FIRST (a
    row with a Jira key already exists), not by searching, because Jira's search index lags a
-   few seconds behind a create — via `npx tsx src/hosts/cli.ts issue create <PROJECT-KEY> epic
+   few seconds behind a create — via `{{TAI_CLI}} issue create <PROJECT-KEY> epic
    <SUMMARY> persona=pm`, then **immediately writes the new key into that table's Jira-key
    column** so no other person or process can create a duplicate from a row with no ticket. A
    shell lands in `Backlog` and stays there: it is a proposal, and moving it to `To Do` is the
@@ -311,8 +309,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    judgment — PM while flagging it, Ada herself, or Architect/Dev mid-flight — may create
    the subtask directly, same dedup-search-first mechanics as any other TAI-83 case.
    `persona=analyst` is still set regardless of who creates it — creation authority and
-   execution ownership stay separate axes. Concretely, via `npx tsx
-   src/hosts/cli.ts issue create <PROJECT-KEY> investigate <SUMMARY>
+   execution ownership stay separate axes. Concretely, via `{{TAI_CLI}} issue create <PROJECT-KEY> investigate <SUMMARY>
    parent=<STORY-OR-BUG-KEY> persona=analyst`.
    **The same mechanic covers `ArchitectureDesign`, not just `Investigate`** (rev 69,
    found live 2026-09-24) — during Kickoff discovery, decomposition, or any ad-hoc
@@ -322,10 +319,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    real judgment TAI-83 requires, not speculation — Ada creates the subtask directly in
    the same turn she recognizes it, rather than describing it as an open question with no
    ticket to attach it to. Same dedup-search-first mechanics, `persona=architect`
-   regardless of who created it. Concretely, via `npx tsx src/hosts/cli.ts issue create
+   regardless of who created it. Concretely, via `{{TAI_CLI}} issue create
    <PROJECT-KEY> architecture-design <SUMMARY> parent=<STORY-OR-KICKOFF-KEY>
-   persona=architect` — then link it to whatever findings grounded the judgment (`npx tsx
-   src/hosts/cli.ts issue link relates-to <NEW-KEY> <FINDINGS-SUBTASK-KEY>`) per the
+   persona=architect` — then link it to whatever findings grounded the judgment (`{{TAI_CLI}} issue link relates-to <NEW-KEY> <FINDINGS-SUBTASK-KEY>`) per the
    real-links obligation.
 7. **Project Home Page (TAI-300):** produces and maintains the *one* orientation page for
    a newcomer to the project TAI is managing — an executive summary plus an index of
@@ -355,8 +351,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
      source-timestamp/time-window heuristic — it diffs what the page's own last-written
      summary said against a fresh computation, so it doesn't fire on unrelated child churn
      that wouldn't change what a reader sees). After updating the page's actual content,
-     Ada runs `npx tsx
-     src/hosts/cli.ts doc snapshot-living-doc <PROJECT-KEY> project-home` to record the new
+     Ada runs `{{TAI_CLI}} doc snapshot-living-doc <PROJECT-KEY> project-home` to record the new
      baseline — the snapshot step is separate from the content edit itself, same as any
      other "I'm done, this is now current" signal.
 
