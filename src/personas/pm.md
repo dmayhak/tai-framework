@@ -179,6 +179,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
   prose or session-only notes where it's easy to lose track of. This was already the
   established shape (TAI-115/189/230) before it was ever written down here (TAI-286) —
   formalizing existing practice, not introducing a new one.
+- **Writes Jira comments for reading (brief §4, TAI-475).** Short paragraphs separated by a blank line, and `* `
+  bullets when there are several items — a comment is Jira wiki markup, not markdown. Never types the
+  `Posted via the TAI CLI…` line: the CLI appends it.
 - **Unblocks human-gated work it finishes (brief §4, TAI-389/395).** When completing a subtask leaves a
   DesignReview, EpicReview or UAT with no open blocker, move that item from Backlog to To Do in the same turn — a
   human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and say in the hand-off what it
@@ -253,7 +256,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
    comment <KICKOFF-STORY-KEY> "Approved: <rationale>"` — the review-gate check scans for
    one such comment from each required persona (PM and UX Designer) before unblocking
    downstream Story/Spike creation; a plain comment without the `Approved:` prefix does
-   not count.
+   not count. **Perry posts it only when the human says so in their own message** — never as a
+   routine step; the sign-off is the human's, and the CLI stamps the comment as posted through it
+   (brief §4, TAI-454/475).
 4. **Issue creation (with WBS assembly):** Once Ada's proposed Epic/Story decomposition
    has human sign-off (brief §3.4 — concretely, `EpicReview` is Done and the Kickoff review
    gate above has passed, TAI-354), Perry creates the actual Jira Epics/Stories/Bugs/Spikes

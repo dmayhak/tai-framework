@@ -105,6 +105,7 @@ import {
     type ReviewFinding,
 } from "../core/git/review-findings.js";
 import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/config.js";
+import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
@@ -154,6 +155,14 @@ interface ResolvedConfig {
      *  project's personas. Absent when the command did not say -- then the action is unattributed;
      *  nothing guesses. */
     readonly actingPersona?: string;
+}
+
+/** TAI-475: who the stamp names -- the `--as` persona with its built-in display name (a user-added
+ *  persona, or a team's renamed one, shows its id: no Confluence read is spent on a stamp). */
+export function actingPersonaOf(config: Pick<ResolvedConfig, "actingPersona">): ActingPersona | undefined {
+    const id = config.actingPersona;
+    if (!id) return undefined;
+    return { id, displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)[id] ?? id };
 }
 
 /**
@@ -1499,7 +1508,8 @@ async function main(): Promise<void> {
 
             const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
-            await gitHost.reviewPullRequest(repo, prId, decision, comment);
+            // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
+            await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
             console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
             return;
         }
@@ -1529,7 +1539,7 @@ async function main(): Promise<void> {
 
             const { prIdArg, body } = parseCommentArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
-            const comment = await gitHost.addPullRequestComment(repo, prId, body);
+            const comment = await gitHost.addPullRequestComment(repo, prId, stampComment(body, actingPersonaOf(config)));
             console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
             return;
         }
@@ -1561,7 +1571,11 @@ async function main(): Promise<void> {
             const inlineFailures: string[] = [];
             for (const f of eligible) {
                 try {
-                    await gitHost.addInlineComment(repo, prId, { path: f.file, line: f.line!, body: renderInlineComment(f) });
+                    await gitHost.addInlineComment(repo, prId, {
+                        path: f.file,
+                        line: f.line!,
+                        body: stampComment(renderInlineComment(f), actingPersonaOf(config)),
+                    });
                     posted.push(f);
                 } catch (err) {
                     // A failed inline post (e.g. `line` isn't actually part of the diff --
@@ -1576,7 +1590,7 @@ async function main(): Promise<void> {
             const comment = await gitHost.addPullRequestComment(
                 repo,
                 prId,
-                renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] })
+                stampComment(renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] }), actingPersonaOf(config))
             );
             const failureNote = inlineFailures.length > 0
                 ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
@@ -1729,7 +1743,7 @@ async function main(): Promise<void> {
                 // unlike `git-pr unapprove`, which stays suggested-only, never automatic.
                 const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, pr.url);
                 if (linkedKey) {
-                    await config.backend.workTracker.addComment(linkedKey, rebaseNeededCommentBody(pr.url));
+                    await config.backend.workTracker.addComment(linkedKey, stampComment(rebaseNeededCommentBody(pr.url), actingPersonaOf(config)));
                     rebaseCommentPostedOn = linkedKey;
                 }
             }
@@ -2081,9 +2095,22 @@ async function main(): Promise<void> {
                 }
             }
 
+            // TAI-475: a sign-off made through the CLI (UAT, EpicReview, DesignReview, an Epic -> Done) leaves a
+            // stamped comment saying so. Best-effort: the transition has already happened.
+            let signOffNote = "";
+            const signOff = result.ok ? signOffComment(result.issue, status as Status, actingPersonaOf(config)) : null;
+            if (signOff) {
+                try {
+                    await config.backend.workTracker.addComment(key, signOff);
+                    signOffNote = "\n\nSign-off recorded as a comment on the ticket.";
+                } catch (err) {
+                    signOffNote = `\n\nThe sign-off comment could not be posted: ${err instanceof Error ? err.message : String(err)}`;
+                }
+            }
+
             console.log(
                 result.ok
-                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings)
+                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote
                     : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")
@@ -2128,7 +2155,8 @@ async function main(): Promise<void> {
         if (action === "comment") {
             const [issueKey, body] = issueArgs;
             if (!issueKey || !body) throw new Error("Usage: issue comment <ISSUE-KEY> <BODY>");
-            const comment = await config.backend.workTracker.addComment(toIssueKey(issueKey), body);
+            // TAI-475: every comment the CLI posts ends with the provenance stamp.
+            const comment = await config.backend.workTracker.addComment(toIssueKey(issueKey), stampComment(body, actingPersonaOf(config)));
             console.log(`# Comment added to ${issueKey}\n\n${comment.body}`);
             return;
         }

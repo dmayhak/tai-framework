@@ -1598,6 +1598,18 @@ These are settled. Change them deliberately and update this file if you do.
     further downstream steps depending on that gate proceed. An `Approved:` sign-off
     means something about the content actually reviewed, not just that a comment once
     existed.
+- **Human-gated steps are conventions, made visible (TAI-454/475).** The CLI and the human share one
+  Jira/Bitbucket identity, so TAI cannot prove who performed an action. A human-only step (a UAT, EpicReview or
+  DesignReview sign-off, a Kickoff `Approved:` comment, a PR approval, closing an Epic) is therefore a
+  convention the **user is accountable for**: a persona performs one only when the human says so in their own
+  message. TAI makes the difference visible instead of pretending to enforce it — every comment the CLI posts
+  ends with a stamp line, `Posted via the TAI CLI as <Name> (<persona id>).` (or `Posted via the TAI CLI.` when
+  the command named no persona, TAI-477), and a sign-off made through the CLI leaves a stamped `Sign-off:`
+  comment (`storage/stamp.ts`). A comment or sign-off with no stamp was made directly, in the Jira or Bitbucket
+  UI. The stamp says only what the CLI knows: it cannot tell an AI session from a human typing the command.
+- **Writing Jira comments (TAI-475).** A comment body is sent as Jira wiki markup, not markdown: a blank line
+  makes a paragraph and `* item` a bullet. Write short paragraphs and bullet several items; the stamp goes on
+  its own last line and is added by the CLI, never typed. Every persona doc carries a one-line pointer here.
 - **Writing Confluence page content (TAI-397).** TAI converts a persona's markdown to Confluence
   storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
   (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and
