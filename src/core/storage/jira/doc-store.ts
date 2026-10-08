@@ -18,7 +18,6 @@ import {
     type IssueKey,
     type PageId,
     toPageId,
-    toIssueKey,
     toHumanId,
 } from "../interface.js";
 import { RestClient, JiraRejection } from "./rest-client.js";

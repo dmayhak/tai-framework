@@ -952,7 +952,7 @@ describe("findReadyWork readyToMerge — governance-content PRs (TAI-293)", () =
     });
 
     test("computePRSections fetches each repo's open-PR list only once, shared between the Dev and governance-content searches (PR #82 review)", async () => {
-        await withBackend(async (backend, taiRoot) => {
+        await withBackend(async (backend, _taiRoot) => {
             const bug = await inProgressBug(backend, "Governance content");
             const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
             await backend.workTracker.createRemoteLink(bug.key, pr.url, "PR");

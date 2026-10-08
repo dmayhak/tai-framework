@@ -23,7 +23,6 @@ import {
     type HumanRef,
     type AttachmentRef,
     type IssueFilter,
-    type IssueKey,
     toIssueKey,
     toHumanId,
 } from "../interface.js";

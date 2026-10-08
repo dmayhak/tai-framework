@@ -16,7 +16,6 @@ import {
     type IssueFilter,
     type IssueKey,
     type IssueLink,
-    type IssuePatch,
     type MutationResult,
     type PageId,
     type RemoteLink,

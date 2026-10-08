@@ -119,7 +119,6 @@ import {
     isSubtaskIssueType,
     Status,
     SubtaskType,
-    PERSONA_ROLE_LABEL,
     DEFAULT_PERSONA_DISPLAY_NAME,
     Persona,
     type StoryType,
