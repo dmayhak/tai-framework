@@ -588,7 +588,6 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
             io.say(hint);
             // An answer must contain at least one repository once parsed: a lone "," or blanks mean
             // nothing, and must never reach .env (it would wipe the rest of the list).
-            let replacement = "";
             let typed: string[] = [];
             for (let ask = 0; ask < MAX_LOOPS && typed.length === 0; ask++) {
                 const answer = await io.ask(
@@ -596,7 +595,7 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
                     detectedRepo ?? currentRepo
                 );
                 if (/^q/i.test(answer.trim())) return stop(1, "bitbucket");
-                replacement = (answer === "" ? (detectedRepo ?? currentRepo) : answer).trim();
+                const replacement = (answer === "" ? (detectedRepo ?? currentRepo) : answer).trim();
                 typed = replacement.split(",").map((r) => r.trim()).filter((r) => r !== "");
                 if (typed.length === 0) io.say("That didn't contain a repository -- type workspace/repo (or a comma-separated list), or q to stop.");
             }

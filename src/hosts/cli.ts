@@ -119,7 +119,6 @@ import {
     isSubtaskIssueType,
     Status,
     SubtaskType,
-    PERSONA_ROLE_LABEL,
     DEFAULT_PERSONA_DISPLAY_NAME,
     Persona,
     type StoryType,
@@ -1056,7 +1055,7 @@ export async function resolveNamedAssignee(
     resolveHuman: (email: string) => Promise<HumanRef | null>,
     named: string
 ): Promise<{ assignee: HumanRef | undefined; note: string | undefined }> {
-    let human: HumanRef | null = null;
+    let human: HumanRef | null;
     try {
         human = await resolveHuman(named);
     } catch (e) {
