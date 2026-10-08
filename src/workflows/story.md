@@ -159,8 +159,7 @@ Jira-subtask-tracked review gate left after rev 52's `CodeReview` retirement (it
 a design document, not a git PR, so there's no git-host-native equivalent to defer to the
 way code review now has). It is **optional and present-when-added**: when no `DesignReview`
 subtask exists, `ArchitectureDesign` unblocks `Dev` directly (see
-`workflows/dependencies.md` — both edges are kept; the resolver drops whichever
-end is absent).
+`workflows/dependencies.md` — an absent subtask passes its prerequisites through).
 
 - **Owner:** the Architect persona, but on a **second pass or a peer** — by
   default not the same instance that authored the `ArchitectureDesign`, per the

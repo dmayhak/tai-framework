@@ -61,17 +61,20 @@ loudly, not silently drop a discovered dependency.
 
 ## Layer 2: Subtask-Level Precedence
 
-`SUBTASK_PRECEDENCE` defines the **full possible** precedence graph per
-story type — every edge that could exist. A real story instance usually
-only has a subset of subtask types present (no `Database`, no
-`ArchitectureDesign`, etc.), so `resolveApplicablePrecedence()` filters
-the graph down to only the edges where **both ends are actually present**
-on that instance. This is what lets stories have more or fewer subtasks
-than each other without needing a different rule set per story.
+`SUBTASK_PRECEDENCE` defines the precedence graph per story type as its
+**shortest chain** — each rule names a subtask's nearest prerequisite. A
+real story instance usually only has a subset of subtask types present (no
+`Database`, no `ArchitectureDesign`, etc.). **An absent subtask passes its
+own prerequisites through (TAI-463):** `resolveApplicablePrecedence()`
+returns, for each present subtask, its nearest *present* prerequisites,
+reached through any absent types in between. This is what lets stories
+have more or fewer subtasks than each other without a different rule set
+per story — and what stops a gate being skipped merely because the subtask
+in the middle has not been created yet.
 
-`isSubtaskReady()` checks whether a target subtask's applicable
-`before` rules are all satisfied — a subtask with no applicable rules is
-a root and is always ready.
+`isSubtaskReady()` requires **every present subtask upstream** of the
+target to be Done or Canceled, not only the nearest one — a subtask with
+nothing present upstream is a root and is always ready.
 
 **Satisfying a precedence edge changes what CAN be reported as ready — it never triggers
 anything on its own (found live immediately after TAI-354 shipped, TAI-355,
@@ -137,27 +140,24 @@ the mechanics.
 `IntegrationTest → SystemTest → E2ETest`, cheapest/fastest tier first — each
 gates the next, rather than all three racing off the same never-fires-statically `Dev`
 edge simultaneously. This catches a regression at the cheapest tier before spending time
-on a more expensive one that would have failed for the same reason. Each tier also keeps
-a direct `Dev` edge for when an earlier tier in the sequence isn't present on this story
-instance (same coexistence pattern as `DesignReview`/`UAT` below) — e.g. if
-`IntegrationTest` is skipped, `SystemTest` falls back to the same never-fires-statically
+on a more expensive one that would have failed for the same reason. A tier that isn't
+present on this story instance passes its prerequisite through — e.g. if
+`IntegrationTest` is skipped, `SystemTest` waits on the same never-fires-statically
 `Dev` edge rather than being trivially ready. **Whether a given tier applies to a
 Story/Bug at all remains a per-instance judgment call** by whoever adds the subtask set
 (Tester, typically) — the same present-when-added pattern already used for
 `DesignReview`/`UAT`/`Database`/`Infra`, not a formal rule engine.
 
 **`DesignReview` and `UAT` are optional gates** (present-when-added), and both
-are **purely additive** to the static graph — when either is absent the graph
-collapses to the prior shape, because the resolver only keeps edges where
-**both** ends are present:
+are **purely additive** to the static graph — when either is absent it passes
+its prerequisites through, so the graph collapses to the shape without it:
 - **`DesignReview`** gates `ArchitectureDesign → Dev` — unaffected by `CodeReview`'s
   retirement, since it reviews a design document, not a git PR (there's no git-host-native
-  equivalent to defer to the way code review now has). When it's absent, the direct
-  `ArchitectureDesign → Dev` edge applies instead (both edges are kept in the graph; the
-  filter drops whichever end is missing).
+  equivalent to defer to the way code review now has). When it's absent,
+  `ArchitectureDesign` gates `Dev` through it.
 - **`UAT`** sits after the same never-fires-statically `Dev` edge and whichever automated
   tiers are present, and gates `Deploy`. When it's absent, the tiers gate `Deploy`
-  directly, as before. `UAT` is **inherently human-gated** (brief §3.3) — it never
+  directly, as before; with no tier present either, `Deploy` waits on `Dev` (TAI-456). `UAT` is **inherently human-gated** (brief §3.3) — it never
   autocompletes, even where autocompletion is otherwise enabled.
 
 ### What the `SpikeTask` subtask deliberately has no rule for

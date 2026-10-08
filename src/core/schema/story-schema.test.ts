@@ -2,10 +2,9 @@
  * Precedence tests for the optional gates (DesignReview, UAT).
  *
  * The load-bearing property being locked down here is that both gates are
- * PURELY ADDITIVE: when a gate subtask is absent, the resolved precedence
- * graph collapses to exactly the pre-gate shape (ArchitectureDesign -> Dev
- * directly; test tiers -> Deploy directly). When present, the gate inserts
- * itself without weakening the surrounding edges.
+ * PURELY ADDITIVE: when a gate subtask is absent, it passes its prerequisites
+ * through (ArchitectureDesign -> Dev; test tiers -> Deploy), TAI-463. When
+ * present, the gate inserts itself without weakening the surrounding edges.
  *
  * Run: `npm test`
  */
@@ -227,15 +226,11 @@ describe("UAT gate (optional, human-gated)", () => {
         ];
         const rules = resolveApplicablePrecedence(StoryType.Story, present);
         assert.ok(!rules.some((r) => r.before === SubtaskType.Uat || r.after === SubtaskType.Uat));
-        assert.equal(
-            isSubtaskReady(
-                SubtaskType.Deploy,
-                StoryType.Story,
-                present,
-                done(SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest)
-            ),
-            true
-        );
+        assert.ok(hasEdge(rules, SubtaskType.E2ETest, SubtaskType.Deploy));
+        const tiers = [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest];
+        // TAI-456/TAI-463: Deploy ships what is merged, so it also waits on Dev being Done.
+        assert.equal(isSubtaskReady(SubtaskType.Deploy, StoryType.Story, present, done(...tiers)), false);
+        assert.equal(isSubtaskReady(SubtaskType.Deploy, StoryType.Story, present, done(SubtaskType.Dev, ...tiers)), true);
     });
 
     it("applies to Bug as well as Story", () => {
@@ -377,13 +372,16 @@ describe("dynamic insertion of an optional gate mid-flight", () => {
             SubtaskType.Uat,
             existing
         );
-        assert.ok(hasEdge(newEdges, SubtaskType.Dev, SubtaskType.Uat));
+        // TAI-463: the shortest chain only -- Dev -> UAT is already implied by Dev -> IntegrationTest -> UAT.
+        assert.ok(!hasEdge(newEdges, SubtaskType.Dev, SubtaskType.Uat));
         assert.ok(hasEdge(newEdges, SubtaskType.IntegrationTest, SubtaskType.Uat));
         assert.ok(hasEdge(newEdges, SubtaskType.Uat, SubtaskType.Deploy));
         // Tiers not present on the instance must not produce edges.
         assert.ok(!hasEdge(newEdges, SubtaskType.SystemTest, SubtaskType.Uat));
         assert.ok(!hasEdge(newEdges, SubtaskType.E2ETest, SubtaskType.Uat));
-        assert.equal(newEdges.length, 3);
+        assert.equal(newEdges.length, 2);
+        // ...and UAT still waits on Dev, through IntegrationTest.
+        assert.equal(isSubtaskReady(SubtaskType.Uat, StoryType.Story, [...existing, SubtaskType.Uat], done(SubtaskType.IntegrationTest)), false);
     });
 });
 
@@ -486,5 +484,73 @@ describe("unblockedAbsentSubtaskTypes (TAI-373)", () => {
         const onlyReq = new Set([SubtaskType.Research, SubtaskType.EpicReview, SubtaskType.Requirements]);
         assert.ok(!unblockedAbsentSubtaskTypes(K, all, onlyReq).includes(SubtaskType.ArchitectureDesign));
         assert.ok(unblockedAbsentSubtaskTypes(K, all, new Set(all)).includes(SubtaskType.ArchitectureDesign));
+    });
+});
+
+describe("an absent subtask passes its predecessors through (TAI-463)", () => {
+    const edges = (storyType: StoryType, present: SubtaskType[]) =>
+        resolveApplicablePrecedence(storyType, present)
+            .map((r) => `${r.before}>${r.after}`)
+            .sort();
+
+    it("Kickoff: UxDesign waits on Research while EpicReview has not been created yet", () => {
+        const present = [SubtaskType.Research, SubtaskType.UxDesign];
+        assert.equal(isSubtaskReady(SubtaskType.UxDesign, StoryType.Kickoff, present, new Set()), false);
+        assert.equal(isSubtaskReady(SubtaskType.UxDesign, StoryType.Kickoff, present, new Set([SubtaskType.Research])), true);
+        assert.deepEqual(edges(StoryType.Kickoff, present), ["research>ux-design"]);
+    });
+
+    it("Kickoff: ArchitectureDesign waits on EpicReview while Requirements and UxDesign do not exist", () => {
+        const present = [SubtaskType.Research, SubtaskType.EpicReview, SubtaskType.ArchitectureDesign];
+        const done = new Set([SubtaskType.Research]);
+        assert.equal(isSubtaskReady(SubtaskType.ArchitectureDesign, StoryType.Kickoff, present, done), false);
+        assert.deepEqual(edges(StoryType.Kickoff, present), ["epic-review>architecture-design", "research>epic-review"]);
+    });
+
+    for (const storyType of [StoryType.Story, StoryType.Bug]) {
+        it(`${storyType}: Deploy waits on Dev when no test tier or UAT is present`, () => {
+            const present = [SubtaskType.Dev, SubtaskType.Deploy];
+            assert.equal(isSubtaskReady(SubtaskType.Deploy, storyType, present, new Set()), false);
+            assert.equal(isSubtaskReady(SubtaskType.Deploy, storyType, present, new Set([SubtaskType.Dev])), true);
+            assert.deepEqual(edges(storyType, present), ["dev>deploy"]);
+        });
+    }
+
+    it("a subtask waits on EVERY present ancestor, not only the nearest one", () => {
+        // SystemTest counted as finished (e.g. Canceled) must not let E2ETest start while IntegrationTest is open.
+        const present = [SubtaskType.Dev, SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest];
+        const done = new Set([SubtaskType.Dev, SubtaskType.SystemTest]);
+        assert.equal(isSubtaskReady(SubtaskType.E2ETest, StoryType.Story, present, done), false);
+    });
+
+    it("the links for a story are the shortest chain between present subtasks, with no edge another path already implies", () => {
+        const present = [
+            SubtaskType.ArchitectureDesign,
+            SubtaskType.DesignReview,
+            SubtaskType.Dev,
+            SubtaskType.IntegrationTest,
+            SubtaskType.E2ETest,
+            SubtaskType.Deploy,
+        ];
+        assert.deepEqual(edges(StoryType.Story, present), [
+            "architecture-design>design-review",
+            "design-review>dev",
+            "dev>integration-test",
+            "e2e-test>deploy",
+            "integration-test>e2e-test",
+        ]);
+    });
+
+    it("a subtask with no ancestor in the graph (Investigate, SpikeTask) is still a root", () => {
+        const present = [SubtaskType.Investigate, SubtaskType.SpikeTask, SubtaskType.Dev];
+        assert.equal(isSubtaskReady(SubtaskType.Investigate, StoryType.Story, present, new Set()), true);
+        assert.equal(isSubtaskReady(SubtaskType.SpikeTask, StoryType.Story, present, new Set()), true);
+    });
+
+    it("inserting a gate mid-flight returns the links that touch it, routed through absent neighbours", () => {
+        const added = getNewPrecedenceEdgesForInsertedSubtask(StoryType.Story, SubtaskType.Uat, [SubtaskType.Dev, SubtaskType.Deploy])
+            .map((r) => `${r.before}>${r.after}`)
+            .sort();
+        assert.deepEqual(added, ["dev>uat", "uat>deploy"]);
     });
 });

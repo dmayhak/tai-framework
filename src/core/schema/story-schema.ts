@@ -321,14 +321,15 @@ export function resolveStoryDependencies(
 
 // ---------- Subtask-Level Precedence (structural, derivable) ----------
 
-// Defines the FULL possible precedence graph per story type. A concrete
-// story instance will usually only have a subset of these subtask types
-// present (e.g. no Database subtask, no ArchitectureDesign) — the
-// resolver below filters this graph down to only the edges where BOTH
-// ends are actually present on that instance.
+// Defines the precedence graph per story type as its SHORTEST chain: each
+// rule names a subtask's nearest prerequisite, and everything further
+// upstream follows from the chain. A concrete story instance usually has
+// only a subset of these subtask types present; an ABSENT type passes its
+// own prerequisites through (TAI-463), so a gate is never skipped merely
+// because the subtask in the middle has not been created yet.
 export interface SubtaskPrecedenceRule {
     before: SubtaskType; // must be Done first
-    after: SubtaskType;  // becomes workable once ALL its 'before' rules are satisfied
+    after: SubtaskType;  // becomes workable once everything upstream of it is satisfied
 }
 
 export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
@@ -339,97 +340,54 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
         // shouldn't start against an epic shape that's still being probed/revised.
         { before: SubtaskType.EpicReview, after: SubtaskType.Requirements },
         { before: SubtaskType.EpicReview, after: SubtaskType.UxDesign },
-        { before: SubtaskType.Requirements, after: SubtaskType.ArchitectureDesign },
         // Flows and requirements are expected to converge before the Architect
         // finalizes any design (personas/ux-designer.md) — ArchitectureDesign
-        // waits on BOTH, not just Requirements. Only bites when ArchitectureDesign
-        // is actually present (Kickoff's optional 4th subtask); the resolver
-        // drops this edge otherwise.
+        // waits on BOTH. When neither exists yet it still waits on EpicReview,
+        // through them (TAI-463).
+        { before: SubtaskType.Requirements, after: SubtaskType.ArchitectureDesign },
         { before: SubtaskType.UxDesign, after: SubtaskType.ArchitectureDesign },
     ],
     [StoryType.Story]: [
         // ArchitectureDesign is gated by an optional DesignReview before it
-        // reaches Dev (mirrors the old Dev -> CodeReview shape, rev 52). The direct
-        // ArchitectureDesign -> Dev edge is kept for the no-DesignReview case;
-        // the resolver drops whichever end is absent, so both coexist safely.
+        // reaches Dev. With no DesignReview present, ArchitectureDesign gates
+        // Dev through it.
         { before: SubtaskType.ArchitectureDesign, after: SubtaskType.DesignReview },
         { before: SubtaskType.DesignReview, after: SubtaskType.Dev },
-        { before: SubtaskType.ArchitectureDesign, after: SubtaskType.Dev },
         { before: SubtaskType.UxDesign, after: SubtaskType.Dev }, // Story-level detailing gates Dev, same as its sibling prerequisites
         { before: SubtaskType.Database, after: SubtaskType.Dev },
         { before: SubtaskType.Infra, after: SubtaskType.Dev },
-        // rev 52 (TAI-159 ADR): CodeReview is retired going forward — no
-        // `{before: Dev, after: CodeReview}` edge, since CodeReview is never
-        // created for new work (kept in the schema only to parse historical
-        // tickets, e.g. TAI-137). The 4 edges below used to read
-        // `{before: CodeReview, after: <tier>}`; they now read `{before: Dev,
-        // after: <tier>}` INSTEAD, not in addition — and that's deliberate,
-        // not a placeholder. `Dev` stays In Progress until its PR merges (rev
-        // 52), so this edge never actually fires via this static graph — a
-        // test tier/UAT with only this edge applicable has NO real static
-        // path to "ready" anymore. That's intentional: readiness for these
-        // types now comes exclusively from `ready.ts`'s live-computed
-        // `readyToTest` list (checks the linked PR's real approval state),
-        // not from a Jira-status fact. Deleting the edge outright instead of
-        // replacing it would leave these types with ZERO applicable rules,
-        // which `isSubtaskReady` treats as a root — "always ready" — the
-        // moment the subtask is created, silently bypassing review entirely.
-        // Keeping a never-satisfied edge here is what prevents that.
+        // rev 52 (TAI-159 ADR): CodeReview is retired going forward, so the test
+        // tiers hang off Dev. `Dev` stays In Progress until its PR merges, so
+        // this edge never actually fires via this static graph — readiness for
+        // the tiers and UAT comes from `ready.ts`'s live-computed `readyToTest`
+        // list (the linked PR's real state), not from a Jira-status fact. The
+        // edge is what keeps a newly created tier from reading as "ready"
+        // before there is anything to test.
         //
         // Test tiers run SEQUENTIALLY by default (D12): Integration -> System -> E2E,
-        // cheapest/fastest tier first. Each tier also keeps a direct Dev edge
-        // for the case where an earlier tier in the sequence isn't present on this
-        // story instance (same coexistence pattern as DesignReview/UAT below) — e.g.
-        // if IntegrationTest is skipped, SystemTest falls back to the same
-        // never-fires-statically Dev edge rather than being trivially ready.
+        // cheapest/fastest tier first, then the optional human-gated UAT, then
+        // Deploy, then PostDeploy. Whether a given tier applies to a story at all
+        // is a per-instance judgment call (present-when-added); a skipped tier
+        // passes its prerequisites through, so e.g. a Story with only Dev and
+        // Deploy has Deploy waiting on Dev (TAI-456/TAI-463).
         { before: SubtaskType.Dev, after: SubtaskType.IntegrationTest },
-        { before: SubtaskType.Dev, after: SubtaskType.SystemTest },
-        { before: SubtaskType.Dev, after: SubtaskType.E2ETest },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.SystemTest },
-        { before: SubtaskType.IntegrationTest, after: SubtaskType.E2ETest },
         { before: SubtaskType.SystemTest, after: SubtaskType.E2ETest },
-        // Whether a given tier applies to a story at all is a per-instance judgment
-        // call (same as DesignReview/UAT/Database/Infra) — present-when-added, no
-        // formal rule engine deciding which tiers a Story/Bug needs (D12).
-        // UAT (optional, inherently human-gated) sits after the automated
-        // tiers (or, absent those, the same never-fires-statically Dev edge,
-        // rev 52) and gates Deploy. Deploy also keeps its direct tier edges
-        // for the no-UAT case (same coexistence pattern as DesignReview above).
-        { before: SubtaskType.Dev, after: SubtaskType.Uat },
-        { before: SubtaskType.IntegrationTest, after: SubtaskType.Uat },
-        { before: SubtaskType.SystemTest, after: SubtaskType.Uat },
         { before: SubtaskType.E2ETest, after: SubtaskType.Uat },
         { before: SubtaskType.Uat, after: SubtaskType.Deploy },
-        { before: SubtaskType.IntegrationTest, after: SubtaskType.Deploy },
-        { before: SubtaskType.SystemTest, after: SubtaskType.Deploy },
-        { before: SubtaskType.E2ETest, after: SubtaskType.Deploy },
         { before: SubtaskType.Deploy, after: SubtaskType.PostDeploy },
     ],
     [StoryType.Bug]: [
         { before: SubtaskType.Triage, after: SubtaskType.Dev },
         { before: SubtaskType.Database, after: SubtaskType.Dev },
         { before: SubtaskType.Infra, after: SubtaskType.Dev },
-        // rev 52 (TAI-159 ADR): see the Story entry above for the full
-        // rationale — these 4 edges read `{before: Dev, after: <tier>}`
-        // instead of the old `{before: CodeReview, after: <tier>}`, and are
-        // deliberately never satisfied via this static graph; readiness for
-        // these types comes from `ready.ts`'s live `readyToTest` list.
+        // Same chain as Story from Dev onward — see the Story entry above for
+        // the rev 52 and TAI-463 rationale.
         { before: SubtaskType.Dev, after: SubtaskType.IntegrationTest },
-        { before: SubtaskType.Dev, after: SubtaskType.SystemTest },
-        { before: SubtaskType.Dev, after: SubtaskType.E2ETest },
         { before: SubtaskType.IntegrationTest, after: SubtaskType.SystemTest },
-        { before: SubtaskType.IntegrationTest, after: SubtaskType.E2ETest },
         { before: SubtaskType.SystemTest, after: SubtaskType.E2ETest },
-        // Optional human-gated UAT for user-facing fixes (see workflows/bug.md
-        // open question on product/UX-impact bugs). Present-when-added.
-        { before: SubtaskType.Dev, after: SubtaskType.Uat },
-        { before: SubtaskType.IntegrationTest, after: SubtaskType.Uat },
-        { before: SubtaskType.SystemTest, after: SubtaskType.Uat },
         { before: SubtaskType.E2ETest, after: SubtaskType.Uat },
         { before: SubtaskType.Uat, after: SubtaskType.Deploy },
-        { before: SubtaskType.IntegrationTest, after: SubtaskType.Deploy },
-        { before: SubtaskType.SystemTest, after: SubtaskType.Deploy },
-        { before: SubtaskType.E2ETest, after: SubtaskType.Deploy },
         { before: SubtaskType.Deploy, after: SubtaskType.PostDeploy },
     ],
     [StoryType.Spike]: [
@@ -450,32 +408,71 @@ export const SUBTASK_PRECEDENCE: Record<StoryType, SubtaskPrecedenceRule[]> = {
 // Story "ready for implementation" once Investigate is done is still open
 // (brief §8.13) — this is why there's no Investigate -> Dev edge (yet).
 
-// Filters the full precedence graph down to only the edges relevant to
-// a specific story instance's actual subtask set.
+/** Every subtask type upstream of `target` in the story type's graph, present or not. */
+function ancestorsOf(storyType: StoryType, target: SubtaskType): Set<SubtaskType> {
+    const rules = SUBTASK_PRECEDENCE[storyType];
+    const seen = new Set<SubtaskType>();
+    const visit = (type: SubtaskType): void => {
+        for (const rule of rules) {
+            if (rule.after !== type || seen.has(rule.before)) continue;
+            seen.add(rule.before);
+            visit(rule.before);
+        }
+    };
+    visit(target);
+    return seen;
+}
+
+// The precedence links that apply to a specific story instance's actual
+// subtask set: for each present subtask, its nearest PRESENT prerequisites,
+// reached through any absent types in between (TAI-463), minus any link a
+// longer path between present subtasks already implies. This is what
+// `link-precedence` materializes as Jira `Blocks` links.
 export function resolveApplicablePrecedence(
     storyType: StoryType,
     presentSubtaskTypes: SubtaskType[]
 ): SubtaskPrecedenceRule[] {
+    const rules = SUBTASK_PRECEDENCE[storyType];
     const present = new Set(presentSubtaskTypes);
-    return SUBTASK_PRECEDENCE[storyType].filter(
-        (rule) => present.has(rule.before) && present.has(rule.after)
-    );
+
+    const nearestPresent = (type: SubtaskType, found: Set<SubtaskType>, seen: Set<SubtaskType>): Set<SubtaskType> => {
+        for (const rule of rules) {
+            if (rule.after !== type || seen.has(rule.before)) continue;
+            seen.add(rule.before);
+            if (present.has(rule.before)) found.add(rule.before);
+            else nearestPresent(rule.before, found, seen);
+        }
+        return found;
+    };
+
+    const result: SubtaskPrecedenceRule[] = [];
+    for (const after of present) {
+        const candidates = [...nearestPresent(after, new Set(), new Set())];
+        for (const before of candidates) {
+            const impliedByAnother = candidates.some((other) => other !== before && ancestorsOf(storyType, other).has(before));
+            if (!impliedByAnother) result.push({ before, after });
+        }
+    }
+    return result;
 }
 
 // Given the actual subtasks present on a story instance and which of
 // them are currently Done, determines whether a target subtask is
-// unblocked. A subtask with no applicable 'before' rules is a root and
-// is always ready.
+// unblocked: EVERY present subtask upstream of it must be done, not only
+// the nearest one (TAI-463) — so a prerequisite that was cancelled or not
+// created never opens a path past an unfinished one further up. A subtask
+// with nothing present upstream is a root and is always ready.
 export function isSubtaskReady(
     target: SubtaskType,
     storyType: StoryType,
     presentSubtaskTypes: SubtaskType[],
     doneSubtaskTypes: Set<SubtaskType>
 ): boolean {
-    const applicable = resolveApplicablePrecedence(storyType, presentSubtaskTypes).filter(
-        (rule) => rule.after === target
-    );
-    return applicable.every((rule) => doneSubtaskTypes.has(rule.before));
+    const present = new Set(presentSubtaskTypes);
+    for (const ancestor of ancestorsOf(storyType, target)) {
+        if (present.has(ancestor) && !doneSubtaskTypes.has(ancestor)) return false;
+    }
+    return true;
 }
 
 /**
@@ -556,11 +553,10 @@ export function getNewPrecedenceEdgesForInsertedSubtask(
     insertedSubtaskType: SubtaskType,
     existingPresentSubtaskTypes: SubtaskType[]
 ): SubtaskPrecedenceRule[] {
-    const existing = new Set(existingPresentSubtaskTypes);
-    return SUBTASK_PRECEDENCE[storyType].filter(
-        (rule) =>
-            (rule.before === insertedSubtaskType && existing.has(rule.after)) ||
-            (rule.after === insertedSubtaskType && existing.has(rule.before))
+    // The links of the story WITH the new subtask that touch it. A link the insertion makes
+    // redundant (e.g. Dev -> Deploy once UAT sits between them) is left in place: harmless.
+    return resolveApplicablePrecedence(storyType, [...existingPresentSubtaskTypes, insertedSubtaskType]).filter(
+        (rule) => rule.before === insertedSubtaskType || rule.after === insertedSubtaskType
     );
 }
 
