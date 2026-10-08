@@ -17,6 +17,8 @@ import {
     parsePersonasOverridePage,
     parseUpdateGrant,
     fillCliPlaceholder,
+    personaCliCommand,
+    resolveActingPersonaId,
     taiCliCommand,
     TAI_CLI_PLACEHOLDER,
     type PersonaConfig,
@@ -609,8 +611,9 @@ describe("TAI CLI placeholder (TAI-465)", () => {
         docStore.seed("TA", "developer", `Team rule: run \`${TAI_CLI_PLACEHOLDER} ready\` first.`);
         const config = await loadPersonaConfig(docStore, "developer", { spaceKey: "TA" });
         assert.ok(!config.prompt.includes(TAI_CLI_PLACEHOLDER));
-        assert.ok(config.prompt.includes(`${taiCliCommand()} git-pr create`));
-        assert.ok(config.prompt.includes(`run \`${taiCliCommand()} ready\` first`));
+        // TAI-477: the filled-in command also names the persona it was rendered for.
+        assert.ok(config.prompt.includes(`${taiCliCommand()} --as developer git-pr create`));
+        assert.ok(config.prompt.includes(`run \`${taiCliCommand()} --as developer ready\` first`));
     });
 
     it("no persona or workflow doc carries a CLI command relative to the TAI checkout", async () => {
@@ -631,5 +634,55 @@ describe("TAI CLI placeholder (TAI-465)", () => {
             assert.ok(!config.prompt.includes("src/hosts/cli.ts"), `${id} names cli.ts directly`);
         }
         assert.ok(builtins.get("pm")!.prompt.includes(`${TAI_CLI_PLACEHOLDER} issue create`));
+    });
+});
+
+describe("acting persona (TAI-477)", () => {
+    it("personaCliCommand is the install's command plus --as <persona id>", () => {
+        assert.equal(personaCliCommand("pm", "/opt/tai"), "npx --prefix /opt/tai tsx /opt/tai/src/hosts/cli.ts --as pm");
+    });
+
+    it("each persona's prompt carries its OWN id, not another persona's", async () => {
+        const docStore = new FakeDocStore();
+        for (const id of ["pm", "tester", "ux-designer"]) {
+            const config = await loadPersonaConfig(docStore, id, { spaceKey: "TA" });
+            const named = [...config.prompt.matchAll(/cli\.ts --as (\S+)/g)].map((m) => m[1]);
+            assert.ok(named.length > 0, `${id} has no CLI command`);
+            assert.deepEqual([...new Set(named)], [id]);
+        }
+    });
+
+    it("no persona doc writes a CLI invocation with arguments outside the placeholder", async () => {
+        const { readFile, readdir } = await import("node:fs/promises");
+        const dir = path.resolve(import.meta.dirname, "../../personas");
+        for (const entry of await readdir(dir)) {
+            if (!entry.endsWith(".md")) continue;
+            const body = (await readFile(path.join(dir, entry), "utf8")).split("---").slice(2).join("---");
+            const bare = [...body.matchAll(/`((?:issue|page|git-pr|link-precedence|doc) [a-z-]+[^`]*)`/g)]
+                .map((m) => m[1]!)
+                .filter((command) => /[<=]/.test(command));
+            assert.deepEqual(bare, [], `${entry}: write these as {{TAI_CLI}} <command> so they carry the acting persona`);
+        }
+    });
+
+    it("resolveActingPersonaId accepts a built-in id without reading Confluence", async () => {
+        const docStore = new FakeDocStore();
+        docStore.getPage = async () => {
+            throw new Error("must not be called for a built-in persona");
+        };
+        assert.equal(await resolveActingPersonaId(docStore, "developer", { spaceKey: "TA" }), "developer");
+    });
+
+    it("resolveActingPersonaId accepts a user-added persona listed on the Personas page", async () => {
+        const docStore = new FakeDocStore();
+        docStore.seed("TA", "Personas", "### release-manager\n\n```yaml\ndisplayName: Rae\n```\n");
+        assert.equal(await resolveActingPersonaId(docStore, "release-manager", { spaceKey: "TA" }), "release-manager");
+    });
+
+    it("resolveActingPersonaId rejects an unknown id, naming the ones it knows", async () => {
+        await assert.rejects(
+            resolveActingPersonaId(new FakeDocStore(), "develper", { spaceKey: "TA" }),
+            /Unknown persona "develper".*developer/s
+        );
     });
 });

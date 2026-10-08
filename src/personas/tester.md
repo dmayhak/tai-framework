@@ -126,7 +126,7 @@ owns.
    pass, exactly like `Dev`'s own rev-52 pattern, instead of going straight to `Done`.**
    Concretely: `{{TAI_CLI}} git-pr create <TEST-TIER-SUBTASK-KEY> <REPO>
    <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]`, then records the pass via `{{TAI_CLI}} issue comment <TEST-TIER-SUBTASK-KEY> "<result detail>"` — `Done`
-   is now reached only via the PR's own merge (`git-pr merge <TEST-TIER-SUBTASK-KEY>
+   is now reached only via the PR's own merge (`{{TAI_CLI}} git-pr merge <TEST-TIER-SUBTASK-KEY>
    <REPO>` self-closes it automatically on merge, same mechanism `Dev` uses; merge itself
    is still Developer/DevOps-only, no self-merge for Tester — see `developer.md`'s
    Handoff for the merge-authority mechanics). **When a tier needs no new PR** (re-running
@@ -197,7 +197,7 @@ classification upfront (see "When this persona is invoked" item 3).
 - After a human stakeholder rejects `UAT`: routes to **Developer** at In Progress (an
   implementation miss) or to **PM/Requirements** (an acceptance-criteria gap) — a human
   decides which; not the automatic single-retry loop used for the automated tiers (see
-  `workflows/story.md` — "UAT gate"). Concretely, the same `issue transition
+  `workflows/story.md` — "UAT gate"). Concretely, the same `{{TAI_CLI}} issue transition
   <DEV-SUBTASK-KEY> "In Progress"` + `issue comment` pair as the Dev ⇄ Test loop above
   (implementation miss), or `{{TAI_CLI}} issue comment <STORY-KEY> "<gap
   detail>"` to flag PM/Requirements (acceptance-criteria gap).

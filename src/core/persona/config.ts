@@ -466,6 +466,12 @@ export function taiCliCommand(root: string = path.resolve(path.dirname(fileURLTo
     return `npx --prefix ${shellQuote(root)} tsx ${shellQuote(path.join(root, "src/hosts/cli.ts"))}`;
 }
 
+/** TAI-477: the command a persona's own prompt is rendered with -- it names the persona, so every
+ *  command copied from that prompt tells the CLI who is acting. */
+export function personaCliCommand(personaId: string, root?: string): string {
+    return `${taiCliCommand(root)} --as ${shellQuote(personaId)}`;
+}
+
 export function fillCliPlaceholder(text: string, command: string = taiCliCommand()): string {
     return text.replaceAll(TAI_CLI_PLACEHOLDER, command);
 }
@@ -549,5 +555,30 @@ export async function loadPersonaConfig(
     if (extensionPage) extension = parseExtensionPage(extensionPage.content);
 
     const merged = mergePersonaConfig(base, override, extension);
-    return { ...merged, prompt: fillCliPlaceholder(merged.prompt) };
+    return { ...merged, prompt: fillCliPlaceholder(merged.prompt, personaCliCommand(merged.id)) };
+}
+
+// ---------- The acting persona (TAI-477) ----------
+
+/**
+ * Checks that `personaId` (the CLI's `--as`) names a persona this project has: a built-in, or a
+ * user-added one listed on the `Personas` page. Self-declared, not proof of anything -- it exists
+ * so an action can be attributed and checked against that persona's grants, and so a typo fails
+ * loudly instead of attributing work to a persona that does not exist.
+ *
+ * A built-in id is accepted from the bundled files alone, with no Confluence read, so naming a
+ * persona costs an ordinary command nothing. Whether that built-in is DISABLED for this project
+ * is not checked here: a caller that needs the persona's grants loads its full config anyway.
+ */
+export async function resolveActingPersonaId(docStore: DocStore, personaId: string, opts: LoadPersonaConfigOptions): Promise<string> {
+    const builtins = await loadBuiltinPersonaConfigs(opts.personasDir);
+    if (builtins.has(personaId)) return personaId;
+    const overridesPage = await docStore.getPage({
+        spaceKey: opts.spaceKey,
+        title: opts.overridePageTitle ?? PERSONAS_PAGE_TITLE,
+    } satisfies PageRef);
+    const overrides = overridesPage ? parsePersonasOverridePage(overridesPage.content) : new Map<string, PersonaOverride>();
+    if (overrides.has(personaId)) return personaId;
+    const known = [...new Set([...builtins.keys(), ...overrides.keys()])].sort().join(", ");
+    throw new Error(`Unknown persona "${personaId}" given to --as. Known personas: ${known}.`);
 }

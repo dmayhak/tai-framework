@@ -171,7 +171,7 @@ change, not vague sentiment about code quality.
   Cole doesn't hand off to a "Tester unblocked by CodeReview" step anymore — testing was
   already running in parallel, independent of review's own progress.
 - After requesting changes: the required-changes comment lands as a real PR comment
-  (`git-pr review <REPO> requestChanges "<required changes>"`) — Developer sees it on the
+  (`{{TAI_CLI}} git-pr review <REPO> requestChanges "<required changes>"`) — Developer sees it on the
   PR directly. No parallel Jira-side transition/comment exists to keep in sync (rev 52
   removed that duplication, not just relocated it).
 - If review surfaces a spec gap rather than an implementation issue: routes it to

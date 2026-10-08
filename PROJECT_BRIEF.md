@@ -2697,7 +2697,9 @@ each new persona to help build the next.
   session to **read this brief first.**
 - **Persona/agent definitions:** markdown + YAML front-matter (parseable, human-editable,
   reviewable in PRs). A persona doc writes a CLI command as `{{TAI_CLI}} <subcommand> …`; `loadPersonaConfig`
-  fills the placeholder with the running install's own invocation, so the command works from any target project (TAI-465).
+  fills the placeholder with the running install's own invocation, so the command works from any target project (TAI-465). The filled-in command also carries
+  `--as <persona id>` (TAI-477), so a command copied from a persona's prompt tells the CLI who is acting; a command without it is
+  unattributed, and nothing guesses. Self-declared: it makes actions attributable, it does not prove who acted.
 
 ---
 
