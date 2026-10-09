@@ -207,10 +207,15 @@ whom — rather than working around a spec gap silently.
   a decision, not the end of the PR. Run `{{TAI_CLI}} git-pr comments <REPO> [PR-ID]` first and read ALL of
   them (a second reviewer's, anything after the last commit). For each: a **very minor** fix (a
   typo, wording, a rename; no behavior change) — fix it, run the tests, push, note it on the
-  PR, and merge without asking; otherwise file a ticket or skip it with a stated reason, and
-  tell the human. Anything **review-worthy** (a behavior change, a logic or parity finding, a
+  PR, and merge with `force=true` without asking (the push made the approval stale; see the merge
+  gate below); otherwise file a ticket or skip it with a stated reason, and tell the human. Anything **review-worthy** (a behavior change, a logic or parity finding, a
   design question) is **not** merged automatically — ask the human first; if unsure which, it is
   review-worthy. Verify a reviewer's factual claims before acting (they can be wrong).
+- **The merge gate (brief §5.4, TAI-462).** `git-pr merge` refuses unless the PR has the required approvals
+  **cast on its current commit**, no request-changes left standing, every test tier present on the ticket Done,
+  and green CI. When it refuses, get what is missing — do not work around it. `force=true` merges past it and
+  leaves a stamped override comment on the PR: use it on your own only for the very minor fix above, and
+  otherwise only when the human says so.
 - On a failed test: receives the subtask back at **In Progress** — which, under rev 52, is
   where it already sits (it never left In Progress in the first place); no new artifact is
   created for pre-deployment rework (see `workflows/story.md` — "Why no Defect subtask").

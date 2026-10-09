@@ -194,6 +194,9 @@ describe("renderGlobalSkillFiles", () => {
 
         test("tai-pr states the minor-vs-review-worthy policy: minor -> fix, test, push, merge; review-worthy -> ask first", () => {
             assert.match(prSkill(), /very minor/i);
+            // TAI-462: the very minor fix now goes through the stamped override, and the gate is described.
+            assert.match(prSkill(), /merge with `force=true`/);
+            assert.match(prSkill(), /cast on its current commit/);
             assert.match(prSkill(), /fix it, run the tests, push, note it on the PR, and merge/i);
             assert.match(prSkill(), /review-worthy/i);
             assert.match(prSkill(), /do NOT merge automatically/i);

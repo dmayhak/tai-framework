@@ -16,6 +16,7 @@ import {
     type PullRequestState,
     type PullRequestReviewer,
     type PullRequestRef,
+    type PullRequestActivity,
     type PullRequestComment,
     type CommitStatus,
     type CommitStatusState,
@@ -159,6 +160,28 @@ export function toPullRequestRef(pr: BitbucketPullRequestJson, repo: RepoId): Pu
         createdAt: pr.created_on,
         updatedAt: pr.updated_on,
     };
+}
+
+/** One entry of `GET .../pullrequests/{id}/activity`: an object with a single kind key beside
+ *  `pull_request`. Only the three kinds the merge gate reads are typed (TAI-462). */
+export interface BitbucketActivityJson {
+    readonly update?: { readonly date: string; readonly source?: { readonly commit?: { readonly hash?: string } | null } };
+    readonly approval?: { readonly date: string; readonly user: BitbucketUserJson };
+    readonly changes_requested?: { readonly date: string; readonly user: BitbucketUserJson };
+}
+
+/** Null for a kind the merge gate does not read (a comment, a task), and for an update that
+ *  carries no source commit. */
+export function toPullRequestActivity(entry: BitbucketActivityJson): PullRequestActivity | null {
+    if (entry.update) {
+        const hash = entry.update.source?.commit?.hash;
+        return hash ? { kind: "update", at: entry.update.date, sourceCommit: toCommitSha(hash) } : null;
+    }
+    if (entry.approval) return { kind: "approval", at: entry.approval.date, human: toHumanRef(entry.approval.user) };
+    if (entry.changes_requested) {
+        return { kind: "changesRequested", at: entry.changes_requested.date, human: toHumanRef(entry.changes_requested.user) };
+    }
+    return null;
 }
 
 const COMMIT_STATUS_STATE: Record<BitbucketCommitStatusJson["state"], CommitStatusState> = {

@@ -63,6 +63,7 @@ import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
+import { checkMergeGate, DEFAULT_REQUIRED_APPROVALS } from "../git/merge-gate.js";
 import { sameHuman } from "../personas/roster.js";
 import {
     EPIC_CHILD_ISSUE_TYPES,
@@ -76,12 +77,6 @@ import {
 
 const OPEN_STATUSES: readonly Status[] = [Status.ToDo, Status.InProgress, Status.InReview];
 
-/** Matches the pre-rev-52 CodeReview-Done semantics: exactly one reviewer's approval was
- *  sufficient by default. A project with a real multi-approver policy sets
- *  `requiredApprovals` explicitly (rev 52, TAI-159 ADR — TAI-side config, not a live
- *  Bitbucket branch-restrictions query; see the ADR for why). */
-const DEFAULT_REQUIRED_APPROVALS = 1;
-
 export interface FindReadyWorkDeps {
     readonly workTracker: WorkTracker;
     readonly taiRoot: string;
@@ -94,7 +89,7 @@ export interface FindReadyWorkDeps {
     // Narrowed to exactly what's used (same `Pick<GitHost, ...>` pattern as `git-pr.ts`'s
     // `resolvePullRequestId`) rather than the full `GitHost`, so a caller/test double
     // doesn't need to implement PR-CRUD/review/merge just to supply this dependency.
-    readonly gitHost?: Pick<GitHost, "listPullRequests" | "getCommitStatuses">;
+    readonly gitHost?: Pick<GitHost, "listPullRequests" | "getCommitStatuses" | "listPullRequestActivity">;
     readonly repos?: readonly RepoId[];
     /** rev 52 (TAI-159 ADR): required approval count for readyToTest/readyToMerge.
      *  Defaults to 1 (the pre-rev-52 single-reviewer behavior) when omitted. */
@@ -618,9 +613,14 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
             ...testTierLinked,
         ];
 
-        const approved = mergeCandidates.filter((c) => approvalCount(c.pullRequest) >= requiredApprovals);
+        // TAI-462: the same merge gate `git-pr merge` applies (fresh approvals, no standing
+        // request-changes, test tiers Done), then CI. A PR with no approval at all is skipped
+        // before the gate's own reads -- it cannot pass, and most open PRs are in that state.
+        const gateDeps = { gitHost: deps.gitHost, workTracker: deps.workTracker, requiredApprovals };
         const merge: ReadyToMergeCandidate[] = [];
-        for (const c of approved) {
+        for (const c of mergeCandidates) {
+            if (approvalCount(c.pullRequest) < requiredApprovals) continue;
+            if (!(await checkMergeGate(gateDeps, c.pullRequest, c.issueKey)).ok) continue;
             const statuses = await deps.gitHost.getCommitStatuses(c.pullRequest.repo, c.pullRequest.sourceCommit);
             if (isGreen(statuses)) merge.push(c);
         }
@@ -892,7 +892,7 @@ async function computeStaleLivingDocs(
 export interface FindReadyPRWorkDeps {
     readonly workTracker: WorkTracker;
     readonly projectKey: string;
-    readonly gitHost?: Pick<GitHost, "listPullRequests" | "getCommitStatuses">;
+    readonly gitHost?: Pick<GitHost, "listPullRequests" | "getCommitStatuses" | "listPullRequestActivity">;
     readonly repos?: readonly RepoId[];
     readonly requiredApprovals?: number;
     readonly currentHuman?: HumanRef;
