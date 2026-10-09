@@ -4,1029 +4,9 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-07 (rev 80 — **TAI-348/450: `/tai-kickoff` — the entry point for project initiation.** A
-> seventh global skill (Claude Code and Gemini CLI), backed by a read-only `kickoff [INITIATIVE]` command, loads Perry
-> with her Project initiation behavior and a short briefing of the Epics and Kickoff Stories that already exist, so
-> she dedups before creating. It needs no ticket and works on any project (a second initiative included), not only a
-> fresh one. It closes the one gap where a persona's only entry point was a plain-language request, and replaces the
-> "ask your assistant to act as Perry" fallback in `/tai-ready` and `/tai-init`. Rejected: `/tai-work` with no key
-> (changes its contract) and folding it into `/tai-groom`.
+> **Last updated:** 2026-10-09 (rev 81). The revision history is in `CHANGELOG.md`; this file states what is
+> true now. A change to the brief adds an entry there, not here.
 >
-> Prior: rev 79 — **TAI-443: a Kickoff can record a deliberately skipped subtask type.** A
-> first-line `Skipped: <type>[, <type>] — <reason>` comment on a Kickoff Story (new §3.9 marker) silences that type in
-> `/tai-ready`'s "Subtasks ready to create" hint. Perry or a human may add one with no confirmation gate (reversible;
-> it only silences a hint); re-read on every call, never cached. Kickoff Stories only.
->
-> Prior: rev 78 — **TAI-425/428: `git-pr review-prep` — the review flow loads the Code
-> Reviewer through the CLI.** A read-only command, `git-pr review-prep <REPO> [PR-ID]` (no issue key), is now the
-> entry point of `/tai-pr`'s review flow, the way `work` and `groom` load their personas: it refuses up front if the
-> acting human is not on the "PR Reviewers" roster, then prints Cole's own instructions (`loadPersonaConfig`, so a
-> team's extension applies) under a `# Persona: Cole (code-reviewer)` heading, the PR's details and linked ticket,
-> the review steps for THIS PR (findings JSON schema, `render-findings` then stop-and-wait, the numbered options,
-> the exact `comment-findings`/`review` commands) and the diff, last. The steps moved out of the skill body into
-> code so there is one copy and they sit in the output the session just read (the TAI-423 class of failure). The
-> diff is local git as before (no GitHost change); the whole output is budgeted (`OUTPUT_BUDGET`, 24,000 characters)
-> with the diff last and a visible "DIFF NOT SHOWN IN FULL" edge listing the exact per-file (or 300-line-chunk)
-> commands. Self-review is a note, never a block (§4, open item 8.3). ADR Confluence page 52559873 (rev 2).
->
-> Prior: rev 77 — **TAI-389/395: `/tai-groom` — backlog grooming with Perry.** A sixth
-> global skill (Claude Code and Gemini CLI) loads Perry with a computed, read-only briefing of the board and
-> needs no ticket (`groom [EPIC-KEY]`; the optional epic key narrows every section to that epic). It
-> deliberately **reverses the 2026-08-25 "TAI builds no planning command" decision**: the recurring planning
-> meeting stays the human's own cadence, and this is what Perry brings to it. Eight numbered sections: epics
-> with nothing under them, Backlog Kickoff Stories awaiting sequencing, Backlog tickets whose depends-on blockers
-> are all done (promotion candidates), flagged tickets in every open status, approved epics with nothing
-> scheduled, Backlog tickets untouched past `TAI_STALE_BACKLOG_DAYS` (default 60), tickets TAI cannot read
-> (unmapped Jira type) and tickets that need an assignee (the TAI-416 ranked list). **Authority:** Perry creates
-> Backlog tickets, depends-on links and phase labels on her own; every Backlog → To Do move, epic approval
-> (scheduling a first wave counts), flag/unflag, Cancel and assignment is proposed as a batch and applied only
-> after the human confirms. Each session she also reconciles the work-breakdown document's Epic table with the
-> board by reading, not by parser; the document wins. **A human-gated item** (DesignReview, EpicReview, UAT) moves
-> to To Do the moment its last blocker finishes, by the persona that finished it (new §4 bullet; every persona
-> doc points at it). Sections (d) and (f) filter in memory over an exhaustive read of the open tickets.
-> ADR Confluence page 48463873 (rev 5).
->
-> Prior: rev 76 — **TAI-389/394: Perry may create `Kickoff` and every live subtask
-> type, `SpikeTask` included.** Found in the DesignReview of the grooming ADR (Confluence page 48463873, now
-> rev 5): `personas/pm.md`'s `create` grant omitted `Kickoff` (which she already creates per Epic) and covered
-> only five subtask types, contradicting the ADR's "tasks already known". Human decision: if the PM knows a
-> task is needed she should be able to create it. This aligns the grant with the TAI-83 rule that any persona
-> may create any subtask once it has real, in-context judgment that it is needed (not blind pre-population);
-> the owner stays the type's fixed persona, a `SpikeTask` still needs its persona named (TAI-409), everything
-> she creates lands in Backlog, and the retired `CodeReview` stays out. A test pins the grant.
-> `workflows/kickoff.md`'s "Perry never creates `EpicReview`" is now scoped to the initial Kickoff moment.
-> `TAI_STALE_BACKLOG_DAYS` is documented in `.env.example`.
->
-> Prior: rev 75 — **TAI-416/419: ranked assignee suggestions with reasons.**
-> With 2 or more humans on a persona and nobody named, `issue create` now makes the ticket UNASSIGNED and
-> prints a ranked list (the session's human pinned first, "leave unassigned" always a choice) instead of
-> silently assigning the session's human; the create-time rev 54 shortcut is removed, the claim and
-> transition-time one stays. A named person (`assignee=`) always wins. The order is strict tiers —
-> continuity (same Story, a linked ticket, the same Epic; a Bug's Dev), then area knowledge from ticket
-> data (Done tickets with the same Component/labels within `TAI_AREA_WINDOW_DAYS`, default 90), then
-> open-ticket count — every line with its reason, and the author of work under review demoted, never
-> excluded. `IssueFilter` gains `component` and `labels`; a new `issue suggest <KEY>`, a `/tai-ready`
-> "needs an assignee" suggestion, and the transition-gate rejection all use the same ranking, computed
-> live and never stored. ADR Confluence page 50692097 (human-decided, 2026-10-05).
->
-> Prior: rev 74 — **TAI-407/409: the documented persona defaults are now
-> real.** Nothing in the code applied them: a bare create left the persona empty for every ticket
-> type, and `issue create` resolves an assignee only when a persona is set. Now an omitted persona
-> falls back to `SUBTASK_OWNER[type]` for a subtask and PM for every story-level ticket and Epic —
-> a shared pure `defaultPersonaFor`, called by `issue create` BEFORE assignment and applied by
-> `WorkTracker.createIssue` on both backends (an explicit `persona=` always wins). Only `SpikeTask`
-> has no default: the session asks the human which persona before creating it, and a create that
-> still ends persona-less is made anyway (a ticket is never lost) with a loud warning naming
-> `issue update <KEY> persona=`. Human-decided on TAI-408.
->
-> Prior: rev 73 — **TAI-397/400: session learnings that lived only in private
-> memory are now stated in TAI's own docs.** A new §4 bullet records how personas write Confluence
-> page content (one unwrapped line per paragraph/bullet, sequential list numbers, the `content=$(cat
-> file)` quoting rule); the authoring personas point at it; Ada's and Aria's real-links principle
-> also covers linking a doc to the parent Story; the setup checklist and `/tai-init` skill say a
-> Gemini CLI session needs a full restart to pick up refreshed skills and explain the `TA`/`TAI`
-> Confluence space alias; `CLAUDE.md` says to use the TAIT scratch project for throwaway tickets.
-> No behavior change.
->
-> Prior: rev 72 — **TAI-390: `flagged` is a first-class `Issue` field on
-> both backends.** Work waiting on something external with no ticket is marked with Jira's Flag
-> (impediment), read and set through `Issue.flagged`/`IssuePatch.flagged` (`issue update <KEY>
-> flagged=true|false`): the Jira backend finds the "Flagged" custom field BY NAME like the Persona
-> field (a site without one degrades — reads omit it, a set/clear is rejected with a clear
-> message), the filesystem backend stores a boolean. `issue get`/`search`/`update` show a
-> "🚩 flagged" marker; `/tai-ready` is hybrid — a flagged `To Do` item leaves Ready Work for a
-> numbered "On hold (flagged)" section, a flagged `In Progress` item stays put with the marker
-> (human-decided on TAI-390, TAI-389 ADR decision 8).
->
-> Prior: rev 71 — **TAI-374/387: Epics are created as they are agreed
-> (early Epic shells), fleshed out in Backlog, and scheduled by Perry; `To Do` now cascades
-> upward and a Kickoff Story never moves its Epic.** Human-directed, ADR Confluence page
-> 47349832 (rev 4). The serial project-level Kickoff left every agreed Epic invisible on the
-> board until EpicReview, Requirements/UX and the review gate had all finished. Now: Ada creates
-> each Epic as a **Backlog shell** as it is agreed during EpicReview (a narrow `create: Epic`
-> grant; the shell IS the proposal) and records its Jira key in the work-breakdown doc in the
-> same step (the doc stays canonical, with a Jira-key index column). Perry — not Ada — gives
-> every Epic its per-Epic Kickoff Story and the Stories/tasks already known, in Backlog, during
-> grooming; an Epic is not left empty. **Epic status now describes readiness:** `Backlog` =
-> proposed and being fleshed out, `To Do` = fleshed out and approved to build (its Kickoff
-> passed its PM+UX gate and a human agreed; the persona asks first — convention, no code gate),
-> `In Progress` = building. An Epic's Stories do NOT all move to `To Do` with it: Perry
-> schedules a first wave and leaves later phases / blocked / externally-waiting work in Backlog.
-> The shared cascade gate (`cascade-gate.ts`, `upwardCascadeTarget`) changes accordingly: a
-> **Kickoff Story starting work, or being scheduled, never moves its parent Epic**; every other
-> child still does, and a **subtask reaching `To Do` now schedules its Backlog parent, which
-> schedules its Backlog Epic** (new upward To Do cascade; only a Backlog parent moves).
-> Scheduling a first-wave non-Kickoff Story therefore also approves a Backlog Epic, so Perry
-> asks the human first. Rev 28's sentence below ("`In Progress` is derived … any child that has
-> left Backlog") was never what the code did (the cascade fires on `In Progress`/`In Review`
-> only) and is rewritten. The Kickoff review gate is clarified, not changed: it governs the
-> project-level Kickoff Story's own Done transition and the Stories/Spikes spawned from it;
-> Epic shells and per-Epic Kickoffs sit outside it.
->
-> Prior: rev 70 — **TAI-354: Kickoff gains a mandatory,
-> human-gated `EpicReview` step — Ada's proposed Epic breakdown is probed with the
-> human, epic by epic, not rubber-stamped.** Found live on the same EXA stress-test as
-> revs 67–69: after Ada's `Research` subtask produced the work-breakdown doc (proposing
-> EXA's Epic breakdown) and was marked Done, the very next thing surfaced as ready to
-> work was a Kickoff-subtask-level `ArchitectureDesign` deep-dive (rev 69's own
-> mechanism) — with no step in between where the human actually discussed the proposed
-> breakdown itself. The only mechanically enforced Kickoff checkpoint (the PM+UX
-> Designer Review Gate, rev 11) converges the PRD/UX-flow *artifacts*, not the epic
-> list; nothing stopped deeper subtasks from being created and surfaced before that
-> big-picture conversation happened. Human-confirmed: reading the Confluence doc and
-> clicking "looks good, approve" isn't rigorous enough on its own — real probing, epic
-> by epic, catches issues a rubber-stamp read misses.
->
-> Fixed: added a new, mandatory `EpicReview` subtask to Kickoff (`story-schema.ts`),
-> sitting between `Research` and `Requirements`/`UxDesign` in the precedence graph
-> (`Research` no longer unblocks either directly). Owned by Analyst, but registered in
-> `ALWAYS_HUMAN_GATED_SUBTASKS` — same mechanism as `UAT` (`personas/tester.md`): Ada
-> drives the actual discussion, going through the proposed breakdown one epic at a time
-> and revising the *same* work-breakdown doc in place, but only a human stakeholder can
-> transition the subtask to Done — no `Approved:` comment convention, the transition
-> itself is the signal. Deliberately a *different* gate from the existing PM+UX Kickoff
-> Review Gate: that one converges PRD/UX-flow content once it exists; `EpicReview` is
-> upstream of both, settling the epic/Story shape itself before PRD/UX work is built
-> against it.
->
-> **Generalized to every Epic decomposition, not just the initial project-level
-> Kickoff (human direction, discussed live):** `personas/pm.md` item 5 ("Epic
-> decomposition, invoked directly on an existing Epic") previously had Perry decompose
-> an Epic into Stories solo, no separate proposal required. Since Epics can't hold
-> subtasks in TAI's schema, the human's own proposed resolution was adopted over
-> extending that schema: **every Epic that needs decomposing gets its own Kickoff-type
-> Story** — the same container the project-level bootstrap uses, just scoped to one
-> Epic — reusing the `Research` → `EpicReview` → optional `Requirements`/`UxDesign`
-> sequence above rather than inventing a second mechanism for the narrower pass.
->
-> New Jira sub-task issue type `EpicReview` provisioned on both TAI's and EXA's Jira
-> projects (brief §5.2's "one native sub-task issue type per `SubtaskType`"
-> convention). `analyst.md` gained a new item 3 (renumbering items 3–6 to 4–7) plus
-> `create`/`workOn`/`alwaysHumanGated` grants — deliberately excluded from `complete`,
-> mirroring `tester.md`'s UAT exclusion; `pm.md` item 5 rewritten; `workflows/kickoff.md`
-> gained the `EpicReview` gate section and updated precedence/output/status-transition
-> text. Five new tests (`story-schema.test.ts`, `autocompletion.test.ts`) lock down the
-> new precedence edges and `hard` checkpoint classification; 758/758 passing, `tsc
-> --noEmit` clean.
->
-> Prior: rev 69 — **TAI-353: Ada creates `ArchitectureDesign`
-> herself when she recognizes the need, instead of leaving it as an unticketed
-> question.** Found live on the same second target project, same day as rev 68: Ada,
-> doing Kickoff-adjacent discussion-prep research, surfaced a genuine design trade-off
-> (a hierarchy-representation decision) and explicitly named "the Architect-level
-> conversation this doc was built to ground" as the next step — but never created a
-> ticket for it. `analyst.md` item 5 already had the general TAI-83 mechanic for Ada
-> creating `Investigate` herself (rev 57/TAI-317); it just never got generalized to
-> `ArchitectureDesign`, even though it's a valid Kickoff-level subtask type and her own
-> analysis showed she'd already formed the real, non-speculative judgment TAI-83
-> requires. Added the missing `Subtask:ArchitectureDesign` create grant (create only,
-> not `workOn`/`complete` — ownership stays Architect's, mirroring `pm.md`'s identical
-> grant), generalized item 5's language to cover both subtask types with the concrete
-> command, and cross-referenced from item 2 (Kickoff discovery) where the triggering
-> scenario actually happened.
->
-> Prior: rev 68 — **TAI-352: Ada's Kickoff discovery now does real
-> elicitation, and creates the project's Confluence home page.** Found live on the same
-> second target project: Ada read the project's own pre-existing rough design docs, did
-> external research, and produced a full Epic decomposition — all without ever having an
-> actual conversation with the human about purpose, requirements, or scope. Root cause:
-> `analyst.md` item 2 named "requirements elicitation" as something Ada performs, but
-> only the *separate* market/competitive/domain research activity had an explicit
-> opt-in ask-first gate (rev 59) — elicitation itself had no equivalent mandate for when
-> or how rigorously it happens. Fixed: Ada's first move at Kickoff discovery is now a
-> real conversation about purpose/requirements/scope, explicit and prior to synthesis.
-> **New Core principle: pre-existing project docs are a discussion-facilitation device,
-> not settled input** — human-confirmed nuance: such docs may reflect a prior version of
-> the project's thinking, not what's actually being built now; Ada reads them first only
-> to ground good questions, never as a substitute for confirming current intent.
-> Right-sized output still applies — not a mandate for exhaustive interrogation on every
-> Kickoff, just that real elicitation happens before analysis is finalized.
-> Market/competitive/domain research stays a separate, unchanged opt-in gate. Second,
-> related fix (human direction): Ada's existing Project Home Page capability (TAI-300)
-> was purely periodic/on-demand with no explicit trigger — a brand-new project's
-> Confluence space would sit on the default scaffold indefinitely. Now created during
-> Kickoff discovery itself, the natural first moment enough is known to make it
-> meaningful; ongoing refresh cadence is unchanged.
->
-> Prior: rev 67 — **TAI-351: PM's Kickoff subtask-creation
-> authority fixed — same contradiction shape TAI-317/rev-57 already fixed once, just
-> missed for Kickoff's `Research`/`UxDesign` case.** Found live setting up a second
-> target project: Perry created the Epic + Kickoff Story, then explicitly deferred
-> creating `Research` to a separate Ada invocation — even though her own reasoning had
-> already named it as needed, and the prior text cited TAI-83 as the rule in the same
-> sentence that described doing the opposite of it. `personas/pm.md` item 1 now has Perry
-> create `Research`/`UxDesign` directly once she's judged them needed (both immediately
-> startable, no precedence blocking either), under the same TAI-83 dedup-search-first
-> mechanics as item 7's `Investigate`/`ArchitectureDesign` case — new `Subtask:Research`/
-> `Subtask:UxDesign` create grants added to match. `Requirements` stays different (Perry's
-> own type, but precedence-blocked behind `Research`, so created naturally at PRD-drafting
-> time instead); `ArchitectureDesign` stays a later, situational call (judging it this
-> early would be speculation, not real judgment) — already covered by the existing item 7
-> language. `personas/analyst.md`/`personas/ux-designer.md`/`workflows/kickoff.md` updated
-> to match (dedup-search-first fallback if Perry hasn't already created it, same pattern
-> `analyst.md`'s own `Investigate` handling already uses). One real bug caught in
-> self-review: the actual `issue create` vocabulary for `UxDesign` is `ux-design`
-> (hyphenated), not `uxdesign` — a wrong value would have been a TAI-135-class bug
-> (a command that can't actually run) if shipped uncaught.
->
-> Prior: rev 66 — **§8 items 35/36 resolved: TAI-283/284 (the
-> aggregate competitor-comparison Spikes) shipped.** Synthesized from all nine
-> TAI-6/138-155 persona-review discussions' own competitor research (each turn already
-> read the relevant BMAD-METHOD/GSD/Spec Kit source directly) rather than a fresh
-> investigation. TAI-283: per-persona job/scope audit with an explicit like/dislike call
-> per competitor (Confluence page 41123841). TAI-284: whole-system comparison — where TAI
-> excels (Jira/Confluence/git-host as the real system of record vs. both competitors'
-> local-file state; the explicit permission/checkpoint model; the two-axis owner model;
-> rolling-wave decomposition vs. Spec Kit's rejected clarification cap; structured
-> git-host-native review findings), where it falls short (adversarial review discipline
-> was missing until this review effort itself; no AI/LLM-feature-building support,
-> genuinely out of v1 scope; quality-gate/NFR-assessment depth for testing is a shared
-> gap, not TAI-specific; heavier ticket-creation ceremony than a single-developer tool,
-> an honest trade-off not a flaw; the whole review's designs are reasoned but not yet
-> battle-tested) — and four ranked improvement candidates, the top one being simply to
-> execute the 14 deferred clean-session test spike-tasks (Confluence page 41156609). Both
-> Spikes transitioned Done, PM-confirmed Confluence-only outcome per `workflows/spike.md`
-> — no new Story spawned, since actionable findings already landed persona-by-persona
-> during the review itself.
->
-> Prior: rev 65 — **Tessa's (Tester) persona review concludes
-> (TAI-154/343), the eighth full persona turn under TAI-6/138-155.** Mechanical audit
-> came back clean (no stale prose, all `confluenceOutputs` described, rev-52/TAI-314/315/
-> 316 test-tier-stays-open behavior consistent across `developer.md`/`story.md`/
-> `ready.ts`, concrete `cli.ts` invocations already present throughout). TAI-135/TAI-132
-> also clean. Neither competitor has a dedicated Tester/QA agent to compare Tessa against
-> directly — BMAD-METHOD's `bmad-qa-generate-e2e-tests` is a lightweight workflow skill
-> that explicitly defers quality-gate/NFR-assessment depth to a separate heavier "Test
-> Architect" module rather than building it in (same split-off-the-advanced-stuff pattern
-> Dana's turn found); GSD has no single Tester agent either, but its `verify-work`
-> workflow has a genuinely rich, concrete UAT mechanic worth adapting. One design change,
-> human-confirmed: **Tessa's UAT session gains a concrete interaction mechanic**, adapted
-> from GSD's `verify-work` — one scenario at a time, states what SHOULD happen and asks
-> the stakeholder to confirm or describe what's different; a plain yes/empty reply is a
-> pass, anything else is logged as an issue with severity **inferred from the
-> stakeholder's own wording, never asked directly** (e.g. "crashes" → blocker, "doesn't
-> work" → major, "works but slow/weird" → minor, "looks off" → cosmetic; defaults to
-> major when genuinely unclear). This replaces a previously-vague "authors the scenarios
-> and drives the session" with an actual described mechanic — the stakeholder's own
-> UAT sign-off authority (§3.3) and the existing rejected-UAT routing (Developer vs.
-> PM/Requirements) are both unchanged; this only concretizes *how* Tessa runs a session
-> she already owned driving.
->
-> Prior: rev 64 — **Cole's (Code Reviewer) persona review concludes
-> (TAI-153/341), the seventh full persona turn under TAI-6/138-155.** Unlike Dario's/
-> Dana's clean turns, the mechanical audit found two real, concrete bugs — both fixed:
-> - **Stale `confluenceOutputs` front-matter in `code-reviewer.md` itself.** Still
->   declared `review-notes` as a Confluence output type, contradicting the body's own
->   rev-52 (TAI-159 ADR) rewrite, which routes review notes to a real PR comment via
->   `comment-findings`, never Confluence — the rev-52 rewrite (TAI-160) updated the rest
->   of the file but missed this one block. Fixed: `confluenceOutputs: []`, with a comment
->   explaining why.
-> - **Three stale "not yet built" annotations in this brief** (§5.4, §8 item 20), all
->   describing the same rev-52/TAI-159 CodeReview-retirement redesign as unimplemented —
->   it has actually been fully live in code since TAI-160 shipped (`ready.ts`'s
->   `readyToReview`/`readyToTest`/`readyToMerge`, `cli.ts`'s `git-pr review`,
->   `git/pr-reviewers.ts`). 11 revs stale (52→63); missed by TAI-171/177's earlier
->   doc-staleness pass, which touched `story.md`/`bug.md`/`dependencies.md` but not this
->   file. Fixed: reworded to "Implemented (rev 52, TAI-160)".
->
-> TAI-135/TAI-132's failure modes both came back clean (concrete `cli.ts` commands already
-> present; cross-references in `developer.md`/`story.md`/`pm.md` already consistent with
-> rev 52).
->
-> One design change, human-confirmed after comparing against competitors: **Cole gains an
-> explicit adversarial default stance.** Both BMAD-METHOD's `bmad-code-review` (parallel
-> Blind Hunter/Edge Case Hunter/Acceptance Auditor layers) and GSD's `gsd-code-reviewer`
-> ("FORCE stance: assume every submitted implementation contains defects," named
-> anti-patterns for going soft) independently converge on this — Cole's prior framing was
-> neutral/collaborative ("verify... is sound") with no explicit instruction to resist the
-> pull toward rubber-stamping. New Core principle: assumes the diff has a defect until
-> traced through and ruled out; names concrete anti-patterns to resist (stopping at
-> surface issues, treating passing tests/compiling as evidence of correctness, softening a
-> finding's `severity` to avoid seeming harsh).
->
-> Prior: rev 63 — **Dana's (DBA) persona review concludes
-> (TAI-152/338), the sixth full persona turn under TAI-6/138-155.** Mechanical audit
-> came back clean again (no stale prose, all `confluenceOutputs` described, concrete
-> `cli.ts` invocations already present in Handoff). Unlike every prior turn, neither
-> competitor has a DBA equivalent to compare against — BMAD-METHOD folds database/schema/
-> migration decisions into a one-time Architecture solutioning pass with no specialized
-> reviewer; GSD has no dedicated agent either. Decisions instead came from real DBA
-> practice. Four changes:
-> - **Reversibility stated as explicitly as compatibility — two different axes.**
->   Compatibility is whether old application code still works against the new schema;
->   reversibility is whether the migration itself can be undone. A change can be one
->   without the other (backwards-compatible but irreversible is a common, non-
->   contradictory shape, e.g. a destructive backfill). Dana now states both, flagging the
->   exact point past which rollback isn't possible, feeding `personas/devops.md`'s
->   rollback runbook (already non-optional there) with information it previously had no
->   guaranteed source for.
-> - **Blocking vs. parallel sharpened from "judgment call" into a concrete default**:
->   backwards-compatible → parallel by default (old and new code both work against it);
->   backwards-incompatible → blocks, because it structurally needs the expand-contract
->   sequence (add → backfill → cut over → drop), which `Dev` must be sequenced against.
->   Stated as a default, not an absolute — Dana still states her reasoning since deploy
->   topology can change what "parallel" means.
-> - **New costed-option-package discipline for schema forks tied to unstated future
->   business direction** — **more ownership than Aria's/Uma's version of this same brief
->   §4 pattern:** rather than just flagging the fork, Dana proposes each realistic option
->   with its cost/effort now vs. the cost/risk of retrofitting later, plus a stated lean —
->   schema mistakes are unusually expensive to unwind compared to most code, which is why
->   this turn's version goes further than Architect's/UX Designer's own "notices and
->   routes" versions. The decision itself still isn't Dana's call (stays PM's/the human's,
->   same as elsewhere) — only the depth of the analysis she hands over differs. Same
->   TAI-83 mechanic as Aria's version to get it to PM (new `Subtask:Requirements` create
->   grant, mirroring `architect.md`).
-> - **Closes the file's own dangling "DBA vs. data-engineering split" open item** — filed
->   as a real Backlog Story (**TAI-337**) instead of left as prose. Explicitly deferred,
->   not decided: only becomes real once a target project has enough analytics/pipeline
->   surface to be a genuinely distinct workload, beyond TAI v1's current priority.
-> **Brief §4 itself sharpened** (peripheral awareness): future-direction/extensibility
-> noticing isn't limited to whatever's the explicit topic of the current ask — a persona
-> looking at a broader artifact (schema, decomposition, architecture) scans adjacent parts
-> of that same artifact already in view for the same costly-to-change-later risk, not just
-> the piece directly asked about. Applies to every future-direction-aware persona (Ada,
-> Aria, Uma, now Dana), not Dana-only — same right-sizing instinct as the rest of that
-> bullet, not a mandate to go auditing unrelated parts of the system.
-> This is the first review turn where Dana's Dev subtask needed the gitHost-permission-gap
-> workaround (persona reassigned to `pm`, TAI-317/TAI-324 precedent) — DBA has never held
-> `gitHost`.
-> Prior: rev 62 — **Dario's (Developer) persona review concludes
-> (TAI-151/334), the fifth full persona turn under TAI-6/138-155.** All changes landed
-> persona-local in `personas/developer.md` — no brief-level promotion needed. Mechanical
-> audit against the three recurring bug classes plus TAI-135/TAI-132's failure modes came
-> back clean this time (no stale prose found, unlike the first four turns) — the review
-> instead compared Dario directly against BMAD-METHOD's Amelia (dev-story workflow) and
-> GSD's `gsd-executor`. Four changes:
-> - **Unit-tests-are-part-of-Dev reworked to explicit red→green→refactor ordering**: write
->   the failing test first, write minimal code to pass, refactor while keeping tests green
->   — adopted from BMAD's Amelia, who mandates the same ordering.
-> - **New deviation-handling discipline for mid-implementation discovery**: a small,
->   contained issue (in-reach, no new dependency) gets fixed inline and noted in
->   implementation notes, whether it's a bug in the code being touched or a correctness/
->   security gap the change needs to actually work. A bigger issue outside the current
->   Story/Bug's actual scope doesn't get silently fixed (scope creep) or silently dropped —
->   Dario drafts a Bug proposal and hands it to PM to confirm/create, reusing
->   `workflows/bug.md`'s Resolved D7 PostDeploy-minor propose-then-PM-confirms mechanic
->   rather than inventing new machinery. The structural backstop against scope quietly
->   growing isn't this discipline alone — Cole's existing "reviews against the spec, not
->   personal style preference" principle already catches anything that made it into the
->   diff without being traceable to scope. Adapted from GSD's Rule-1/2/3 auto-fix vs.
->   Rule-4 ask-for-architectural-changes taxonomy, simplified to fit TAI's own Bug-ticket
->   vocabulary rather than importing GSD's separate deferred-items.md mechanism.
-> - **New never-adds-a-new-package-dependency-unilaterally gate**: flags a needed library
->   the spec didn't call for to the human before adding it, naming realistic alternatives
->   and a stated lean — the same alternatives-first discipline TAI-107 established for
->   Architect — rather than just asking "can I add X?" The human decides, including
->   whether to have that conversation with Architect out-of-band first. Adapted from
->   BMAD's Amelia, who halts for user approval before any dependency beyond the story's
->   own spec.
-> - **New 3-consecutive-failed-attempts stuck-approach rule**: after 3 failed attempts at
->   making an approach work, Dario stops, documents what was tried and why it didn't work,
->   and either raises a `SpikeTask` or asks the human directly. Explicitly distinct from
->   the brief's own retry-once-then-escalate rule for a failed *checkpoint* (§4/§5.4) — a
->   different kind of failure, not a contradicting number. Adapted from both competitors
->   (BMAD: 3 consecutive implementation failures → HALT; GSD: 3 auto-fix attempts → stop
->   and document).
-> **Future-direction/extensibility awareness (brief §4) was explicitly considered and
-> declined for Dario** — he doesn't decide product scope or architecture, and the new
-> dependency-gate and out-of-scope-discovery mechanics above already route anything with
-> real future-direction weight up to Architect or the human rather than Dario deciding it
-> himself. No permission-block changes — the Bug-propose mechanic reuses the existing
-> PM-confirms pattern (same as DevOps in the PostDeploy precedent) rather than granting
-> Dario a new `create` right, and this is the first persona turn that didn't need the
-> gitHost-permission-gap workaround (TAI-324/331 both did) — Dario already holds `gitHost`
-> from TAI-33/34 (createPullRequest) and TAI-159/rev 52 (mergePullRequest).
-> Competitor research this session: BMAD-METHOD's Amelia (`bmad-agent-dev`/`bmad-dev-story`
-> skills) and GSD's `gsd-executor` agent, read directly — feeds TAI-283/284.
-> Prior: rev 61 — **Uma's (UX Designer) persona review concludes
-> (TAI-150/331), the fourth full persona turn under TAI-6/138-155.** All changes landed
-> persona-local in `personas/ux-designer.md`; §3.7's shared elicitation-escalation posture
-> gains a third confirmed instance (no new brief-level mechanics needed, since Uma's version
-> is the same shape PM's/Ada's already established). Four changes:
-> - **New Design System capability** (living doc, may be scoped): establishes the project's
->   baseline visual-identity/design-token reference (Brand & Style, Colors, Typography,
->   Layout & Spacing, Elevation & Depth, Shapes, Components, Do's and Don'ts), assessed
->   against the target project's real shape the same way Architect's Architecture Overview
->   is (include/reframe/N/A-with-reason). Adapted from BMAD-METHOD's DESIGN.md/EXPERIENCE.md
->   split — Uma's existing `ux-flow`/`story-ux-detail` outputs already covered the
->   EXPERIENCE (behavior) side; `design-system` is the new DESIGN (visual identity) side.
->   Deliberately **not** forced into a single global doc the way Architecture Overview/
->   Project Home Page are — a genuinely distinct sub-area (e.g. an admin section with its
->   own deliberately different look) gets its own scoped doc that links to and states what
->   it overrides from its parent; this actually restores the framework's own *default*
->   multi-instance granularity (brief §4 rev 11) rather than importing the "one per project"
->   exception. First checks for a business-supplied design-system extension before creating
->   her own. Genuine undeclared drift is a conflict, resolved via the same TAI-83
->   dedup-search-then-comment-or-subtask mechanic Architect's altitude-inheritance principle
->   uses — reused, not reinvented.
-> - **"Elicits, doesn't impose"** — new Core Principle, same shape as `personas/pm.md`'s
->   "Elicitation, not direction": never volunteers a color, pattern, or visual direction
->   unprompted, the vision being drawn out is the human's. Shares §3.7's elicitation-
->   escalation posture, now confirmed for a third persona.
-> - **Concern-scan broadened**: the old "empty/error/loading states" check widens into a
->   fuller UX-carrying-concerns scan (accessibility, i18n, dark mode, offline, input
->   modalities, notifications, …), adapted from BMAD's concern-scan list, inferred from
->   context rather than force-applied to every screen (same right-sizing instinct as Ada's
->   ambiguity-coverage checklist).
-> - **Surface closure** — new completeness bar, adapted from BMAD's IA-closure test: every
->   stated need has a surface, every surface has a journey; when closure fails, probe, never
->   invent. Same role Aria's load-bearing bar and Ada's ambiguity checklist play for their
->   own personas.
-> **Future-direction/extensibility awareness (brief §4) was explicitly considered and
-> declined for Uma** — her own new surface-closure bar and the design-system parent/child
-> override pattern already give her a way to flag "this assumes single-item only" without a
-> separate mechanic, and the brief already frames this as a scope/requirements question that
-> stays Ada's/Perry's call, not something UX flow work should re-raise on its own. One real
-> stale-wording bug caught and fixed pre-review: the Extension point section still said
-> "missing-state discipline" after the underlying principle was renamed/broadened.
-> Competitor research this session: BMAD-METHOD's Sally (UX Designer) skill and GSD's
-> UI-phase workflow/UI-SPEC template, read directly — feeds TAI-283/284.
-> Prior: rev 60 — **Aria's (Architect) persona review concludes
-> (TAI-149/328), the third full persona turn under TAI-6/138-155.** Closes the
-> future-direction-awareness thread §4/rev 59 explicitly reserved for Architect: her own
-> version fires only during Kickoff-early or Story-level `ArchitectureDesign` (not
-> Feasibility's time-box, not the WBS batch scan), she asks the human directly rather than
-> routing through PM/Ada, and the answer dual-records — grounding context in her own ADR,
-> plus a `Requirements` subtask handed to PM (TAI-83 exception, since the PRD isn't her own
-> output type) for the Future Considerations entry. Also resolves §3.7's other open
-> parenthetical (Architect + rolling-wave for system-level design): a Kickoff/Epic-level
-> `ArchitectureDesign` is her "full shape now" pass, and each Story's own
-> `ArchitectureDesign` inherits its decisions as **binding, read-only constraints** rather
-> than re-deciding them — a real conflict escalates to the human, never a silent override
-> (adapted from BMAD-METHOD's architecture-spine altitude-inheritance model). Three more
-> changes landed persona-local, no brief promotion needed: a concrete "is this actually
-> load-bearing" bar for when a design decision earns `ArchitectureDesign`/`Feasibility` at
-> all (adapted from BMAD's architecture-spine test), principle TAI-107 sharpened to require
-> showing alternatives + a stated lean rather than just posing an open question, and a new
-> "investigates before deciding" brownfield instinct (read the real code/conventions first,
-> don't invent fresh ones) — relevant since TAI is brownfield for anyone dogfooding it.
-> **§8 gets one stale-gap fix** (item 33: "Architect-owned architectural overview doc" was
-> still marked open in the brief's own prose — and misnamed the persona "Dario" instead of
-> "Aria" — even though its tracking ticket, TAI-281, was already closed Done back on
-> 2026-09-04 once TAI-307's `architect.md` Architecture Overview section shipped; the brief
-> entry itself was never updated to match, caught during this session's own read) and
-> **one new deferred item** (item 38: scaling
-> `DesignReview`'s gate depth to stakes, BMAD-style multi-lens review — explicitly punted to
-> v2/v3, **see TAI-327**, Story, Backlog). Competitor research this session reused the prior
-> session's BMAD-METHOD/Spec Kit clones (Winston the Architect's `customize.toml` and
-> `bmad-architecture` skill; Spec Kit's `plan` command/constitution-check gate) — read
-> directly again, feeding TAI-283/284.
-> Prior: rev 59 — **Ada's (Analyst) persona review concludes
-> (TAI-147/324), the second full persona turn under TAI-6/138-155.** Two principles
-> promoted from persona-local to shared, since each now applies to 2+ personas (same
-> promotion pattern as rev 58's rolling-wave): **§3.7 gains a new "Elicitation escalation
-> posture" block** — collaborative by default, escalating to direct questions and explicit
-> pushback on thin answers (an unmeasurable acceptance criterion, an unexamined assumption)
-> when a conversation isn't converging, calibrated to stakes — generalized from PM's PRD-
-> drafting posture (rev 58) to any elicitation-heavy persona work. **§4 gains a new
-> "Future-direction/extensibility awareness" bullet** — during Kickoff discovery,
-> decomposition, or refinement, a persona notices when the current scope touches a
-> genuinely costly-to-change-later decision and surfaces it as a scope/requirements
-> question (never an implementation choice — that stays the Architect's), inferring which
-> areas are probe-worthy from context rather than a fixed keyword table, asking the human
-> when unsure whether it's worth raising at all. Reserved for Analyst/Architect's own
-> reviews per rev 57/58's handoff note; Ada's mechanics land first, Aria's (Architect)
-> still to come. `personas/analyst.md` updated with both plus two Ada-specific additions
-> that didn't need brief promotion: research-on-demand (ask if/how much external research
-> to do, generalized beyond Kickoff, light source-noting, no new doc type) and a structured
-> ambiguity-coverage checklist for `Investigate` refinement (adapted from Spec Kit's
-> `clarify` taxonomy, right-sized to scope). Competitor research this session: BMAD-
-> METHOD's Deep Recon/Product Brief skills and Spec Kit's specify/clarify commands, cloned
-> and read directly (feeds TAI-283/284).
-> Prior: rev 58 — **§3.7 gains a new "Rolling-wave decomposition
-> depth: 'done' vs. 'done enough'" principle (TAI-147/148), the first concrete output of a
-> dedicated persona-by-persona review (TAI-6/138-155).** For a large Epic, decomposition
-> creates the full set of next-level shells immediately (visible shape end to end) but only
-> takes a subset to full depth right now — whatever the real dependency/readiness graph
-> shows as unblocked, not a fixed lookahead count TAI can't calibrate to a team's actual
-> capacity. Explicit pull-forward stays available (same posture as TAI-83's Eager Subtask
-> Creation), and a shallow item already known to need a refinement pass gets that subtask
-> created now too, parked in `Backlog` for visibility. No new status machinery — this is an
-> application of the existing `Backlog`/`To Do` split (TAI-292) as a deliberate
-> decomposition-depth strategy, previously undescribed as such. `personas/pm.md` (items
-> 4/5) and `personas/analyst.md` (item 4) both updated to the concrete mechanics.
-> Prior: rev 57 — **§8 item 13 fully resolved (TAI-317): subtask-
-> creation authority for `Investigate`/`ArchitectureDesign` now follows the general TAI-83
-> "Eager Subtask Creation" exception (`workflows/dependencies.md`) like every other subtask
-> type — no more type-specific carve-out.** `analyst.md`/`pm.md` previously said "regardless
-> of who flags it, the Analyst always creates `Investigate`," directly contradicting
-> TAI-83's own general rule (already referenced in `pm.md` item 1) that any persona active
-> on a Story/Bug with real in-context judgment may create any subtask type. Found live
-> twice on 2026-09-04 (TAI-280/300, TAI-281) — the human directed PM to create both
-> directly, then flagged the inconsistency for a dedicated persona-review session.
-> Resolved by dropping the carve-out: `analyst.md` item 5 and `pm.md` item 7 now let PM (or
-> Architect/Dev, mid-flight) create the subtask directly under the same dedup-search-first,
-> owner-still-Analyst mechanics every other TAI-83 case uses; `pm.md` gains explicit
-> `Subtask:Investigate`/`Subtask:ArchitectureDesign` `create` grants as the evidenced
-> cases, matching `developer.md`'s existing pattern for its own TAI-83 grants.
-> **§4 also gains a new principle: persona-produced artifacts/output types must be
-> designed to generalize to whatever future target project TAI manages, not left
-> TAI-specific** — raised live during TAI-307's architecture-overview-doc scoping;
-> `analyst.md`'s Project Home Page and `architect.md`'s Architecture Overview (both already
-> written this way) now cross-reference it as the standard to apply when scoping any new
-> output type. Both changes are documentation-only; no code changes.
-> Prior: rev 56 — **§8/`personas/pm.md`: the "flagged-live idea
-> becomes a real Backlog ticket" convention gets written down for the first time
-> (TAI-286).** Rev 55 (immediately below) captured seven open questions and, separately,
-> created real Backlog tickets for them (TAI-279-285) — following the same shape already
-> established by TAI-115/189/230, but that shape had never actually been documented
-> anywhere a persona is instructed to follow it (confirmed live: zero hits grepping every
-> `src/personas/*.md`/`src/workflows/*.md` file for the pattern). Human-flagged gap,
-> fixed same-session: `personas/pm.md` gains a new Core Principle — "Captures genuinely
-> open ideas as real Backlog tickets, not just brief prose or conversation-only notes" —
-> and §8's own preamble now states its scope explicitly: genuinely undecided DESIGN
-> questions stay here, anything scoped enough to investigate or build gets a real Jira
-> Story/Spike, backlinked from its §8 entry. Formalizes existing practice; no behavior
-> changes as a result.
-> Prior: rev 55 — **§8: seven new open questions captured live from
-> a human notes dump, none resolved here.** Priority-value alias mapping alongside TAI-116/
-> 179's issue-type-only alias work (§8 item 31); an Analyst-owned Confluence project "home"
-> page and an Architect-owned architectural-overview doc, both flagged as possible new
-> skills with undecided content/cadence (§8 items 32-33); keeping local `master`/`main`
-> fresh across multiple machines/checkouts — distinct from §8 item 8's worktree-swap design
-> and TAI-115's deferred worktree-concurrency Story (§8 item 34); a systematic per-persona
-> job/scope audit against GSD/BMAD-METHOD/Spec Kit's equivalent roles, and a follow-on
-> overall TAI-vs-competition comparison — both sized as a real investigation, not a brief
-> edit (§8 items 35-36); and extending the existing git-host out-of-band-human-edit posture
-> (§6/TAI-34 — "a human acting directly is authoritative, not fought, detected on next
-> refresh") to direct Jira/Confluence edits, named as PM/Analyst's biggest exposure (§8
-> item 37). An eighth note — "link real tickets/docs, not just text" — was NOT added here;
-> it's already the `missing-links` check in `tai-audit` (TAI-254 ADR), so it's a sweep to
-> run, not a new question. Captured verbatim per items 1/28/29's "flag live, don't design
-> on the spot" posture.
-> Prior: rev 54 — **§5.5: the multi-candidate assignment-helper gains
-> a current-user shortcut — the driving session's own human is auto-assigned when they're
-> among 2+ Persona Roster candidates, rather than always falling back to asking.** Context:
-> TAI-244/245 both hit the §5.5 assignment gate live with no automated resolution at all —
-> brief §5.5's two rules (sole-candidate pre-assign, multi-candidate assignment-helper
-> fallback) were decided at rev 19 but never actually wired up (TAI-248/249/260). Fixing
-> that surfaced a real gap in the multi-candidate rule as originally written: it always
-> falls back to asking, even in the extremely common solo/small-team case where the human
-> driving the session IS one of the candidates and the answer is obvious. Ratified
-> live (human-confirmed 2026-08-27, TAI-249 ADR, Confluence page 30572546): auto-assign that
-> human without asking; only surface the full candidate list (with lightweight load
-> signals, unchanged) when the current session's human isn't among the candidates, or has
-> no resolvable session identity at all. Fires at **both** ticket-creation time and the
-> transition-gate moment (not reactively-only) — implemented as one shared, pure resolver
-> (`src/core/personas/assignment-helper.ts`) called from `cli.ts`'s `issue create`/
-> `issue transition` handlers, deliberately NOT from inside `WorkTracker.createIssue` in
-> either backend (avoids the exact per-backend rule-drift regression `assignment-gate.ts`'s
-> own header already documents, and keeps session-identity resolution — a host-layer
-> concern — out of backend internals). A human can always override either way via
-> `issue assign`, unchanged.
-> Prior: rev 53 — **§5.4: the CI-green merge gate no longer treats a
-> commit with zero `getCommitStatuses` as failing.** Context: `bitbucket-pipelines.yml`
-> became a `custom:` (manual-only) pipeline this cycle — no automatic trigger of any kind —
-> after this project's Bitbucket free-tier 50 build-minute/month quota was hit twice in one
-> session; `git-pr merge`'s CI-gate was never updated to match, so it rejected every merge
-> from PR #56 onward (tracked as TAI-230). `isGreen()` (`src/core/commands/git-pr.ts`)
-> originally read zero statuses as "pipeline never ran, treat as failing" — a deliberate
-> TAI-107/108 decision from when Pipelines auto-ran on every push, so an empty list was
-> genuinely suspicious. That assumption is gone: zero statuses is now the ORDINARY case for
-> every commit unless a human deliberately triggers the manual pipeline. Human-confirmed
-> live (2026-08-27): a merge must not be held up over a pipeline nobody asked to run.
-> `isGreen([])` now returns `true`; any status that IS present and non-successful (failed,
-> in-progress) still blocks, same as before — only the "nobody ran anything" case stopped
-> gating. Fixed in `git-pr.ts`, `git-pr.test.ts`, and
-> `bitbucket-git-host.integration.test.ts`'s live assertion (TAI-250, a Dev subtask under
-> TAI-230's Spike). This also unblocks `readyToMerge` (§5.4/TAI-107-108's own list), which
-> had been silently empty forever under the old rule once Pipelines went manual. TAI-230
-> itself stays open for the broader Pipelines-strategy question this was only the
-> `git-pr merge` half of.
-> Prior: rev 52 — **§5.4/§6: `CodeReview` subtask retired in favor
-> of git-host-driven review readiness, superseding TAI-34's design.** TAI-157/158/159: a
-> real, near-term company requirement for N-of-M PR approvals surfaced a structural gap
-> TAI-34 didn't anticipate — a Jira subtask needs exactly one `Assignee` (§5.5's hard
-> assignment gate), and there's no honest single assignee for "the" review under a
-> multi-approver policy. Resolved via TAI-159's ADR (Confluence TA space page 28704769,
-> supersedes TAI-34's page 13860867 — that page's out-of-band-human-action principle is
-> kept and extended, not replaced): the `CodeReview` subtask stops being created going
-> forward (though it stays in the schema permanently — `fromJiraIssueType` deliberately
-> throws on unrecognized types, and historical Done `CodeReview` tickets exist forever);
-> `Dev` stays `In Progress` until its PR actually merges, not until the PR opens; and
-> `tai-ready` gains three live git-host-queried lists (`readyToReview`/`readyToTest`/
-> `readyToMerge`) replacing the CodeReview-anchored precedence edges, extending TAI-107/
-> 108's existing `readyToMerge` pattern rather than inventing a new one. See §5.4 and §6
-> for the revised chain, and the TAI-159 ADR for full detail (required-approval-threshold
-> handling, the new "PR Reviewers" roster, `git-pr create`/`merge` changes). **Built
-> (TAI-160):** two refinements found live during implementation, both human-confirmed
-> 2026-08-24 — (1) testing runs **in parallel** with review, not gated behind it
-> (`readyToTest` has no approval-count check at all; only `readyToMerge` does) — protects
-> `master` without inverting `Deploy`'s existing merge-then-nothing-after ordering; (2)
-> `git-pr review` is now **roster-gated, not persona-gated** — `git-pr review <REPO>
-> [PR-ID] <approve|requestChanges> [COMMENT]`, no `<ISSUE-KEY>` at all, since there's no
-> ticket left whose `persona` field would resolve to Code Reviewer. See §8 item 30 for a
-> known limitation surfaced along the way (a Story can't host more than one Dev/Test/
-> Deploy cycle — a follow-up always needs a new Story/Bug).
-> Prior: rev 51 — **§3.8/§9: TAI's own command surface moved to
-> global skills, no MCP server required.** TAI-116/126, following TAI-90's ADR (Confluence
-> TA space page 26902529): `tai-work`/`tai-ready`/`tai-pr`/`tai-init` now ship as global
-> skills — `~/.claude/skills/tai-<name>/SKILL.md` and `~/.gemini/skills/tai-<name>/SKILL.md`
-> (both hosts use the identical Markdown format for their global mechanism, confirmed by
-> inspecting the already-installed `sess-resume`/`sess-handoff` skills) — installed once via
-> `install-global` (`src/hosts/cli.ts`), referencing a fixed install path (`~/.tai-framework/`
-> by default) rather than a path relative to whatever project the host happens to be running
-> in. `tai-framework`'s own project-local wrapper files (`.claude/commands/tai-work.md`/
-> `tai-ready.md`/`tai-pr.md`, `.gemini/commands/tai-work.toml`/`tai-ready.toml`/`tai-pr.toml`)
-> retired in favor of the same global installs. **Also (TAI-126):** `cli.ts` gained
-> `issue create|transition|comment|link`/`page create|link` subcommands, wrapping
-> `WorkTracker`/`DocStore` methods that already existed against direct REST (brief §3.2) —
-> no Atlassian MCP server is required for TAI to work end-to-end anymore; earlier sessions
-> used one only because these subcommands didn't exist yet.
-> Prior: rev 50 — **§3.1/§6: PM/Architect granted
-> `createPullRequest`, plus a Story-first PR title convention.** TAI-112 (found live while
-> landing standalone documentation-only PRs, PR #18/#21): PM and Architect held zero
-> `gitHost` grants, so landing framework-governance content (persona docs, this file itself)
-> meant borrowing an unrelated Dev subtask's key purely to get `createPullRequest`
-> permission — which then made `git-pr create`'s auto-linker (rev 48/TAI-108) wrongly
-> attach the new PR to that subtask's real CodeReview sibling. **Decided, after the user
-> questioned the first proposed fix (a `--no-link` flag) as "hacky":** grant PM/Architect
-> their own narrow `gitHost: [createPullRequest]` instead — same asymmetry as Tester (rev
-> 48), never paired with `mergePullRequest`. Verified in code this also structurally
-> prevents the false-linking bug for free: `findCodeReviewSiblingForLink` already bails out
-> on any key without a `parentKey`, and a Story/Bug/Epic key never has one. **Also decided
-> in the same pass:** PR titles must be tied to the parent Story/Bug first, subtask second —
-> checked the 10 PRs preceding this ticket and found neither convention actually followed
-> consistently (some subtask-keyed, some Story-keyed). New `validatePrTitle` (mirroring
-> `validateBranchName`'s validate-only posture) requires `<StoryKey> - <SubtaskKey> - ` or,
-> with no subtask, `<StoryKey> - `. `personas/pm.md`/`architect.md` gained the grant;
-> `config.test.ts`'s gitHost-grant-matrix test and `.gemini/commands/tai-pr.toml` updated to
-> match.
-> Prior: rev 49 — **§8 item 29: new open question — a human-
-> requested review override, raisable at any stage in the chain.** User direction while
-> TAI-111's review was in flight: at any point (Architect, Analyst, Dev, CodeReview,
-> DesignReview, ...), someone — most likely a human — should be able to flag a task/Story
-> as needing human review even when the AI review for that stage already passed. Genuinely
-> undecided how to track it yet (comment convention vs. label vs. field; how it blocks; who
-> clears it) — added as an open item, not designed on the spot, matching the new
-> "ask the human on genuinely open questions" posture (rev 48's own `personas/analyst.md`/
-> `architect.md` addition) rather than resolving it unilaterally.
-> Prior: rev 48 — **§3.1/§5.4: Tester granted `createPullRequest`,
-> closing a real gap in the checkpoint chain.** TAI-100 (an IntegrationTest subtask, live):
-> Tessa hit a `PersonaPermissionError` trying to land her own test code — §5.4's canonical
-> checkpoint chain (`Dev subtask --opens PR--> CodeReview subtask --approves PR-->
-> Merge/Deploy subtask --merges PR-->`) only ever named Developer/Code Reviewer/DevOps, and
-> `IntegrationTest`/`SystemTest`/`E2ETest` sit entirely outside that chain in the
-> `SUBTASK_PRECEDENCE` graph — nothing gave a Test-tier subtask any way to open its own PR.
-> User direction: Tester should have PR-creation permission. `personas/tester.md` gained a
-> `gitHost: [createPullRequest]` grant — deliberately NOT paired with `mergePullRequest`
-> (no self-merge for Tester; a Tester-opened PR still goes through Code Reviewer like any
-> other). `config.test.ts`'s gitHost-grant-matrix test updated to match.
-> Prior: rev 47 — **§3.8: command surface standardized on hyphens,
-> `/tai-work`/`/tai-ready`, not `/tai_work`/`/tai_ready`.** TAI-89: the shipped wrapper
-> files used an underscore/`tai_` prefix while `git-pr` (a bare `cli.ts` subcommand about
-> to get its own wrapper via TAI-87) used a bare hyphen — an inconsistent command surface
-> otherwise. `.claude/commands/tai_work.md`/`tai_ready.md` and `.gemini/commands/
-> tai_work.toml`/`tai_ready.toml` renamed to `tai-work`/`tai-ready` (including their own
-> internal prose references to the slash command name); `personas/developer.md` updated
-> too. Deliberately scoped out: `src/hosts/cli.ts`'s internal subcommand strings (`work`,
-> `ready`, `git-pr`) and doc-comments in `src/core/commands/work.ts`/`ready.ts` mentioning
-> `/tai_work` as the slash-command name — not user-facing, out of this Bug's scope.
-> Prior: rev 46 — **§3.1/§5.6: PM now owns `workOn: Kickoff/Story/
-> Bug`, closing the gap rev 45 left open.** The concrete need rev 45 said to wait for
-> surfaced immediately: `TAI-89` (a bare Bug, parent `TAI-8`) had no persona permitted to
-> work it. User direction: "the vast majority of story and bug items will be owned by the
-> PM or the Analyst — they are the most likely 'orchestrator' types to close story-level
-> Jira tickets." `personas/pm.md`'s `workOn` grant already carried a comment claiming
-> Kickoff/Story/Bug were owned "same as Spike" — this was aspirational, not yet true in the
-> actual list; rev 46 makes the grant match the comment. Analyst was deliberately left
-> alone (still no `workOn: Story`/`Bug`) — Analyst's role stays subtask-level
-> (`Subtask:Research`/`Subtask:Investigate`); if a concrete need for Analyst to own a bare
-> Story/Bug surfaces, grant it then, same "don't build ahead of an observed need" posture
-> as elsewhere. `TAI-86`/`TAI-88` (Spike, parent TAI-6) still stand to produce a proper ADR
-> ratifying this — this rev is the fast-tracked code+brief change, not that ADR.
-> Prior: rev 45 — **§3.1: PM (not Architect) owns `workOn: Spike`
-> — corrects rev 44's wrong assignment.** `workflows/spike.md` — not consulted before rev
-> 44 — is explicit: "PM is the default owner/driver of the Spike story itself, same as
-> Kickoff/Story/Bug"; subtask-level ownership (`Feasibility`→Architect, `Database`→DBA,
-> `Infra`→DevOps) is separate and was already correctly granted, no change needed there.
-> PM scopes the Spike and creates its investigating subtask for that subtask's fixed-owner
-> persona to actually work; PM then drives the Spike to `Done`/`Canceled` once that
-> persona proposes an outcome. `Kickoff`/`Story`/`Bug` still have no `workOn` grant
-> anywhere — the same gap noted in rev 44, still unaddressed, revisit only if a concrete
-> need surfaces one.
-> Prior: rev 44 — **§3.1: Architect owns `workOn: Spike`** (WRONG, see rev 45) — surfaced
-> while PM (rev 43) decomposed TAI-8 and needed to create a Spike (design the Gemini CLI
-> host integration model); reasoned from "who does the investigating work" without
-> checking `workflows/spike.md`'s already-settled story-vs-subtask ownership split first.
-> Prior: rev 43 — **§3.1/§3.7: PM (not Analyst) owns Epic→Story
-> decomposition, invoked directly on the Epic.** Surfaced by TAI-8 itself: no persona had
-> `workOn: Epic`, so no unit-of-work invocation could ever act on one. `Epic` is now
-> granted to PM's `workOn`, folding the propose/create split into a single PM turn at this
-> level — PM decomposes the Epic and creates the resulting Stories/Subtasks itself, no
-> longer waiting on a separate Analyst proposal pass for it. Analyst's `propose: Epic`
-> still stands for the *project→Epic* level (§3.7's first pass, unaffected); only the
-> **second, per-Epic pass** changes owner. `personas/pm.md` and `personas/analyst.md`
-> updated to match.
-> Prior: rev 42 — **§8.10 fully resolved: `rollupStatus()`
-> fires at the same refresh points §3.6 already defines for per-item caches** — no separate
-> trigger concept, no dedicated refresh command needed as the primary mechanism. Not
-> actually blocked on a not-yet-built CLI layer as previously framed — blocked (same as
-> §8.14/§8.15) on the orchestrator/persona-invocation loop (TAI-8) existing to call it at
-> those points. **§3.6 also gains a third refresh point: completing a unit of work**, not
-> just starting/resuming — a persona should refresh before deciding a unit of work is
-> actually complete, since other in-flight information may bear on that decision.
-> Prior: rev 41 — **§8.14 resolved: Jira comment/label
-> + status rollup is sufficient for v1; active push notification is deferred, not
-> declined.** §3.3's escalation behavior already stops at journaling the rejection and
-> escalating to a human — that visibility is enough for now. An active push (email/Slack/
-> Teams) needs infrastructure that doesn't exist yet: no running orchestrator/CLI layer to
-> trigger from (§8.10's still-open trigger-timing half already flagged this gap for even an
-> automatic *rescan*), plus new integration config (channel, recipients, credentials) —
-> materially more than anything else closed so far. Deferred until the orchestrator/
-> persona-invocation loop (TAI-8) exists and gives a push notification an actual place to
-> hook in, same treatment as §8.15's learning-loop deferral.
-> Prior: rev 40 — **§8.17 resolved: no formal review
-> gate for `Investigate` output.** Unlike Kickoff's `REVIEW_GATES[Kickoff]` (a named,
-> multi-reviewer, story-level gate blocking downstream ticket creation), `Investigate` is
-> an ordinary subtask that doesn't block anything downstream (§8.13, rev 38) and isn't a
-> story-level gate — the generic per-subtask checkpoint (§3.4: human sign-off by default,
-> unless autocompletion-configured) already covers it. No dual-reviewer (PM+Architect)
-> structure, no unification with the Kickoff gate. **Addendum, raised during discussion:**
-> when `Investigate` is spawned reactively out of another in-flight subtask (e.g. Dev hits
-> an ambiguity mid-work), the originating subtask *can* be blocked on it — via the existing
-> `SubtaskDependencyOverride` ad-hoc-dependency escape hatch (`workflows/dependencies.md`),
-> not a new mechanism. This is a per-instance judgment call by whoever discovers the need,
-> same as who flags `Investigate` in the first place (§8.13) — not a change to the static
-> `SUBTASK_PRECEDENCE` graph, which still has no automatic edge for `Investigate`.
-> Prior: rev 39 — **§8.16 resolved: new-subtask-type
-> process mirrors §8.1's story-type taxonomy.** `SubtaskType` (`story-schema.ts:87`) is a
-> compile-time TypeScript enum, and `STORY_SUBTASK_MAP`/`SUBTASK_OWNER` are compile-time
-> `Record`s keyed off it — adding a genuinely new type is a schema/code edit, not a Jira-side
-> action, categorically different from `workflows/kickoff.md`'s "Human Overrides" case
-> (which reuses an *existing* type in a story context that doesn't formally allow it, and
-> already generalizes across Story/Bug/Spike). A persona (Analyst/Architect) can propose a
-> new type when a real case doesn't fit the existing list — same propose pattern already
-> used for Spike outcomes, post-deploy Bugs, and Ada's decomposition — but a human
-> (developer) always makes the actual schema change. No AI-driven runtime taxonomy
-> expansion, same "extensible but not self-expanding" posture §8.1 already set for story
-> types.
-> Prior: rev 38 — **§8.13 resolved (the "ready for
-> implementation" half): no formal marker or checkpoint.** `Investigate` isn't in
-> `SUBTASK_PRECEDENCE` at all (`workflows/dependencies.md`'s graph, `workflows/story.md`'s
-> own "no automatic unblock effect" note) — nothing downstream is structurally gated on it,
-> so there's no state for a formal "ready" signal to drive. `Investigate` reaching Done is
-> ordinary subtask completion, same as any other subtask; whichever persona creates the
-> next subtask (Dev, ArchitectureDesign, etc.) does so on its own judgment of the current
-> story content, same direct-creation authority §8.11/rev 36 already established. Same
-> "don't invent a signal without an observed failure" reasoning as rev 29's §8.28 decline —
-> revisit only if a concrete under-baked-requirements incident actually occurs.
-> Prior: rev 37 — **§8.12 resolved: no fixed decomposition-level
-> ladder, no `Initiative` tier above Epic.** §3.7 already establishes decomposition as
-> scope-relative and repeatable rather than a fixed `Project → Epic → Story` count — if a
-> system needs something above Epic, that's a native-Jira concept a business configures on
-> its own instance, not a new TAI schema type (no `Initiative` concept exists anywhere else
-> in the schema). Where the Analyst/Orchestrator stops decomposing is likewise not a
-> formula — "applicable at whatever scope is handed to it" means a human or the
-> Orchestrator decides scope per invocation, an inherent judgment call.
-> Prior: rev 36 — **§8.11 resolved: no pre-subtask work phase exists
-> to give a home to.** Premise declined — a persona creates the subtask as its first
-> action, before any exploration/brainstorming begins, so journaling/caching always has a
-> key. Settled alongside it, from discussion: subtask creation is **direct**, gated only by
-> the creating persona's existing per-issue-type `create` permission (§3.1) — PM may
-> pre-create a Story's whole known subtask chain, or any persona may create a subtask it
-> recognizes as needed mid-flight (the existing "present-when-added" pattern). **Story-level
-> ticket creation is unchanged** — still propose → PM confirms/creates (Spike outcomes,
-> PostDeploy Bug, Ada's decomposition), not direct. Precedence-link wiring for a
-> mid-flight-inserted subtask turned out to already be solved in code, not a gap at all:
-> `workflows/dependencies.md`'s "Dynamic Subtask Insertion" section and
-> `getNewPrecedenceEdgesForInsertedSubtask()` (`schema/story-schema.ts`) already compute the
-> new edges automatically — the PostDeploy example there is the exact scenario raised in
-> discussion. Also corrects a stale cross-reference found along the way: §5.3's rev-27
-> `Backlog` text pointed to "§7's dynamic-subtask-insertion note," which never existed in
-> §7 — the actual content is in `workflows/dependencies.md`.
-> Prior: rev 35 — **§8.10 half-resolved: `status.json`'s staleness
-> rule is neither TTL nor trust-until-mismatch — there isn't one.** `rollupStatus()`
-> (`src/core/workspace/status.ts`, TAI-56 ADR decision 6) always does a full rescan of
-> `.tai/work/**/status.json` on demand and overwrites the root file, with no comparison
-> against `generatedAt` at all — unlike the Jira/Confluence cache, this rollup only reads
-> local files TAI's own process just wrote, so there's no network cost to gate a skip on.
-> **Left open:** when a reconciliation scan triggers automatically (session start? every
-> command? explicit refresh?) — blocked on a CLI/command layer that doesn't exist yet.
-> Prior: rev 34 — **§8.8 resolved: worktree-swap is the default
-> ticket-switch mechanic, not plain checkout.** §6 already states the reason worktrees were
-> adopted at all — "so switching between tickets doesn't require stashing dirty state" — and
-> a plain-checkout default would reintroduce exactly that problem. Design decision only;
-> no worktree logic exists in `src/core/git/` yet.
-> Prior: rev 33 — **§8.7 resolved by implementation: the storage
-> interface's operation set already exists in code and is proven identical across
-> backends.** `src/core/storage/interface.ts`'s `WorkTracker`/`DocStore` cover issue/page
-> CRUD, the typed `search(filter)` JQL-equivalent, transitions, comments, links, and
-> attachments — validated by a 710-line conformance suite run against both the filesystem
-> and Jira backends (Jira `TAI-15`). Jira-specific concepts are kept out by construction:
-> no raw JQL, no raw custom-field ids (promoted to named typed fields instead), no
-> backend-specific content encoding (`Page.content` is always markdown). Comment/link
-> delete and attachment upload don't exist yet — not decided against, just not yet needed.
-> Prior: rev 32 — **§8.5 resolved: "re-triage" on a failed checkpoint
-> retry isn't a persona judgment call at all — it's deterministic plugin-layer mechanics.**
-> Where a failed checkpoint's retry goes is already fixed by the workflow's documented
-> loop-back structure (Dev ⇄ Test, ArchitectureDesign ⇄ DesignReview, UAT rejection
-> routing, §5.3); whether to retry-vs-escalate is already fixed by the single-retry counter
-> (§4). Nothing discretionary is left for the Orchestrator persona to "decide" — no
-> persona-level permission is needed, same enforcement pattern already used for the
-> Jira-rejected-transition rule (§3.3: enforced once in the storage plugin's `transition`
-> operation, not per-persona).
-> Prior: rev 31 — **§8.3 resolved: the "persona can't approve its own
-> work" rule is scoped to the same human, not the same persona role.** Persona role was
-> never actually a live dimension — every workflow (`workflows/story.md`, etc.) always
-> routes authored work to a *different* persona role for review (Developer → Code
-> Reviewer), so "the same persona role approves its own output" can't structurally happen.
-> The only real way self-approval occurs is the same human filling both roles — the
-> solo-dev case §4 already named, with the override already sketched at the Code Reviewer
-> persona level (rev 10 note). No code change needed; existing workflow routing already
-> handles it.
-> Prior: rev 30 — **§8.27 declined: neither gap it identified turns
-> out to be real.** Revisiting the two sub-questions left open at rev 26: company/global
-> docs are dropped from consideration outright — no cross-project scope exists to serve
-> (this framework's "one Confluence space per Jira project" model, §4, is sufficient as is).
-> The epic-level catch-all isn't missing either — untyped, non-ticket-tied content already
-> has a home in the existing **project-level `Config` folder** (§4, rev 13), the same one
-> that already holds the Persona Roster; nothing new needed for epic-scoped content either.
-> Both sub-questions collapse to "already covered by existing structure," not "needs a
-> Spike" as originally guessed.
-> Prior: rev 29 — **§8.28 resolved: `Backlog → To Do` stays a soft,
-> unenforced convention indefinitely — no hard gate built.** Revisiting the question left
-> open at rev 27: whether/how the readiness transition should eventually harden. Declined
-> as premature, per §8 item 1's own "don't build ahead of an observed need" reasoning —
-> none of the candidate "ready" signals (no unresolved `NEEDS CLARIFICATION`, no unresolved
-> `Q:` thread, precedence-unblocked) alone captures "a human/process judged this ready,"
-> and the rev 19 assignment gate earned hard enforcement because it prevented a concrete,
-> identified failure mode (§5.5) — no equivalent incident has occurred here. Revisit only if
-> a real "ticket left `Backlog` before it should have" incident happens in practice.
-> Prior: rev 28 — **§5.3 gains an Epic-status policy: `In Progress`
-> derives from children, `Done` never does.** The moment an Epic has any child that's left
-> `Backlog`, the Epic itself reads `In Progress` (simple dormant/active signal, not a
-> percentage rollup). But an Epic is never auto-marked `Done` just because every
-> currently-decomposed child is `Done`/`Canceled` — that's a false-completion trap given
-> Epics are open-ended (§3.7's recursive decomposition assumes more Stories can always be
-> added later; TAI-9's own history is the concrete proof — its GitHub `GitHost` backend
-> was deferred, so "current children finished" didn't mean "nothing more is coming").
-> Epic → `Done` is now explicitly a deliberate human judgment call (PM may propose it,
-> never self-closes it) — same "human sign-off is the default" posture as everywhere else
-> (§3.4). Applied live: TAI-8 moved to `Backlog` (nothing decomposed under it yet);
-> TAI-5/6/7/9 moved to `In Progress` (each has `Done` children — real work has happened).
-> Prior: rev 27 — **§5.3 gains a new `Backlog` status, and §8.28
-> captures the open question it leaves behind.** The user added `Backlog` directly in the
-> live Jira project — a pre-`To Do` status (native Jira behavior: excluded from the Kanban
-> board) for tickets that are newly created, under-specified, or otherwise judged not
-> ready. Resolved: it's now the **default landing status for new tickets** (superseding
-> rev 11's assumption that `To Do` was the entry point), sits under Jira's `To Do` status
-> category, and applies to every issue type (story-level and subtask, same scope as
-> `Canceled`, rev 16) — orthogonal to the existing `SUBTASK_PRECEDENCE`-derived readiness
-> machinery, which is unchanged. Deliberately left open (§8.28), not resolved here: the
-> `Backlog → To Do` transition is a **soft, unenforced convention for now** — no crisp
-> "ready" signal exists yet to hard-gate on, unlike rev 19's assignee-presence check.
-> Prior: rev 26 — **§8.27 added: no established place yet for
-> company/global-level docs or general epic-level docs.** Surfaced while scoping Epic
-> TAI-8, after shipping TAI-52 (persona config/permission enforcement, Epic TAI-6's first
-> Story — see §8.9/§8.22/§8.23, now **Implemented**, TAI-42/43). The existing Confluence
-> structure (§4) has two tiers — per-doc-type-instance pages tied to a Story/Epic via the
-> naming convention, and the project-level **Config** folder (rev 13, Persona Roster/
-> Personas) — but nothing for (a) docs that span **multiple TAI projects entirely**
-> (company coding standards, cross-team process, architecture spanning systems each with
-> their own Jira project/Confluence space — §4's "one space per project" model has no
-> answer for content that isn't scoped to any single project), or (b) a **general
-> epic-level doc** that isn't one instance of the fixed ADR/PRD/Test-Plan/etc. taxonomy
-> (e.g. an epic's own running design notes). Ideas only, nothing decided — see §8.27.
-> Also: §8.9/§8.22/§8.23 now read **Implemented** — TAI-42 wired checkpoint/review-gate
-> enforcement directly into `transition()` (both backends); TAI-43 built the
-> autocompletion decision engine (`autocompletion.ts`) as a standalone pure-function
-> module, deliberately **not yet called from `transition()`** — its own module doc says
-> why: which call site invokes it is an orchestration question for Epic TAI-6, not this
-> Story's. TAI-52 (Epic TAI-6's first Story) built the permission layer that engine will
-> need a caller through, but the actual autocompletion call site still awaits TAI-8's
-> persona-invocation loop. Corrects rev 25's "design only" status for §8.9/§8.22/§8.23,
-> which was accurate as of TAI-41 alone, before TAI-42/43 shipped.
-> Prior: rev 25 — **§8.9, §8.19, §8.20, §8.22, §8.23 updated to
-> reflect real implementation/design work.** §8.19/§8.20 (pluggable `GitHost`, PR-backed
-> CodeReview) marked **Implemented** — TAI-38/39/40 shipped `src/core/git/interface.ts`
-> and the Bitbucket backend; §5.4 and §6's matching "not yet implemented" notes updated to
-> match. §8.9/§8.22/§8.23 (autocompletion conditions, completion markers, checkpoint
-> taxonomy) **resolved via the TAI-41 ADR** (Confluence, TA space) — design only, not yet
-> built; §3.4 now points to it. §8.24/§8.26 are unaffected.
-> Prior: rev 24 — **§8.21 and §8.25 applied to the actual docs.**
-> `workflows/kickoff.md` now defines the `NEEDS CLARIFICATION` marker mechanism and blocks
-> its PM+UX Designer review gate on zero unresolved markers (§8.21); `personas/pm.md` and
-> `personas/ux-designer.md` each point back to it from their PRD/UX-flow output
-> descriptions. All five `workflows/*.md` files now open with the one-line brief-compliance
-> pointer (§8.25). §8.22–§8.24 (deferred) and §8.26 (declined) are unaffected — still
-> nothing to apply for those. See §8 items 21 and 25 for the updated status.
-> Prior: rev 23 — **§8.21–§8.26 (the six BMAD/GSD/Spec-Kit-inspired
-> questions from rev 22) resolved: one adopted narrowly (§8.21, uncertainty markers scoped
-> to Kickoff docs only), one adopted lightly (§8.25, a one-line brief-compliance pointer per
-> workflow doc, not a full checklist), three deferred for having no current consumer
-> (§8.22 completion markers, §8.23 checkpoint taxonomy, §8.24 persona manifest — all
-> revisit when their actual driving work, e.g. Epic TAI-7, starts), and one declined
-> (§8.26 retrospective/correct-course type — no real gap has surfaced yet in TAI's own
-> dogfooding).** These are documentation-convention decisions only — **none of the six have
-> been applied yet** to the actual `personas/*.md` / `workflows/*.md` files; that's
-> follow-on work, not done by this revision.
-> Prior: rev 22 — **six new open design questions added
-> (§8.21–§8.26)**, surfaced by surveying BMAD-METHOD, GSD (Get Sh*t Done), and GitHub Spec
-> Kit for ideas applicable to `src/personas/*.md` / `src/workflows/*.md`: explicit
-> uncertainty markers in generated artifacts (Spec Kit's `NEEDS CLARIFICATION`), a
-> structured completion-marker convention for persona handoff (GSD's agent-contracts
-> pattern), a finer-grained checkpoint taxonomy beyond the current binary
-> human-sign-off-default (GSD), a lightweight persona roster/manifest file separate from
-> the full persona docs (BMAD's module-roster pattern), a brief-compliance gate embedded in
-> each workflow doc (Spec Kit's "Constitution Check"), and a retrospective/correct-course
-> workflow type (BMAD) that the Story/Bug/Spike/Kickoff taxonomy doesn't currently have.
-> **Ideas only — nothing decided, nothing else in this brief changed.** See §8.21–§8.26.
-> Prior: rev 21 — **§8.19 and §8.20 resolved via TAI-33/TAI-34
-> (Spikes, dogfooded through TAI's own Jira project) — design only, nothing built yet.**
-> §8.19: a new sibling `GitHostBackend`/`GitHost` interface, not folded into
-> `StorageBackend` — git hosting is a different domain and an independent configuration
-> axis from Jira/Confluence, but reuses the same pattern (branded IDs, `MutationResult`/
-> `StorageConnectivityError`, an open `kind` discriminator). One interface, not split like
-> `WorkTracker`/`DocStore`, since git hosting has no internal product seam. Scoped to what
-> the checkpoint chain actually needs (PR CRUD, approve/request-changes, merge, commit
-> status) — explicitly excludes a "trigger CI" operation, since this session's own
-> Bitbucket work found that can't be guaranteed retroactively. §8.20: the
-> Develop→CodeReview→Merge/Deploy chain (§5.4) now opens and acts on a real PR; PR state
-> syncs one-way into the Jira subtask at existing refresh points (§3.6), never the reverse
-> — the Jira subtask stays authoritative for TAI's own dependency graph. A human
-> reviewing/merging directly on the git host, bypassing TAI, is treated as authoritative
-> and simply reflected, not fought (same principle as §4's Confluence-gate-reopening
-> rule). See §5.4 and §6 for the updated text, and TAI-33/TAI-34's ADRs (Confluence, TA
-> space) for full reasoning. **Recommended next step, not yet scheduled:** one
-> implementation Story building both the interface and the checkpoint together, per both
-> ADRs' Consequences sections.
-> Prior: rev 20 — two new open questions captured (§8.19, §8.20 above, before they were
-> resolved), flagged during Bitbucket Pipelines CI setup.
-> Prior: rev 19 — **§5.5 gains a hard assignment gate: a ticket must
-> have a human `Assignee` before it may leave `To Do`.** Work in progress with nobody
-> accountable for it is the exact failure mode this framework exists to prevent (§1), and it
-> is invisible on a board. Enforced centrally in the storage plugin's `transition` operation
-> alongside the existing checkpoint checks — an ordinary blocked checkpoint, not §3.3's
-> unplanned-checkpoint/escalation path. Paired with a **pre-assign-at-creation** rule: when a
-> ticket's `persona` resolves to exactly ONE authorized human in the Persona Roster (a solo
-> developer; a team with a single PM), TAI sets `Assignee` at creation rather than deferring
-> to a claim. With more than one candidate it does not guess — it falls back to the §5.6
-> assignment-helper.
-> Prior: rev 18 — **§4's "the Confluence space key matches the Jira
-> project key" rule (rev 11) is wrong and is withdrawn.** TAI's own space is keyed `TA`, not
-> `TAI`: Confluence derives a space key from the space *name* at creation and may shorten or
-> disambiguate it, and a human can rename it later — so the two drift for reasons outside
-> TAI's control. It went unnoticed for six revisions because the MCP tooling resolves spaces
-> by *name*, masking the mismatch. `projectKey` and `spaceKey` are now separate config values
-> that the storage backend takes independently; nothing may derive one from the other. Also
-> corrects rev 17's hazard note, which wrongly claimed the `mcp-atlassian` wrapper inverts
-> issue-link direction — it does not; that was a misreading of Atlassian's docs. Ground truth,
-> verified live: for the `Blocks` type, the **inward** issue blocks the **outward** one.
-> Prior: rev 17 — **§3.2's transport changes: Jira/Confluence are
-> reached via the Atlassian REST API, not the Atlassian Remote MCP Server.** The MCP-server
-> design (revs 1–16) was tested live in Phase 4's opening spike (Jira `TAI-16`) and does not
-> work: auth succeeds headlessly, but the tool surface returned is three read-only Teamwork
-> Graph tools — no issue creation, no transitions, no comments, no pages. The real
-> Jira/Confluence tools sit behind interactive OAuth 2.1, which would leave CI and the
-> integration tests with no headless path. Direct REST works, needs zero new dependencies,
-> and drops a lossy translation layer. Critically, **`StorageBackend`/`WorkTracker`/`DocStore`
-> needed no change at all** — the Phase 3 abstraction absorbed the swap exactly as intended.
-> §3.2 also now carries a hazard note about third-party MCP wrappers (`mcp-atlassian`), whose
-> defects were catalogued the hard way while building TAI's own backlog through one. §10
-> updated to match.
-> Prior: rev 16 — new **`Canceled`** status added to §5.3: a
-> second terminal state for work abandoned before completion, available on every issue
-> type (story-level and subtasks alike). Gap found while cross-checking the real Jira
-> site's full status list — nothing to reuse — surfaced by `workflows/spike.md`'s
-> "cancelled/deferred" outcome, which previously had no distinct status and collapsed
-> into `Done`. Counts as satisfied for `SUBTASK_PRECEDENCE` purposes, same as `Done`.
-> `spike.md`/`story.md`/`bug.md`/`kickoff.md` all updated with their own `Canceled`
-> transition.
-> Prior: rev 15 — §5.3 status names/scope corrected against the
-> actual TAI Jira project: the default status is **`To Do`**, not `Open` (cosmetic —
-> avoids renaming what's likely a shared/global Jira status across the whole site); and
-> **`In Review` exists on every issue type by default**, not just Kickoff — Jira's shared
-> default workflow doesn't allow withholding one status from most types without a
-> separate per-type workflow, so it's simpler to leave it universally present and let
-> TAI's own logic (§3.3) decide which types actually transition into it. Only Kickoff
-> does. Every `workflows/*.md` and `personas/tester.md` status reference updated to
-> match.
-> Then: rev 14 — §4's Confluence folder convention extended to
-> **config-type content**: the Persona Roster and persona extensions aren't tied to a
-> ticket, so they don't fit the `<JIRA-KEY> — <Doc Type>: …` naming rule below; they get
-> their own top-level **`Config`** folder instead. Reflects the actual TAI Confluence
-> space now in use — `Config` → `Persona Roster` created there, seeded with the
-> project's first (solo) team member across all 9 personas.
-> Before that: rev 13 — the ad-hoc, no-fixed-owner **subtask**-level
-> `Spike` type (§5.2) is renamed **`SpikeTask`**, discovered as a real naming collision
-> while provisioning Jira issue types for the actual TAI project: Jira issue-type names
-> are unique site-wide, and the pre-existing **Story**-level `Spike` type (§5.1) already
-> owns the name "Spike." `StoryType.Spike` is unchanged; only the subtask-level ad-hoc
-> escape-hatch type (`SUBTASK_OWNER[SpikeTask] = null`, `schema/story-schema.ts`) is
-> affected, along with every persona/workflow doc that referenced it. Also fixed two stale
-> "Jira Project Role" references left behind by rev 12's registry redesign below.
-> Before that: rev 12 — §5.6 human registry redesigned: TAI's own
-> storage-agnostic **Persona Roster** (Confluence-page-backed on the Jira backend, a local
-> file on the filesystem backend) replaces the native-Jira-Project-Role design from rev 11,
-> because Jira Cloud's Free plan cannot create/edit Project Roles at all — for either
-> project type — and a Jira-only construct doesn't work for the filesystem backend anyway.
-> Native Project Role sync becomes an optional, deferred paid-tier enhancement (§8.18).
-> Before that: rev 11 — full design-notes review pass, §3-§8: subtask taxonomy↔Jira mapping,
-> D7/D9/D12 resolved, scenario-workflow layer dropped, the two-axis owner model (D15),
-> Confluence structure/naming/gate-reopening rules, local cache bulk-sync/attachments, new
-> §3.9 Comment Conventions, and briefing/kickoff/connectivity-loss mechanics for a unit of
-> work — see DESIGN_NOTES.md for the full session-by-session history)
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
 
 ---
@@ -1758,11 +738,7 @@ Project            → one per "system" we build (a system may span multiple rep
 
 ### 5.2 Subtask Types & Persona Routing
 Subtasks are **typed**, not one generic "Subtask" — the type is what routes work to the
-right persona. This taxonomy is **open and extensible**, and it has **evolved beyond the
-original candidate list** as the persona/workflow files were built. The table below is the
-**current set** and supersedes the earlier candidate names (`Develop`→`Dev`,
-`Code Review`→`CodeReview`, `Design`→`ArchitectureDesign`/`Feasibility`, `Test`→the three
-test tiers).
+right persona. This taxonomy is **open and extensible**; the table below is the current set.
 
 | Type | Typical persona | Category |
 |---|---|---|
@@ -1784,25 +760,14 @@ test tiers).
 | PostDeploy | DevOps (default, overridable) | Implementation follow-up |
 | SpikeTask | No fixed owner — assigned at creation | Ad-hoc investigation inside a Story/Bug (renamed from `Spike`, rev 12 — collided with the `Spike` **Story**-level type; Jira issue-type names must be unique site-wide) |
 
-**Resolved (was Open gap #1 / §8.16):** the DBA and DevOps personas now have concrete
-routing types — `Database` for DBA; `Infra` / `Deploy` / `PostDeploy` for DevOps. A type
-may name a **default owner that is overridable per instance** (`Deploy` / `PostDeploy`),
-which resolves the "can a type route to more than one eligible persona" sub-question.
-Still open: the process for adding a brand-new type when a real case doesn't fit (§8.16).
+A type may name a **default owner that is overridable per instance** (`Deploy` / `PostDeploy`). Adding a
+brand-new type is always a human schema edit, which a persona may propose (§8.16).
 
-**Still open (was Open gap #2 / §8.17):** `Investigate` (the Analyst's Story-level
-refinement type) still has no dedicated AI-review gate. A Kickoff-stage **PM + UX Designer**
-review gate now exists as-built (§3.5, `workflows/kickoff.md`), but it gates Kickoff
-discovery output, not `Investigate` refinement output — the dual-reviewer question, and
-whether the two gates should unify, remain open (§8.17).
+`Investigate` has no review gate of its own; the ordinary per-subtask checkpoint covers it (§8.17).
 
-**Now wired in (rev 10):** `DesignReview` and `UAT` — retained from the original
-taxonomy — are now defined as optional gates in the workflow docs and the schema.
-`DesignReview` gates `ArchitectureDesign` → `Dev`; `UAT` gates `Deploy`. Both are
-inherently human-gated (§3.3; `DesignReview` since TAI-458, when its AI-retry loop was
-removed and the Architect's `complete` grant for it dropped). Both are **present-when-added** and
-purely additive to the precedence graph — see `workflows/story.md` and
-`workflows/dependencies.md`.
+`DesignReview` and `UAT` are optional gates: `DesignReview` gates `ArchitectureDesign` → `Dev`, and `UAT`
+gates `Deploy`. Both are inherently human-gated (§3.3) and **present-when-added**, purely additive to the
+precedence graph — see `workflows/story.md` and `workflows/dependencies.md`.
 
 Subtask-type-to-persona routing is configurable the same way persona permissions are
 (§3.1): a business can add types, change routing, or restrict which types a given persona
@@ -1824,10 +789,8 @@ a field for the Bug D5 expedited path.
 ### 5.3 Statuses & Dependencies
 Issues carry statuses (pending / in-progress / done, plus blocked/ready as derived from
 dependencies) and **"blocks / depends-on"** links that determine what is ready to be picked
-up vs. blocked. **Resolved (rev 11, was §8 item #2):** the default status lifecycle is
-**`To Do → In Progress → Done`** for both story-level tickets and subtasks (rev 27 below
-prepends a `Backlog` entry point ahead of `To Do` — the `In Progress`→`Done` portion here
-is unchanged), with specific
+up vs. blocked. The default status lifecycle is
+**`Backlog → To Do → In Progress → Done`** for both story-level tickets and subtasks, with specific
 per-type loop-backs documented in `workflows/story.md`/`bug.md` (Dev ⇄ Test,
 ArchitectureDesign ⇄ DesignReview, UAT rejection routing). "Ready" vs. "blocked" is
 **derived**, not a stored status — computed from `SUBTASK_PRECEDENCE`
@@ -1882,14 +845,12 @@ external dependency), or a human/process has otherwise judged it "not ready." Na
 behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban board.
 
 - **Lifecycle position:** `Backlog → To Do → In Progress → (In Review) → Done/Canceled`.
-  Supersedes rev 11's assumption that `To Do` is the entry point — it's now the second
-  step, reached only once a ticket is judged ready. `Backlog → Done`/`Canceled` directly
+  `To Do` is reached only once a ticket is judged ready. `Backlog → Done`/`Canceled` directly
   (skipping `To Do`) is also valid, for a ticket that turns out unnecessary before ever
   becoming ready.
 - **Default landing status:** any newly-created ticket lands in `Backlog`, not `To Do` —
   Ada's proposed Epic/Story decomposition output, PM-created Story/Bug/Spike from a WBS
-  (§3.1), a refinement subtask's own output. This is a real behavior change from the
-  rev 11 default (everything previously landed straight in `To Do`).
+  (§3.1), a refinement subtask's own output.
 - **Status category:** Jira's **`To Do`** category (not a new one) — matches how Jira's
   own default Kanban/Scrum templates categorize a `Backlog` status; it's still pending
   work, just not yet actionable.
@@ -1957,8 +918,7 @@ auto-derived, always a deliberate human decision.**
 
 ### 5.4 Checkpoint Chain (canonical example)
 
-**The sequence as it stands (TAI-456, human decision 2026-10-08): verify, then merge.** Everything further down
-this section is the history of how the chain got here; where it disagrees with this block, this block wins.
+**The sequence (TAI-456, human decision 2026-10-08): verify, then merge.**
 ```
 [Dev opens PR, stays In Progress] --> [review + test tiers, in parallel; UAT] --> [merge, by whoever owns Dev] --> [Deploy] --> [PostDeploy]
 ```
@@ -1977,61 +937,18 @@ this section is the history of how the chain got here; where it disagrees with t
 8. **Test code discovered only after the merge** opens its own PR, reviewed like any other and merged by the
    `Dev` owner; that tier stays In Progress until its PR merges. Nothing goes straight to the default branch.
 
-**History.** The original design, for an implementation Story touching one repo:
-```
-[Develop subtask]  --blocks-->  [Code Review subtask]  --blocks-->  [Merge/Deploy subtask]
-```
-- Develop subtask completes → Code Review subtask becomes actionable.
-- Review **fails** → reopen the Develop subtask, put the Code Review subtask back to
-  backlog, record reviewer notes as a comment (on the Develop subtask, or parent if
-  multiple parties care). AI may retry once; second failure escalates to a human.
-- Review **passes** → mark it done, unblocking the next subtask in the chain.
-
-**Implemented (rev 21 design, TAI-34 ADR; rev 25 build, TAI-38/39/40, §8.20):** this chain
-operates on a real git PR, not Jira transitions alone —
-```
-[Dev subtask] --opens PR--> [CodeReview subtask] --approves PR--> [Merge/Deploy subtask] --merges PR-->
-```
-- **Dev completes** → Developer persona calls `GitHost.createPullRequest` (source =
-  the Story's branch, per this section; destination = the repo's default branch), then
-  links the PR to the CodeReview subtask via a Jira remote issue link (the same mechanism
-  already used to link a Confluence ADR to its issue). CodeReview becomes actionable.
-- **CodeReview actionable** → Code Reviewer persona reviews the real PR diff, not just
-  Jira ticket content. A decision makes two calls: `GitHost.reviewPullRequest` (the real
-  PR) and `WorkTracker.transition` (the Jira subtask) — separate backends, same decision.
-- **Review fails** (persona- or human-authored directly on the git host) → unchanged from
-  above.
-- **Review passes** → CodeReview done, unblocking Merge/Deploy.
-- **Merge/Deploy** → `GitHost.mergePullRequest`, gated on `GitHost.getCommitStatuses`
-  being green first — CI becomes a load-bearing merge gate, not advisory.
-- **PR state syncs one-way into the Jira subtask**, at existing refresh points (§3.6),
-  never the reverse — the Jira subtask stays what TAI's own precedence engine reads. A
-  human acting directly on the git host (approve/request-changes/merge) is detected on
-  next refresh and reflected, never fought — same stance as §4's Confluence-gate-
-  reopening rule.
-
-**Revised (rev 52 design, TAI-159 ADR — supersedes the CodeReview-subtask flow above).
-Implemented (rev 52, TAI-160):** a real, near-term requirement for N-of-M PR approvals
-surfaced a structural gap the design above didn't anticipate — a Jira subtask needs
-exactly one `Assignee` (§5.5's hard gate), and there's no honest single assignee for
-"the" review under a multi-approver policy. Revised chain —
-```
-[Dev subtask, stays In Progress] --opens PR--> [reviewed live on the git host] --merges PR--> [Dev subtask -> Done]
-```
-- **No `CodeReview` subtask is created going forward.** Bitbucket's own PR
-  reviewer/approval state is the sole source of truth for review status, queried live —
-  never mirrored into a Jira subtask. (`CodeReview` stays in the schema permanently for
-  parsing historical tickets — see the ADR; it just isn't minted for new work.)
-- **`Dev` stays `In Progress` until its PR actually merges, not until the PR opens** — a
-  unit of work isn't really done until it's merged. `Deploy` ships what is
-  already merged, so it waits on `Dev` being Done as well as on the test tiers and UAT (TAI-456/TAI-463); no
-  cycle, since `Dev`'s own Done comes from the merge, not from `Deploy`.
-- **Test-tier readiness moves off the static precedence graph onto three new
-  live-computed `/tai-ready` lists** — `readyToReview` (open PRs where the current human
-  is an eligible reviewer, per a new "PR Reviewers" roster), `readyToTest` (In-Progress
-  `Dev` subtasks with an open PR — no approval requirement, testing runs alongside review), `readyToMerge`
-  (PRs that pass the merge gate below and are CI-green) — extending TAI-107/108's existing `readyToMerge` pattern
-  (§5.4's own live-git-host-query idiom) rather than inventing a new one.
+**How review, readiness and the merge work (rev 52, TAI-159 ADR; merge gate TAI-462):**
+- **Review happens on the real PR, and there is no `CodeReview` subtask.** The git host's own reviewer and
+  approval state is the only source of truth for review status, queried live and never mirrored into Jira. A
+  Jira subtask needs exactly one assignee (§5.5), and an N-of-M approval policy has no honest single assignee.
+  (`CodeReview` stays in the schema to parse historical tickets; it is not created for new work.)
+- **`git-pr create` links the PR to the `Dev` subtask** that opened it, with a Jira remote issue link.
+- **`Dev` stays In Progress until its PR merges**, not until the PR opens. `Deploy` ships what is already
+  merged, so it waits on `Dev` being Done as well as on the test tiers and UAT (TAI-456/TAI-463).
+- **Readiness for review, testing and merging is computed live**, as three `/tai-ready` lists rather than from
+  the static precedence graph: `readyToReview` (open PRs where the current human is on the "PR Reviewers"
+  roster), `readyToTest` (In-Progress `Dev` subtasks with an open PR; no approval needed, testing runs alongside
+  review) and `readyToMerge` (PRs that pass the merge gate and are CI-green).
 - **The merge gate (TAI-462; human decisions TAI-455/TAI-456).** `git-pr merge` refuses unless all of
   these hold, and `/tai-ready`'s `readyToMerge` applies the same rule (one function, `core/git/merge-gate.ts`):
   1. **The required number of fresh approvals** (`TAI_PR_REQUIRED_APPROVALS`, default 1). An approval counts only
@@ -2054,18 +971,15 @@ exactly one `Assignee` (§5.5's hard gate), and there's no honest single assigne
   record. For anything else, `force=true` is used only when the human says so. Observed on Bitbucket (scratch
   repo PR 12, 2026-10-08): a withdrawn approval or request-changes disappears from the feed, a request-changes
   replaces the same user's approval, and a PR author can request changes on their own PR.
-- **`Dev` → Done has two triggers:** `git-pr merge` transitions the linked `Dev` subtask
-  as part of the same call that performs the merge (self-closing, not a separate
-  cross-persona action); a refresh-based fallback catches a PR merged out-of-band (a
-  human on Bitbucket, or any non-TAI process) — same detected-and-reflected stance as
-  this section's own out-of-band-review handling.
-- **`git-pr create` links the PR directly to the `Dev` subtask** that opened it, not a
-  `CodeReview` sibling — simpler than the flow above, not more complex.
+- **`Dev` → Done has two triggers:** `git-pr merge` moves the linked `Dev` subtask to Done in the same call
+  that performs the merge; a refresh-based fallback catches a PR merged out of band.
+- **A human acting directly on the git host is detected and reflected, never fought** (approve, request
+  changes, merge) — picked up at the next refresh, the same stance as §4's Confluence gate-reopening rule.
 
-Full detail (required-approval-threshold handling, the new roster, exact refresh
-mechanics): TAI-159 ADR (Confluence, TA space page 28704769). TAI-34's ADR (page
-13860867) is marked superseded but left in place for history — its out-of-band-human-
-action principle is kept and extended above, not replaced.
+Full detail (approval-threshold handling, the reviewer roster, refresh mechanics): the TAI-159 ADR (Confluence,
+TA space, page 28704769). The earlier chains this replaced — the original Develop → Code Review → Merge/Deploy
+subtask chain and the rev 21 `CodeReview`-subtask flow (TAI-34 ADR, page 13860867, marked superseded) — are in
+`CHANGELOG.md`.
 
 **Test-tier subtasks (rev 48, revised TAI-456):** a test tier's code normally lands in the `Dev` branch and PR
 (item 2 above), and the tiers gate both the merge (the merge gate) and `Deploy`. Tester keeps
@@ -2131,15 +1045,9 @@ etc., differentiated by their type and their subtasks.
 ### 5.6 Human Registry & the Two-Axis Owner Model (rev 12)
 
 **Human↔persona registry: TAI's own Persona Roster, not a native Jira construct.**
-Originally scoped (rev 11) as one native Jira Project Role per persona, reusing Jira's
-role mechanism the same way `Component` reuses Jira for repo tracking (§4). **Revisited
-(rev 12):** Jira Cloud's **Free plan cannot create or edit Project Roles at all**, for
-either team-managed or company-managed projects — only a site *downgraded* from a paid
-plan keeps its old roles, frozen and read-only. Since Team AI is meant to be usable by
-free-tier teams (not just paid), and since a Jira-only role mechanism has no equivalent
-for the **filesystem backend** at all (a Jira-specific concept leaking into what should
-be a storage-agnostic model — the exact concern open question §8.7 asks about), the
-registry is redesigned around a mechanism TAI owns outright:
+Jira Cloud's **Free plan cannot create or edit Project Roles at all**, and a Jira-only role mechanism has no
+equivalent on the **filesystem backend**, so the registry is a mechanism TAI owns outright (native Project Role
+sync is an optional, deferred extra, §8.18):
 
 - TAI maintains its own **Persona Roster**: per project, a mapping of
   `persona id → [authorized humans]`. A human can appear under **multiple** personas
@@ -2229,17 +1137,10 @@ comment's content.
   status — not the full breadth of either host's API. See the TAI-33 ADR (Confluence, TA
   space). **Implemented (rev 25, TAI-38):** `src/core/git/interface.ts` plus a Bitbucket
   backend at `src/core/git/bitbucket/`.
-- **The CodeReview checkpoint acts on a real git PR (rev 21, design resolved via TAI-34,
-  §8.20).** See §5.4 for the revised chain. PR state syncs one-way into the Jira subtask
-  at existing refresh points (§3.6) — never the reverse; the Jira subtask stays what
-  TAI's own precedence engine reads. A human reviewing/merging directly on the git host
-  is treated as authoritative, not fought — same principle as this section's own
-  human-authority stance and §4's Confluence-gate-reopening rule. See the TAI-34 ADR.
-  **Implemented (rev 25, TAI-38/39/40)**, verified against the live TAIT scratch repo.
-  **Superseded (rev 52, TAI-159 ADR). Implemented (rev 52, TAI-160):** the `CodeReview`
-  subtask is retired going forward in favor of querying Bitbucket's own PR approval state
-  live — see §5.4's "Revised (rev 52 design)" block. The one-way-sync and human-authority
-  principles stated above are kept and extended, not replaced.
+- **Review and merge act on a real git PR (TAI-34 ADR; revised rev 52, TAI-159 ADR).** See §5.4. The git
+  host's own approval state is the source of truth for review, queried live; there is no `CodeReview`
+  subtask. A human reviewing or merging directly on the git host is treated as authoritative, not fought —
+  the same stance as §4's Confluence gate-reopening rule.
 - **Branch unit:** parent Story/Bug. Name = parent issue key + very short slug
   (e.g. `PROJ-123-user-login`).
 - **Subtasks accumulate** onto their parent Story's branch; they do not get their own
@@ -2386,123 +1287,23 @@ investigate or build, it gets a real Jira Story/Spike in `Backlog` status
 (`personas/pm.md`'s "Captures genuinely open ideas as real Backlog tickets" principle,
 rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as brief prose.
 
-1. ~~**Story-type taxonomy**~~ — **RESOLVED (rev 11):** **Kickoff / Story / Bug / Spike**
-   is final for now, no new type added ahead of a real need — the taxonomy stays open/
-   extensible (§5.1/§5.2) so a business can add one later (e.g. a Chore/Maintenance type)
-   if a concrete gap actually appears in practice. (Earlier candidate names Research/
-   Implementation were folded into these.)
-2. ~~**Jira statuses & workflows**~~ — **RESOLVED (rev 11, naming corrected rev 15):**
-   default lifecycle is `To Do → In Progress → Done`, with per-type loop-backs already
-   documented in `workflows/story.md`/`bug.md`; "ready"/"blocked" is derived from
-   `SUBTASK_PRECEDENCE`, not stored. `In Review` exists on every issue type (Jira's shared
-   default workflow), but only Kickoff's flow actually transitions into it — TAI's own
-   logic decides what's meaningful per type, same as everywhere else (§3.3). See §5.3.
-   Still open: per-project customization of this default beyond the built-in loop-backs.
-3. ~~**Scope of the "same persona can't approve" rule:** is it scoped to the same human, the
-   same persona role, or both?~~ — **RESOLVED (rev 31): the same human, not persona role.**
-   Persona role was never a live dimension — every workflow always routes authored work to
-   a *different* persona role for review, so "the same persona role approves its own
-   output" can't structurally occur. Self-approval only happens when one human fills both
-   roles, which is exactly the solo-dev case §4 already carves out, with the override
-   already sketched at the Code Reviewer persona level (rev 10 note). No code change
-   needed — existing workflow routing already handles it.
-4. ~~**Multi-repo checkpoint chain shape**~~ — **RESOLVED (rev 11):** native Jira
-   **Component** field (not a custom `repo` field), populated by deriving the repo from a
-   commit's Jira-key prefix with manual fallback. See §4.
-5. ~~**Failed-checkpoint triage ownership:** the retry-once-then-human rule is set; confirm
-   whether the Orchestrator persona may perform the re-triage automatically within that
-   single retry.~~ — **RESOLVED (rev 32): not a persona judgment call at all.** The retry
-   destination is already fixed by the workflow's documented loop-back structure (§5.3),
-   and retry-vs-escalate is already fixed by the single-retry counter (§4). Nothing
-   discretionary is left for the Orchestrator to "decide" — deterministic plugin-layer
-   mechanics, no persona-level permission needed.
-6. ~~**Finalized default persona roster and default issue-type permissions**~~ —
-   **RESOLVED:** the 9-persona roster (§3.1) is final, and every persona's `create`/
-   `workOn`/`complete`/`update` permission block was individually audited against the
-   schema (design-notes §1), fixing several real gaps in the process (e.g. Ada's missing
-   `Subtask:Investigate`, Dario's missing `Subtask:Dev`). See each `personas/*.md` file.
-7. ~~**Storage interface operation set:** the minimum operations the abstraction must expose
-   (issue CRUD, query/JQL-equivalent, status transition, comments, issue links, custom
-   fields, attachments) and what Jira-specific concepts must *not* leak so the filesystem
-   backend stays clean.~~ — **RESOLVED (rev 33): already implemented and proven.** See §3.2
-   — `src/core/storage/interface.ts`'s `WorkTracker`/`DocStore`, validated identical across
-   the filesystem and Jira backends by the conformance suite (`TAI-15`). Comment/link delete
-   and attachment upload are the only gaps, left out as not-yet-needed rather than decided
-   against.
-8. ~~**Ticket-switch mechanic:** worktree swap vs. plain checkout as default.~~ —
-   **RESOLVED (rev 34): worktree-swap.** See §6 — that's the entire stated reason
-   worktrees were adopted (avoiding stashing dirty state on ticket switch); a plain
-   checkout as default would reintroduce the problem worktrees exist to solve. Design
-   decision only — not yet implemented in code.
-9. ~~**Autocompletion condition format**~~ — **RESOLVED (rev 25, TAI-41 ADR):**
-   `AutocompletionCondition { id, description }`, `AutocompletionConfig` is
-   `{ enabled: false } | { enabled: true; conditions: [...] }` — AND-only for v1.
-   Configured per persona/subtask-type/per-issue-override (§3.4's three axes). The
-   condition's `description` is the prompt text; `transition()` never evaluates it
-   live — the deciding persona evaluates it and records the verdict via the §8.22
-   `Complete:` marker, which `transition()` reads. See the TAI-41 ADR (Confluence, TA
-   space). **Implemented (rev 26, TAI-43):** `AutocompletionCondition`/`AutocompletionConfig`/
-   `evaluateAutocompletion` live in `autocompletion.ts` as a standalone, tested, pure-function
-   module — deliberately not yet called from anywhere; see §3.4 for the current status of
-   who's expected to eventually call it.
-10. ~~**Root status-file reconciliation.** Exact staleness rule for `status.json` (TTL vs.
-    trust-until-mismatch)~~ — **RESOLVED (rev 35): neither — always a full rescan on
-    demand**, no staleness check at all (see §7, TAI-56 ADR decision 6). ~~**Still open:**
-    when a reconciliation scan is triggered automatically (session start? every command?
-    explicit `/tai_` refresh command?) — blocked on a CLI/command layer that doesn't exist
-    yet.~~ — **RESOLVED (rev 42): same refresh points as §3.6's per-item cache rule** —
-    starting/resuming a unit of work, completing one (§3.6's newly-added third refresh
-    point), and first-use-in-session. Not actually blocked on a new CLI concept; blocked
-    (like §8.14/§8.15) on the orchestrator/persona-invocation loop (TAI-8) existing to call
-    `rollupStatus()` at those points.
-11. ~~**Pre-subtask work location:** where initial brainstorming/setup work (before a
-    subtask exists to key off of) is cached and journaled, and how/whether it gets
-    reattached once a real subtask is created for it.~~ — **RESOLVED (rev 36): premise
-    declined, no pre-subtask phase exists.** A persona creates the subtask as its first
-    action, before any exploration begins — see §7. Settled alongside it: subtask creation
-    is direct, by whichever persona is authorized (§3.1's per-persona `create` permission);
-    story-level ticket creation stays propose → PM confirms, unchanged. Precedence-graph
-    wiring for a mid-flight-inserted subtask is already solved in code
-    (`workflows/dependencies.md`'s "Dynamic Subtask Insertion").
-12. ~~**Decomposition scope levels:** how many levels of recursive decomposition are
-    formally recognized (Project → Epic → Story, or does a very large system warrant an
-    optional Initiative level above Epic?) and where the Analyst/Orchestrator decides to
-    stop decomposing further.~~ — **RESOLVED (rev 37): no fixed ladder, no `Initiative`
-    tier.** See §3.7 — decomposition is deliberately scope-relative and repeatable, not a
-    fixed level count; where to stop is a human/Orchestrator judgment call per invocation,
-    not a formula.
-13. **Refinement subtask triggering:** *Fully resolved (rev 57).* Three non-exclusive
-    triggers can flag a Story as needing `Investigate`: a human manually, PM (Orchestrator)
-    recognizing insufficient detail while querying what's ready, or the Analyst self-
-    flagging during other work (e.g. decomposition). ~~Regardless of who flags it, the
-    Analyst always creates the actual `Investigate` subtask — the flagging persona never
-    creates it on the Analyst's behalf.~~ — **RESOLVED (rev 57, TAI-317): creation
-    authority follows the general TAI-83 "Eager Subtask Creation" exception**
-    (`workflows/dependencies.md`) like any other subtask type, not a standing carve-out —
-    whichever persona (PM, the Analyst herself, or Architect/Dev mid-flight) has formed the
-    real in-context judgment may create `Investigate` directly, same dedup-search-first
-    mechanics as every other TAI-83 case; `persona=analyst` is still set regardless of
-    creator (see `personas/pm.md`, `personas/analyst.md`). The same generalization applies
-    to `ArchitectureDesign` — no written carve-out existed for it, but PM's practice had
-    informally treated it the same restrictive way (TAI-281 was the live instance).
-    ~~**Still open:**
-    what formally marks a Story "ready for implementation" once refinement is done (a
-    status transition, a checkpoint, or just Orchestrator judgment)?~~ — **RESOLVED
-    (rev 38): no formal marker.** `Investigate` has no entry in `SUBTASK_PRECEDENCE`
-    (`workflows/dependencies.md`), and `workflows/story.md` already documents it has "no
-    automatic unblock effect" — nothing structurally waits on it, so there's nothing for a
-    formal signal to drive. `Investigate` going Done is ordinary subtask completion; the
-    persona creating the next subtask judges readiness itself, same direct-creation
-    authority as item 11 (rev 36).
-14. ~~**Escalation notification channel:** a Jira-rejected transition (§3.3) gets a comment/
-    label in Jira and an entry in the local status rollup (§7) — is that sufficient, or
-    does human escalation need an active push notification (email, Slack, Teams) so it
-    isn't only discovered by someone checking Jira or running Team AI?~~ — **RESOLVED
-    (rev 41): comment/label + status rollup is sufficient for v1.** Active push is
-    **deferred, not declined** — no orchestrator/CLI layer exists yet to trigger one from
-    (same gap §8.10's trigger-timing half already flagged), plus it needs new integration
-    config. Revisit once the orchestrator/persona-invocation loop (TAI-8) exists, same
-    treatment as §8.15's learning-loop deferral.
+A resolved, declined or shipped item is kept as one line (what was decided, and where it lives now) so its
+number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open and deferred questions are in full.
+
+1. **Story-type taxonomy** — resolved (rev 11): Kickoff / Story / Bug / Spike, no new type ahead of a real need; the taxonomy stays extensible (§5.1, §5.2).
+2. **Jira statuses and workflows** — resolved (rev 11, rev 15): `To Do → In Progress → Done` with per-type loop-backs; ready and blocked are derived from `SUBTASK_PRECEDENCE` (§5.3). Still open: per-project customization of the default.
+3. **Scope of the "can't approve its own work" rule** — resolved (rev 31): the same human, not the persona role; what review separation means in practice is in §4 (TAI-458).
+4. **Multi-repo checkpoint chain shape** — resolved (rev 11): the native Jira Component field, derived from a commit's Jira-key prefix with a manual fallback (§4).
+5. **Failed-checkpoint triage ownership** — resolved (rev 32): not a persona judgment; the loop-back destination and the single retry are fixed by the workflow (§5.3, §4).
+6. **Default persona roster and permissions** — resolved: nine personas, each permission block audited against the schema (§3.1, `personas/*.md`).
+7. **Storage interface operation set** — resolved (rev 33): `WorkTracker`/`DocStore` in `src/core/storage/interface.ts`, proven identical across backends by the conformance suite (§3.2).
+8. **Ticket-switch mechanic** — resolved (rev 34): worktree swap, not plain checkout (§6). Design only; TAI-115, deferred to v2.
+9. **Autocompletion condition format** — resolved (rev 25, TAI-41 ADR; built rev 26, TAI-43): `AutocompletionCondition`/`AutocompletionConfig`, AND-only, in `autocompletion.ts`; not yet called from anywhere (§3.4).
+10. **Root status-file reconciliation** — resolved (rev 35, rev 42): always a full rescan on demand, at the same refresh points as §3.6 (§7).
+11. **Pre-subtask work location** — resolved (rev 36): there is no pre-subtask phase; a persona creates the subtask as its first action (§7).
+12. **Decomposition scope levels** — resolved (rev 37): no fixed ladder and no Initiative tier; decomposition is scope-relative and repeatable (§3.7).
+13. **Refinement subtask triggering** — resolved (rev 38, rev 57, TAI-317): a human, the PM or the Analyst may flag a Story for `Investigate`; whoever has the in-context judgment creates it (`workflows/dependencies.md`, eager subtask creation); no formal "ready for implementation" marker.
+14. **Escalation notification channel** — resolved (rev 41): a comment or label plus the status rollup is enough for v1; active push is deferred, not declined.
 15. **Learning-loop design (deferred, §3.3):** this entire mechanism — proactive metadata
     checks, the proposed/confirmed constraint cache, promotion authority (human only, or
     can the Orchestrator do it under a configured permission?), sharing scope (local vs.
@@ -2510,157 +1311,24 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     block), and — critically — **what a promotion actually changes** (persona extension?
     workflow adjustment? something else?) is all undesigned. Revisit as a follow-on
     refinement once the core escalation behavior (v1) is built and in use.
-16. **Subtask type taxonomy completeness (§5.2):** *Partly resolved (rev 10).* DBA/DevOps
-    routing types are now concrete — `Database`; `Infra` / `Deploy` / `PostDeploy` — and a
-    type may carry a **default owner that is overridable per instance** (`Deploy` /
-    `PostDeploy`), settling the "route to more than one eligible persona" sub-question.
-    ~~**Still open:** the process for adding a brand-new type when a real case doesn't fit
-    the existing list — does that require a human decision, or can the Analyst/Architect
-    propose a new type during a refinement subtask?~~ — **RESOLVED (rev 39):** `SubtaskType`
-    is a compile-time enum (`story-schema.ts:87`) — adding a new one is always a human
-    (developer) schema edit. A persona may propose the gap, same propose pattern as
-    elsewhere, but never adds the type itself. Mirrors §8.1's story-type taxonomy stance.
-17. ~~**Analyst output review gate (§5.2):** does `Investigate` output need a formal review
-    type (mirroring `DesignReview`), or does the default human sign-off (§3.4) already
-    cover it well enough? If a formal gate is added, it may need **two independent
-    reviewers checking different things** — PM for business/acceptance fit, Architect for
-    whether the requirement is clearly enough defined to design and implement — rather than
-    the single-reviewer shape every existing gate assumes. If both are needed: do both have
-    to pass before the Story is considered refined, can they run in parallel, and does a
-    disagreement between PM and Architect itself become a new kind of checkpoint?
-    *Update (rev 10):* a Kickoff-stage **PM + UX Designer** review gate now exists as-built
-    (§3.5, `workflows/kickoff.md`), but it gates *Kickoff discovery output*, not
-    *`Investigate` story-refinement output* — so the dual-reviewer question for
-    `Investigate`, and whether these two gates should be unified, both remain open.~~ —
-    **RESOLVED (rev 40): no formal gate.** `Investigate` is an ordinary subtask, not a
-    story-level gate like Kickoff's — the generic per-subtask checkpoint (§3.4) already
-    covers it. No dual-reviewer structure, no unification with Kickoff. **Addendum:** a
-    mid-flight-spawned `Investigate` blocking its originating subtask uses the existing
-    `SubtaskDependencyOverride` escape hatch (`workflows/dependencies.md`), not a new
-    mechanism — a per-instance call, not a static graph change.
+16. **Subtask type taxonomy completeness** — resolved (rev 10, rev 39): `Database`, `Infra`, `Deploy`, `PostDeploy` exist with overridable default owners; a new type is always a human schema edit, which a persona may propose (§5.2).
+17. **Analyst output review gate** — resolved (rev 40): no formal gate for `Investigate`; the ordinary per-subtask checkpoint covers it (§3.4).
 18. **Native Project Role sync (deferred, rev 12, §5.6):** whether/when to mirror the
     TAI-owned Persona Roster into real Jira Project Roles for teams on a paid plan —
     what triggers it (automatic plan-tier detection vs. an explicit opt-in command), and
     how a conflict between the roster and hand-edited native roles is resolved. Not
     required for the registry to function; purely an optional native-Jira visibility/
     defense-in-depth enhancement once scheduled.
-19. ~~**Git-hosting plugin abstraction**~~ — **RESOLVED (rev 21, TAI-33 Spike/ADR):** a
-    sibling `GitHostBackend`/`GitHost` interface, not folded into `StorageBackend` — git
-    hosting is an independent configuration axis from Jira/Confluence, reusing the Storage
-    Plugin's *pattern* (branded IDs, `MutationResult`/`StorageConnectivityError`, an open
-    `kind` discriminator) without reusing its interface. One `GitHost` interface, not split
-    like `WorkTracker`/`DocStore` — git hosting has no equivalent internal product seam.
-    Scoped to PR CRUD, approve/request-changes, merge, and commit status; explicitly
-    excludes a "trigger CI" operation (can't be guaranteed retroactively, per this
-    session's own Bitbucket Pipelines work). See §6 and the TAI-33 ADR (Confluence, TA
-    space). **Implemented (rev 25, TAI-38):** `GitHost` interface and Bitbucket backend
-    live at `src/core/git/interface.ts` and `src/core/git/bitbucket/`.
-20. ~~**CodeReview checkpoint must act on a real git PR**~~ — **RESOLVED (rev 21, TAI-34
-    Spike/ADR):** the Develop→CodeReview→Merge/Deploy chain (§5.4) now opens and acts on a
-    real PR. PR state syncs **one-way** into the Jira subtask at existing refresh points
-    (§3.6) — never the reverse; the Jira subtask stays what TAI's own precedence engine
-    reads, answering the "which is the source of truth" question. A human reviewing or
-    merging directly on the git host, outside TAI, is detected on next refresh and
-    reflected, not fought — same principle as §4's Confluence-gate-reopening rule. See
-    §5.4 and the TAI-34 ADR (Confluence, TA space). **Implemented (rev 25, TAI-38/39/40):**
-    Develop opens a real PR, CodeReview acts on it, Merge/Deploy merges it gated on commit
-    status; verified against the live TAIT scratch repo (TAI-40 integration test).
-    **Further revised (rev 52, TAI-159 ADR). Implemented (rev 52, TAI-160):** the
-    `CodeReview` subtask itself is retired in favor of querying the git host's PR approval
-    state live — see §5.4's "Revised (rev 52 design)" block.
-21. ~~**Explicit uncertainty markers in generated artifacts**~~ (rev 22, inspired by
-    GitHub Spec Kit's `NEEDS CLARIFICATION` convention) — **RESOLVED (rev 23), narrow:**
-    adopted, but scoped to **Kickoff-stage docs only** (PRD/UX flows, `workflows/kickoff.md`)
-    — a persona leaves a `NEEDS CLARIFICATION: <question>` marker on any genuine gap, and
-    the existing PM+UX Designer review gate (§3.5) is mechanically blocked while any marker
-    remains, rather than depending solely on a reviewer noticing what's missing. Answers
-    this session's open question about how deep Ada's clarifying conversation needs to go:
-    exactly deep enough that no marker remains at gate time. **Applied (rev 24)** to
-    `workflows/kickoff.md` (the gate mechanics) and `personas/pm.md`/`personas/ux-designer.md`
-    (pointers from the PRD/UX-flow output descriptions) — not `personas/analyst.md`, since
-    the resolution scopes this to the PRD/UX-flow docs the gate actually reads, not Ada's
-    work-breakdown doc. Extending the convention to `Investigate`/ADR output later, if
-    Kickoff usage proves it out, is a natural next step but not decided here.
-22. ~~**Structured completion-marker convention for persona handoff**~~ (rev 22, inspired
-    by GSD's `agent-contracts.md` pattern) — **RESOLVED (rev 25, TAI-41 ADR):** extends
-    the existing `Approved:`/`Rejected:`/`Q:` marker convention (§3.9) with `Complete:
-    <SubtaskType>` plus one `<condition-id>: PASS|FAIL` line per configured autocompletion
-    condition (§8.9), posted by the deciding persona (or human) as a Jira comment when the
-    subtask concludes. Deliberately **no** inference-fallback here, unlike the human-
-    authored markers — a persona's output format is under TAI's own prompt control, so a
-    missing/malformed marker is treated as FAIL, not inferred from prose. See the TAI-41
-    ADR (Confluence, TA space). **Implemented (rev 26, TAI-43 — corrects rev 25's "see
-    TAI-42," which named the wrong Story):** `parseCompletionMarker`/`latestCompletionMarker`
-    live in `autocompletion.ts` alongside the condition-evaluation logic they feed.
-23. ~~**Finer-grained checkpoint taxonomy**~~ (rev 22, inspired by GSD's three-way
-    `human-verify` / `decision` / `human-action` split) — **RESOLVED (rev 25, TAI-41
-    ADR), declined as proposed:** GSD's three-way split doesn't map onto what exists in
-    `story-schema.ts` — no current checkpoint is a "pick from options" or an "external
-    physical action." Instead formalizes the two kinds already implicit in the code:
-    **`hard`** (never autocompletes — `ALWAYS_HUMAN_GATED_SUBTASKS`/`REVIEW_GATES`) and
-    **`conditional`** (default human-sign-off, autocompletion-eligible per §8.9/§8.22).
-    Additive over the existing binary default, not a breaking change. See the TAI-41 ADR
-    (Confluence, TA space). **Implemented (rev 26, TAI-43 — corrects rev 25's "see
-    TAI-42," which named the wrong Story):** `checkpointKind` lives in `autocompletion.ts`.
-24. ~~**Lightweight persona roster/manifest file**~~ (rev 22, inspired by BMAD-METHOD's
-    `module.yaml` agent-roster pattern) — **DEFERRED (rev 23):** no current consumer —
-    personas are always loaded as full `personas/*.md` files today; nothing invokes a
-    persona independently of that. Revisit if/when personas become independently
-    invokable (e.g. individual Claude Code skills). Building this speculatively risks
-    drifting out of sync with the real persona files it would summarize. *(Distinct from
-    the existing **Persona Roster**, §5.6 — that's the human↔persona-id assignment mapping;
-    this would have been a manifest of the personas themselves. Naming collision flagged
-    here so a future revisit doesn't reuse the same term for two different things.)*
-25. ~~**Brief-compliance gate embedded in each workflow doc**~~ (rev 22, inspired by
-    GitHub Spec Kit's `constitution.md` + "Constitution Check" gate) — **RESOLVED
-    (rev 23), light:** adopted, but as a single pointer line at the top of each
-    `workflows/*.md` ("must comply with `PROJECT_BRIEF.md`; re-check before finalizing
-    output"), not a duplicated checklist. `CLAUDE.md` already forces every session to read
-    this brief first; a full per-workflow checklist would need to stay in sync with a brief
-    that revises often (rev 23 as of this entry) — real rot risk outweighs the benefit of a
-    heavier gate. **Applied (rev 24)** — the pointer line is now the first line under the H1
-    in all five `workflows/*.md` files (`kickoff.md`, `story.md`, `bug.md`, `spike.md`,
-    `dependencies.md`).
-26. ~~**Retrospective / correct-course workflow type**~~ (rev 22, inspired by
-    BMAD-METHOD's dedicated `bmad-retrospective` and `bmad-correct-course` skills) —
-    **DECLINED (rev 23):** no retrospective or formal course-correction has ever actually
-    been needed in TAI's own dogfooding to date — same "don't add ahead of a real need"
-    reasoning as §8 item 1's Story-type stance and §5.2's subtask-type stance. A Bug covers
-    post-ship issues; an edited Story covers mid-flight scope correction. Revisit only if a
-    concrete gap appears in practice.
-27. ~~**No established place for company/global-level docs or general epic-level docs**~~
-    (rev 26) — **DECLINED (rev 30): neither gap is real.** Surfaced while scoping Epic
-    TAI-8, right after Epic TAI-6's first Story (TAI-52) shipped. The Confluence structure
-    resolved in §4 covers two tiers well: **per-doc-type-instance pages** (ADRs, PRDs, Test
-    Plans, …) tied to a specific Story/Epic via the `<JIRA-KEY> — <Doc Type>: …` naming
-    convention, and the **project-level Config folder** (rev 13) for content tied to no
-    single ticket at all (Persona Roster, the `Personas` override page). Originally thought
-    neither tier answered:
-    - **Company/global docs** — coding standards, cross-team process, architecture spanning
-      multiple systems/projects. **Dropped from consideration**: no cross-project scope
-      exists to serve; §4's "one Confluence space per Jira project" model is sufficient as
-      is.
-    - **General epic-level docs** — an epic's own running design notes/context that isn't
-      one instance of the fixed ADR/PRD/Test-Plan/etc. taxonomy. **Not actually missing**:
-      the existing project-level `Config` folder (rev 13) already serves as the home for
-      untyped, non-ticket-tied content — no separate epic-scoped catch-all needed. Typed
-      epic-scoped docs already had a home regardless (§4: "an Epic-level decomposition
-      proposal ties to the Epic itself").
-    No Spike needed — both sub-questions collapse to "already covered by existing
-    structure."
-28. ~~**`Backlog → To Do` readiness gate: stays soft forever, or eventually hardens?**~~
-    (rev 27) — **RESOLVED (rev 29): stays soft indefinitely, no hard gate built.** §5.3
-    resolves that `Backlog` exists and where it sits in the lifecycle, and leaves the
-    transition ungated in code — a human (or a persona, once one has the authority) just
-    moves a ticket when they judge it ready, the same way every status transition worked
-    before the rev 19 assignment gate existed. Declined to build a hard gate now: none of
-    the candidate "ready" signals (no unresolved `NEEDS CLARIFICATION` marker, §8.21; no
-    unresolved `Q:` thread, §3.9; precedence-unblocked, §5.3) alone captures "a
-    human/process judged this ready," and the rev 19 assignment gate earned hard
-    enforcement because it prevented a concrete, identified failure mode (§5.5's own
-    reasoning) — no equivalent incident exists here yet. Per §8 item 1's "don't build
-    ahead of an observed need," revisit only if a real "a ticket left `Backlog` before it
-    should have" incident actually happens in practice.
+19. **Git-hosting plugin abstraction** — resolved (rev 21, TAI-33 ADR; built rev 25, TAI-38): a sibling `GitHost` interface, not part of `StorageBackend`, at `src/core/git/` (§6).
+20. **Code review must act on a real git PR** — resolved (rev 21, TAI-34 ADR; revised rev 52, TAI-159 ADR): review and merge act on the real PR, and the `CodeReview` subtask is retired in favour of the host's live approval state (§5.4).
+21. **Explicit uncertainty markers** — resolved (rev 23), narrow: `NEEDS CLARIFICATION:` in Kickoff-stage docs only, blocking the PM + UX review gate while one remains (`workflows/kickoff.md`).
+22. **Structured completion marker** — resolved (rev 25, TAI-41 ADR; built rev 26, TAI-43): `Complete: <SubtaskType>` with one PASS/FAIL line per condition, no inference fallback (§3.9, `autocompletion.ts`).
+23. **Finer-grained checkpoint taxonomy** — resolved (rev 25, TAI-41 ADR): two kinds, `hard` and `conditional`; the three-way split was declined (`checkpointKind`, `autocompletion.ts`).
+24. **Lightweight persona manifest file** — deferred (rev 23): no consumer yet. Not the same thing as the Persona Roster (§5.6).
+25. **Brief-compliance gate in each workflow doc** — resolved (rev 23, applied rev 24): one pointer line at the top of each `workflows/*.md`, not a duplicated checklist.
+26. **Retrospective / correct-course workflow type** — declined (rev 23): no real need yet; a Bug or an edited Story covers it.
+27. **A place for company-level or general epic-level docs** — declined (rev 30): the per-ticket doc pages and the project-level `Config` folder already cover it (§4).
+28. **`Backlog → To Do` readiness gate** — resolved (rev 29): stays soft, no hard gate (§5.3).
 29. **Human-requested review override, at any stage in the chain (rev 49, 2026-08-20,
     open).** At any point — Architect, Analyst, Dev, CodeReview, DesignReview, and so on —
     someone (most likely a human, though possibly any persona noticing something worth a
@@ -2708,40 +1376,10 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     Epic? periodically?), and whether it's a new `confluenceOutputs` doc type or folds into
     the existing project-level `Config` folder (§4 rev 13, which already holds untyped,
     non-ticket-tied content). **See TAI-280 (Story, Backlog).**
-33. **Architect-owned architectural overview doc (rev 55, 2026-08-31; underlying work
-    shipped rev 57, this §8 entry itself only closed out now, rev 60).** Same shape as
-    item 32 but for Aria (Architect): a living doc describing the codebase's actual
-    structure/design. **Shipped:** TAI-281 (Story, Done) via TAI-307's ArchitectureDesign —
-    `personas/architect.md`'s Architecture Overview section, an arc42/C4-inspired candidate
-    section menu assessed against each project's real shape (include/reframe/N/A-with-
-    reason, never silently dropped), linking out to real ERDs/ADRs/specs rather than
-    duplicating them, one page by default, code-driven Mermaid diagrams, periodic/on-demand
-    cadence (Confluence page 34963485). This entry itself went unclosed against TAI-281/307
-    actually landing — caught as a stale brief-gap during Aria's own persona review
-    (TAI-6/149/328), not resolved in real time the way item 34's rev 57 close-out was.
-34. **Keep local master/main fresh across multiple machines/checkouts (rev 55, 2026-08-31;
-    resolved rev 57, 2026-09-03).** Distinct from §8 item 8's worktree-swap-on-ticket-switch
-    design (resolved, not yet implemented) and TAI-115's worktree-concurrency Story
-    (explicitly deferred to v2) — this is about the same human (or team) working from more
-    than one machine/folder letting a local `master`/`main` go stale before branching new
-    work off it, i.e. fetching/pulling as appropriate, and often. **Shipped:** TAI-282
-    (Story, Done) via TAI-287's ADR (Confluence, page 32899073) and TAI-288's
-    implementation (`src/core/git/local-fetch.ts`, PR #80, merged) — `tai-work`/`tai-ready`
-    now fetch `origin` and auto-fast-forward the local default branch when safe (clean
-    fast-forward only, never merge/rebase/force), debounced ~10min via
-    `.tai/last-fetch.json`.
-35. ~~**Systematic per-persona job/scope audit against competitor frameworks**~~ — **RESOLVED
-    (rev 55 → rev 66, 2026-09-23).** For each of the 9 personas: what tickets they actually
-    touch, what marks their work "done," how deep they dig, and what's their focus —
-    compared against GSD/BMAD-METHOD/Spec Kit's equivalent agent roles, with an explicit
-    likes/dislikes call on each competitor. Delivered as a synthesis of all nine
-    TAI-6/138-155 persona-review discussions' own competitor research, not a separate
-    investigation — each turn already read the relevant competitor source directly.
-    **Shipped:** TAI-283 (Spike, Done), Confluence page 41123841.
-36. ~~**Overall TAI-vs-competition comparison**~~ — **RESOLVED (rev 55 → rev 66,
-    2026-09-23).** Follow-on to item 35: a "real" comparison of TAI against GSD/BMAD-
-    METHOD/Spec Kit as whole systems — where TAI wins, where it falls short, concrete
-    improvement candidates. **Shipped:** TAI-284 (Spike, Done), Confluence page 41156609.
+33. **Architect-owned architecture overview doc** — shipped (rev 57, TAI-281/TAI-307): `personas/architect.md`'s Architecture Overview section; Confluence page 34963485.
+34. **Keeping local master fresh across machines** — shipped (rev 57, TAI-282, TAI-287 ADR): `tai-work` and `tai-ready` fetch and fast-forward the default branch when safe (`src/core/git/local-fetch.ts`).
+35. **Per-persona job and scope audit against competitor frameworks** — resolved (rev 66): TAI-283, Confluence page 41123841.
+36. **Overall TAI-versus-competition comparison** — resolved (rev 66): TAI-284, Confluence page 41156609.
 37. **Extend the out-of-band-human-edit posture from git hosts to Jira/Confluence directly
     (rev 55, 2026-08-31, open).** §6/the TAI-34 ADR already establish that a human acting
     directly on the git host (reviewing, merging) is treated as authoritative, not fought —
