@@ -241,6 +241,31 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
     ],
 };
 
+/**
+ * TAI-479 (human decision TAI-455): the note `issue create` prints when a subtask's type is not
+ * listed in `STORY_SUBTASK_MAP` for its parent's type. A note, never a refusal: a human or a persona
+ * may have a real reason, and the ticket already exists. `null` when the type is listed, and when
+ * the new ticket is not a subtask at all. A subtask whose parent is an Epic or another subtask is
+ * the most out-of-place case and gets its own wording: no subtask type belongs there (brief §5.1).
+ */
+export function subtaskOutsideMapNote(subtaskType: StoryType | SubtaskType | "epic", parentType: StoryType | SubtaskType | "epic"): string | null {
+    if (!isSubtaskIssueType(subtaskType)) return null;
+    if (!isStoryIssueType(parentType)) {
+        const under = parentType === "epic" ? "an Epic" : `a "${parentType}" subtask`;
+        return (
+            `Note: a "${subtaskType}" subtask was created directly under ${under}. Subtasks belong under a Kickoff, Spike, Story or Bug, never under an Epic or another subtask. ` +
+            "The ticket was created. Move it under the right parent, or cancel it if it was a mistake."
+        );
+    }
+    const allowed = STORY_SUBTASK_MAP[parentType];
+    if (allowed.includes(subtaskType)) return null;
+    const retired = subtaskType === SubtaskType.CodeReview ? " `code-review` is retired: review happens on the PR." : "";
+    return (
+        `Note: a "${subtaskType}" subtask is not one of the types expected under a ${parentType} (${allowed.join(", ")}).${retired} ` +
+        `The ticket was created. The precedence graph for a ${parentType} has no place for it, so nothing waits on it and it waits on nothing; link it by hand if it must block something, or cancel it if it was a mistake.`
+    );
+}
+
 // Subtask types that are INHERENTLY human-gated (brief §3.3): they always
 // require a human sign-off and can never autocomplete, even when
 // autocompletion is otherwise enabled for the persona/project — a

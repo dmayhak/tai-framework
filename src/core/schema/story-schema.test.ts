@@ -26,6 +26,7 @@ import {
     EXPEDITED_BUG_PRIORITY,
     ALWAYS_HUMAN_GATED_SUBTASKS,
     STORY_SUBTASK_MAP,
+    subtaskOutsideMapNote,
     type SubtaskPrecedenceRule,
 } from "./story-schema.js";
 
@@ -570,5 +571,51 @@ describe("an absent subtask passes its predecessors through (TAI-463)", () => {
             .map((r) => `${r.before}>${r.after}`)
             .sort();
         assert.deepEqual(added, ["dev>uat", "uat>deploy"]);
+    });
+});
+
+describe("subtaskOutsideMapNote (TAI-479)", () => {
+    it("is null for every subtask type its parent's type lists", () => {
+        for (const storyType of Object.values(StoryType)) {
+            for (const subtaskType of STORY_SUBTASK_MAP[storyType]) {
+                assert.equal(subtaskOutsideMapNote(subtaskType, storyType), null, `${subtaskType} under ${storyType}`);
+            }
+        }
+    });
+
+    it("names the parent's type and the listed types when the type is not listed", () => {
+        const note = subtaskOutsideMapNote(SubtaskType.Database, StoryType.Kickoff)!;
+        assert.match(note, /^Note: a "database" subtask is not one of the types expected under a kickoff \(research, epic-review, requirements, ux-design, architecture-design\)\./);
+        assert.match(note, /The ticket was created\./);
+    });
+
+    it("its precedence claim holds: no precedence rule names a subtask type outside the map", () => {
+        for (const storyType of Object.values(StoryType)) {
+            const allowed = STORY_SUBTASK_MAP[storyType];
+            for (const rule of resolveApplicablePrecedence(storyType, Object.values(SubtaskType))) {
+                assert.ok(allowed.includes(rule.before) && allowed.includes(rule.after), `${storyType}: ${rule.before} -> ${rule.after}`);
+            }
+        }
+        assert.match(
+            subtaskOutsideMapNote(SubtaskType.Triage, StoryType.Story)!,
+            /The precedence graph for a story has no place for it, so nothing waits on it and it waits on nothing/
+        );
+    });
+
+    it("says the retired code-review type is retired", () => {
+        assert.match(subtaskOutsideMapNote(SubtaskType.CodeReview, StoryType.Story)!, /`code-review` is retired: review happens on the PR\./);
+        assert.doesNotMatch(subtaskOutsideMapNote(SubtaskType.Triage, StoryType.Story)!, /retired/);
+    });
+
+    it("has nothing to say when the new ticket is not a subtask", () => {
+        assert.equal(subtaskOutsideMapNote(StoryType.Story, "epic"), null);
+        assert.equal(subtaskOutsideMapNote("epic", StoryType.Story), null);
+    });
+
+    it("notes a subtask created directly under an Epic or under another subtask: no subtask type belongs there", () => {
+        const underEpic = subtaskOutsideMapNote(SubtaskType.Dev, "epic")!;
+        assert.match(underEpic, /^Note: a "dev" subtask was created directly under an Epic\. Subtasks belong under a Kickoff, Spike, Story or Bug, never under an Epic or another subtask\./);
+        assert.match(underEpic, /The ticket was created\./);
+        assert.match(subtaskOutsideMapNote(SubtaskType.Dev, SubtaskType.Dev)!, /created directly under a "dev" subtask/);
     });
 });

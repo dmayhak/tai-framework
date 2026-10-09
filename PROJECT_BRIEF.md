@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 90). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 91). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -768,6 +768,10 @@ brand-new type is always a human schema edit, which a persona may propose (§8.1
 `DesignReview` and `UAT` are optional gates: `DesignReview` gates `ArchitectureDesign` → `Dev`, and `UAT`
 gates `Deploy`. Both are inherently human-gated (§3.3) and **present-when-added**, purely additive to the
 precedence graph — see `workflows/story.md` and `workflows/dependencies.md`.
+
+**Which subtask types belong under which story type** is `STORY_SUBTASK_MAP` (`story-schema.ts`). It is not
+enforced: `issue create` prints a note when a subtask's type is not listed for its parent's type, or when the
+subtask is created directly under an Epic or another subtask, and creates the ticket anyway.
 
 Subtask-type-to-persona routing is configurable the same way persona permissions are
 (§3.1): a business can add types, change routing, or restrict which types a given persona
