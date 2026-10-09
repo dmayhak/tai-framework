@@ -481,6 +481,55 @@ export function fillCliPlaceholder(text: string, command: string = taiCliCommand
     return text.replaceAll(TAI_CLI_PLACEHOLDER, command);
 }
 
+// ---------- Where the docs a persona cites are (TAI-488) ----------
+
+/** The TAI checkout this module was loaded from. */
+export function taiInstallRoot(): string {
+    return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+}
+
+const WORKFLOW_DOC_BY_STORY_TYPE: Record<StoryType, string> = {
+    [StoryType.Kickoff]: "kickoff.md",
+    [StoryType.Story]: "story.md",
+    [StoryType.Bug]: "bug.md",
+    [StoryType.Spike]: "spike.md",
+};
+
+export interface WorkflowDocRef {
+    readonly label: string;
+    /** Absolute, so it can be read from a target project's working directory. */
+    readonly path: string;
+}
+
+/**
+ * The workflow docs that apply to a ticket of `storyType` (a subtask passes its parent's type):
+ * that type's own doc, then `dependencies.md`, which every type shares. `null` (an Epic, or a
+ * ticket whose parent could not be read) gets `dependencies.md` alone.
+ */
+export function workflowDocsFor(storyType: StoryType | null, root: string = taiInstallRoot()): readonly WorkflowDocRef[] {
+    const dir = path.join(root, "src/workflows");
+    const own = storyType ? [{ label: `The ${storyType} workflow`, path: path.join(dir, WORKFLOW_DOC_BY_STORY_TYPE[storyType]) }] : [];
+    return [...own, { label: "Subtask precedence and creation rules", path: path.join(dir, "dependencies.md") }];
+}
+
+/**
+ * Persona docs cite other docs by a short relative path (`workflows/story.md`). Those resolve only
+ * inside the TAI checkout, so every loaded prompt ends with where they are. Read on demand; nothing
+ * is inlined.
+ */
+export function docLocationsNote(root: string = taiInstallRoot()): string {
+    const src = path.join(root, "src");
+    return [
+        "## Where the docs cited above are",
+        "",
+        "The paths above are relative to TAI's install, not to this project. Read a doc when you need it:",
+        "",
+        `- \`workflows/<name>.md\` and \`personas/<id>.md\` are under \`${src}\`.`,
+        `- \`schema/…\` and other code paths are under \`${path.join(src, "core")}\`.`,
+        `- The brief is \`${path.join(root, "PROJECT_BRIEF.md")}\`.`,
+    ].join("\n");
+}
+
 // ---------- I/O: loading built-ins from disk ----------
 
 /** Default location of the bundled `.md` files, resolved relative to this module. Callers
@@ -560,7 +609,8 @@ export async function loadPersonaConfig(
     if (extensionPage) extension = parseExtensionPage(extensionPage.content);
 
     const merged = mergePersonaConfig(base, override, extension);
-    return { ...merged, prompt: fillCliPlaceholder(merged.prompt, personaCliCommand(merged.id)) };
+    const prompt = fillCliPlaceholder(merged.prompt, personaCliCommand(merged.id));
+    return { ...merged, prompt: prompt === "" ? prompt : `${prompt}\n\n${docLocationsNote()}` };
 }
 
 // ---------- The acting persona (TAI-477) ----------

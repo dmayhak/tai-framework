@@ -8,7 +8,9 @@ import { ALWAYS_HUMAN_GATED_SUBTASKS, StoryType, SubtaskType } from "../schema/s
 import type { AttachmentRef, Comment, CreatePageInput, DocStore, Page, PagePatch, PageRef, IssueKey } from "../storage/interface.js";
 import {
     PERSONA_PROMPT_SOFT_LIMIT_BYTES,
+    docLocationsNote,
     emptyPersonaShell,
+    workflowDocsFor,
     loadBuiltinPersonaConfigs,
     loadPersonaConfig,
     mergePersonaConfig,
@@ -654,6 +656,29 @@ describe("TAI CLI placeholder (TAI-465)", () => {
         // TAI-477: the filled-in command also names the persona it was rendered for.
         assert.ok(config.prompt.includes(`${taiCliCommand()} --as developer git-pr create`));
         assert.ok(config.prompt.includes(`run \`${taiCliCommand()} --as developer ready\` first`));
+    });
+
+    // TAI-488: "see workflows/story.md" only resolves inside the TAI checkout.
+    it("workflowDocsFor names the type's own workflow doc and dependencies.md, as absolute paths that exist", async () => {
+        const { access } = await import("node:fs/promises");
+        for (const type of Object.values(StoryType)) {
+            const docs = workflowDocsFor(type);
+            assert.deepEqual(docs.map((d) => path.basename(d.path)), [`${type}.md`, "dependencies.md"]);
+            for (const doc of docs) {
+                assert.ok(path.isAbsolute(doc.path), doc.path);
+                await access(doc.path);
+            }
+        }
+    });
+
+    it("workflowDocsFor gives dependencies.md alone when the type is unknown (an Epic)", () => {
+        assert.deepEqual(workflowDocsFor(null, "/opt/tai").map((d) => d.path), ["/opt/tai/src/workflows/dependencies.md"]);
+    });
+
+    it("every loaded persona prompt ends by saying where the docs it cites are", async () => {
+        const config = await loadPersonaConfig(new FakeDocStore(), "tester", { spaceKey: "TA" });
+        assert.ok(config.prompt.endsWith(docLocationsNote()));
+        assert.match(docLocationsNote("/opt/tai"), /`workflows\/<name>\.md` and `personas\/<id>\.md` are under `\/opt\/tai\/src`/);
     });
 
     it("no persona or workflow doc carries a CLI command relative to the TAI checkout", async () => {
