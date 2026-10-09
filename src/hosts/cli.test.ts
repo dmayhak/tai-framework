@@ -871,31 +871,45 @@ describe("renderMergeRefused (TAI-462)", () => {
 
 describe("createdSubtaskMapNote (TAI-479): when issue create prints the subtask-map note", () => {
     const key = toIssueKey("TAI-1");
-    const parentOf = (issueType: string) => async () => ({ issueType }) as never;
+    const parent = (issueType: string) => ({ issueType }) as never;
+    const neverFetch = async (): Promise<never> => assert.fail("must not fetch the parent");
 
     it("prints nothing for a subtask type its parent's type lists", async () => {
-        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Dev, parentKey: key }, parentOf(StoryType.Story)), null);
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Dev, parentKey: key }, parent(StoryType.Story), neverFetch), null);
     });
 
     it("prints the note for a subtask type its parent's type does not list", async () => {
-        const note = await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, parentOf(StoryType.Story));
+        const note = await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, parent(StoryType.Story), neverFetch);
         assert.match(note ?? "", /^Note: a "triage" subtask is not one of the types expected under a story/);
     });
 
     it("prints the note for a subtask created directly under an Epic", async () => {
-        const note = await createdSubtaskMapNote({ issueType: SubtaskType.Dev, parentKey: key }, parentOf("epic"));
+        const note = await createdSubtaskMapNote({ issueType: SubtaskType.Dev, parentKey: key }, parent("epic"), neverFetch);
         assert.match(note ?? "", /created directly under an Epic/);
     });
 
-    it("never reads the parent for a story-level ticket or a ticket with no parent", async () => {
-        const never = async (): Promise<never> => assert.fail("must not read the parent");
-        assert.equal(await createdSubtaskMapNote({ issueType: StoryType.Story, parentKey: key }, never), null);
-        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Dev }, never), null);
+    it("uses a parent the caller already read, and does not fetch it again", async () => {
+        // Also the "read and not found" case: null is an answer, not a reason to fetch.
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, null, neverFetch), null);
     });
 
-    it("prints nothing when the parent is missing or cannot be read", async () => {
-        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, async () => null), null);
+    it("fetches the parent by its key when the caller has not read it (priority= was given)", async () => {
+        const fetched: string[] = [];
+        const note = await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, undefined, async (k) => {
+            fetched.push(k);
+            return parent(StoryType.Story);
+        });
+        assert.deepEqual(fetched, ["TAI-1"]);
+        assert.match(note ?? "", /not one of the types expected under a story/);
+    });
+
+    it("never needs the parent for a story-level ticket or a ticket with no parent", async () => {
+        assert.equal(await createdSubtaskMapNote({ issueType: StoryType.Story, parentKey: key }, undefined, neverFetch), null);
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Dev }, undefined, neverFetch), null);
+    });
+
+    it("prints nothing when the parent cannot be fetched", async () => {
         const failing = async (): Promise<never> => Promise.reject(new Error("tracker down"));
-        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, failing), null);
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, undefined, failing), null);
     });
 });

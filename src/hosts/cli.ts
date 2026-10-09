@@ -662,14 +662,18 @@ async function actingGrantNote(config: ResolvedConfig, action: "create" | "compl
 /**
  * TAI-479: the note for a just-created ticket whose subtask type its parent does not list, or `null`.
  * A note, never a refusal, and best effort: a ticket that is not a subtask, has no parent, or whose
- * parent cannot be read gets none. `readParent` is only called for a subtask with a parent.
+ * parent cannot be read gets none. `parentAlreadyRead` is the parent when the caller has read it
+ * (`null` = read and not found); `undefined` means not read yet, and only then is `fetchParent`
+ * called, so one create reads its parent at most once.
  */
 export async function createdSubtaskMapNote(
     issue: Pick<Issue, "issueType" | "parentKey">,
-    readParent: () => Promise<Pick<Issue, "issueType"> | null>
+    parentAlreadyRead: Pick<Issue, "issueType"> | null | undefined,
+    fetchParent: (key: IssueKey) => Promise<Pick<Issue, "issueType"> | null>
 ): Promise<string | null> {
-    if (!issue.parentKey || !isSubtaskIssueType(issue.issueType)) return null;
-    const parent = await readParent().catch(() => null);
+    const parentKey = issue.parentKey;
+    if (!parentKey || !isSubtaskIssueType(issue.issueType)) return null;
+    const parent = parentAlreadyRead !== undefined ? parentAlreadyRead : await fetchParent(parentKey).catch(() => null);
     return parent ? subtaskOutsideMapNote(issue.issueType, parent.issueType) : null;
 }
 
@@ -2177,9 +2181,7 @@ async function main(): Promise<void> {
             if (!issue.persona) console.log(`\n${PERSONA_LESS_CREATE_WARNING(issue.key)}`);
             const outsideGrantNote = await actingGrantNote(config, "create", issue.issueType);
             if (outsideGrantNote) console.log(`\n${outsideGrantNote}`);
-            const mapNote = await createdSubtaskMapNote(issue, () =>
-                parentRead !== undefined ? Promise.resolve(parentRead) : config.backend.workTracker.getIssue(issue.parentKey!)
-            );
+            const mapNote = await createdSubtaskMapNote(issue, parentRead, (parentKey) => config.backend.workTracker.getIssue(parentKey));
             if (mapNote) console.log(`\n${mapNote}`);
             return;
         }

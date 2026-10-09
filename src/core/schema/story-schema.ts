@@ -253,7 +253,7 @@ export function subtaskOutsideMapNote(subtaskType: StoryType | SubtaskType | "ep
     if (!isStoryIssueType(parentType)) {
         const under = parentType === "epic" ? "an Epic" : `a "${parentType}" subtask`;
         return (
-            `Note: a "${subtaskType}" subtask was created directly under ${under}. Subtasks belong under a ${Object.values(StoryType).join(", ")} ticket, never under an Epic or another subtask. ` +
+            `Note: a "${subtaskType}" subtask was created directly under ${under}. Subtasks belong under a Kickoff, Spike, Story or Bug, never under an Epic or another subtask. ` +
             "The ticket was created. Move it under the right parent, or cancel it if it was a mistake."
         );
     }

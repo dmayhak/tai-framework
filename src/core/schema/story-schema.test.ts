@@ -601,7 +601,7 @@ describe("subtaskOutsideMapNote (TAI-479)", () => {
 
     it("notes a subtask created directly under an Epic or under another subtask: no subtask type belongs there", () => {
         const underEpic = subtaskOutsideMapNote(SubtaskType.Dev, "epic")!;
-        assert.match(underEpic, /^Note: a "dev" subtask was created directly under an Epic\. Subtasks belong under a kickoff, spike, story, bug ticket/);
+        assert.match(underEpic, /^Note: a "dev" subtask was created directly under an Epic\. Subtasks belong under a Kickoff, Spike, Story or Bug, never under an Epic or another subtask\./);
         assert.match(underEpic, /The ticket was created\./);
         assert.match(subtaskOutsideMapNote(SubtaskType.Dev, SubtaskType.Dev)!, /created directly under a "dev" subtask/);
     });
