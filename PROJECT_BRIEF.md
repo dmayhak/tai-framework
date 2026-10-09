@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 82). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 83). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -72,6 +72,10 @@ AI roles that Claude/Gemini assume to do work. Each persona:
   new personas.
 - Persona extensions are stored in a standard place in **Confluence** so they can be shared
   across the team, and cached locally.
+- Cites other docs by a short relative path (`workflows/story.md`). Those resolve only inside the TAI
+  install, so every loaded prompt ends with where they are, and `/tai-work`'s output names the absolute path
+  of the workflow doc for the ticket's type (a subtask uses its parent's) and of `dependencies.md`. The docs
+  are read on demand, never inlined.
 - Is **two files**: `src/personas/<id>.md` is the run-time prompt — role, principles, behaviours,
   commands and hand-offs, stated as current fact — and `src/personas/rationale/<id>.md` holds why each
   rule exists and its history, and is never loaded. A rule change is written into the prompt as fact and

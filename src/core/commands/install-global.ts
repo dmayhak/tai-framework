@@ -73,8 +73,10 @@ function workSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts work <ISSUE-KEY>\n` +
         "```\n\n" +
         "The output starts with a `# Persona: <name> (<id>)` heading followed by that " +
-        "persona's own instructions, then a `---` separator, then the assembled briefing " +
-        "(the unit of work plus its immediate parent and linked Confluence pages, brief §3.6).\n\n" +
+        "persona's own instructions, then a `---` separator, then the absolute paths of the " +
+        "workflow docs for this ticket's type (read one when the instructions point at it), then the " +
+        "assembled briefing (the unit of work plus its immediate parent and linked Confluence pages, " +
+        "brief §3.6).\n\n" +
         "For the rest of this turn, act as that persona: follow its instructions against the " +
         "briefing exactly as it would if invoked directly (brief §3.8's `/tai-work <KEY>`) — same " +
         "flow whether this is starting fresh or resuming, no separate handling for either case.\n\n" +

@@ -32,6 +32,21 @@ async function withBackend(fn: (backend: StorageBackend, taiRoot: string) => Pro
 }
 
 describe("prepareWorkTurn", () => {
+    test("names the workflow doc for the ticket's type: a subtask uses its parent's (TAI-488)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Bug, summary: "A bug" });
+            const dev = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: SubtaskType.Dev, summary: "Fix it", parentKey: bug.key });
+            const deps = { backend, taiRoot, projectKey: "TAI", spaceKey: "TAI" };
+
+            const forSubtask = await prepareWorkTurn(deps, dev.key);
+            assert.deepEqual(forSubtask.workflowDocs.map((d) => path.basename(d.path)), ["bug.md", "dependencies.md"]);
+            assert.ok(forSubtask.workflowDocs.every((d) => path.isAbsolute(d.path)));
+
+            const forBug = await prepareWorkTurn(deps, bug.key);
+            assert.deepEqual(forBug.workflowDocs.map((d) => path.basename(d.path)), ["bug.md", "dependencies.md"]);
+        });
+    });
+
     test("throws for a nonexistent issue", async () => {
         await withBackend(async (backend, taiRoot) => {
             await assert.rejects(

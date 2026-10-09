@@ -22,7 +22,8 @@
 
 import type { Issue, IssueKey, StorageBackend } from "../storage/interface.js";
 import { canWorkOn } from "../persona/permission-gate.js";
-import { loadPersonaConfig, type LoadPersonaConfigOptions } from "../persona/config.js";
+import { loadPersonaConfig, workflowDocsFor, type LoadPersonaConfigOptions, type WorkflowDocRef } from "../persona/config.js";
+import { isStoryIssueType } from "../schema/story-schema.js";
 import { PersonaScopedWorkTracker, PersonaPermissionError } from "../persona/scoped-work-tracker.js";
 import { ConnectivityQueuedWorkTracker, replayPending, type ReplayOutcome } from "../workspace/connectivity-queue.js";
 import { generateBriefing, type BriefingChangeNote } from "../workspace/briefing.js";
@@ -45,6 +46,9 @@ export interface WorkTurn {
     /** The persona's own `.md` body — unformatted, for the host adapter to assemble. */
     readonly personaPrompt: string;
     readonly briefingMarkdown: string;
+    /** TAI-488: the workflow docs for this ticket's type (a subtask uses its parent's), as absolute
+     *  paths the persona reads on demand. */
+    readonly workflowDocs: readonly WorkflowDocRef[];
     /** TAI-285 ADR: out-of-band change notes for the subtask/parent, surfaced by the host
      *  adapter the same way TAI-282's `renderLocalFetchNote` is — mild for "content",
      *  prominent for "structural". Empty when nothing changed since it was last cached. */
@@ -106,8 +110,13 @@ export async function prepareWorkTurn(deps: PrepareWorkTurnDeps, key: IssueKey):
         deps.briefingBudget !== undefined ? { budget: deps.briefingBudget } : {}
     );
 
+    // The type that decides which workflow applies: the ticket's own, or its parent's for a subtask.
+    const typed = isStoryIssueType(issue.issueType) ? issue : issue.parentKey ? await scoped.getIssue(issue.parentKey) : null;
+    const storyType = typed && isStoryIssueType(typed.issueType) ? typed.issueType : null;
+
     return {
         issue,
+        workflowDocs: workflowDocsFor(storyType),
         personaId: config.id,
         personaDisplayName: config.displayName,
         personaPrompt: config.prompt,

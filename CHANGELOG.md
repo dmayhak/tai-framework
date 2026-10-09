@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 83 (2026-10-09)
+
+**TAI-488: personas can find the workflow docs from a target project.** Persona docs say "see `workflows/story.md`", a path that resolves only inside the TAI checkout. `/tai-work`'s output now names the absolute path of the workflow doc for the ticket's type (a subtask uses its parent's) and of `dependencies.md`, and every loaded persona prompt ends with where the relative paths it cites are, which also covers `/tai-groom`, `/tai-kickoff` and the review flow. The docs are read on demand and not inlined (human decision TAI-459, point 4). Brief §3.1.
+
 ## rev 82 (2026-10-09)
 
 **TAI-487: each persona doc is two files.** `src/personas/<id>.md` is the run-time prompt, rewritten as current fact with no revision or ticket references; `src/personas/rationale/<id>.md` holds the history and is not loaded (human decision TAI-459, amended to two files). The nine prompts went from 142 KB to 117 KB in total. A test fails when a prompt cites a revision or a ticket, and another warns, without failing, past a 12 KB soft target; analyst, architect and pm are still over it. Brief §3.1 states the split.

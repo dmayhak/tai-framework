@@ -630,6 +630,12 @@ export function renderKickoffTurn(persona: { displayName: string; id: string; pr
     return renderPersonaTurn(persona, briefing);
 }
 
+/** TAI-488: where the workflow docs for this ticket are, so "see workflows/story.md" can be followed
+ *  from a target project. Named, not inlined: the persona reads one when it needs it. */
+export function renderWorkflowDocs(docs: Awaited<ReturnType<typeof prepareWorkTurn>>["workflowDocs"]): string {
+    return ["## Workflow docs for this ticket", "", "Read on demand:", "", ...docs.map((d) => `- ${d.label}: \`${d.path}\``)].join("\n");
+}
+
 function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
     const lines = [`# Persona: ${turn.personaDisplayName} (${turn.personaId})`, ""];
 
@@ -644,7 +650,7 @@ function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): stri
         }
     }
 
-    lines.push(turn.personaPrompt, "", "---", "", turn.briefingMarkdown);
+    lines.push(turn.personaPrompt, "", "---", "", renderWorkflowDocs(turn.workflowDocs), "", turn.briefingMarkdown);
     return lines.join("\n");
 }
 
