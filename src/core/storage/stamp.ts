@@ -44,8 +44,8 @@ export function stampComment(body: string, persona?: ActingPersona): string {
     return text === "" ? stampLine(persona) : `${text}\n\n${stampLine(persona)}`;
 }
 
-// The sign-off steps (TAI-454/TAI-458): the human-gated subtasks, DesignReview, and closing an Epic.
-const SIGN_OFF_SUBTASKS: ReadonlySet<string> = new Set([...ALWAYS_HUMAN_GATED_SUBTASKS, SubtaskType.DesignReview]);
+// The sign-off steps (TAI-454/TAI-458): the human-gated subtasks (UAT, EpicReview, DesignReview) and closing an Epic.
+const SIGN_OFF_SUBTASKS: ReadonlySet<string> = new Set(ALWAYS_HUMAN_GATED_SUBTASKS);
 const SIGN_OFF_LABEL: Record<string, string> = {
     [SubtaskType.Uat]: "UAT",
     [SubtaskType.EpicReview]: "EpicReview",

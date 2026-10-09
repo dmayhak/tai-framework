@@ -390,7 +390,7 @@ export function renderReviewPrep(input: ReviewPrepInput): string {
         ...(selfReview
             ? [
                   "",
-                  "Note: you authored this PR. Cole's default is not to review work he authored, but a solo developer may legitimately review their own (brief §4, open item 8.3), so the review proceeds — the human decides the outcome.",
+                  "Note: you authored this PR. A solo developer may review their own PR (brief §4), so the review proceeds — the human decides the outcome. If this session also wrote the code, a fresh session is the better place to prepare the findings.",
               ]
             : []),
         "",

@@ -97,7 +97,7 @@ export enum SubtaskType {
     UxDesign = "ux-design",                  // UX Designer
     Feasibility = "feasibility",             // Architect — quick, spike-like technical go/no-go
     ArchitectureDesign = "architecture-design", // Architect — deeper, non-time-boxed design work (ADRs, component boundaries)
-    DesignReview = "design-review",          // Architect (2nd pass or peer) — optional gate on ArchitectureDesign, mirrors CodeReview
+    DesignReview = "design-review",          // Architect prepares the review; a human reviews and closes it (TAI-458) — optional gate on ArchitectureDesign, inherently human-gated (see ALWAYS_HUMAN_GATED_SUBTASKS)
     Database = "database",                   // DBA — schema, migrations, query tuning, performance (not just schema)
     Infra = "infra",                         // DevOps
     Dev = "dev",                             // Developer — unit tests are folded in here, not a separate subtask
@@ -154,7 +154,7 @@ export const SUBTASK_OWNER: Record<SubtaskType, Persona | null> = {
     [SubtaskType.UxDesign]: Persona.UxDesigner,
     [SubtaskType.Feasibility]: Persona.Architect,
     [SubtaskType.ArchitectureDesign]: Persona.Architect,
-    [SubtaskType.DesignReview]: Persona.Architect, // 2nd pass/peer — should not be the author (soft self-review separation)
+    [SubtaskType.DesignReview]: Persona.Architect, // prepares the review; a human reviews and closes it (see ALWAYS_HUMAN_GATED_SUBTASKS)
     [SubtaskType.Database]: Persona.Dba,
     [SubtaskType.Infra]: Persona.DevOps,
     [SubtaskType.Dev]: Persona.Developer,
@@ -202,9 +202,10 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
     ],
     [StoryType.Story]: [
         SubtaskType.Investigate, // refinement — adds detail before implementation subtasks are (separately) created, brief §3.7
+        SubtaskType.Requirements, // TAI-458 — a future-direction question the Architect or DBA hands to the PM (architect.md, dba.md); no precedence edge, it blocks nothing by default
         SubtaskType.UxDesign, // Story-level detailing/tweaking beyond Kickoff's higher-level flows; smaller design docs scoped to this Story when Epic-level isn't the right granularity
         SubtaskType.ArchitectureDesign, // feature-level design before Dev starts, when needed
-        SubtaskType.DesignReview, // optional gate on ArchitectureDesign (mirrors CodeReview); present-when-added
+        SubtaskType.DesignReview, // optional, inherently human-gated gate on ArchitectureDesign; present-when-added
         SubtaskType.Dev,
         // CodeReview retired going forward (rev 52, TAI-159 ADR) — deliberately absent
         // from this "expected going forward" list. Still a legal SubtaskType/Jira issue
@@ -247,6 +248,7 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
 export const ALWAYS_HUMAN_GATED_SUBTASKS: SubtaskType[] = [
     SubtaskType.Uat, // Tester drives the run; a human stakeholder must sign off
     SubtaskType.EpicReview, // TAI-354 — Analyst drives the discussion; a human stakeholder must sign off
+    SubtaskType.DesignReview, // TAI-458 — Architect prepares the review; a human reviews the design and closes it
 ];
 
 // ---------- Story-Level Dependencies (discovered, not derivable) ----------

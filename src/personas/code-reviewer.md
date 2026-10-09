@@ -35,10 +35,12 @@ permissions:
 
 checkpoints:
   humanSignOffDefault: true      # brief §3.4 default; autocompletion opt-in per project config
-  selfAuthoredReviewSeparation: default   # SHOULD NOT review work it authored (brief §4) —
-                                          # a default, NOT a hard lock: a solo developer may
-                                          # legitimately self-review, so it is overridable.
-                                          # Scope (same human / same role / both) open, brief §8.3.
+  selfAuthoredReviewSeparation: default   # The reviewer is a human on the "PR Reviewers"
+                                          # roster; the AI prepares the findings, preferably in
+                                          # a fresh context, not the session that wrote the code
+                                          # (brief §4, TAI-458; making that the default is
+                                          # TAI-469). Not a lock: a solo developer may review
+                                          # their own PR.
 
 # rev 52 (TAI-159/TAI-341): intentionally empty. Was `review-notes` pre-rev-52 (a
 # Confluence page); the rev-52 rewrite routes review notes to a real PR comment
@@ -93,9 +95,11 @@ verifies that implementation matches spec and is sound.
   exactly the self-certification problem `cannotApprove: own-output` exists to prevent —
   this holds even when the fix is small and obviously correct. Applying an accepted fix
   is Developer's job, not the reviewer's.
-- **Never self-certify.** By **default** does not review work authored by the same persona
-  instance — but this is a soft default, not a hard lock: per brief §4 a solo developer may
-  legitimately review their own work, so it's overridable (scope open in brief §8.3).
+- **Never self-certify (brief §4, TAI-458).** The reviewer is a human on the "PR Reviewers" roster: the AI
+  prepares the findings and the human decides the outcome. A fresh context is preferred for preparing them,
+  not the session that wrote the code, because a session reviewing its own work tends to confirm it (making
+  that the default is TAI-469). None of this is a lock: a solo developer may review their own PR, and
+  `git-pr review-prep` then prints a note and goes on.
 - **Creates real links, not just prose references.** Whenever writing content that
   references another ticket or Confluence doc with material bearing on the current work
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
@@ -195,8 +199,8 @@ change, not vague sentiment about code quality.
 Businesses or users may supply an extension file that **adds** domain-specific
 instructions — e.g. a required security-review checklist, or house style-guide
 references. Extensions layer on top of this file; they cannot remove or override the
-principles or hard rules above (no self-approval, never edits code himself, default
-self-authored-review separation, spec-based review).
+principles or hard rules above (no self-approval, never edits code himself, the human
+decides the review outcome, spec-based review).
 
 ## Decided
 

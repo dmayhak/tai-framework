@@ -21,9 +21,10 @@ separate field, a real human holding the PM Project Role.
 | Subtask | Owner (default) | Notes |
 |---|---|---|
 | `Investigate` | Analyst | Optional refinement — adds detail before implementation subtasks are (separately) created; no automatic unblock effect, no formal review gate (brief §3.7, §8.13/§8.17). A reactively-spawned `Investigate` can block its originating subtask via the ad-hoc-dependency escape hatch (`workflows/dependencies.md`) |
+| `Requirements` | PM | Optional — a future-direction question the Architect or DBA hands to Perry while designing (`personas/architect.md`, `personas/dba.md`, TAI-458). No precedence edge: it blocks nothing unless a link is added by hand |
 | `UxDesign` | UX Designer | Optional — Story-level detailing/tweaking beyond Kickoff's higher-level flows; lets a smaller design doc attach at Story level when Epic-level isn't the right granularity. Gates `Dev`, same as `ArchitectureDesign`/`Database`/`Infra` |
 | `ArchitectureDesign` | Architect | Optional — feature-level design before Dev starts, when needed |
-| `DesignReview` | Architect (2nd pass or peer) | Optional gate on `ArchitectureDesign`; blocks `Dev` when present — the one Jira-subtask-tracked review gate left after rev 52 (reviews a design doc, not a git PR; no git-host-native equivalent) |
+| `DesignReview` | Architect prepares; a human reviews and closes it | Optional, human-gated gate on `ArchitectureDesign`; blocks `Dev` when present — the one Jira-subtask-tracked review gate left after rev 52 (reviews a design doc, not a git PR; no git-host-native equivalent) |
 | `Dev` | Developer | Unit tests are folded into this subtask, not tracked separately. Stays **In Progress** until its PR merges (rev 52) — a unit of work isn't done until then |
 | `IntegrationTest` | Tester | |
 | `SystemTest` | Tester | |
@@ -170,7 +171,7 @@ Story between then and rev 52 shipped through the original `Dev → CodeReview �
 model this section used to describe — real history, not reconstructed, just no longer how
 new work goes through this chain.
 
-## Design Review gate (optional)
+## Design Review gate (optional, human-gated)
 
 When present, `DesignReview` sits between `ArchitectureDesign` and `Dev` — the one
 Jira-subtask-tracked review gate left after rev 52's `CodeReview` retirement (it reviews
@@ -179,15 +180,19 @@ way code review now has). It is **optional and present-when-added**: when no `De
 subtask exists, `ArchitectureDesign` unblocks `Dev` directly (see
 `workflows/dependencies.md` — an absent subtask passes its prerequisites through).
 
-- **Owner:** the Architect persona, but on a **second pass or a peer** — by
-  default not the same instance that authored the `ArchitectureDesign`, per the
-  soft self-authored-review separation (see `personas/code-reviewer.md`, brief
-  §4 / §8.3). This is a default, not a hard lock — a solo architect may review
-  their own design.
-- **Failure loop:** a failed `DesignReview` sends `ArchitectureDesign` back to
-  **In Progress** (not Open — the design already exists and needs revision),
-  exactly like the Dev ⇄ Test loop. AI may retry once; a second failure
-  escalates to a human (brief §4 / §5.4).
+- **Owner (TAI-458):** the Architect persona prepares the review, and a **human reviews the
+  design and closes the subtask** — `DesignReview` is **inherently human-gated** (brief
+  §3.3, `ALWAYS_HUMAN_GATED_SUBTASKS`) and **never autocompletes**, like `UAT` below. Aria
+  writes the review notes, preferably in a fresh context rather than the session that wrote
+  the design; she holds no `complete` grant for it.
+- **How the pass is recorded:** the human moves the `DesignReview` subtask to Done. That is
+  a convention the user is accountable for, not something TAI can prove (brief §4,
+  TAI-454): a persona performs it only when the human says so in their own message, and the
+  CLI then leaves a stamped `Sign-off:` comment (TAI-475).
+- **When the human asks for changes:** `ArchitectureDesign` goes back to **In Progress**
+  (not Open — the design already exists and needs revision) with the required changes as a
+  comment, and the `DesignReview` stays open for the human's next look. There is no AI
+  retry loop: every round ends with the human.
 
 ## UAT gate (optional, human-gated)
 
@@ -289,3 +294,4 @@ defect-tracking artifact is needed.
   decided here.
 - Should `DesignReview` ever be a **required** default (not just optional)
   above some architecture-risk threshold, rather than always present-when-added?
+  Scaling its depth to stakes is deferred under TAI-327.

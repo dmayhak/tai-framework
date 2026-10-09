@@ -1192,7 +1192,10 @@ integration (which is what our MCP-based access is). Therefore:
 Checkpoints are modeled as **dependent subtasks in a "blocks / depends-on" chain**
 (see §5.4). Human-gated checkpoints **take priority over all autocompletion settings** —
 if a checkpoint requires a human, work pauses there even when autocompletion is otherwise
-enabled.
+enabled. Three subtask types are **inherently human-gated**: `UAT`, `EpicReview` and
+`DesignReview` (`ALWAYS_HUMAN_GATED_SUBTASKS`, `story-schema.ts`; `DesignReview` joined them
+with TAI-458). A persona prepares or drives each one, holds no `complete` grant for it, and
+a human closes it.
 
 **A Jira-side transition rejection is itself treated as an unplanned checkpoint.** Even
 after Team AI's own checks pass, the actual Jira transition call can still be rejected —
@@ -1547,7 +1550,11 @@ These are settled. Change them deliberately and update this file if you do.
   org-level enforcement.) **Scope resolved (rev 31, §8 item 3): the same-human dimension,
   not persona role** — workflow routing already guarantees a different persona role
   reviews any given persona's output, so self-approval can only happen when one human
-  fills both roles (the solo-dev case named above).
+  fills both roles (the solo-dev case named above). **What review separation means in
+  practice (TAI-458):** the reviewer is a human — one on the "PR Reviewers" roster for a
+  PR, the human closing a `DesignReview` for a design. The AI prepares the findings or
+  review notes and the human decides. A fresh context is preferred for preparing them, not
+  the session that wrote the work under review (making that the default is TAI-469).
 - **Checkpoints are enforced in Team AI's plugin layer,** not via native Jira validators
   (see §3.3). Checkpoints override autocompletion.
 - **A Jira-rejected transition is an unplanned checkpoint, not a normal failure.** Team AI
@@ -1760,12 +1767,12 @@ test tiers).
 | Type | Typical persona | Category |
 |---|---|---|
 | Research | Analyst | Refinement — Kickoff discovery |
-| Requirements | PM | Refinement — PRD drafting |
+| Requirements | PM | Refinement — PRD drafting. Also allowed on a Story (TAI-458): a future-direction question the Architect or DBA hands to the PM, with no precedence edge |
 | UxDesign | UX Designer | Refinement — flows/wireframes |
 | Investigate | Analyst | Refinement — Story-level (§3.7) |
 | Feasibility | Architect | Refinement — quick technical go/no-go |
 | ArchitectureDesign | Architect | Refinement — deeper design |
-| DesignReview | Architect (second pass, or a peer) | Refinement gate — gates `ArchitectureDesign` → `Dev` (workflows/story.md) |
+| DesignReview | Architect prepares + a human reviews and closes it | Refinement gate — inherently human-gated (§3.3, TAI-458); gates `ArchitectureDesign` → `Dev` (workflows/story.md) |
 | Database | DBA | Implementation input (schema / migration / performance) |
 | Infra | DevOps | Implementation input |
 | Dev | Developer | Implementation (unit tests folded in) |
@@ -1791,8 +1798,9 @@ whether the two gates should unify, remain open (§8.17).
 
 **Now wired in (rev 10):** `DesignReview` and `UAT` — retained from the original
 taxonomy — are now defined as optional gates in the workflow docs and the schema.
-`DesignReview` gates `ArchitectureDesign` → `Dev` (mirroring `CodeReview`); `UAT` is
-inherently human-gated (§3.3) and gates `Deploy`. Both are **present-when-added** and
+`DesignReview` gates `ArchitectureDesign` → `Dev`; `UAT` gates `Deploy`. Both are
+inherently human-gated (§3.3; `DesignReview` since TAI-458, when its AI-retry loop was
+removed and the Architect's `complete` grant for it dropped). Both are **present-when-added** and
 purely additive to the precedence graph — see `workflows/story.md` and
 `workflows/dependencies.md`.
 
@@ -2747,7 +2755,8 @@ rev 56, TAI-286), backlinked from its §8 entry here, not left sitting only as b
     v2/v3).** Raised live during Aria's (Architect) persona review (TAI-6/149/328):
     BMAD-METHOD's architecture-spine reviewer gate is a deterministic lint pass plus a
     rubric-walker plus multiple review-lens subagents, scaled to stakes — richer than
-    `DesignReview`'s current simple pass/fail-with-one-retry (`workflows/story.md`).
+    `DesignReview`'s simple pass/fail (`workflows/story.md`; a human gate since TAI-458,
+    with the Architect preparing the review notes).
     Explicitly **not** a v1 change — the human's own call, same "real investigation, not a
     brief edit" posture as items 35/36. **See TAI-327 (Story, Backlog).**
 
