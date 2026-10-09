@@ -4,7 +4,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 ## rev 91 (2026-10-09)
 
-**TAI-479: `issue create` notes a subtask type that its parent's type does not list.** Human decision TAI-455, row 5: warn, do not block. `STORY_SUBTASK_MAP` was read by nothing; `issue create` now compares a new subtask's type with the entry for its parent's type and prints a note naming the listed types, creating the ticket regardless. `workflows/kickoff.md` and `workflows/spike.md` said an outside type is "flagged on the next refresh", which was never built; they now say what happens. Brief §5.2.
+**TAI-479: `issue create` notes a subtask type that its parent's type does not list.** Human decision TAI-455, row 5: warn, do not block. `STORY_SUBTASK_MAP` was read by nothing; `issue create` now compares a new subtask's type with the entry for its parent's type and prints a note naming the listed types, creating the ticket regardless. A subtask created directly under an Epic or another subtask gets a note too (added in review). `workflows/kickoff.md` and `workflows/spike.md` said an outside type is "flagged on the next refresh", which was never built; they now say what happens. Brief §5.2.
 
 ## rev 90 (2026-10-09)
 

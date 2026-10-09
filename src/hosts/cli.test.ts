@@ -36,6 +36,7 @@ import {
     renderCascadeWarnings,
     renderInitStepResult,
     renderInitStatus,
+    createdSubtaskMapNote,
     extractActingPersona,
     actingPersonaOf,
     renderMergeRefused,
@@ -865,5 +866,36 @@ describe("renderMergeRefused (TAI-462)", () => {
         assert.match(out, /- Test tier TAI-5/);
         assert.match(out, /force=true/);
         assert.match(out, /only when the human says so/);
+    });
+});
+
+describe("createdSubtaskMapNote (TAI-479): when issue create prints the subtask-map note", () => {
+    const key = toIssueKey("TAI-1");
+    const parentOf = (issueType: string) => async () => ({ issueType }) as never;
+
+    it("prints nothing for a subtask type its parent's type lists", async () => {
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Dev, parentKey: key }, parentOf(StoryType.Story)), null);
+    });
+
+    it("prints the note for a subtask type its parent's type does not list", async () => {
+        const note = await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, parentOf(StoryType.Story));
+        assert.match(note ?? "", /^Note: a "triage" subtask is not one of the types expected under a story/);
+    });
+
+    it("prints the note for a subtask created directly under an Epic", async () => {
+        const note = await createdSubtaskMapNote({ issueType: SubtaskType.Dev, parentKey: key }, parentOf("epic"));
+        assert.match(note ?? "", /created directly under an Epic/);
+    });
+
+    it("never reads the parent for a story-level ticket or a ticket with no parent", async () => {
+        const never = async (): Promise<never> => assert.fail("must not read the parent");
+        assert.equal(await createdSubtaskMapNote({ issueType: StoryType.Story, parentKey: key }, never), null);
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Dev }, never), null);
+    });
+
+    it("prints nothing when the parent is missing or cannot be read", async () => {
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, async () => null), null);
+        const failing = async (): Promise<never> => Promise.reject(new Error("tracker down"));
+        assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, failing), null);
     });
 });

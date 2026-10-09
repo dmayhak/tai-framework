@@ -248,7 +248,8 @@ visibility, not enforcement here.
 **What is visible:** when a subtask is created through the CLI (`issue create`) and its type
 is not listed for its parent's type, the CLI prints a note naming the types that are listed,
 and creates the ticket anyway. This holds for Kickoff, Story, Bug and Spike alike. A subtask
-added directly in Jira gets no note; nothing scans for one afterwards.
+created directly under an Epic, or under another subtask, gets a note too: no subtask type
+belongs there. A subtask added directly in Jira gets no note; nothing scans for one afterwards.
 
 ## Decided: no Feasibility/Database/Infra under Kickoff
 

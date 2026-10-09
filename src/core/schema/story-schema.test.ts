@@ -594,10 +594,15 @@ describe("subtaskOutsideMapNote (TAI-479)", () => {
         assert.doesNotMatch(subtaskOutsideMapNote(SubtaskType.Triage, StoryType.Story)!, /retired/);
     });
 
-    it("has nothing to say about a story-level ticket, or a subtask whose parent is not story-level", () => {
+    it("has nothing to say when the new ticket is not a subtask", () => {
         assert.equal(subtaskOutsideMapNote(StoryType.Story, "epic"), null);
         assert.equal(subtaskOutsideMapNote("epic", StoryType.Story), null);
-        assert.equal(subtaskOutsideMapNote(SubtaskType.Dev, "epic"), null);
-        assert.equal(subtaskOutsideMapNote(SubtaskType.Dev, SubtaskType.Dev), null);
+    });
+
+    it("notes a subtask created directly under an Epic or under another subtask: no subtask type belongs there", () => {
+        const underEpic = subtaskOutsideMapNote(SubtaskType.Dev, "epic")!;
+        assert.match(underEpic, /^Note: a "dev" subtask was created directly under an Epic\. Subtasks belong under a kickoff, spike, story, bug ticket/);
+        assert.match(underEpic, /The ticket was created\./);
+        assert.match(subtaskOutsideMapNote(SubtaskType.Dev, SubtaskType.Dev)!, /created directly under a "dev" subtask/);
     });
 });

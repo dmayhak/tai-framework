@@ -770,8 +770,8 @@ gates `Deploy`. Both are inherently human-gated (§3.3) and **present-when-added
 precedence graph — see `workflows/story.md` and `workflows/dependencies.md`.
 
 **Which subtask types belong under which story type** is `STORY_SUBTASK_MAP` (`story-schema.ts`). It is not
-enforced: `issue create` prints a note when a subtask's type is not listed for its parent's type, and creates
-the ticket anyway.
+enforced: `issue create` prints a note when a subtask's type is not listed for its parent's type, or when the
+subtask is created directly under an Epic or another subtask, and creates the ticket anyway.
 
 Subtask-type-to-persona routing is configurable the same way persona permissions are
 (§3.1): a business can add types, change routing, or restrict which types a given persona

@@ -659,6 +659,20 @@ async function actingGrantNote(config: ResolvedConfig, action: "create" | "compl
     }
 }
 
+/**
+ * TAI-479: the note for a just-created ticket whose subtask type its parent does not list, or `null`.
+ * A note, never a refusal, and best effort: a ticket that is not a subtask, has no parent, or whose
+ * parent cannot be read gets none. `readParent` is only called for a subtask with a parent.
+ */
+export async function createdSubtaskMapNote(
+    issue: Pick<Issue, "issueType" | "parentKey">,
+    readParent: () => Promise<Pick<Issue, "issueType"> | null>
+): Promise<string | null> {
+    if (!issue.parentKey || !isSubtaskIssueType(issue.issueType)) return null;
+    const parent = await readParent().catch(() => null);
+    return parent ? subtaskOutsideMapNote(issue.issueType, parent.issueType) : null;
+}
+
 /** TAI-522 ADR decision 4: one line when TAI itself is not running from its default branch. */
 async function installWarning(): Promise<string | undefined> {
     return renderInstallWarning(await describeTaiInstall(taiInstallRoot()));
@@ -2116,9 +2130,11 @@ async function main(): Promise<void> {
             // itself also gates on issueType, but there's no reason to fetch at all for a
             // Story/Bug/Spike's own creation (no parent Story to inherit from).
             let parentPriority: string | undefined;
+            // Kept for the subtask-map note below (TAI-479), so the parent is read at most once per create.
+            let parentRead: Issue | null | undefined;
             if (fields["priority"] === undefined && fields["parent"] !== undefined) {
-                const parent = await config.backend.workTracker.getIssue(toIssueKey(fields["parent"]));
-                parentPriority = parent?.priority;
+                parentRead = await config.backend.workTracker.getIssue(toIssueKey(fields["parent"]));
+                parentPriority = parentRead?.priority;
             }
             const resolvedPriority = resolveCreatePriority(
                 fields["priority"],
@@ -2161,12 +2177,10 @@ async function main(): Promise<void> {
             if (!issue.persona) console.log(`\n${PERSONA_LESS_CREATE_WARNING(issue.key)}`);
             const outsideGrantNote = await actingGrantNote(config, "create", issue.issueType);
             if (outsideGrantNote) console.log(`\n${outsideGrantNote}`);
-            // TAI-479: a subtask type its parent's type does not list gets a note, not a refusal. Best effort.
-            if (issue.parentKey && isSubtaskIssueType(issue.issueType)) {
-                const parent = await config.backend.workTracker.getIssue(issue.parentKey).catch(() => null);
-                const mapNote = parent ? subtaskOutsideMapNote(issue.issueType, parent.issueType) : null;
-                if (mapNote) console.log(`\n${mapNote}`);
-            }
+            const mapNote = await createdSubtaskMapNote(issue, () =>
+                parentRead !== undefined ? Promise.resolve(parentRead) : config.backend.workTracker.getIssue(issue.parentKey!)
+            );
+            if (mapNote) console.log(`\n${mapNote}`);
             return;
         }
 
