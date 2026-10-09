@@ -262,7 +262,7 @@ export function subtaskOutsideMapNote(subtaskType: StoryType | SubtaskType | "ep
     const retired = subtaskType === SubtaskType.CodeReview ? " `code-review` is retired: review happens on the PR." : "";
     return (
         `Note: a "${subtaskType}" subtask is not one of the types expected under a ${parentType} (${allowed.join(", ")}).${retired} ` +
-        "The ticket was created. It gets no place in the precedence graph unless that type has one for this parent; link it by hand if it must block something, or cancel it if it was a mistake."
+        `The ticket was created. The precedence graph for a ${parentType} has no place for it, so nothing waits on it and it waits on nothing; link it by hand if it must block something, or cancel it if it was a mistake.`
     );
 }
 

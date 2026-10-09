@@ -589,6 +589,19 @@ describe("subtaskOutsideMapNote (TAI-479)", () => {
         assert.match(note, /The ticket was created\./);
     });
 
+    it("its precedence claim holds: no precedence rule names a subtask type outside the map", () => {
+        for (const storyType of Object.values(StoryType)) {
+            const allowed = STORY_SUBTASK_MAP[storyType];
+            for (const rule of resolveApplicablePrecedence(storyType, Object.values(SubtaskType))) {
+                assert.ok(allowed.includes(rule.before) && allowed.includes(rule.after), `${storyType}: ${rule.before} -> ${rule.after}`);
+            }
+        }
+        assert.match(
+            subtaskOutsideMapNote(SubtaskType.Triage, StoryType.Story)!,
+            /The precedence graph for a story has no place for it, so nothing waits on it and it waits on nothing/
+        );
+    });
+
     it("says the retired code-review type is retired", () => {
         assert.match(subtaskOutsideMapNote(SubtaskType.CodeReview, StoryType.Story)!, /`code-review` is retired: review happens on the PR\./);
         assert.doesNotMatch(subtaskOutsideMapNote(SubtaskType.Triage, StoryType.Story)!, /retired/);
