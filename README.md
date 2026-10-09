@@ -242,6 +242,7 @@ precedence graph (full detail in [`src/workflows/`](src/workflows/)):
 
 ```
 PROJECT_BRIEF.md        Source of truth for TAI's design, decisions, and open questions
+project-context.md      This repo's own rules, printed in front of every persona (a target project has its own)
 src/
   personas/*.md          One run-time prompt per persona — permissions, behavior, when it's invoked
   personas/rationale/    Why each persona's rules exist, and their history (not loaded at run time)

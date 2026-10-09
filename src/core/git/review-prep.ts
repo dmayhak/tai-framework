@@ -341,6 +341,8 @@ export interface ReviewPrepInput {
     /** The ticket the PR is linked to, or null when none was found. */
     readonly linkedKey: string | null;
     readonly diff: DiffResult;
+    /** TAI-470: the target project's rules, already rendered (`renderProjectContext`). */
+    readonly projectContext?: string;
 }
 
 function renderPullRequestSection(pr: PullRequestRef): string {
@@ -401,7 +403,7 @@ export function renderReviewPrep(input: ReviewPrepInput): string {
         "",
     ].join("\n");
 
-    const prefix = renderPersonaTurn(input.persona, before);
+    const prefix = renderPersonaTurn(input.persona, before, input.projectContext);
     const remaining = Math.max(DIFF_FLOOR, OUTPUT_BUDGET - prefix.length);
     return prefix + renderChanges(input.diff, remaining) + "\n";
 }
