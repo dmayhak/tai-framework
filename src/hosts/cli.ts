@@ -105,6 +105,7 @@ import {
     type ReviewFinding,
 } from "../core/git/review-findings.js";
 import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/config.js";
+import { postIssueComment } from "../core/storage/handoff.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -2155,10 +2156,16 @@ async function main(): Promise<void> {
 
         if (action === "comment") {
             const [issueKey, body] = issueArgs;
-            if (!issueKey || !body) throw new Error("Usage: issue comment <ISSUE-KEY> <BODY>");
+            if (!issueKey || !body) throw new Error("Usage: issue comment <ISSUE-KEY> <BODY>   (a BODY starting \"Handoff:\" replaces the ticket's hand-off comment)");
             // TAI-475: every comment the CLI posts ends with the provenance stamp.
-            const comment = await config.backend.workTracker.addComment(toIssueKey(issueKey), stampComment(body, actingPersonaOf(config)));
-            console.log(`# Comment added to ${issueKey}\n\n${comment.body}`);
+            // TAI-489: a `Handoff:` body replaces the ticket's latest hand-off comment (one living
+            // hand-off per ticket, brief §3.9); everything else is added.
+            const posted = await postIssueComment(config.backend.workTracker, toIssueKey(issueKey), stampComment(body, actingPersonaOf(config)));
+            const heading = posted.replaced ? `# Hand-off comment updated on ${issueKey}` : `# Comment added to ${issueKey}`;
+            const note = posted.editFailure
+                ? `\n\n_The existing hand-off comment could not be edited (${posted.editFailure}), so this one was added next to it._`
+                : "";
+            console.log(`${heading}${note}\n\n${posted.comment.body}`);
             return;
         }
 

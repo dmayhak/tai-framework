@@ -95,6 +95,12 @@ describe("renderBriefing: comments", () => {
         assert.ok(out.indexOf("tests green") < out.indexOf("A question."));
     });
 
+    it("dates the hand-off by when it was last edited, since it is edited in place", () => {
+        const edited = { ...comment(1, "Handoff: rewritten."), updatedAt: "2026-03-05T09:00:00Z" };
+        const out = renderBriefing(input({ subtask: issue({ comments: [edited] }) }));
+        assert.ok(out.includes("### Hand-off\n\n**Del — 2026-03-05T09:00:00Z**\n\nHandoff: rewritten."), out);
+    });
+
     it("does not show comments for linked tickets, only their state and description", () => {
         const linked = issue({ key: toIssueKey("TAI-9"), comments: [comment(1, "Linked ticket chatter.")] });
         const out = renderBriefing(input({ linkedIssues: [{ issue: linked, relations: new Set([DependencyRelation.RelatesTo]) }] }));

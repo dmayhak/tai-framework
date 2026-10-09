@@ -42,6 +42,7 @@ import { combineFieldChange, refreshIssue, type FieldChange } from "../cache/iss
 import { refreshPage } from "../cache/page-cache.js";
 import { snapshotLinkedKeys } from "../cache/links-snapshot.js";
 import { briefingPath } from "../cache/paths.js";
+import { latestHandoff } from "../storage/handoff.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -372,8 +373,6 @@ function stateLine(issue: Issue): string {
     return parts.join(" · ");
 }
 
-const HANDOFF_MARKER = /^\s*Handoff:/;
-
 /** The subtask or its parent: state, links, description, the latest hand-off, comments. */
 function renderWorkedIssue(issue: Issue, label: string, links: readonly RemoteLink[], maxComments: number): string {
     const parts = [`## ${label}: ${issue.key} — ${oneLine(issue.summary)}\n${stateLine(issue)}`];
@@ -382,8 +381,9 @@ function renderWorkedIssue(issue: Issue, label: string, links: readonly RemoteLi
     }
     if (issue.description) parts.push(asData(issue.description, 2));
 
-    const handoff = [...issue.comments].reverse().find((c) => HANDOFF_MARKER.test(c.body));
-    if (handoff) parts.push(`### Hand-off\n\n${renderComment(handoff)}`);
+    // The hand-off is edited in place (TAI-489), so its date is when it was last written.
+    const handoff = latestHandoff(issue.comments);
+    if (handoff) parts.push(`### Hand-off\n\n${renderComment(handoff, handoff.updatedAt)}`);
 
     const others = issue.comments.filter((c) => c !== handoff);
     if (others.length > 0) {
@@ -393,11 +393,11 @@ function renderWorkedIssue(issue: Issue, label: string, links: readonly RemoteLi
         if (older > 0) {
             lines.push(`_${older} older comment${older === 1 ? "" : "s"} not shown — read them with \`issue get ${issue.key}\`._`);
         }
-        parts.push([...lines, ...shown.map(renderComment)].join("\n\n"));
+        parts.push([...lines, ...shown.map((c) => renderComment(c))].join("\n\n"));
     }
     return parts.join("\n\n");
 }
 
-function renderComment(comment: Comment): string {
-    return `**${oneLine(comment.author.displayName)} — ${comment.createdAt}**\n\n${asData(comment.body, 3)}`;
+function renderComment(comment: Comment, date: string = comment.createdAt): string {
+    return `**${oneLine(comment.author.displayName)} — ${date}**\n\n${asData(comment.body, 3)}`;
 }
