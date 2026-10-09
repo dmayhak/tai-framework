@@ -1478,8 +1478,8 @@ instead of a ticket. A ticketless `/tai-review` skill was considered and deferre
 TAI's own comment-scanning logic (§3.6) is what interprets these — none of them are
 native Jira/Confluence features (plain Jira comments have no built-in resolved flag;
 Confluence's native inline-comment resolve checkmark exists but isn't used for this, see
-below). All four apply to **both** Jira issue comments and Confluence comments
-(page-level and inline) — not just Jira.
+below). `Q:`, `Approved:` and `Rejected:` apply to **both** Jira issue comments and Confluence
+comments (page-level and inline) — not just Jira; `Skipped:` and `Handoff:` are Jira-only.
 
 - **`Q:`** — an open question. Native reply-threading (Jira) or the comment/reply
   relationship (Confluence) keeps the discussion together; a thread is **closed** once a
@@ -1497,6 +1497,13 @@ below). All four apply to **both** Jira issue comments and Confluence comments
   follow a dash (`—`, `–`, ` - ` or ` -- `) and is free text — without a dash the whole line is read as the
   type list. Perry or a human may post one with no confirmation gate — it only silences a hint, and editing
   or deleting the comment brings the hint back. It does not stop anyone creating the subtask later.
+- **`Handoff:`** (TAI-489, deciding TAI-460) — Jira issue comments only: the ticket's **one living hand-off
+  comment**, written by whoever stops with the ticket still In Progress and the work unfinished. It says what
+  is done, what is in flight, the next step, and the assumptions made. It is edited in place, never appended
+  to: `issue comment <KEY> "Handoff: …"` replaces the ticket's latest `Handoff:` comment (and adds one if
+  there is none, or if the old one cannot be edited). Nothing scans it to decide anything; the work briefing
+  shows it first (§3.6), which is how the next session — any host, or a human — picks the work up. A
+  hand-off covering several tickets at once is the human's own business, outside TAI.
 
 **Why not Confluence's native inline-comment resolve checkmark:** considered and
 rejected as the signal for any of the above, for two concrete reasons — (1) the

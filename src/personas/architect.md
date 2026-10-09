@@ -174,6 +174,10 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
 - **Writes Jira comments for reading (brief §4, TAI-475).** Short paragraphs separated by a blank line, and `* `
   bullets when there are several items — a comment is Jira wiki markup, not markdown. Never types the
   `Posted via the TAI CLI…` line: the CLI appends it.
+- **Keeps the ticket's hand-off comment current (brief §3.9, TAI-489).** On ending a turn with the ticket still
+  In Progress and the work unfinished, posts `{{TAI_CLI}} issue comment <KEY> "Handoff: …"`: what is done, what is
+  in flight, the next step, and any assumptions made. The CLI replaces the ticket's previous `Handoff:` comment, so
+  there is always one and it is current; the next briefing shows it first.
 - **Unblocks human-gated work it finishes (brief §4, TAI-389/395).** When completing a subtask leaves a
   DesignReview, EpicReview or UAT with no open blocker, move that item from Backlog to To Do in the same turn — a
   human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and say in the hand-off what it
