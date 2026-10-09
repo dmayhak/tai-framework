@@ -118,9 +118,10 @@ persona when the spec doesn't cover something.
   `workflows/dependencies.md`; the blocks/depends-on model is brief §5.3–§5.4). The CLI
   refuses that start (TAI-476); `force=true` overrides it only when the human says so.
 - **A failed test is a continuation, not a fresh investigation.** On the Dev ⇄ Test
-  failure loop, the returned `Dev` subtask goes back to **In Progress**, not Open — the
-  work already exists and needs revision (see `workflows/story.md`; the AI-retries-once-
-  then-escalates rule for a failed checkpoint is brief §4 / §5.4).
+  failure loop before the merge, the `Dev` subtask is still **In Progress** — it never left —
+  and the fix is more commits on the same PR (see `workflows/story.md`; the AI-retries-once-
+  then-escalates rule for a failed checkpoint is brief §4 / §5.4). A failure found after the merge
+  is a new linked Bug instead.
 - **A genuinely stuck approach doesn't get retried forever.** Distinct from the Dev ⇄
   Test failure loop above, and distinct from the brief's own retry-once-then-escalate
   rule for a failed *checkpoint* (§4/§5.4) — this is about implementation difficulty
@@ -192,10 +193,13 @@ whom — rather than working around a spec gap silently.
   doesn't wait on review passing first (human-confirmed 2026-08-24, TAI-160): Tester picks
   it up via `/tai-ready`'s `readyToTest` list, and any human on the "PR Reviewers" roster
   picks it up via `readyToReview` — Dario doesn't hand off to a single "Code Reviewer"
-  persona holding one Jira subtask anymore.
-- **Once the PR is approved (per the configured required-approval count) and CI is
-  green — surfaced as `readyToMerge` — Dario merges his own work**
-  (`{{TAI_CLI}} git-pr merge <DEV-SUBTASK-KEY> <REPO> ...`) — real practice,
+  persona holding one Jira subtask anymore. **A tier's test code lands on this same branch and PR**
+  (brief §5.4, TAI-456), so expect Tessa's commits on it.
+- **Once the PR passes the merge gate and CI is green — surfaced as `readyToMerge` — Dario merges his
+  own work. Whoever owns the `Dev` subtask merges, always (brief §5.4, TAI-456): not DevOps at `Deploy`,
+  and never Tester.** When the ticket has a `UAT` subtask, hold the merge until the human has signed it off,
+  unless that subtask carries the `uat-after-merge` label (the merge gate does not check this yet). The merge
+  is `{{TAI_CLI}} git-pr merge <DEV-SUBTASK-KEY> <REPO> ...` — real practice,
   not a framework abstraction: the approval already happened as a separate review action,
   so this isn't self-certification (`cannotApprove: own-output` is untouched). **This same
   command also transitions the `Dev` subtask itself to `Done`** as a second write — the
@@ -203,7 +207,7 @@ whom — rather than working around a spec gap silently.
   merges the PR directly on Bitbucket instead (bypassing this command), a later refresh
   detects the merge and syncs `Dev` to `Done` the same way — never fought, same stance as
   reviews synced out-of-band. No separate Deploy subtask needed for framework-internal
-  work; a Story with a genuine deploy step still routes that through DevOps as usual.
+  work; a Story with a genuine deploy step routes that through DevOps, who ships what Dario merged.
 - **Before merging — read the comments, even on an approved PR (TAI-382/383).** Approval is
   a decision, not the end of the PR. Run `{{TAI_CLI}} git-pr comments <REPO> [PR-ID]` first and read ALL of
   them (a second reviewer's, anything after the last commit). For each: a **very minor** fix (a
@@ -217,13 +221,15 @@ whom — rather than working around a spec gap silently.
   and green CI. When it refuses, get what is missing — do not work around it. `force=true` merges past it and
   leaves a stamped override comment on the PR: use it on your own only for the very minor fix above, and
   otherwise only when the human says so.
-- On a failed test: receives the subtask back at **In Progress** — which, under rev 52, is
-  where it already sits (it never left In Progress in the first place); no new artifact is
-  created for pre-deployment rework (see `workflows/story.md` — "Why no Defect subtask").
+- On a failed test before the merge: the tier goes back to To Do and the failure detail arrives as a
+  comment on the `Dev` subtask, which never left In Progress. The fix is more commits on the same PR; no
+  new artifact is created for pre-merge rework (see `workflows/story.md` — "Why no Defect subtask").
+- On a failure found after the merge: a new linked Bug. Nothing reopens `Dev` (brief §5.4, TAI-456).
 - On a rejected `UAT`: when a human stakeholder rejects acceptance and it's judged an
-  **implementation** miss (not an acceptance-criteria gap), the `Dev` subtask comes back
-  at **In Progress**, same as a failed test. If it's judged a requirements gap instead,
-  it routes to **PM/Requirements**, not to Dev (see `workflows/story.md` — "UAT gate").
+  **implementation** miss (not an acceptance-criteria gap), it comes to Dario — as more commits on the
+  still-open PR by default, or as a new linked Bug when the work was already merged (`uat-after-merge`). If
+  it's judged a requirements gap instead, it routes to **PM/Requirements**, not to Dev (see
+  `workflows/story.md` — "UAT gate").
 - If a spec gap is discovered: routes it to **Architect**, **PM**, or **UX Designer**
   depending on what's actually missing.
 

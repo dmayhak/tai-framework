@@ -64,9 +64,8 @@ The Code Reviewer's job hasn't changed, only how it's tracked: verify that a PR'
 implementation matches spec and is sound before it merges. Pre-rev-52 this was a single
 Jira gate (`CodeReview`) that the test tiers waited on sequentially. **rev 52: review and
 testing now run in parallel** against the same PR — Tester doesn't wait on Cole's approval
-to start (human-confirmed 2026-08-24, TAI-160); both are independent prerequisites
-`Deploy`'s own existing precedence still waits on before the actual merge (unchanged —
-see `workflows/story.md`). Cole does not decide product scope or architecture; he
+to start (human-confirmed 2026-08-24, TAI-160); both are independent prerequisites of the
+merge, which the merge gate checks (brief §5.4, TAI-456/462 — see `workflows/story.md`). Cole does not decide product scope or architecture; he
 verifies that implementation matches spec and is sound.
 
 ## Core principles
@@ -173,8 +172,9 @@ change, not vague sentiment about code quality.
 
 ## Handoff
 
-- **A PR meeting the required-approval count (+ CI-green) surfaces on `readyToMerge`** —
-  Dario (or DevOps, for a Story with a real Deploy subtask) merges it; that same merge
+- **A PR that passes the merge gate (fresh approvals, no standing request-changes, test tiers Done) and is
+  CI-green surfaces on `readyToMerge`** — whoever owns the `Dev` subtask merges it, always (brief §5.4,
+  TAI-456; `Deploy` ships what is already merged); that same merge
   transitions the linked `Dev` subtask to `Done` (rev 52 — see `developer.md`'s Handoff).
   Cole doesn't hand off to a "Tester unblocked by CodeReview" step anymore — testing was
   already running in parallel, independent of review's own progress.

@@ -28,10 +28,10 @@ separate field, a real human holding the PM Project Role.
 | `IntegrationTest` | Tester | |
 | `SystemTest` | Tester | |
 | `E2ETest` | Tester | |
-| `UAT` | Tester + human stakeholder | Optional, **inherently human-gated** (never autocompletes) — gates `Deploy` |
+| `UAT` | Tester + human stakeholder | Optional, **inherently human-gated** (never autocompletes) — before the merge by default (`uat-after-merge` label places it after), and gates `Deploy` |
 | `Database` | DBA | Schema, migrations, query tuning, performance — not just schema work |
 | `Infra` | DevOps | |
-| `Deploy` | DevOps (default, overridable) | Manual or gated deployment |
+| `Deploy` | DevOps (default, overridable) | Manual or gated deployment of what is already merged — not where the PR gets merged |
 | `PostDeploy` | DevOps (default, overridable) | Manual follow-up work after deployment (e.g. data backfill, flag flip) — owner often varies by what the follow-up actually is |
 | `SpikeTask` | No fixed owner — assigned explicitly at creation | Ad-hoc investigation without spinning up a full Spike story |
 
@@ -53,6 +53,24 @@ of whichever subtasks are actually present:
 A Story's "done" state is the union of its present subtasks reaching Done (plus the
 human-gated ones — `UAT` if present — being signed off), not a distinct story-level
 artifact the way Kickoff's PRD/UX-flows/WBS batch is.
+
+## The sequence (brief §5.4, TAI-456): verify, then merge
+
+```
+[Dev opens PR, stays In Progress] --> [review + test tiers, in parallel; UAT] --> [merge, by whoever owns Dev] --> [Deploy] --> [PostDeploy]
+```
+
+1. Developer opens the PR; `Dev` stays In Progress.
+2. Review and the test tiers run in parallel against it. Test code goes in the same branch and PR. A tier is
+   marked Done on a pass; it does not wait for a merge.
+3. `UAT`, when present, is before the merge by default; the `uat-after-merge` label on the `UAT` subtask places
+   it after.
+4. Whoever owns the `Dev` subtask merges, through the merge gate. Not DevOps at `Deploy`; never Tester.
+5. `Deploy` ships what is already merged.
+6. A test failure before the merge sends the tier back to To Do; the fix is more commits on the same PR.
+7. A failure found after the merge is a new linked Bug. Nothing reopens `Dev`.
+
+The sections below give the detail for each step.
 
 ## Dev → Test Dependency & Failure Loop
 
@@ -81,10 +99,9 @@ a follow-on PR after Dev has already merged.** Dev and its test-tier siblings ac
 onto the same Story branch (brief §6), so this is the natural default, not an extra step:
 if a tier's real scope surfaces while Dev's PR is still open, add the test commits to
 that same branch before it merges. Discovering the need only after merge is the
-exception, not the plan — a small test-only addition can still go straight to `master`
-at that point (same risk class as a docs-only commit, no production behavior change)
-rather than opening a second full review cycle, but catching it before the PR is even
-asked for review is the target.
+exception, not the plan — and it still gets its own reviewed PR (TAI-456): Tester opens it against the tier's
+subtask, it is reviewed like any other, the `Dev` owner merges it, and the tier stays In Progress until it
+merges. Nothing goes straight to the default branch.
 
 **Planned (not yet built):** a configurable status-transition mapping, so
 a failed test can drive the Dev subtask to a user-specified status instead
@@ -101,7 +118,7 @@ type is retired going forward (still legal in the schema for parsing historical 
 never created for new work):
 
 ```
-[Dev subtask, opens PR] --stays In Progress--> [review (readyToReview) + test tiers (readyToTest), IN PARALLEL] --approved + CI green (readyToMerge)--> [Dev merges own PR, self-closes to Done]
+[Dev subtask, opens PR] --stays In Progress--> [review (readyToReview) + test tiers (readyToTest), IN PARALLEL] --merge gate met + CI green (readyToMerge)--> [Dev owner merges the PR, Dev self-closes to Done] --> [Deploy ships it]
 ```
 
 - **Dev has code ready (including unit tests)** → Developer calls
@@ -126,11 +143,12 @@ never created for new work):
 - **Review request-changes** (persona- or human-authored directly on the git host) →
   Developer keeps working the same still-open PR; there's no separate reopen step the way
   there was under the old `CodeReview` model, since `Dev` never left In Progress.
-- **Once approved (per the project's configured required-approval count) and CI is
-  green** — surfaced as **`readyToMerge`**, a strict subset of `readyToTest`'s candidates
-  — **Dev merges his own already-approved work**: `git-pr merge <DEV-SUBTASK-KEY> <REPO>
-  ...`, gated on `GitHost.getCommitStatuses` being green first (CI is load-bearing, not
-  advisory). Real practice, not self-certification (`cannotApprove: own-output` is
+- **Once the merge gate is met and CI is green** — surfaced as **`readyToMerge`** — **whoever owns the `Dev`
+  subtask merges, always**: `git-pr merge <DEV-SUBTASK-KEY> <REPO> ...`. The gate (brief §5.4, TAI-462):
+  the configured number of approvals cast on the PR's current commit, no request-changes left standing,
+  every test tier present on the ticket Done, and `GitHost.getCommitStatuses` green (CI is load-bearing, not
+  advisory). When the ticket has a `UAT` subtask without the `uat-after-merge` label, the merge also waits
+  for its sign-off — by convention; the gate does not check it yet. Real practice, not self-certification (`cannotApprove: own-output` is
   untouched) — the approval already happened as a separate, independent review action.
   **This same command also transitions the `Dev` subtask itself to Done**, as a second
   write in the same call — the actual completion signal for the unit of work.
@@ -178,6 +196,12 @@ not after `CodeReview`, which no test tier is gated behind anymore — see the D
 section above), and **gates `Deploy`**. It is **optional and present-when-added**; when
 absent, the automated tiers gate `Deploy` directly.
 
+- **Placement (TAI-456):** before the merge by default — the stakeholder accepts what is about to be merged,
+  from the PR's branch. A ticket may place it after the merge instead (for example when acceptance needs the
+  deployed system): the **`uat-after-merge` label on the `UAT` subtask** records that, set when the human
+  asks. Either way it still gates `Deploy`. Before-merge is a convention for now: the merge gate does not read
+  `UAT` or the label yet.
+
 - **Owner:** the Tester persona drives the run, but a **human stakeholder must
   sign off** — `UAT` is **inherently human-gated** (brief §3.3) and **never
   autocompletes**, even where autocompletion is otherwise enabled. A human-gated
@@ -194,7 +218,8 @@ absent, the automated tiers gate `Deploy` directly.
   comment doesn't give enough signal either way.
 - **Failure handling is different from the automated tiers.** A rejected `UAT`
   is **human-adjudicated**, not the automatic single-retry loop: a rejection can
-  mean an *implementation* miss (route the `Dev` subtask back to **In Progress**)
+  mean an *implementation* miss (more commits on the still-open PR — `Dev` is already
+  In Progress; or, when the work was already merged, a new linked Bug, since nothing reopens `Dev`)
   **or** an *acceptance-criteria* gap (route back to **PM/Requirements**). A
   human decides which, recorded per the marker/inference rule above. A rejected
   `UAT` **can** reopen a `Requirements` task, not only `Dev` — the exact trigger/
@@ -233,7 +258,7 @@ completion (deprioritized, superseded, or otherwise not worth finishing).
 
 - **To Do:** created, no present subtask has started.
 - **In Progress:** at least one present subtask has started — covers the entire
-  `Dev (opens PR, stays In Progress through parallel review+test) → UAT → Deploy →
+  `Dev (opens PR, stays In Progress through parallel review+test and UAT) → merge → Deploy →
   PostDeploy` chain, including any Dev ⇄ Test or ArchitectureDesign ⇄ DesignReview
   failure loops. The Story stays In Progress through all of that; loops don't regress the
   story-level status.
@@ -244,12 +269,12 @@ completion (deprioritized, superseded, or otherwise not worth finishing).
   subtasks' own statuses.
 
 ## Why no "Defect" subtask
-A failed Dev/Test loop before deployment is normal iteration, not a
+A failed Dev/Test loop before the merge is normal iteration, not a
 defect — "Bug"/"Defect" terminology is reserved for issues found *after*
-something ships (see `StoryType.Bug`). Reopening the existing Dev subtask
-preserves Jira's built-in transition history and worklogs automatically,
-so no separate defect-tracking artifact is needed for pre-deployment
-rework.
+the work is merged (see `StoryType.Bug`; TAI-456: a failure after the merge is a
+new linked Bug, and nothing reopens `Dev`). Before the merge the `Dev` subtask is
+still In Progress, so its own history carries the rework and no separate
+defect-tracking artifact is needed.
 
 ## Decided
 - **Reopen/retest count** is derived from Jira's transition history as
@@ -259,7 +284,7 @@ rework.
 
 ## Open Questions
 - A rejected `UAT` **can** reopen a `Requirements` task (acceptance-criteria
-  gap) as well as send `Dev` back — the trigger/authority details are deferred
+  gap) as well as send the work back to Developer — the trigger/authority details are deferred
   to the persona-capability design (what each persona may do or cause), not
   decided here.
 - Should `DesignReview` ever be a **required** default (not just optional)
