@@ -796,9 +796,13 @@ describe("transition", () => {
             };
         }
 
-        function kickoffTrackerWith(comments: unknown[], status = "In Review") {
+        /** `linkedPages` are the Confluence pages linked to the Kickoff (TAI-480: scanned for open questions). */
+        function kickoffTrackerWith(comments: unknown[], status = "In Review", linkedPages: Page[] = []) {
             return trackerWith(
                 stubFetch((url, init) => {
+                    if (url.includes("/remotelink")) {
+                        return json(linkedPages.map((p) => ({ globalId: `tai-page-${p.id}` })));
+                    }
                     if (url.includes("/transitions") && init.method === "GET") {
                         return json({ transitions: [{ id: "41", name: "Finish", to: { name: "Done" } }] });
                     }
@@ -819,9 +823,26 @@ describe("transition", () => {
                         },
                     });
                 }),
-                fakeDocStore([ROSTER_PAGE])
+                fakeDocStore([ROSTER_PAGE, ...linkedPages])
             );
         }
+
+        const bothApproved = [approvedComment("c1", "perry@example.com", "Perry"), approvedComment("c2", "uma@example.com", "Uma")];
+        const linkedPage = (id: string, title: string, content: string): Page => ({ ...ROSTER_PAGE, id: toPageId(id), title, content });
+
+        it("blocks Done, even with both approvals, while a linked page has an unresolved NEEDS CLARIFICATION (TAI-480)", async () => {
+            const prd = linkedPage("PAGE-7", "TAI-1 — PRD: sign-in", "Email sign-in.\n\nNEEDS CLARIFICATION: do we support single sign-on?");
+            const res = await kickoffTrackerWith(bothApproved, "In Review", [prd]).transition(toIssueKey("TAI-1"), Status.Done);
+            assert.equal(res.ok, false);
+            assert.match(res.ok === false ? res.reason : "", /1 unresolved "NEEDS CLARIFICATION" marker/);
+            assert.match(res.ok === false ? res.reason : "", /"TAI-1 — PRD: sign-in" \(page PAGE-7\): do we support single sign-on\?/);
+        });
+
+        it("allows Done with both approvals when the linked pages carry no marker", async () => {
+            const prd = linkedPage("PAGE-7", "TAI-1 — PRD: sign-in", "Email sign-in. Single sign-on is out of scope.");
+            const res = await kickoffTrackerWith(bothApproved, "In Review", [prd]).transition(toIssueKey("TAI-1"), Status.Done);
+            assert.equal(res.ok, true);
+        });
 
         it("blocks Done when a required reviewer's Approved: sign-off is missing", async () => {
             const wt = kickoffTrackerWith([approvedComment("c1", "perry@example.com", "Perry")]);

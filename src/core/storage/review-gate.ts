@@ -24,7 +24,7 @@
  */
 
 import { type Persona, PERSONA_ROLE_LABEL, REVIEW_GATES, Status, StoryType } from "../schema/story-schema.js";
-import type { Issue, IssueKey } from "./interface.js";
+import type { Issue, IssueKey, Page, PageId } from "./interface.js";
 import { parseCommentMarkers } from "./comment-markers.js";
 
 const STORY_TYPES: ReadonlySet<string> = new Set(Object.values(StoryType));
@@ -88,3 +88,73 @@ export function reviewGateReason(key: IssueKey, missing: readonly Persona[]): st
         `appear in the Persona Roster under that persona.`
     );
 }
+
+// ---------- Unresolved NEEDS CLARIFICATION markers (TAI-480; human decision TAI-455, row 6) ----------
+
+/**
+ * While drafting, the PM and UX Designer mark a real gap inline with
+ * `NEEDS CLARIFICATION: <question>` instead of guessing (`workflows/kickoff.md`). A gated ticket may
+ * not reach Done while a page linked to it still carries one: the marker is resolved by editing it
+ * out once the question is answered, not by approving around it.
+ *
+ * A marker inside code formatting (a fenced block or an inline code span) does not count, so a page
+ * can describe the convention without tripping the gate.
+ */
+export const CLARIFICATION_MARKER = "NEEDS CLARIFICATION";
+
+export interface UnresolvedClarifications {
+    readonly pageId: PageId;
+    readonly title: string;
+    /** The text after each marker on its line, trimmed; "" when the marker stands alone. */
+    readonly questions: readonly string[];
+}
+
+const FENCED_BLOCK = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
+const INLINE_CODE = /`[^`\n]*`/g;
+const MARKER_LINE = /NEEDS CLARIFICATION\s*:?\s*(.*)$/;
+
+/** Every unresolved marker in one page's markdown, in order. */
+export function findClarificationQuestions(content: string): string[] {
+    const prose = content.replace(FENCED_BLOCK, "").replace(INLINE_CODE, "");
+    const questions: string[] = [];
+    for (const line of prose.split("\n")) {
+        const match = MARKER_LINE.exec(line);
+        if (match) questions.push(match[1]!.replace(/[*_\s]+$/, "").trim());
+    }
+    return questions;
+}
+
+/** The pages, of those given, that still carry at least one unresolved marker. */
+export function findUnresolvedClarifications(pages: readonly Pick<Page, "id" | "title" | "content">[]): UnresolvedClarifications[] {
+    return pages
+        .map((page) => ({ pageId: page.id, title: page.title, questions: findClarificationQuestions(page.content) }))
+        .filter((found) => found.questions.length > 0);
+}
+
+/**
+ * Reads the pages linked to a gated ticket and returns the ones with unresolved markers. Shared by
+ * both backends' `transition()`, like `checkReviewGate`. A linked page that no longer exists is
+ * skipped; a page that cannot be read fails the transition, since "could not check" must not pass.
+ */
+export async function checkClarificationGate(
+    key: IssueKey,
+    io: { getLinkedPages(key: IssueKey): Promise<readonly PageId[]>; getPage(ref: { readonly id: PageId }): Promise<Pick<Page, "id" | "title" | "content"> | null> }
+): Promise<UnresolvedClarifications[]> {
+    const pages: Pick<Page, "id" | "title" | "content">[] = [];
+    for (const id of await io.getLinkedPages(key)) {
+        const page = await io.getPage({ id });
+        if (page) pages.push(page);
+    }
+    return findUnresolvedClarifications(pages);
+}
+
+export function clarificationGateReason(key: IssueKey, unresolved: readonly UnresolvedClarifications[]): string {
+    const total = unresolved.reduce((n, u) => n + u.questions.length, 0);
+    const lines = unresolved.flatMap((u) => u.questions.map((q) => `- "${u.title}" (page ${u.pageId}): ${q === "" ? "(no question written after the marker)" : q}`));
+    return (
+        `${key} is blocked by its review gate — ${total} unresolved "${CLARIFICATION_MARKER}" marker${total === 1 ? "" : "s"} in the pages linked to it:\n` +
+        `${lines.join("\n")}\n` +
+        "Answer each question and edit its marker out of the page; approving does not resolve one."
+    );
+}
+

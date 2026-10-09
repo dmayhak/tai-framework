@@ -162,7 +162,16 @@ same "don't guess, mark it" discipline the brief adopted from GitHub Spec Kit. T
 mechanically blocked while either doc still contains an unresolved marker, in addition to
 needing both required `Approved:` comments — a marker is resolved by editing it out once
 the question is actually answered, not by a reviewer simply noticing it and approving
-anyway. This gives a concrete, gate-checkable stopping point for how deep the
+anyway.
+
+**How it is checked.** When the Kickoff Story is moved to Done, `transition()` reads every
+Confluence page linked to the Story and refuses the move while any of them contains the
+marker, naming each page and question (`storage/review-gate.ts`, the same on both backends).
+It scans all linked pages, not only the PRD and UX flows, so the work-breakdown and WBS pages
+are held to it too. A marker inside code formatting (an inline code span or a fenced block)
+does not count, so a page can describe the convention. `force=true` does not get past it.
+
+This gives a concrete, gate-checkable stopping point for how deep the
 requirements-gathering conversation (`Research`, `Requirements`, `UxDesign`) needs to go:
 deep enough that no marker remains, no deeper.
 
