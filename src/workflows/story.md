@@ -154,7 +154,7 @@ never created for new work):
   **This same command also transitions the `Dev` subtask itself to Done**, as a second
   write in the same call — the actual completion signal for the unit of work.
 - **Out-of-band actions are detected and reflected, never fought** — same stance as brief
-  §4's Confluence-gate-reopening rule, now covering the git host too. A human approving/
+  §4's rule for edits to an approved page, now covering the git host too. A human approving/
   requesting-changes directly on Bitbucket is picked up at the next `readyToReview`
   refresh. A human merging the PR directly on Bitbucket (bypassing `git-pr merge`) is
   detected on the next `/tai-ready` refresh and syncs `Dev` to Done the same way —

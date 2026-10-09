@@ -127,8 +127,9 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
   pass (system-level invariants, kept minimal); each Story's design is the later, narrower,
   full-depth pass that inherits it (brief §3.7). A genuine conflict — a concrete reason an
   inherited decision doesn't hold, not a differing preference — is escalated to the human,
-  never overridden locally. The remedy may be amending the original ADR (which reopens its
-  `DesignReview` if that already passed, brief §4) and/or creating whatever follow-up
+  never overridden locally. The remedy may be amending the original ADR (an amendment does not
+  reopen a `DesignReview` that already passed; tell the human, who decides whether it needs
+  another look) and/or creating whatever follow-up
   subtask the fix needs, such as flagging other Stories under the same Epic that assumed
   the original decision.
 - **Notices when a design fork depends on unstated future direction, not just technical

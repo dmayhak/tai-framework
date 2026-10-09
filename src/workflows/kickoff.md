@@ -176,13 +176,12 @@ This gives a concrete, gate-checkable stopping point for how deep the
 requirements-gathering conversation (`Research`, `Requirements`, `UxDesign`) needs to go:
 deep enough that no marker remains, no deeper.
 
-**An edit to the PRD or UX-flow Confluence pages after the gate has already passed
-reopens it** (brief §6, rev 11) — detected the same way any staleness is detected
-(cached `lastUpdated` vs. source, brief §3.6/§7). TAI flags it and requires fresh
-`Approved:` sign-off from both PM and UX Designer before any further downstream step
-that depends on this gate (e.g. creating additional Story/Spike tickets from the WBS)
-proceeds. Already-created Story/Spike tickets aren't retroactively undone — this only
-blocks *further* gate-dependent steps, not work already spawned.
+**An edit to a linked page after the gate has passed is shown, and reopens nothing** (brief
+§4). When a page linked to a Done Kickoff Story has been updated since that Kickoff's latest
+`Approved:` comment, `/tai-ready` and `/tai-groom` list it under "Pages edited after their
+Kickoff was approved", for as long as the Kickoff's Epic is open. No step is blocked and no
+fresh `Approved:` is required. The human decides whether the change matters; if it does, the
+remedy is ordinary work (a comment, a new ticket), not a reopened gate.
 
 ## Output
 - **Work-breakdown doc** (owned by Analyst) — a Confluence page attached to the Kickoff

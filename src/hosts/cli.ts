@@ -110,6 +110,7 @@ import { grantNote } from "../core/persona/permission-gate.js";
 import { postIssueComment } from "../core/storage/handoff.js";
 import { wallOfTextNote } from "../core/storage/readable-text.js";
 import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js";
+import { renderEditedAfterApproval, tryFindEditedAfterApproval } from "../core/commands/edited-after-approval.js";
 import { detectExistingCode } from "../core/git/existing-code.js";
 import {
     projectContextBudgetFromEnv,
@@ -1954,7 +1955,17 @@ async function main(): Promise<void> {
                     )
                 ).text,
         });
-        console.log(withTurnNotes([await installWarning()]) + renderGroomTurn(pm, renderGroomingBriefing(result), await loadProjectContextSection()));
+        // TAI-481: an information section after the eight numbered ones; nothing in it is a proposal.
+        const editedSection = renderEditedAfterApproval(
+            await tryFindEditedAfterApproval({
+                workTracker: config.backend.workTracker,
+                docStore: config.backend.docStore,
+                projectKey: config.projectKey,
+                ...(arg ? { epicKey: toIssueKey(arg) } : {}),
+            })
+        );
+        const groomBriefing = renderGroomingBriefing(result) + (editedSection ? `\n\n${editedSection}` : "");
+        console.log(withTurnNotes([await installWarning()]) + renderGroomTurn(pm, groomBriefing, await loadProjectContextSection()));
         return;
     }
 
@@ -2005,8 +2016,17 @@ async function main(): Promise<void> {
             persona
         );
         const unreadableNote = renderUnreadableIssuesNote(takeUnreadableIssues());
+        // TAI-481: shown, never blocking. Skipped for a persona-scoped list, which is about that persona's own work.
+        const editedSection = persona
+            ? undefined
+            : renderEditedAfterApproval(
+                  await tryFindEditedAfterApproval({ workTracker: config.backend.workTracker, docStore: config.backend.docStore, projectKey: config.projectKey })
+              );
         console.log(
-            (fetchNote ? `${fetchNote}\n\n` : "") + renderReadyWork(result, arg) + (unreadableNote ? `\n\n${unreadableNote}` : "")
+            (fetchNote ? `${fetchNote}\n\n` : "") +
+                renderReadyWork(result, arg) +
+                (editedSection ? `\n\n${editedSection}` : "") +
+                (unreadableNote ? `\n\n${unreadableNote}` : "")
         );
         return;
     }

@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 92). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 93). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -496,9 +496,8 @@ a substantive signal. The marker-text convention doesn't depend on either concer
 **Freshness, not cached memory:** since comments are human-**deletable** in both
 systems, marker-scanning is always a **fresh re-scan**, never a cached "I already saw an
 `Approved:` comment" memory. If a previously-satisfying marker comment is later deleted,
-the gate/question reverts to unsatisfied — the same principle as §4's "editing an
-already-approved doc reopens the gate" (Confluence bullet), just triggered by deletion
-instead of an edit.
+the gate/question reverts to unsatisfied. (An edit to an approved *page* is different: it
+is shown, and reopens nothing — §4, the Confluence bullet.)
 
 ---
 
@@ -599,12 +598,12 @@ These are settled. Change them deliberately and update this file if you do.
     get their own top-level **`Config`** folder in the project's space (sibling to the
     doc-type folders above), with plain descriptive titles (`Persona Roster`, and future
     persona-extension pages named after the persona).
-  - **Human edits to an already-gated doc:** editing a Confluence page backing
-    an already-passed `ReviewGate` (e.g. the PRD, after the Kickoff PM+UX gate already
-    signed off) **reopens that gate** — TAI flags it and requires re-approval before
-    further downstream steps depending on that gate proceed. An `Approved:` sign-off
-    means something about the content actually reviewed, not just that a comment once
-    existed.
+  - **Edits to an already-approved doc are shown, not blocked:** an `Approved:` sign-off
+    says something about the page as it was when it was approved. When a page linked to a
+    Done Kickoff Story is edited after that Kickoff's latest `Approved:` comment, `/tai-ready`
+    and `/tai-groom` list it in an information section (while the Kickoff's Epic is open).
+    **Nothing reopens** and no re-approval is required; the human decides whether the change
+    matters (`commands/edited-after-approval.ts`).
 - **Human-gated steps are conventions, made visible.** The CLI and the human share one
   Jira/Bitbucket identity, so TAI cannot prove who performed an action. A human-only step (a UAT, EpicReview or
   DesignReview sign-off, a Kickoff `Approved:` comment, a PR approval, closing an Epic) is therefore a
@@ -938,7 +937,7 @@ decision.**
 - **`Dev` → Done has two triggers:** `git-pr merge` moves the linked `Dev` subtask to Done in the same call
   that performs the merge; a refresh-based fallback catches a PR merged out of band.
 - **A human acting directly on the git host is detected and reflected, never fought** (approve, request
-  changes, merge) — picked up at the next refresh, the same stance as §4's Confluence gate-reopening rule.
+  changes, merge) — picked up at the next refresh, the same stance as §4's rule for edits to an approved page: shown, not fought.
 
 Full detail (approval-threshold handling, the reviewer roster, refresh mechanics): the TAI-159 ADR (Confluence,
 TA space, page 28704769). The earlier chains this replaced, including the `CodeReview`-subtask flow
@@ -1102,7 +1101,7 @@ comment's content.
 - **Review and merge act on a real git PR (TAI-159 ADR).** See §5.4. The git
   host's own approval state is the source of truth for review, queried live; there is no `CodeReview`
   subtask. A human reviewing or merging directly on the git host is treated as authoritative, not fought —
-  the same stance as §4's Confluence gate-reopening rule.
+  the same stance as §4's rule for edits to an approved page: shown, not fought.
 - **Branch unit:** parent Story/Bug. Name = parent issue key + very short slug
   (e.g. `PROJ-123-user-login`).
 - **Subtasks accumulate** onto their parent Story's branch; they do not get their own

@@ -24,12 +24,18 @@ Decided after an ADR resolved an open design point solo and presented it as sett
 added that surfacing means showing the alternatives weighed and a lean, so the human does not have to
 reconstruct the trade-off. It is in addition to escalating a true dead-end.
 
+## Amending a reviewed ADR (TAI-481; human decision TAI-455, row 7)
+
+The doc used to say that amending an ADR whose `DesignReview` had passed reopens that gate, citing a
+brief rule that editing an already-gated doc reopens the gate. Nothing in the code ever reopened
+anything. The decision was to show edits, not block on them: for Kickoff gates `/tai-ready` and
+`/tai-groom` list pages edited after approval, and for a reviewed ADR Aria tells the human.
+
 ## Altitude inheritance
 
-Aria's answer to brief §3.7's rolling-wave principle for system-level design. The "amending a gated
-ADR reopens its DesignReview" consequence is brief §4's "editing an already-gated doc reopens the
-gate" rule. Follow-up subtasks use the TAI-83 "eager subtask creation" exception
-(`workflows/dependencies.md`), not new machinery.
+Aria's answer to brief §3.7's rolling-wave principle for system-level design. Follow-up subtasks use
+the TAI-83 "eager subtask creation" exception (`workflows/dependencies.md`), not new machinery. What
+happens when a reviewed ADR is amended is in the section above.
 
 ## Future-direction forks
 
