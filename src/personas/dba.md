@@ -24,8 +24,6 @@ permissions:
     - Subtask:Database
   complete:
     - Subtask:Database
-  update:
-    - Story.schemaNotes
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 

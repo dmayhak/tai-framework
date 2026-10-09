@@ -106,6 +106,7 @@ import {
 } from "../core/git/review-findings.js";
 import { loadPersonaConfig, resolveActingPersonaId, taiCliCommand, taiInstallRoot } from "../core/persona/config.js";
 import { describeTaiInstall, renderInstallWarning } from "../core/git/install-state.js";
+import { grantNote } from "../core/persona/permission-gate.js";
 import { postIssueComment } from "../core/storage/handoff.js";
 import { wallOfTextNote } from "../core/storage/readable-text.js";
 import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js";
@@ -640,6 +641,21 @@ export function renderGroomTurn(persona: { displayName: string; id: string; prom
 /** TAI-450: a kickoff turn is the same shape too -- persona heading, her instructions, `---`, the briefing. */
 export function renderKickoffTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string, projectContext?: string): string {
     return renderPersonaTurn(persona, briefing, projectContext);
+}
+
+/**
+ * TAI-478: the note for an `issue create` or a close made as a persona (`--as`) whose doc grants it
+ * no `create`/`complete` for that type. Best effort and never a refusal: a persona config that cannot
+ * be loaded just means no note. Without `--as` nobody is acting, so there is nothing to compare.
+ */
+async function actingGrantNote(config: ResolvedConfig, action: "create" | "complete", issueType: Issue["issueType"]): Promise<string | null> {
+    if (!config.actingPersona) return null;
+    try {
+        const persona = await loadPersonaConfig(config.backend.docStore, config.actingPersona, { spaceKey: config.spaceKey });
+        return grantNote(persona, action, issueType);
+    } catch {
+        return null;
+    }
 }
 
 /** TAI-522 ADR decision 4: one line when TAI itself is not running from its default branch. */
@@ -2142,6 +2158,8 @@ async function main(): Promise<void> {
                 }
             }
             if (!issue.persona) console.log(`\n${PERSONA_LESS_CREATE_WARNING(issue.key)}`);
+            const outsideGrantNote = await actingGrantNote(config, "create", issue.issueType);
+            if (outsideGrantNote) console.log(`\n${outsideGrantNote}`);
             return;
         }
 
@@ -2231,9 +2249,13 @@ async function main(): Promise<void> {
                 }
             }
 
+            // TAI-478: closing something outside the acting persona's `complete` grant gets a note, not a
+            // refusal. Done only: a Cancel is a grooming action the human confirms, not a claim of completion.
+            const completeNote = result.ok && status === Status.Done ? await actingGrantNote(config, "complete", result.issue.issueType) : null;
+
             console.log(
                 result.ok
-                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote
+                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "")
                     : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")

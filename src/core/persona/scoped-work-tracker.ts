@@ -2,7 +2,7 @@
  * TAI Framework — PersonaScopedWorkTracker (TAI-51 ADR decision 3)
  *
  * Wraps a real backend's `WorkTracker`, binding ONE persona for its lifetime. Checks
- * `canCreate`/`canComplete`/`canUpdate` (permission-gate.ts) before delegating; every other
+ * `canCreate`/`canComplete` (permission-gate.ts) before delegating; every other
  * method passes through unchanged. Zero changes to `storage/interface.ts` or either existing
  * backend — this is a pure decorator, not a new backend, chosen specifically over threading an
  * `actingPersona` parameter through `WorkTracker` itself (see the ADR's rejected option (a)).
@@ -17,7 +17,7 @@
  * method's own existing contract rather than inventing a new one.
  */
 
-import { Status, StoryType, type DependencyRelation } from "../schema/story-schema.js";
+import { Status, type DependencyRelation } from "../schema/story-schema.js";
 import type {
     AttachmentRef,
     Comment,
@@ -35,7 +35,7 @@ import type {
     WorkTracker,
 } from "../storage/interface.js";
 import type { PersonaConfig } from "./config.js";
-import { canComplete, canCreate, canUpdate } from "./permission-gate.js";
+import { canComplete, canCreate } from "./permission-gate.js";
 
 export class PersonaPermissionError extends Error {
     constructor(personaId: string, action: string, detail: string) {
@@ -44,18 +44,7 @@ export class PersonaPermissionError extends Error {
     }
 }
 
-const STORY_TYPES: ReadonlySet<string> = new Set(Object.values(StoryType));
-
-/** "story" -> "Story", "epic" -> "Epic" — the entity-type label as it appears in a
- *  `permissions.update` grant (e.g. "Story.implementationNotes"). Subtask types pass through
- *  unchanged; no persona file currently grants updates scoped to a subtask's own type. */
-function entityLabel(issueType: Issue["issueType"]): string {
-    if (issueType === "epic") return "Epic";
-    if (STORY_TYPES.has(issueType)) return issueType.charAt(0).toUpperCase() + issueType.slice(1);
-    return issueType;
-}
-
-/** "Completing" = reaching a terminal status — `Done` or `Canceled` (brief §5.3 rev 16:
+/** "Completing" = reaching a terminal status — `Done` or `Canceled` (brief §5.3:
  *  Canceled counts as satisfied for precedence purposes, same as Done). Any other transition
  *  (e.g. `To Do` -> `In Progress`) isn't a completion and isn't gated by `canComplete`. */
 function isCompletingTransition(target: Status): boolean {
@@ -79,17 +68,8 @@ export class PersonaScopedWorkTracker implements WorkTracker {
         return this.inner.getIssue(key);
     }
 
-    async updateIssue(key: IssueKey, patch: IssuePatch): Promise<Issue> {
-        const current = await this.inner.getIssue(key);
-        if (current) {
-            const label = entityLabel(current.issueType);
-            const deniedFields = (Object.keys(patch) as (keyof IssuePatch)[]).filter(
-                (field) => !canUpdate(this.persona, label, field)
-            );
-            if (deniedFields.length > 0) {
-                throw new PersonaPermissionError(this.persona.id, "update", `${label}.${deniedFields.join(", ")}`);
-            }
-        }
+    /** Not gated: per-field `update` grants were deleted (TAI-478). */
+    updateIssue(key: IssueKey, patch: IssuePatch): Promise<Issue> {
         return this.inner.updateIssue(key, patch);
     }
 

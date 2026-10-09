@@ -23,8 +23,6 @@ model: default          # inherits project default; overridable in persona confi
 # does, because there's no ticket left whose `persona` field would say `code-reviewer`.
 # Rationale and history for this persona: rationale/code-reviewer.md (not loaded at run time).
 permissions:
-  update:
-    - Story.reviewNotes
   gitHost:
     - reviewPullRequest           # TAI-33/34 ADRs — approve/request-changes on the real PR.
                                    # rev 52: this grant is now VESTIGIAL for permission-

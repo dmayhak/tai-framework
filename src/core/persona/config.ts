@@ -42,12 +42,6 @@ export type PermissionTarget =
     | { readonly kind: "issue"; readonly issueType: StoryType | "epic" }
     | { readonly kind: "subtask"; readonly subtaskType: SubtaskType };
 
-export interface UpdateGrant {
-    /** e.g. "Epic", "Story", "Bug" — loose, matches the open story-type taxonomy (brief §5.1). */
-    readonly entityType: string;
-    readonly field: string;
-}
-
 function normalizeLabel(s: string): string {
     return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -83,13 +77,6 @@ export function parsePermissionTarget(raw: string): PermissionTarget | null {
     return issueType !== undefined ? { kind: "issue", issueType } : null;
 }
 
-/** Parses one `permissions.update` entry, e.g. "Story.acceptanceCriteria". */
-export function parseUpdateGrant(raw: string): UpdateGrant | null {
-    const idx = raw.indexOf(".");
-    if (idx <= 0 || idx === raw.length - 1) return null;
-    return { entityType: raw.slice(0, idx).trim(), field: raw.slice(idx + 1).trim() };
-}
-
 function targetKey(t: PermissionTarget): string {
     return t.kind === "issue" ? `issue:${t.issueType}` : `subtask:${t.subtaskType}`;
 }
@@ -100,12 +87,6 @@ function unionTargets(a: readonly PermissionTarget[], b: readonly PermissionTarg
     return [...seen.values()];
 }
 
-function unionUpdateGrants(a: readonly UpdateGrant[], b: readonly UpdateGrant[]): UpdateGrant[] {
-    const seen = new Map<string, UpdateGrant>();
-    for (const g of [...a, ...b]) seen.set(`${g.entityType}.${g.field}`, g);
-    return [...seen.values()];
-}
-
 // ---------- PersonaConfig ----------
 
 export interface PersonaPermissions {
@@ -113,7 +94,6 @@ export interface PersonaPermissions {
     readonly create: readonly PermissionTarget[];
     readonly workOn: readonly PermissionTarget[];
     readonly complete: readonly PermissionTarget[];
-    readonly update: readonly UpdateGrant[];
     /** Opaque named gates, e.g. "KickoffReviewGate" (brief §3.5) — not modeled further here. */
     readonly approve: readonly string[];
     /** `GitHost` actions (TAI-33/34 ADRs) this persona may perform — a separate axis from
@@ -172,7 +152,6 @@ function buildPermissions(raw: unknown): PersonaPermissions {
         complete: asStringArray(p.complete)
             .map(parsePermissionTarget)
             .filter((t): t is PermissionTarget => t !== null),
-        update: asStringArray(p.update).map(parseUpdateGrant).filter((g): g is UpdateGrant => g !== null),
         approve: asStringArray(p.approve),
         // Same "skip, don't crash" tolerance as parsePermissionTarget — an unrecognised
         // action narrows the grant, never widens it.
@@ -221,7 +200,6 @@ export function emptyPersonaShell(id: string, displayName = id): PersonaConfig {
             create: [],
             workOn: [],
             complete: [],
-            update: [],
             approve: [],
             gitHost: [],
             cannotApprove: ["own-output"],
@@ -350,7 +328,7 @@ export interface PersonaExtension {
      *  grant it away, so there's nothing for this shape to carry). */
     readonly permissions: Pick<
         PersonaPermissions,
-        "propose" | "create" | "workOn" | "complete" | "update" | "approve" | "gitHost"
+        "propose" | "create" | "workOn" | "complete" | "approve" | "gitHost"
     >;
     readonly prose: string;
 }
@@ -383,7 +361,6 @@ export function parseExtensionPage(markdown: string): PersonaExtension {
             create: built.create,
             workOn: built.workOn,
             complete: built.complete,
-            update: built.update,
             approve: built.approve,
             gitHost: built.gitHost,
         },
@@ -392,7 +369,7 @@ export function parseExtensionPage(markdown: string): PersonaExtension {
 }
 
 function emptyGrants(): PersonaExtension["permissions"] {
-    return { propose: [], create: [], workOn: [], complete: [], update: [], approve: [], gitHost: [] };
+    return { propose: [], create: [], workOn: [], complete: [], approve: [], gitHost: [] };
 }
 
 // ---------- The 3-layer merge ----------
@@ -440,7 +417,6 @@ export function mergePersonaConfig(
             create: unionTargets(afterOverride.permissions.create, extension.permissions.create),
             workOn: unionTargets(afterOverride.permissions.workOn, extension.permissions.workOn),
             complete: unionTargets(afterOverride.permissions.complete, extension.permissions.complete),
-            update: unionUpdateGrants(afterOverride.permissions.update, extension.permissions.update),
             approve: [...new Set([...afterOverride.permissions.approve, ...extension.permissions.approve])],
             gitHost: [...new Set([...afterOverride.permissions.gitHost, ...extension.permissions.gitHost])],
             // cannotApprove: untouched, carried via the spread above.

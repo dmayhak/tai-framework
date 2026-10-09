@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 90 (2026-10-09)
+
+**TAI-478: the persona grants match the persona docs, and a mismatch is visible.** Human decision TAI-455 (rows 1 and 2). Perry's `complete` grant gains Spike, Kickoff, Story and Bug (she could not close a Spike under her own list; Epic stays out, since closing one is the human's decision). DevOps loses its `gitHost: mergePullRequest` grant: whoever owns the Dev subtask merges (TAI-456). The per-field `update` grants are deleted from all nine persona files and from the code; most named fields that do not exist. `issue create` and a transition to Done now print a note, without refusing, when the acting persona has no `create` or `complete` grant for the type. A Cancel does not trigger the note. Brief §3.1 and §4.
+
 ## rev 89 (2026-10-09)
 
 **TAI-522: a review is of the PR's code, whatever the reviewer's clone has checked out.** Found on 2026-10-09 when PR 180 was reviewed from a clone 28 commits behind: the diff was right, the files on disk were not, and the rules file was missing. Decided by the human (ADR Confluence page 55246849): `review-prep` tells the reviewer to read surrounding files from the fetched PR branch and says whether the working tree is at the PR's head; it runs the same safe fast-forward of the local default branch as `/tai-work`; it reads `project-context.md` from the destination branch on origin; and every persona turn prints one line when the TAI install is not on its default branch. Not taken: fast-forward alone, reading the rules from the PR's own branch, a separate clone for the install, and checking out the PR for the reviewer. Brief §3.8.

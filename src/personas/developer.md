@@ -34,8 +34,6 @@ permissions:
     - Subtask:Dev
   complete:
     - Subtask:Dev
-  update:
-    - Story.implementationNotes
   gitHost:
     - createPullRequest           # TAI-33/34 ADRs — opens the real PR once Dev subtask has code ready;
                                    # links directly to the Dev subtask's own key (rev 52, TAI-159 ADR —

@@ -9,8 +9,7 @@ Until TAI-456, `Deploy` was where the PR was merged: Duncan held `gitHost: merge
 at deploy time. The human decided on 2026-10-08 that the sequence is verify, then merge, and that whoever
 owns the `Dev` subtask merges, always. `Deploy` now ships what is already on the default branch.
 
-The `mergePullRequest` grant is still in the front matter. Nothing in the prompt uses it; removing it is
-part of the grants repair (TAI-478).
+The `mergePullRequest` grant stayed in the front matter until the grants repair (TAI-478) removed it.
 
 `Deploy` waiting on `Dev` being Done as well as on the tiers and UAT comes from TAI-456 and TAI-463 (an
 absent subtask passes its prerequisites through).

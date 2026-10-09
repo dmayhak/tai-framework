@@ -18,7 +18,6 @@ import {
     parseExtensionPage,
     parsePermissionTarget,
     parsePersonasOverridePage,
-    parseUpdateGrant,
     fillCliPlaceholder,
     personaCliCommand,
     resolveActingPersonaId,
@@ -106,21 +105,6 @@ describe("parsePermissionTarget", () => {
     });
 });
 
-describe("parseUpdateGrant", () => {
-    it("splits EntityType.field", () => {
-        assert.deepEqual(parseUpdateGrant("Story.acceptanceCriteria"), {
-            entityType: "Story",
-            field: "acceptanceCriteria",
-        });
-    });
-
-    it("returns null when there's no dot, or nothing on either side", () => {
-        assert.equal(parseUpdateGrant("NoDotHere"), null);
-        assert.equal(parseUpdateGrant(".field"), null);
-        assert.equal(parseUpdateGrant("Entity."), null);
-    });
-});
-
 const FIXTURE_MD = `---
 id: developer
 displayName: Dario
@@ -158,7 +142,6 @@ describe("parseBuiltinPersonaFile", () => {
             { kind: "subtask", subtaskType: SubtaskType.Dev },
             { kind: "subtask", subtaskType: SubtaskType.SpikeTask },
         ]);
-        assert.deepEqual(config.permissions.update, [{ entityType: "Story", field: "implementationNotes" }]);
         assert.deepEqual(config.permissions.cannotApprove, ["own-output"]);
         assert.equal(config.checkpoints.humanSignOffDefault, true);
         assert.deepEqual(config.confluenceOutputs, ["implementation-notes"]);
@@ -375,7 +358,8 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
             ["createPullRequest", "mergePullRequest"]
         );
         assert.deepEqual([...configs.get("code-reviewer")!.permissions.gitHost], ["reviewPullRequest"]);
-        assert.deepEqual([...configs.get("devops")!.permissions.gitHost], ["mergePullRequest"]);
+        // TAI-478: DevOps holds none. Whoever owns the Dev subtask merges; Deploy ships what is merged.
+        assert.deepEqual([...configs.get("devops")!.permissions.gitHost], []);
         // Tester (2026-08-20): the canonical Dev->CodeReview->Merge/Deploy chain never gave
         // Test-tier subtasks (IntegrationTest/SystemTest/E2ETest, all outside that chain) any
         // way to land their own code — granted createPullRequest only, NOT mergePullRequest
@@ -392,6 +376,22 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         );
         for (const id of ["analyst", "dba", "ux-designer"]) {
             assert.deepEqual(configs.get(id)!.permissions.gitHost, [], `${id} should have no gitHost grants`);
+        }
+    });
+
+    it("Perry can complete what her doc has her close, and not an Epic (TAI-478)", async () => {
+        const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
+        const completes = pm.permissions.complete.map((t) => (t.kind === "issue" ? t.issueType : t.subtaskType));
+        assert.deepEqual([...completes].sort(), [StoryType.Bug, StoryType.Kickoff, SubtaskType.Requirements, StoryType.Spike, StoryType.Story].sort());
+        assert.ok(!completes.includes("epic"), "closing an Epic is the human's decision");
+    });
+
+    it("no persona file carries update grants any more (TAI-478)", async () => {
+        const { readFile, readdir } = await import("node:fs/promises");
+        const dir = path.resolve(import.meta.dirname, "../../personas");
+        for (const file of (await readdir(dir)).filter((f) => f.endsWith(".md"))) {
+            const frontMatter = (await readFile(path.join(dir, file), "utf8")).split("\n---\n")[0]!;
+            assert.doesNotMatch(frontMatter, /^ {2}update:/m, `${file} still has an update grant block`);
         }
     });
 
@@ -565,7 +565,6 @@ describe("mergePersonaConfig", () => {
                 create: [{ kind: "subtask", subtaskType: SubtaskType.Database }],
                 workOn: [],
                 complete: [],
-                update: [],
                 approve: [],
                 gitHost: [],
                 cannotApprove: [], // an override attempting to loosen the hard rule
@@ -586,7 +585,6 @@ describe("mergePersonaConfig", () => {
                 create: [{ kind: "subtask", subtaskType: SubtaskType.Database }],
                 workOn: [],
                 complete: [],
-                update: [{ entityType: "Story", field: "extraNotes" }],
                 approve: [],
                 gitHost: [],
             },
@@ -598,8 +596,6 @@ describe("mergePersonaConfig", () => {
         assert.ok(
             merged.permissions.create.some((t) => t.kind === "subtask" && t.subtaskType === SubtaskType.Database)
         );
-        assert.ok(merged.permissions.update.some((g) => g.field === "implementationNotes"));
-        assert.ok(merged.permissions.update.some((g) => g.field === "extraNotes"));
         assert.match(merged.prompt, /Dario is the team's Developer\./);
         assert.match(merged.prompt, /## Team-specific additions/);
         assert.match(merged.prompt, /Team-specific note\./);
@@ -607,7 +603,7 @@ describe("mergePersonaConfig", () => {
 
     it("an extension cannot loosen cannotApprove or humanSignOffDefault (no field to even carry them)", () => {
         const merged = mergePersonaConfig(base, undefined, {
-            permissions: { propose: [], create: [], workOn: [], complete: [], update: [], approve: [], gitHost: [] },
+            permissions: { propose: [], create: [], workOn: [], complete: [], approve: [], gitHost: [] },
             prose: "",
         });
         assert.deepEqual(merged.permissions.cannotApprove, ["own-output"]);
@@ -626,7 +622,6 @@ describe("mergePersonaConfig", () => {
                 create: [{ kind: "subtask", subtaskType: SubtaskType.Deploy }],
                 workOn: [{ kind: "subtask", subtaskType: SubtaskType.Deploy }],
                 complete: [{ kind: "subtask", subtaskType: SubtaskType.Deploy }],
-                update: [],
                 approve: [],
                 gitHost: [],
                 cannotApprove: [], // still can't loosen it via the override row

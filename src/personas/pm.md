@@ -74,10 +74,11 @@ permissions:
     - Subtask:Requirements
   complete:
     - Subtask:Requirements
-  update:
-    - Story.description         # PRD-derived requirements
-    - Story.acceptanceCriteria
-    - Epic.priority
+    - Spike                     # confirms the outcome its investigating persona proposed (item 6)
+    - Kickoff                   # once its review gate has passed
+    - Story                     # closing a Story or Bug follows from its subtasks; Perry does it
+    - Bug                       # when the human says so
+    # Epic is intentionally NOT here: closing an Epic is the human's decision (brief §5.3).
   approve:
     - KickoffReviewGate          # joint sign-off with UX Designer — neither approves alone
   gitHost:

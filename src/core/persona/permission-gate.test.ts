@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { toIssueKey, type Issue } from "../storage/interface.js";
 import { emptyPersonaShell, type PersonaConfig } from "./config.js";
-import { canComplete, canCreate, canPerformGitAction, canUpdate, canWorkOn } from "./permission-gate.js";
+import { canComplete, canCreate, canPerformGitAction, canWorkOn, grantNote } from "./permission-gate.js";
 
 function issue(overrides: Partial<Issue>): Issue {
     return {
@@ -32,7 +32,6 @@ function devConfig(overrides: Partial<PersonaConfig> = {}): PersonaConfig {
             create: [{ kind: "subtask", subtaskType: SubtaskType.Dev }],
             workOn: [{ kind: "subtask", subtaskType: SubtaskType.Dev }],
             complete: [{ kind: "subtask", subtaskType: SubtaskType.Dev }],
-            update: [{ entityType: "Story", field: "implementationNotes" }],
         },
         ...overrides,
     };
@@ -122,29 +121,21 @@ describe("canPerformGitAction", () => {
     });
 });
 
-describe("canUpdate", () => {
-    it("allows a granted entityType.field pair", () => {
-        assert.equal(canUpdate(devConfig(), "Story", "implementationNotes"), true);
+describe("grantNote (TAI-478)", () => {
+    it("is null when the persona's grant covers the action", () => {
+        assert.equal(grantNote(devConfig(), "create", SubtaskType.Dev), null);
+        assert.equal(grantNote(devConfig(), "complete", SubtaskType.Dev), null);
     });
 
-    it("denies an ungranted field on the same entity type", () => {
-        assert.equal(canUpdate(devConfig(), "Story", "acceptanceCriteria"), false);
+    it("names the persona, the action, the type and its doc when the grant does not cover a create", () => {
+        const note = grantNote(devConfig(), "create", StoryType.Story)!;
+        assert.match(note, /^Note: .*developer.* has no `create` grant for "story" \(personas\/developer\.md\)\. The command went ahead\./);
+        assert.match(note, /knows in context that the ticket is needed/);
     });
 
-    it("denies the same field on a different entity type", () => {
-        assert.equal(canUpdate(devConfig(), "Bug", "implementationNotes"), false);
-    });
-
-    it("denies for a disabled persona", () => {
-        assert.equal(canUpdate(devConfig({ enabled: false }), "Story", "implementationNotes"), false);
-    });
-
-    it("is case-insensitive on entityType, so a human's lowercase Confluence edit still matches (Gemini CLI review, PR #7)", () => {
-        assert.equal(canUpdate(devConfig(), "story", "implementationNotes"), true);
-        assert.equal(canUpdate(devConfig(), "STORY", "implementationNotes"), true);
-    });
-
-    it("stays case-SENSITIVE on field — casing collisions between distinct field names aren't folded", () => {
-        assert.equal(canUpdate(devConfig(), "Story", "ImplementationNotes"), false);
+    it("words a complete outside the grants as something to check, naming human-gated items and Epics", () => {
+        const note = grantNote(devConfig(), "complete", SubtaskType.Uat)!;
+        assert.match(note, /has no `complete` grant for "uat"/);
+        assert.match(note, /closed only when the human says so/);
     });
 });

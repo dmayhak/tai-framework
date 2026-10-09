@@ -6,7 +6,7 @@
  * persona X itself do", the axis orthogonal to `Roster` (`persona/roster.ts`, TAI-14), which
  * answers "which humans may act as persona X."
  *
- * `canWorkOn`/`canComplete`/`canCreate`/`canUpdate` all return `false` for a disabled persona
+ * `canWorkOn`/`canComplete`/`canCreate` all return `false` for a disabled persona
  * as defense-in-depth — the loader is expected not to hand out a disabled persona's config at
  * all, but a caller that already holds one (e.g. a stale reference) still gets denied here,
  * not just upstream.
@@ -76,13 +76,20 @@ export function canPerformGitAction(config: PersonaConfig, action: GitHostAction
     return config.permissions.gitHost.includes(action);
 }
 
-export function canUpdate(config: PersonaConfig, entityType: string, field: string): boolean {
-    if (!config.enabled) return false;
-    // entityType is case-INsensitive ("Story" === "story") — a human editing a Confluence
-    // override/extension page has no reason to know `entityLabel`'s exact capitalisation
-    // convention, and a casing mismatch should not silently deny an otherwise-intended grant
-    // (Gemini CLI review, PR #7). `field` stays exact-match: field names have no equivalent
-    // small closed vocabulary, so case-folding risks colliding two genuinely different names.
-    const wantedEntity = entityType.toLowerCase();
-    return config.permissions.update.some((g) => g.entityType.toLowerCase() === wantedEntity && g.field === field);
+/**
+ * TAI-478 (human decision TAI-455): the note the CLI prints when the acting persona creates or closes
+ * something its doc grants it no `create`/`complete` for. A note, never a refusal: the command has
+ * already gone ahead. `null` when the grant covers it. The create wording allows for the one
+ * legitimate case, a subtask a persona creates because it knows in context that it is needed
+ * (`workflows/dependencies.md`, eager subtask creation).
+ */
+export function grantNote(config: PersonaConfig, action: "create" | "complete", issueType: StoryType | SubtaskType | "epic"): string | null {
+    const covered = action === "create" ? canCreate(config, issueType) : canComplete(config, { issueType });
+    if (covered) return null;
+    const who = config.displayName === config.id ? config.id : `${config.displayName} (${config.id})`;
+    const tail =
+        action === "create"
+            ? "If this persona knows in context that the ticket is needed, that is allowed; otherwise it was probably another persona's to create."
+            : "Check that closing it was this persona's to do. A human-gated item, and an Epic, is closed only when the human says so.";
+    return `Note: ${who} has no \`${action}\` grant for "${issueType}" (personas/${config.id}.md). The command went ahead. ${tail}`;
 }

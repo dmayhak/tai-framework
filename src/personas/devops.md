@@ -27,12 +27,8 @@ permissions:
     - Subtask:Infra
     - Subtask:Deploy
     - Subtask:PostDeploy
-  update:
-    - Story.deployNotes
-  gitHost:
-    - mergePullRequest              # NOT for Deploy: whoever owns the Dev subtask merges its PR
-                                     # (brief §5.4, TAI-456). Kept only until the grants are
-                                     # repaired (TAI-478); nothing in this file uses it.
+  # No gitHost grant: whoever owns the Dev subtask merges its PR, and Deploy ships what is
+  # already merged (brief §5.4).
   cannotApprove:
     - own-output                    # hard rule, brief §3.4 / §4 — no self-certification
 

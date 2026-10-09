@@ -157,7 +157,6 @@ function devConfig(overrides: Partial<PersonaConfig> = {}): PersonaConfig {
             create: [{ kind: "subtask", subtaskType: SubtaskType.Dev }],
             workOn: [{ kind: "subtask", subtaskType: SubtaskType.Dev }],
             complete: [{ kind: "subtask", subtaskType: SubtaskType.Dev }],
-            update: [{ entityType: "Story", field: "implementationNotes" }],
         },
         ...overrides,
     };
@@ -203,42 +202,14 @@ describe("PersonaScopedWorkTracker.createIssue", () => {
 });
 
 describe("PersonaScopedWorkTracker.updateIssue", () => {
-    it("rejects an ungranted field BEFORE the inner tracker's updateIssue is called", async () => {
+    it("passes every update straight through: per-field update grants were deleted (TAI-478)", async () => {
         const inner = new RecordingWorkTracker();
         inner.seed(storyIssue());
         const scoped = new PersonaScopedWorkTracker(inner, devConfig());
 
-        await assert.rejects(
-            () => scoped.updateIssue(toIssueKey("TAI-100"), { description: "not granted" }),
-            PersonaPermissionError
-        );
-        // getIssue is called to resolve the entity type, but updateIssue itself never runs.
-        assert.deepEqual(inner.calls, ["getIssue"]);
-    });
-
-    it("passes an allowed field update straight through", async () => {
-        const inner = new RecordingWorkTracker();
-        inner.seed(storyIssue());
-        const scoped = new PersonaScopedWorkTracker(inner, devConfig());
-
-        // devConfig grants Story.implementationNotes — IssuePatch doesn't literally have that
-        // field today (a pre-existing, separate gap noted in permission-gate.ts), so this
-        // proves the pass-through path using a field name the fixture DOES grant, cast the
-        // same way callers already work around the gap.
-        const patch = { implementationNotes: "done" } as unknown as IssuePatch;
-        const updated = await scoped.updateIssue(toIssueKey("TAI-100"), patch);
-        assert.equal((updated as unknown as { implementationNotes: string }).implementationNotes, "done");
-        assert.deepEqual(inner.calls, ["getIssue", "updateIssue"]);
-    });
-
-    it("skips the permission check (and delegates) when the issue can't be resolved", async () => {
-        const inner = new RecordingWorkTracker(); // nothing seeded
-        const scoped = new PersonaScopedWorkTracker(inner, devConfig());
-
-        await assert.rejects(() => scoped.updateIssue(toIssueKey("TAI-MISSING"), { description: "x" }));
-        // Reaches the inner tracker's updateIssue (which throws on an unseeded issue) rather
-        // than being denied by the permission gate — there's nothing to check against.
-        assert.deepEqual(inner.calls, ["getIssue", "updateIssue"]);
+        const updated = await scoped.updateIssue(toIssueKey("TAI-100"), { description: "changed" });
+        assert.equal(updated.description, "changed");
+        assert.deepEqual(inner.calls, ["updateIssue"]);
     });
 });
 

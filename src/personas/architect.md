@@ -32,10 +32,6 @@ permissions:
     # NOTE: DesignReview is intentionally NOT in `complete` (TAI-458) — Aria prepares the
     # review, but a human reviews the design and closes it (same pattern as tester.md's
     # UAT and analyst.md's EpicReview exclusions).
-  update:
-    - Story.technicalNotes
-    - Epic.technicalRisk
-    - Story.designReviewNotes
   gitHost:
     - createPullRequest           # TAI-112 — same grant/reasoning as personas/pm.md: framework-
                                    # governance content is real repo content Aria/Perry are the

@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 89). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 90). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -65,7 +65,7 @@ either.)
 ### 3.1 Personas
 AI roles that Claude/Gemini assume to do work. Each persona:
 - Has a **built-in default configuration** (its base prompt, the Jira issue types it may
-  create / work on / complete / update, and its permitted transitions).
+  create / work on / complete, and its permitted transitions).
 - Can be **extended** by a user/business-supplied prompt file that *adds to* the built-in
   definition — extensions layer on, they do **not** fully override the built-in behavior.
 - Built-in personas can be **disabled** but **not deleted**. Users may also **add** wholly
@@ -515,7 +515,11 @@ These are settled. Change them deliberately and update this file if you do.
 - **Personas:** configurable default set; built-ins disableable but not deletable;
   extensions add to (never fully override) built-ins; extensions shared via Confluence.
 - **Persona responsibilities are configurable:** which issue types each can create, work
-  on, complete, update.
+  on, complete. **What is enforced and what is noted:** `workOn` is checked when `/tai-work` loads
+  a persona, and `gitHost` grants when a PR is created or merged. `create` and `complete` are not
+  enforced by the issue commands: when a command names the acting persona (`--as`) and that persona
+  has no grant for the type it created or moved to Done, the CLI prints a note and the command still
+  goes ahead. There are no per-field `update` grants.
 - **Human sign-off is the default;** autocompletion is opt-in and condition-gated, per
   persona / per task type / per issue.
 - **A persona can never approve its own work.** In a *team* setting this is the norm and is
