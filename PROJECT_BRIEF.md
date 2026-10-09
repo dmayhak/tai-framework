@@ -186,8 +186,9 @@ an admin-configured validator, a missing required field, a permission gap, or a 
 change by another human or agent. This resolves an earlier open question: **Team AI always
 attempts the real Jira transition** (it doesn't skip straight past Jira based on our own
 checks alone), and if Jira rejects it, that rejection is never treated as an ordinary
-failure. Work stops immediately, the Jira-returned reason is captured verbatim in the
-unit's work journal (§3.6/§7), and the item is flagged for human intervention.
+failure. Work stops immediately and the Jira-returned reason is returned verbatim to whoever
+ran the command, for a human to deal with. It is not written to the work journal, and nothing
+is marked on the ticket.
 
 Because the AI usually cannot self-diagnose an admin's validator or a permissions problem,
 **this case is explicitly excluded from the single-retry pattern** used for review
@@ -197,8 +198,6 @@ This is enforced **once, centrally, in the storage plugin's `transition` operati
 (§3.2), not repeated in each persona's own instructions. The operation returns either
 success or a structured "blocked-by-source" result; every persona and the Orchestrator
 react to that result identically, so no persona needs its own logic for this case.
-
-The refusal and its reason are returned to whoever ran the command.
 
 > **Deferred (not v1): learning from Jira-side rejections.** The core behavior above —
 > attempt the real transition, treat rejection as an unplanned checkpoint, escalate, no
@@ -1219,7 +1218,7 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
 6. **Default persona roster and permissions** — resolved: nine personas, each permission block audited against the schema (§3.1, `personas/*.md`).
 7. **Storage interface operation set** — resolved: `WorkTracker`/`DocStore` in `src/core/storage/interface.ts`, proven identical across backends by the conformance suite (§3.2).
 8. **Ticket-switch mechanic** — resolved: worktree swap, not plain checkout (§6). Design only; TAI-115, deferred to v2.
-9. **Autocompletion condition format** — retired (TAI-482): there is no autocompletion (§3.4). The design is in the TAI-41 ADR.
+9. **Autocompletion condition format** — retired (TAI-482): there is no autocompletion (§3.4). The TAI-41 ADR in Confluence records the design that was retired; it does not describe how TAI works.
 10. **Root status-file reconciliation** — resolved: always a full rescan on demand, at the same refresh points as §3.6 (§7).
 11. **Pre-subtask work location** — resolved: there is no pre-subtask phase; a persona creates the subtask as its first action (§7).
 12. **Decomposition scope levels** — resolved: no fixed ladder and no Initiative tier; decomposition is scope-relative and repeatable (§3.7).
