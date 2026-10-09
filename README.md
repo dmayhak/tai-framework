@@ -243,7 +243,8 @@ precedence graph (full detail in [`src/workflows/`](src/workflows/)):
 ```
 PROJECT_BRIEF.md        Source of truth for TAI's design, decisions, and open questions
 src/
-  personas/*.md          One file per persona — permissions, behavior, when it's invoked
+  personas/*.md          One run-time prompt per persona — permissions, behavior, when it's invoked
+  personas/rationale/    Why each persona's rules exist, and their history (not loaded at run time)
   workflows/*.md          One file per Story type, plus dependencies.md (precedence rules)
   core/                   Storage backends (filesystem + Jira), schema, commands
   hosts/cli.ts            The CLI every skill/command actually shells out to

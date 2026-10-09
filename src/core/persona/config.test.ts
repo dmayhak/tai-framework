@@ -7,6 +7,7 @@ import path from "node:path";
 import { ALWAYS_HUMAN_GATED_SUBTASKS, StoryType, SubtaskType } from "../schema/story-schema.js";
 import type { AttachmentRef, Comment, CreatePageInput, DocStore, Page, PagePatch, PageRef, IssueKey } from "../storage/interface.js";
 import {
+    PERSONA_PROMPT_SOFT_LIMIT_BYTES,
     emptyPersonaShell,
     loadBuiltinPersonaConfigs,
     loadPersonaConfig,
@@ -266,6 +267,35 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         for (const config of configs.values()) {
             assert.ok(config.prompt.length > 0, `${config.id} should have prompt text`);
             assert.equal(config.enabled, true);
+        }
+    });
+
+    // TAI-487: two files per persona. `personas/<id>.md` is the run-time prompt and states the rules as
+    // current fact; `personas/rationale/<id>.md` holds the history and is never loaded.
+    it("every persona has a rationale file, and the loader does not read it", async () => {
+        const { access } = await import("node:fs/promises");
+        const configs = await loadBuiltinPersonaConfigs();
+        for (const id of configs.keys()) {
+            await access(path.resolve(import.meta.dirname, "../../personas/rationale", `${id}.md`));
+        }
+        assert.equal(configs.size, 9);
+    });
+
+    it("no run-time prompt carries history: revision or ticket references belong in the rationale file", async () => {
+        const configs = await loadBuiltinPersonaConfigs();
+        for (const [id, config] of configs) {
+            const found = [...new Set(config.prompt.match(/\brev \d+|\bTAI-\d+/g) ?? [])];
+            assert.deepEqual(found, [], `${id}'s prompt cites ${found.join(", ")}; move the history to personas/rationale/${id}.md`);
+        }
+    });
+
+    it("warns, without failing, when a run-time prompt is over the soft size target", async (t) => {
+        const configs = await loadBuiltinPersonaConfigs();
+        for (const [id, config] of configs) {
+            const bytes = Buffer.byteLength(config.prompt, "utf8");
+            if (bytes > PERSONA_PROMPT_SOFT_LIMIT_BYTES) {
+                t.diagnostic(`WARNING: ${id}'s run-time prompt is ${(bytes / 1024).toFixed(1)} KB, over the ${PERSONA_PROMPT_SOFT_LIMIT_BYTES / 1024} KB soft target`);
+            }
         }
     });
 
