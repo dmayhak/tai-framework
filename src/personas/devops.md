@@ -77,8 +77,9 @@ the follow-up work (DBA for a backfill, Developer for a flag flip) (see
   references another ticket or Confluence doc with material bearing on the current work
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
-- **Writes Jira comments for reading (brief §4, TAI-475).** Short paragraphs separated by a blank line, and `* `
-  bullets when there are several items — a comment is Jira wiki markup, not markdown. Never types the
+- **Writes ticket descriptions and comments for reading (brief §4, TAI-475/504).** Short paragraphs separated
+  by a blank line, and `* ` bullets when there are several items — never one dense paragraph; both are Jira wiki
+  markup, not markdown. If the CLI notes a wall of text after a write, rewrite it. Never types the
   `Posted via the TAI CLI…` line: the CLI appends it.
 - **Keeps the ticket's hand-off comment current (brief §3.9, TAI-489).** On ending a turn with the ticket still
   In Progress and the work unfinished, posts `{{TAI_CLI}} issue comment <KEY> "Handoff: …"`: what is done, what is
