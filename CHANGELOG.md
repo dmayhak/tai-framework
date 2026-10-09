@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 93 (2026-10-09)
+
+**TAI-481: an edit to an approved page is shown and reopens nothing.** Human decision TAI-455, row 7. The brief, `workflows/kickoff.md` and `personas/architect.md` said that editing a page behind a passed gate reopens the gate and requires re-approval; no code ever did that. `/tai-ready` and `/tai-groom` now list, as information, every page linked to a Done Kickoff Story that was updated after that Kickoff's latest `Approved:` comment, while the Kickoff's Epic is open. Nothing is blocked. The docs say so, and the brief's cross-references to a "gate-reopening rule" are reworded. Brief §3.9, §4, §5.4, §6.
+
 ## rev 92 (2026-10-09)
 
 **TAI-480: the Kickoff gate reads `NEEDS CLARIFICATION` markers.** Human decision TAI-455, row 6. The docs had said since rev 23 that the gate is mechanically blocked by an unresolved marker, and no code read one. `transition()` on both backends now reads every page linked to the Kickoff Story when it is moved to Done and refuses while a marker remains, naming the page and the question. A marker inside code formatting does not count. `workflows/kickoff.md` says how it is checked; the conformance suite covers it.

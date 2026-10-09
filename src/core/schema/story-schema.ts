@@ -617,10 +617,9 @@ export interface ReviewGate {
 // each of requiredReviewers — no custom field. The commenting human must additionally
 // appear in that persona's Persona Roster entry (brief §5.6, rev 12) — this is what lets
 // TAI verify a raw Jira comment author actually corresponds to "the PM" or "the UX
-// Designer", not just trusting the comment's content. An edit to the Confluence doc(s) backing an
-// already-passed gate REOPENS it (brief §6) — detected via the same cachedAt/lastUpdated
-// staleness check used everywhere else (brief §3.6/§7), not a separate mechanism. See
-// design-notes doc "Review-gate approval tracking" and workflows/kickoff.md.
+// Designer", not just trusting the comment's content. An edit to a page behind an
+// already-passed gate does NOT reopen it (TAI-481): it is listed by /tai-ready and /tai-groom
+// (commands/edited-after-approval.ts) and nothing is blocked. See workflows/kickoff.md.
 export const REVIEW_GATES: ReviewGate[] = [
     {
         storyType: StoryType.Kickoff,
