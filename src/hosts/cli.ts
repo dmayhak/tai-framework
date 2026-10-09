@@ -108,6 +108,7 @@ import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/confi
 import { postIssueComment } from "../core/storage/handoff.js";
 import { wallOfTextNote } from "../core/storage/readable-text.js";
 import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js";
+import { detectExistingCode } from "../core/git/existing-code.js";
 import { projectContextBudgetFromEnv, readProjectContext, renderProjectContext } from "../core/workspace/project-context.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
@@ -1880,6 +1881,8 @@ async function main(): Promise<void> {
             workTracker: config.backend.workTracker,
             projectKey: config.projectKey,
             ...(description ? { description } : {}),
+            existingCode: await detectExistingCode(process.cwd()),
+            hasProjectContext: (await readProjectContext(process.cwd())) !== null,
         });
         console.log(renderKickoffTurn(pm, renderKickoffBriefing(context), await loadProjectContextSection()));
         return;

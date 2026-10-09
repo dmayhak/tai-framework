@@ -82,6 +82,19 @@ it on pick-up.
   not extend it here. This doc goes stale when the codebase changes materially, which is a
   code-activity signal that diffing Epic summaries cannot answer. Still undecided for this doc.
 
+## Mapping an existing system (TAI-471; shape agreed 2026-10-08)
+
+Adapted from GSD's `map-codebase` and BMAD's `document-project`: a project that arrives with code
+needs a map before discovery, or the Analyst's breakdown is built on guesses about what exists.
+
+It uses existing ticket types on purpose, with no schema change. A Spike's subtasks are
+`Feasibility`, `Database` and `Infra`; `Feasibility` is the one the Architect owns, although mapping
+is not a go/no-go question. The Spike story itself is Perry's, as every Spike is.
+
+The `project-context.md` draft goes through a PR because the file lives in the project's repo and is
+meant to be reviewed like code (TAI-470). `init` offering a blank template for projects with no code,
+or already onboarded, is TAI-516.
+
 ## Governance PRs
 
 - TAI-112: Aria and Perry got `createPullRequest`. Framework-governance content is real repo content

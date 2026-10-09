@@ -149,3 +149,58 @@ describe("renderKickoffBriefing (TAI-450)", () => {
         });
     });
 });
+
+describe("the Existing code section (TAI-471)", () => {
+    const code = { codeFiles: 3, examples: ["go.mod", "cmd/main.go"] };
+    const section = (text: string): string => text.slice(text.indexOf("## Existing code"), text.indexOf("\n---\n"));
+
+    it("a first Kickoff in a repo with code and no map tells Perry to create the mapping Spike", async () => {
+        await withTracker(async (wt) => {
+            const ctx = await findKickoffContext({ workTracker: wt, projectKey: "TAI", existingCode: code });
+            const text = section(renderKickoffBriefing(ctx));
+            assert.match(text, /already tracks 3 code files \(for example `go\.mod`, `cmd\/main\.go`\)/);
+            assert.match(text, /\*\*Create the mapping Spike\*\* \("Map the existing system"/);
+            assert.match(text, /no `project-context\.md` yet/);
+        });
+    });
+
+    it("a project that already has Epics is asked, not told", async () => {
+        await withTracker(async (wt) => {
+            await mk(wt, { issueType: "epic" });
+            const ctx = await findKickoffContext({ workTracker: wt, projectKey: "TAI", existingCode: code, hasProjectContext: true });
+            const text = section(renderKickoffBriefing(ctx));
+            assert.match(text, /Ask the human whether to map the existing system now/);
+            assert.doesNotMatch(text, /\*\*Create the mapping Spike\*\*/);
+            assert.match(text, /The project has a `project-context\.md`\./);
+        });
+    });
+
+    it("an open mapping Spike is named and never duplicated; a Done one closes the matter; a Canceled one does not count", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const canceled = await mk(wt, { issueType: StoryType.Spike, summary: "Map the existing system", parentKey: epic.key });
+            await wt.transition(canceled.key, Status.Canceled);
+            await mk(wt, { issueType: StoryType.Spike, summary: "Can we use Postgres?", parentKey: epic.key });
+            let ctx = await findKickoffContext({ workTracker: wt, projectKey: "TAI", existingCode: code });
+            assert.deepEqual(ctx.mappingSpikes, []);
+
+            const spike = await mk(wt, { issueType: StoryType.Spike, summary: "map the existing system (billing)", parentKey: epic.key });
+            ctx = await findKickoffContext({ workTracker: wt, projectKey: "TAI", existingCode: code });
+            assert.deepEqual(keys(ctx.mappingSpikes), keys([spike]));
+            assert.match(section(renderKickoffBriefing(ctx)), /Do not create another; make the new Kickoff Story depend on it/);
+
+            await wt.transition(spike.key, Status.Done);
+            ctx = await findKickoffContext({ workTracker: wt, projectKey: "TAI", existingCode: code });
+            assert.match(section(renderKickoffBriefing(ctx)), /has been mapped\. Nothing to create here\./);
+        });
+    });
+
+    it("a repo with no code has nothing to map, and an unreadable repo is a question for the human", async () => {
+        await withTracker(async (wt) => {
+            const none = await findKickoffContext({ workTracker: wt, projectKey: "TAI", existingCode: { codeFiles: 0, examples: [] } });
+            assert.match(section(renderKickoffBriefing(none)), /tracks no code files\. There is nothing to map\./);
+            const unknown = await findKickoffContext({ workTracker: wt, projectKey: "TAI" });
+            assert.match(section(renderKickoffBriefing(unknown)), /Ask the human whether there is existing code to map/);
+        });
+    });
+});
