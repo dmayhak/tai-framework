@@ -13,6 +13,8 @@
  *  2. No request-changes left standing. Only its author can withdraw one.
  *  3. Every test tier present on the ticket is Done (or Canceled). A tier that was never
  *     created does not block; the PR's own ticket is never its own blocker.
+ *  4. A UAT subtask present on the ticket is Done (or Canceled), unless it carries the
+ *     `uat-after-merge` label (TAI-507; UAT is before the merge by default, TAI-456).
  *
  * CI is checked next to this, as before (`isGreen`), and is not part of the override.
  *
@@ -30,6 +32,8 @@ import type { CommitSha, GitHost, PullRequestActivity, PullRequestRef } from "./
  *  Bitbucket branch-restrictions query; see the ADR for why). */
 export const DEFAULT_REQUIRED_APPROVALS = 1;
 export const TEST_TIER_TYPES: readonly SubtaskType[] = [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest];
+/** On a UAT subtask: acceptance happens after the merge, so the merge does not wait for it (TAI-456). */
+export const UAT_AFTER_MERGE_LABEL = "uat-after-merge";
 const SATISFIED: readonly Status[] = [Status.Done, Status.Canceled];
 
 export interface MergeGateInput {
@@ -39,6 +43,8 @@ export interface MergeGateInput {
     readonly requiredApprovals: number;
     /** The test-tier subtasks present on the PR's ticket, other than the PR's own ticket. */
     readonly testTiers: readonly Pick<Issue, "key" | "issueType" | "status">[];
+    /** The UAT subtasks present on the PR's ticket, other than the PR's own ticket. */
+    readonly uat: readonly Pick<Issue, "key" | "status" | "labels">[];
 }
 
 export interface MergeGateVerdict {
@@ -59,7 +65,7 @@ function sameCommit(a: CommitSha, b: CommitSha): boolean {
 const names = (humans: readonly HumanRef[]): string => humans.map((h) => h.displayName).join(", ");
 
 export function evaluateMergeGate(input: MergeGateInput): MergeGateVerdict {
-    const { pullRequest, activity, requiredApprovals, testTiers } = input;
+    const { pullRequest, activity, requiredApprovals, testTiers, uat } = input;
 
     // Which commit was the head when each human last approved.
     let head: CommitSha | null = null;
@@ -93,6 +99,11 @@ export function evaluateMergeGate(input: MergeGateInput): MergeGateVerdict {
         if (!SATISFIED.includes(tier.status)) blockers.push(`Test tier ${tier.key} (${tier.issueType}) is ${tier.status}, not Done.`);
     }
 
+    for (const acceptance of uat) {
+        if (SATISFIED.includes(acceptance.status) || acceptance.labels.includes(UAT_AFTER_MERGE_LABEL)) continue;
+        blockers.push(`UAT ${acceptance.key} is ${acceptance.status}, not Done, and does not carry the ${UAT_AFTER_MERGE_LABEL} label.`);
+    }
+
     return { ok: blockers.length === 0, blockers, freshApprovals, staleApprovals };
 }
 
@@ -110,23 +121,25 @@ export interface MergeGateDeps {
  */
 export async function checkMergeGate(deps: MergeGateDeps, pullRequest: PullRequestRef, issueKey: IssueKey | null): Promise<MergeGateVerdict> {
     const activity = await deps.gitHost.listPullRequestActivity(pullRequest.repo, pullRequest.id);
+    const verification = issueKey ? await verificationSubtasksFor(deps.workTracker, issueKey) : [];
     return evaluateMergeGate({
         pullRequest,
         activity,
         requiredApprovals: deps.requiredApprovals ?? DEFAULT_REQUIRED_APPROVALS,
-        testTiers: issueKey ? await testTiersFor(deps.workTracker, issueKey) : [],
+        testTiers: verification.filter((s) => s.issueType !== SubtaskType.Uat),
+        uat: verification.filter((s) => s.issueType === SubtaskType.Uat),
     });
 }
 
-/** The test-tier subtasks under the same Story/Bug as `issueKey` (or under `issueKey` itself
- *  when it is the Story/Bug), leaving out `issueKey`: a tier's own PR does not wait on itself. */
-async function testTiersFor(workTracker: MergeGateDeps["workTracker"], issueKey: IssueKey): Promise<readonly Issue[]> {
+/** The test-tier and UAT subtasks under the same Story/Bug as `issueKey` (or under `issueKey`
+ *  itself when it is the Story/Bug), leaving out `issueKey`: a tier's own PR does not wait on itself. */
+async function verificationSubtasksFor(workTracker: MergeGateDeps["workTracker"], issueKey: IssueKey): Promise<readonly Issue[]> {
     const issue = await workTracker.getIssue(issueKey);
     if (!issue) return [];
     const storyKey = isSubtaskIssueType(issue.issueType) ? issue.parentKey : issue.key;
     if (!storyKey) return [];
-    const tiers = await workTracker.search({ projectKey: issue.projectKey, parentKey: storyKey, issueTypes: TEST_TIER_TYPES });
-    return tiers.filter((tier) => tier.key !== issueKey);
+    const found = await workTracker.search({ projectKey: issue.projectKey, parentKey: storyKey, issueTypes: [...TEST_TIER_TYPES, SubtaskType.Uat] });
+    return found.filter((subtask) => subtask.key !== issueKey);
 }
 
 /** The PR comment left when a merge went ahead past the gate (`git-pr merge … force=true`). */

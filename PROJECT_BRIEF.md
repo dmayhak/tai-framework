@@ -1967,7 +1967,7 @@ this section is the history of how the chain got here; where it disagrees with t
    as the `Dev` work it tests. Tester marks a tier **Done on a pass**; a tier does not wait for a merge.
 3. **UAT, when present, is before merge by default** — the stakeholder accepts what is about to be merged. A
    ticket may place it after the merge instead: the `uat-after-merge` label on the `UAT` subtask records that.
-   (The merge gate does not check UAT yet; before-merge is a convention until it does.)
+   The merge gate checks it (TAI-507): an open `UAT` without that label blocks the merge.
 4. **Merge**, through the merge gate below. **Whoever owns the `Dev` subtask merges, always.** PM and Architect
    merge their own governance PRs; Tester never merges; `Deploy` is not where a PR gets merged.
 5. **Deploy ships what is already merged.** It waits on `Dev` being Done, the present test tiers and `UAT`.
@@ -2043,9 +2043,11 @@ exactly one `Assignee` (§5.5's hard gate), and there's no honest single assigne
      failures do not use it — a failed tier already blocks the merge.
   3. **Every test tier present on the ticket is Done** (or Canceled). A tier that was never created does not
      block, and a test tier's own PR does not wait on itself.
-  4. **CI**, as before: any commit status that exists must be successful.
+  4. **A `UAT` subtask present on the ticket is Done** (or Canceled), unless it carries the `uat-after-merge`
+     label (TAI-507). No `UAT` subtask, no wait.
+  5. **CI**, as before: any commit status that exists must be successful.
 
-  `git-pr merge … force=true` merges past rules 1 to 3 (not CI) and leaves a stamped `Merge-gate override:`
+  `git-pr merge … force=true` merges past rules 1 to 4 (not CI) and leaves a stamped `Merge-gate override:`
   comment on the PR listing what was not met. It **replaces the old "very minor fix → fix, test, merge"
   judgment rule**: a fix pushed after approval makes that approval stale, so the merge is refused; for a very
   minor fix (a typo or wording, no behavior change) the one merging uses `force=true` and the override is on
