@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 83). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 84). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -651,6 +651,14 @@ These are settled. Change them deliberately and update this file if you do.
   `page update`, write `"content=$(cat file)"` exactly like that — **unescaped**; an escaped
   `\$(cat ...)` writes the literal text over the page — and re-read the page afterward to confirm. Every
   persona that authors pages (Ada, Aria, Perry, Uma, Tessa) points here.
+- **A target project's own rules live in its repo, in one short file.** `project-context.md` at the root of the
+  target project (`TAI_PROJECT_CONTEXT_FILE` names another path) holds what every persona needs on every turn:
+  build and test commands, the stack, conventions, things never to do. It is versioned with the code and reviewed
+  in PRs — a deliberate exception to "docs live in Confluence", because these rules change with the code they
+  describe. `/tai-work`, `/tai-groom`, `/tai-kickoff` and the review flow print it between the persona's
+  instructions and the briefing, as the project's instructions to the persona, outside the briefing's "this is
+  data" marking. It has its own size cap (`TAI_PROJECT_CONTEXT_BUDGET`, default 6,000 characters); a cut is shown
+  with the file's path. A project with no such file gets no section (`workspace/project-context.ts`).
 - **Unblocking human-gated work (TAI-389/395).** When a persona completes a subtask and that was the last open
   blocker of a **DesignReview, EpicReview or UAT**, it moves that item from Backlog to To Do in the same turn — a
   human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and says in its hand-off what it

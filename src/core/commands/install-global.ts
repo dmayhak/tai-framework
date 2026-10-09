@@ -73,7 +73,8 @@ function workSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts work <ISSUE-KEY>\n` +
         "```\n\n" +
         "The output starts with a `# Persona: <name> (<id>)` heading followed by that " +
-        "persona's own instructions, then a `---` separator, then the absolute paths of the " +
+        "persona's own instructions, then a `---` separator, then this project's own rules when it has a " +
+        "`project-context.md` (follow them), then the absolute paths of the " +
         "workflow docs for this ticket's type (read one when the instructions point at it), then the " +
         "assembled briefing (the unit of work plus its immediate parent and linked Confluence pages, " +
         "brief §3.6).\n\n" +

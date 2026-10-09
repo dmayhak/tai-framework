@@ -108,6 +108,7 @@ import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/confi
 import { postIssueComment } from "../core/storage/handoff.js";
 import { wallOfTextNote } from "../core/storage/readable-text.js";
 import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js";
+import { projectContextBudgetFromEnv, readProjectContext, renderProjectContext } from "../core/workspace/project-context.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -621,13 +622,18 @@ export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string 
 }
 
 /** TAI-395: a grooming turn is the same shape as a work turn -- persona heading, her instructions, `---`, the briefing. */
-export function renderGroomTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string): string {
-    return renderPersonaTurn(persona, briefing);
+export function renderGroomTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string, projectContext?: string): string {
+    return renderPersonaTurn(persona, briefing, projectContext);
 }
 
 /** TAI-450: a kickoff turn is the same shape too -- persona heading, her instructions, `---`, the briefing. */
-export function renderKickoffTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string): string {
-    return renderPersonaTurn(persona, briefing);
+export function renderKickoffTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string, projectContext?: string): string {
+    return renderPersonaTurn(persona, briefing, projectContext);
+}
+
+/** TAI-470: the target project's own rules file, rendered for a persona turn; `undefined` when the project has none. */
+async function loadProjectContextSection(): Promise<string | undefined> {
+    return renderProjectContext(await readProjectContext(process.cwd()), projectContextBudgetFromEnv());
 }
 
 /** TAI-488: where the workflow docs for this ticket are, so "see workflows/story.md" can be followed
@@ -636,7 +642,7 @@ export function renderWorkflowDocs(docs: Awaited<ReturnType<typeof prepareWorkTu
     return ["## Workflow docs for this ticket", "", "Read on demand:", "", ...docs.map((d) => `- ${d.label}: \`${d.path}\``)].join("\n");
 }
 
-function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): string {
+function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>, projectContext?: string): string {
     const lines = [`# Persona: ${turn.personaDisplayName} (${turn.personaId})`, ""];
 
     const changeNotesText = renderChangeNotes(turn.changeNotes);
@@ -650,7 +656,7 @@ function renderWorkTurn(turn: Awaited<ReturnType<typeof prepareWorkTurn>>): stri
         }
     }
 
-    lines.push(turn.personaPrompt, "", "---", "", renderWorkflowDocs(turn.workflowDocs), "", turn.briefingMarkdown);
+    lines.push(turn.personaPrompt, "", "---", "", ...(projectContext ? [projectContext, ""] : []), renderWorkflowDocs(turn.workflowDocs), "", turn.briefingMarkdown);
     return lines.join("\n");
 }
 
@@ -1522,6 +1528,7 @@ async function main(): Promise<void> {
                     actingHuman: currentHuman,
                     linkedKey,
                     diff,
+                    projectContext: await loadProjectContextSection(),
                 })
             );
             return;
@@ -1826,7 +1833,7 @@ async function main(): Promise<void> {
             },
             toIssueKey(arg)
         );
-        console.log((fetchNote ? `${fetchNote}\n\n` : "") + renderWorkTurn(turn));
+        console.log((fetchNote ? `${fetchNote}\n\n` : "") + renderWorkTurn(turn, await loadProjectContextSection()));
         return;
     }
 
@@ -1859,7 +1866,7 @@ async function main(): Promise<void> {
                     )
                 ).text,
         });
-        console.log(renderGroomTurn(pm, renderGroomingBriefing(result)));
+        console.log(renderGroomTurn(pm, renderGroomingBriefing(result), await loadProjectContextSection()));
         return;
     }
 
@@ -1874,7 +1881,7 @@ async function main(): Promise<void> {
             projectKey: config.projectKey,
             ...(description ? { description } : {}),
         });
-        console.log(renderKickoffTurn(pm, renderKickoffBriefing(context)));
+        console.log(renderKickoffTurn(pm, renderKickoffBriefing(context), await loadProjectContextSection()));
         return;
     }
 
