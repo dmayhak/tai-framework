@@ -267,13 +267,13 @@ npm run build      # compiles to dist/
 ## Contributing
 
 Internally, every change to this repo ships through TAI's own real Jira ticket → branch →
-PR → structured-findings review → merge pipeline (tracked in `PROJECT_BRIEF.md`'s
-changelog) — that's this project dogfooding itself, not something external contributors
+PR → structured-findings review → merge pipeline (tracked in [`CHANGELOG.md`](CHANGELOG.md)) — that's this project dogfooding itself, not something external contributors
 need access to. From the outside, a normal fork → branch → PR flow works fine:
 
 1. **Read [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) first.** It's the single source of truth
-   for TAI's design, decisions, and open questions — including the reasoning behind
-   anything that looks surprising (its changelog explains the *why*, not just the *what*).
+   for TAI's design, decisions, and open questions — and
+   [`CHANGELOG.md`](CHANGELOG.md), its revision history, explains the reasoning behind anything that looks
+   surprising (the *why*, not just the *what*).
    A change that contradicts an already-settled decision needs to either follow it or open
    the discussion to revisit it, not quietly work around it.
 2. **For anything beyond a small fix, open an issue first** to discuss the approach —

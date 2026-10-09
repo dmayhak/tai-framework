@@ -1,6 +1,6 @@
 # TAI Design Notes (closed — archival record)
 
-> **Status:** Closed as of rev 11 (see `PROJECT_BRIEF.md`'s changelog header). This is
+> **Status:** Closed as of rev 11 (see `CHANGELOG.md`, the brief's revision history). This is
 > **not** a source of truth — `PROJECT_BRIEF.md` is authoritative for anything settled;
 > don't cite this doc from code or from the brief, cite the destination instead. Every
 > finding below has already been integrated into the brief, `src/personas/*.md`,
@@ -1260,4 +1260,4 @@ it actually lives now. Corrections made *after* this closure (e.g. the `SpikeTas
 the `To Do`/`In Review` status reconciliation against the real Jira project, both rev
 13/15 in the brief) are **not** backported into this file; they're a different kind of
 event — reality-checking an already-shipped decision against the live Jira/Confluence
-setup, not a design discussion — and belong solely in the brief's changelog.
+setup, not a design discussion — and belong solely in the brief's changelog (`CHANGELOG.md`).
