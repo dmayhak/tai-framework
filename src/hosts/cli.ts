@@ -104,7 +104,8 @@ import {
     renderInlineComment,
     type ReviewFinding,
 } from "../core/git/review-findings.js";
-import { loadPersonaConfig, resolveActingPersonaId, taiCliCommand } from "../core/persona/config.js";
+import { loadPersonaConfig, resolveActingPersonaId, taiCliCommand, taiInstallRoot } from "../core/persona/config.js";
+import { describeTaiInstall, renderInstallWarning } from "../core/git/install-state.js";
 import { postIssueComment } from "../core/storage/handoff.js";
 import { wallOfTextNote } from "../core/storage/readable-text.js";
 import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js";
@@ -113,6 +114,7 @@ import {
     projectContextBudgetFromEnv,
     projectContextStatus,
     readProjectContext,
+    readProjectContextAtRef,
     renderProjectContext,
     renderProjectContextStatus,
     writeProjectContextTemplate,
@@ -125,7 +127,7 @@ import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from ".
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
-import { gatherDiff, renderReviewPrep } from "../core/git/review-prep.js";
+import { gatherDiff, readFileAtRef, renderReviewPrep } from "../core/git/review-prep.js";
 import { renderPersonaTurn } from "../core/persona/turn.js";
 import {
     defaultPersonaFor,
@@ -638,6 +640,17 @@ export function renderGroomTurn(persona: { displayName: string; id: string; prom
 /** TAI-450: a kickoff turn is the same shape too -- persona heading, her instructions, `---`, the briefing. */
 export function renderKickoffTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string, projectContext?: string): string {
     return renderPersonaTurn(persona, briefing, projectContext);
+}
+
+/** TAI-522 ADR decision 4: one line when TAI itself is not running from its default branch. */
+async function installWarning(): Promise<string | undefined> {
+    return renderInstallWarning(await describeTaiInstall(taiInstallRoot()));
+}
+
+/** The notes that go ahead of a persona turn's `# Persona:` heading, each as its own paragraph. */
+export function withTurnNotes(notes: readonly (string | undefined)[]): string {
+    const present = notes.filter((n): n is string => n !== undefined && n !== "");
+    return present.length === 0 ? "" : `${present.join("\n\n")}\n\n`;
 }
 
 /** TAI-470: the target project's own rules file, rendered for a persona turn; `undefined` when the project has none. */
@@ -1495,7 +1508,7 @@ async function main(): Promise<void> {
         const [action, ...actionArgs] = [arg, ...rest];
         const usage =
             "Usage: git-pr create <ISSUE-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE> [DESCRIPTION]\n" +
-            "     | git-pr review-prep <REPO> [PR-ID]   (read-only: loads the Code Reviewer persona, the PR and its diff -- the review flow's entry point, TAI-425)\n" +
+            "     | git-pr review-prep <REPO> [PR-ID]   (writes nothing to the PR or tracker: loads the Code Reviewer persona, the PR and its diff -- the review flow's entry point, TAI-425)\n" +
             "     | git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]\n" +
             "     | git-pr comment <REPO> [PR-ID] <BODY>\n" +
             "     | git-pr comments <REPO> [PR-ID]   (read-only: list ALL comments on a PR -- run before merge)\n" +
@@ -1545,7 +1558,22 @@ async function main(): Promise<void> {
                 destinationBranch: pr.destinationBranch,
             });
 
+            // TAI-522 ADR decision 2: the same safe fast-forward of the local default branch that `work` and
+            // `ready` run. After gatherDiff, whose fetch of the two PR branches must not be skipped by a debounce.
+            const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
+
+            // TAI-522 ADR decision 3: the rules in force on the destination branch, not whatever this clone
+            // has checked out. Falls back to the file on disk when the diff could not be gathered (nothing was
+            // fetched) or the configured path is outside the repo.
+            let projectContext = await loadProjectContextSection();
+            if (diff.kind === "ok") {
+                const destRef = `origin/${pr.destinationBranch}`;
+                const atRef = await readProjectContextAtRef(process.cwd(), destRef, (rel) => readFileAtRef(process.cwd(), destRef, rel));
+                if (!atRef.outsideRepo) projectContext = renderProjectContext(atRef.context, projectContextBudgetFromEnv());
+            }
+
             console.log(
+                withTurnNotes([await installWarning(), fetchNote]) +
                 renderReviewPrep({
                     persona: { displayName: persona.displayName, id: persona.id, prompt: persona.prompt },
                     repo: repoArg,
@@ -1553,7 +1581,7 @@ async function main(): Promise<void> {
                     actingHuman: currentHuman,
                     linkedKey,
                     diff,
-                    projectContext: await loadProjectContextSection(),
+                    projectContext,
                 })
             );
             return;
@@ -1858,7 +1886,7 @@ async function main(): Promise<void> {
             },
             toIssueKey(arg)
         );
-        console.log((fetchNote ? `${fetchNote}\n\n` : "") + renderWorkTurn(turn, await loadProjectContextSection()));
+        console.log(withTurnNotes([await installWarning(), fetchNote]) + renderWorkTurn(turn, await loadProjectContextSection()));
         return;
     }
 
@@ -1891,7 +1919,7 @@ async function main(): Promise<void> {
                     )
                 ).text,
         });
-        console.log(renderGroomTurn(pm, renderGroomingBriefing(result), await loadProjectContextSection()));
+        console.log(withTurnNotes([await installWarning()]) + renderGroomTurn(pm, renderGroomingBriefing(result), await loadProjectContextSection()));
         return;
     }
 
@@ -1908,7 +1936,7 @@ async function main(): Promise<void> {
             existingCode: await detectExistingCode(process.cwd()),
             hasProjectContext: (await readProjectContext(process.cwd())) !== null,
         });
-        console.log(renderKickoffTurn(pm, renderKickoffBriefing(context), await loadProjectContextSection()));
+        console.log(withTurnNotes([await installWarning()]) + renderKickoffTurn(pm, renderKickoffBriefing(context), await loadProjectContextSection()));
         return;
     }
 

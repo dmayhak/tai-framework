@@ -14,6 +14,7 @@ import {
     projectContextStatus,
     projectContextTemplate,
     readProjectContext,
+    readProjectContextAtRef,
     renderProjectContext,
     renderProjectContextStatus,
     writeProjectContextTemplate,
@@ -139,5 +140,31 @@ describe("the starter template and its status (TAI-516)", () => {
         assert.match(renderProjectContextStatus({ state: "present", path: at }, "tai init"), /^- \[x\] project-context\.md/);
         assert.match(renderProjectContextStatus({ state: "template", path: at }, "tai init"), /still the unfilled template .* delete its first line/);
         assert.match(renderProjectContextStatus({ state: "missing", path: at }, "tai init"), /none yet\. Optional: `tai init project-context`/);
+    });
+});
+
+describe("the rules file on a git ref, for the review flow (TAI-522 ADR decision 3)", () => {
+    it("reads the configured path on the ref and names the ref as the source", async () => {
+        const asked: string[] = [];
+        const result = await readProjectContextAtRef("/repo", "origin/master", async (rel) => (asked.push(rel), "Never push to main."), {});
+        assert.deepEqual(asked, ["project-context.md"]);
+        assert.deepEqual(result, { outsideRepo: false, context: { path: "origin/master:project-context.md", content: "Never push to main." } });
+    });
+
+    it("no file on the ref, or an unfilled template there, means no rules", async () => {
+        assert.equal((await readProjectContextAtRef("/repo", "origin/master", async () => null, {})).context, null);
+        const template = `${PROJECT_CONTEXT_TEMPLATE_MARKER}\n# Project context`;
+        assert.equal((await readProjectContextAtRef("/repo", "origin/master", async () => template, {})).context, null);
+    });
+
+    it("a configured path outside the repo cannot be read from a ref", async () => {
+        const never = async (): Promise<string | null> => assert.fail("must not read");
+        assert.deepEqual(await readProjectContextAtRef("/repo", "origin/master", never, { TAI_PROJECT_CONTEXT_FILE: "/etc/rules.md" }), { outsideRepo: true, context: null });
+        assert.equal((await readProjectContextAtRef("/repo", "origin/master", never, { TAI_PROJECT_CONTEXT_FILE: "../rules.md" })).outsideRepo, true);
+    });
+
+    it("honours a configured path inside the repo", async () => {
+        const result = await readProjectContextAtRef("/repo", "origin/main", async (rel) => `from ${rel}`, { TAI_PROJECT_CONTEXT_FILE: "docs/rules.md" });
+        assert.deepEqual(result.context, { path: "origin/main:docs/rules.md", content: "from docs/rules.md" });
     });
 });

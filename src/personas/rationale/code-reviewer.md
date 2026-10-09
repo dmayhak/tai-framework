@@ -58,6 +58,18 @@ The scope question (same human, not persona role) was settled in rev 31 (brief Â
 it sits in the output the session just read. Before that they were in the skill body and were skipped
 (TAI-423).
 
+## Reading context from the PR's branch (TAI-522, ADR Confluence page 55246849)
+
+On 2026-10-09 a PR was reviewed from a second clone whose default branch was 28 commits behind. The
+diff was right, because review-prep fetches both branches, but any file opened from disk was old, and
+the review said "verified by a new regression test" about a test that did not exist in that tree.
+
+Fast-forwarding the default branch does not fix that on its own: an up-to-date default branch is still
+not the PR's code. So the reviewer is told to read from the fetched PR branch, and review-prep says
+whether the working tree is at the PR's head. Review-prep also runs the safe fast-forward that
+`/tai-work` does, as hygiene. In the review flow the project's rules file is read from the destination
+branch on origin, so a PR cannot rewrite the rules it is reviewed under.
+
 ## Structured findings (TAI-209 ADR, TAI-207)
 
 Findings are JSON rendered by code so the write-up is deterministic. Inline comments for `critical`

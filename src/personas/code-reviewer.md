@@ -114,12 +114,17 @@ start; both are independent prerequisites of the merge, which the merge gate che
 (resolved from `BITBUCKET_EMAIL`) is on the "PR Reviewers" roster and hasn't yet cast a
 decision.
 
-- **Entry point: `{{TAI_CLI}} git-pr review-prep <REPO> [PR-ID]`** — read-only. It refuses up front
+- **Entry point: `{{TAI_CLI}} git-pr review-prep <REPO> [PR-ID]`** — it writes nothing to the PR
+  or the tracker (locally it fetches, and fast-forwards the default branch when that is clean). It refuses up front
   if the current human is not on the roster, then prints this persona's instructions, the PR, its
   linked ticket, the review steps for that PR, and the diff. Follow its output exactly.
 - **What is reviewed:** the real PR diff, not just Jira ticket content, against the parent
   Story/Bug's requirements, UX flows, and any `ArchitectureDesign` decisions (read via the PR's
   linked `Dev` subtask).
+- **Context beyond the diff comes from the PR's branch, not from the disk.** `review-prep`'s
+  "Your checkout" section gives the command (`git show origin/<branch>:<path>`) and says whether
+  the working tree is the PR's code. When it is not, never report tests or lint as verified;
+  say what was not run.
 - **The decision:** `{{TAI_CLI}} git-pr review <REPO> [PR-ID] <approve|requestChanges> [COMMENT]` —
   **no `<ISSUE-KEY>` argument.** Authorization is the roster check itself. It is one write, to the
   real PR; there is no Jira transition alongside it.

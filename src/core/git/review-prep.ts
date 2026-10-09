@@ -79,8 +79,24 @@ export interface DiffFile {
     readonly patch: string;
 }
 
+/** TAI-522: what the reviewer's own working tree has checked out, next to the PR being reviewed. */
+export interface CheckoutState {
+    /** The checked-out branch, or `null` when HEAD is detached. */
+    readonly branch: string | null;
+    /** True when HEAD is the PR's current head commit: files on disk are then the PR's code. */
+    readonly atPrHead: boolean;
+}
+
 export type DiffResult =
-    | { readonly kind: "ok"; readonly range: string; readonly stat: string; readonly files: readonly DiffFile[] }
+    | {
+          readonly kind: "ok";
+          readonly range: string;
+          readonly stat: string;
+          readonly files: readonly DiffFile[];
+          /** The PR's source branch as fetched, e.g. `origin/TAI-1-x`: where surrounding files are read from. */
+          readonly sourceRef?: string;
+          readonly checkout?: CheckoutState;
+      }
     | { readonly kind: "unavailable"; readonly reason: string };
 
 /** Splits a unified diff on its `diff --git` headers; a file's path is the `b/` side of its header. */
@@ -150,10 +166,63 @@ export async function gatherDiff(input: GatherDiffInput): Promise<DiffResult> {
     try {
         const stat = (await git(["diff", "--no-color", "--no-ext-diff", "--stat", range], input.cwd)).trimEnd();
         const raw = await git(["diff", "--no-color", "--no-ext-diff", range], input.cwd);
-        return { kind: "ok", range, stat, files: splitDiffByFile(raw) };
+        return { kind: "ok", range, stat, files: splitDiffByFile(raw), sourceRef: `origin/${src}`, checkout: await checkoutState(input.cwd, `origin/${src}`) };
     } catch (err) {
         return { kind: "unavailable", reason: `git diff ${range} failed (${errorText(err)})` };
     }
+}
+
+/** Best effort: a failure here only costs the "Your checkout" lines, never the review. */
+async function checkoutState(cwd: string, sourceRef: string): Promise<CheckoutState | undefined> {
+    try {
+        const head = (await git(["rev-parse", "HEAD"], cwd)).trim();
+        const prHead = (await git(["rev-parse", sourceRef], cwd)).trim();
+        let branch: string | null = null;
+        try {
+            branch = (await git(["symbolic-ref", "--short", "-q", "HEAD"], cwd)).trim() || null;
+        } catch {
+            branch = null; // detached HEAD
+        }
+        return { branch, atPrHead: head === prHead };
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * TAI-522: a file as it is on a fetched ref (`git show <ref>:./<path>`, relative to `cwd`), or `null`
+ * when the ref has no such file. `relPath` must be a plain relative path inside the repo.
+ */
+export async function readFileAtRef(cwd: string, ref: string, relPath: string): Promise<string | null> {
+    if (relPath.startsWith("/") || relPath.split("/").includes("..") || relPath.includes("\0")) return null;
+    try {
+        return await git(["show", `${ref}:./${relPath}`], cwd);
+    } catch {
+        return null;
+    }
+}
+
+/** TAI-522 ADR decision 1: where the reviewer reads surrounding files, and whether the disk is the PR's code. */
+export function renderCheckoutSection(diff: DiffResult): string | undefined {
+    if (diff.kind !== "ok" || !diff.sourceRef) return undefined;
+    const lines = [
+        "## Your checkout",
+        "",
+        `Read any file you need beyond the diff from the PR's own branch, which is already fetched: \`git show ${diff.sourceRef}:<path>\`. Do not rely on the files on disk unless the next line says they are the PR's code.`,
+        "",
+    ];
+    if (!diff.checkout) {
+        lines.push("Could not tell what this working tree has checked out. Assume the files on disk are NOT the code under review.");
+    } else if (diff.checkout.atPrHead) {
+        lines.push("This working tree is at the PR's head commit: the files on disk are the PR's code, and a test run here tests the PR.");
+    } else {
+        const on = diff.checkout.branch ? `on \`${diff.checkout.branch}\`` : "on a detached HEAD";
+        lines.push(
+            `**This working tree is ${on}, not at the PR's head.** The files on disk are NOT the code under review, and a test or lint run here does not test this PR. ` +
+                "Do not report tests or lint as verified unless you ran them on the PR's code; say what you did not run."
+        );
+    }
+    return lines.join("\n");
 }
 
 // ---------- rendering ----------
@@ -395,6 +464,7 @@ export function renderReviewPrep(input: ReviewPrepInput): string {
                   "Note: you authored this PR. A solo developer may review their own PR (brief §4), so the review proceeds — the human decides the outcome. If this session also wrote the code, a fresh session is the better place to prepare the findings.",
               ]
             : []),
+        ...(renderCheckoutSection(input.diff) ? ["", renderCheckoutSection(input.diff)!] : []),
         "",
         "## How to review",
         "",
