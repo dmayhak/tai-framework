@@ -451,6 +451,11 @@ export function mergePersonaConfig(
 
 // ---------- The TAI CLI placeholder (TAI-465) ----------
 
+/** TAI-487: the soft size target for a persona's run-time prompt (the body of `personas/<id>.md`).
+ *  A test warns past it and never fails; the history that would push a prompt over belongs in
+ *  `personas/rationale/<id>.md`, which is not loaded. */
+export const PERSONA_PROMPT_SOFT_LIMIT_BYTES = 12 * 1024;
+
 /** What a persona doc writes in place of the CLI invocation, e.g. `{{TAI_CLI}} issue get <KEY>`.
  *  A path such as `src/hosts/cli.ts` only exists in the TAI checkout, so a command written that
  *  way fails in every target project; `loadPersonaConfig` fills this in with `taiCliCommand()`. */
