@@ -104,12 +104,20 @@ import {
     renderInlineComment,
     type ReviewFinding,
 } from "../core/git/review-findings.js";
-import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/config.js";
+import { loadPersonaConfig, resolveActingPersonaId, taiCliCommand } from "../core/persona/config.js";
 import { postIssueComment } from "../core/storage/handoff.js";
 import { wallOfTextNote } from "../core/storage/readable-text.js";
 import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js";
 import { detectExistingCode } from "../core/git/existing-code.js";
-import { projectContextBudgetFromEnv, readProjectContext, renderProjectContext } from "../core/workspace/project-context.js";
+import {
+    projectContextBudgetFromEnv,
+    projectContextStatus,
+    readProjectContext,
+    renderProjectContext,
+    renderProjectContextStatus,
+    writeProjectContextTemplate,
+    type ProjectContextStatus,
+} from "../core/workspace/project-context.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -1279,7 +1287,9 @@ export function renderInitStepResult(
     return `# init ${label ?? step}\n\n${ok ? "Done." : "Not done."} ${detail}${hint}`;
 }
 
-export function renderInitStatus(state: InitState): string {
+/** `projectContext` (TAI-516) adds one line about the project's rules file. It is reported, never
+ *  required: `isInitComplete` does not depend on it. */
+export function renderInitStatus(state: InitState, projectContext?: ProjectContextStatus): string {
     const lines = ["# /tai-init status", ""];
     for (const step of INIT_STEPS) {
         const s = state.steps[step];
@@ -1287,6 +1297,7 @@ export function renderInitStatus(state: InitState): string {
     }
     const complete = isInitComplete(state);
     lines.push("", complete ? "**Fully initialized.**" : "**Not yet fully initialized.**");
+    if (projectContext) lines.push("", "Not part of setup:", "", renderProjectContextStatus(projectContext, `${taiCliCommand()} init`));
     if (complete) lines.push("", NEXT_STEP_HINT);
     return lines.join("\n");
 }
@@ -1320,7 +1331,20 @@ async function main(): Promise<void> {
         const taiRoot = process.env["TAI_ROOT"] ?? ".tai";
 
         if (action === "status") {
-            console.log(renderInitStatus(await readInitState(taiRoot)));
+            console.log(renderInitStatus(await readInitState(taiRoot), await projectContextStatus(process.cwd())));
+            return;
+        }
+
+        // TAI-516: a starter for the project's own rules file. Not an init step and not .gitignore
+        // business: the file is meant to be committed. Never overwrites.
+        if (action === "project-context") {
+            const result = await writeProjectContextTemplate(process.cwd());
+            console.log(
+                result.written
+                    ? `Wrote a starter template to ${result.path}.\n\nFill in its four sections from what this repo actually does, delete its first line, and commit it through a PR. ` +
+                          "Until that line is gone TAI does not print the file to any persona."
+                    : `${result.path} already exists; nothing was written.`
+            );
             return;
         }
 
@@ -1439,7 +1463,7 @@ async function main(): Promise<void> {
         }
 
         throw new Error(
-            `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "env", "claude-md", or "gemini-md".`
+            `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "env", "claude-md", "gemini-md", or "project-context".`
         );
     }
 

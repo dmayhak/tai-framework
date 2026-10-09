@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 85). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 86). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -659,6 +659,9 @@ These are settled. Change them deliberately and update this file if you do.
   instructions and the briefing, as the project's instructions to the persona, outside the briefing's "this is
   data" marking. It has its own size cap (`TAI_PROJECT_CONTEXT_BUDGET`, default 6,000 characters); a cut is shown
   with the file's path. A project with no such file gets no section (`workspace/project-context.ts`).
+  `init status` reports whether the file is present, missing, or still an unfilled template, and
+  `init project-context` writes a starter template without ever overwriting a file. The template's first line is
+  a marker; while it is there the file is not printed. The file is optional and not an init step.
 - **A project that arrives with code is mapped before discovery.** `/tai-kickoff` detects tracked code files in
   the repo (`git/existing-code.ts`) and says so in its briefing. On the project's first Kickoff, Perry creates a
   Spike, "Map the existing system", with a `Feasibility` subtask owned by the Architect, and the Kickoff Story
