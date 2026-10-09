@@ -1090,13 +1090,33 @@ export function defineStorageConformance(
                 const blocked = await h.backend.workTracker.transition(kickoff.key, Status.Done);
                 assert.equal(blocked.ok, false, "no Approved: comments yet — the gate must hold");
 
+                // TAI-480: a page linked to the Kickoff still carries an open question. Approval does
+                // not resolve it; only editing the marker out does.
+                const prd = trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: `Conformance: PRD with an open question ${Date.now()}`,
+                        content: "Users sign in with email.\n\nNEEDS CLARIFICATION: do we support single sign-on?",
+                    })
+                );
+                await h.backend.workTracker.linkPage(kickoff.key, prd.id);
+
                 await h.backend.workTracker.addComment(kickoff.key, "Approved: looks good");
+
+                const stillBlocked = await h.backend.workTracker.transition(kickoff.key, Status.Done);
+                assert.equal(stillBlocked.ok, false, "approved, but a linked page has an unresolved marker — the gate must hold");
+                if (!stillBlocked.ok) {
+                    assert.match(stillBlocked.reason, /NEEDS CLARIFICATION/);
+                    assert.match(stillBlocked.reason, /single sign-on/);
+                }
+
+                await h.backend.docStore.updatePage({ id: prd.id }, { content: "Users sign in with email. Single sign-on is out of scope." });
 
                 const passed = await h.backend.workTracker.transition(kickoff.key, Status.Done);
                 assert.equal(
                     passed.ok,
                     true,
-                    "one Approved: comment from a human listed under both required personas satisfies the gate"
+                    "approved by a human listed under both required personas, and no marker left in a linked page"
                 );
             });
         });

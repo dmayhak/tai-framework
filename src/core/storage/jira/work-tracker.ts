@@ -40,7 +40,7 @@ import {
 import { UnreadableIssueError, reportUnreadableIssue } from "../unreadable-issues.js";
 import { RestClient, JiraRejection } from "./rest-client.js";
 import { violatesAssignmentGate, entryGateReason, exitGateReason } from "../assignment-gate.js";
-import { reviewGateApplies, checkReviewGate, reviewGateReason } from "../review-gate.js";
+import { reviewGateApplies, checkReviewGate, reviewGateReason, checkClarificationGate, clarificationGateReason } from "../review-gate.js";
 import { precedenceGateApplies, openPrerequisites, precedenceGateReason, precedenceOverrideComment } from "../precedence-gate.js";
 import { isExemptFromDuplicateGate, duplicateSubtaskGateReason } from "../duplicate-subtask-gate.js";
 import { reparentViolation } from "../reparent-gate.js";
@@ -402,6 +402,11 @@ export function createJiraWorkTracker(
                         const check = checkReviewGate(current, roster);
                         if (!check.ok) {
                             throw new JiraRejection(reviewGateReason(key, check.missing), 409);
+                        }
+                        // TAI-480: approvals do not resolve an open question in a linked page.
+                        const unresolved = await checkClarificationGate(key, { getLinkedPages: (k) => workTracker.getLinkedPages(k), getPage: (ref) => docStore.getPage(ref) });
+                        if (unresolved.length > 0) {
+                            throw new JiraRejection(clarificationGateReason(key, unresolved), 409);
                         }
                     }
                     // TAI-476: the subtask precedence gate -- same shared predicates as the
