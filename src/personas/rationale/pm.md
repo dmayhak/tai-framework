@@ -122,6 +122,19 @@ implementation was the other half of item 13, resolved as "no formal marker".
 - TAI-293: `mergePullRequest`, superseding TAI-112's "no self-merge".
 - TAI-382/TAI-383: read all comments before merging. TAI-462: the merge gate.
 
+## The grants repair (TAI-478; human decision TAI-455)
+
+Perry's `complete` list held only `Requirements`, although item 6 has her close Spikes and she closes
+Kickoffs, Stories and Bugs. Those four were added. Epic was left out on purpose: closing an Epic is the
+human's decision.
+
+The `update` grants were deleted from every persona file and from the code: most named fields that do
+not exist (`Story.technicalNotes`, `Bug.reproSteps`), and nothing read them outside a wrapper that only
+`work` builds, to read the briefing.
+
+Create and complete grants are not enforced by the issue commands. Since TAI-478 the CLI prints a note,
+and still goes ahead, when the acting persona creates or closes something outside its grants.
+
 ## The Kickoff gate stays PM + UX (decided)
 
 The Architect is never added to it, even when `ArchitectureDesign` was used during Kickoff.

@@ -35,10 +35,6 @@ permissions:
     # NOTE: UAT is intentionally NOT in `complete` — Tessa drives the run but
     # CANNOT complete/sign off UAT herself; a human stakeholder must (see below).
     - Subtask:Triage
-  update:
-    - Story.testNotes
-    - Bug.severity
-    - Bug.reproSteps
   gitHost:
     - createPullRequest           # For ONE case (brief §5.4, TAI-456): test code discovered after
                                    # the Dev PR has already merged. Normally test code goes in the

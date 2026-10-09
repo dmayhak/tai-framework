@@ -55,11 +55,6 @@ permissions:
     # CANNOT complete/sign off EpicReview herself; a human stakeholder must (see below,
     # same pattern as tester.md's UAT exclusion).
     - Subtask:Investigate
-  update:
-    - Epic.description
-    - Epic.acceptanceCriteria
-    - Story.description
-    - Story.acceptanceCriteria
   cannotApprove:
     - own-output                # hard rule, brief §3.4 / §4 — no self-certification
 

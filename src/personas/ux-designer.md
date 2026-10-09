@@ -19,8 +19,6 @@ permissions:
     - Subtask:UxDesign
   complete:
     - Subtask:UxDesign
-  update:
-    - Story.uxNotes
   approve:
     - KickoffReviewGate          # joint sign-off with PM — neither approves alone
   cannotApprove:
