@@ -291,6 +291,16 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         }
     });
 
+    // TAI-520: the brief states what is true now; its history is in CHANGELOG.md.
+    it("the brief's body cites no revision: only its Last-updated pointer names one", async () => {
+        const { readFile } = await import("node:fs/promises");
+        const brief = await readFile(path.resolve(import.meta.dirname, "../../../PROJECT_BRIEF.md"), "utf8");
+        const body = brief.slice(brief.indexOf("\n## 1. "));
+        assert.ok(body.length > 1000, "could not find the brief's first section");
+        const found = [...new Set(body.match(/\brevs? \d+/g) ?? [])];
+        assert.deepEqual(found, [], `PROJECT_BRIEF.md cites ${found.join(", ")}; write the rule as current fact and put the history in CHANGELOG.md`);
+    });
+
     it("warns, without failing, when a run-time prompt is over the soft size target", async (t) => {
         const configs = await loadBuiltinPersonaConfigs();
         for (const [id, config] of configs) {

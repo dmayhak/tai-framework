@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 88 (2026-10-09)
+
+**TAI-520: the brief's body carries no revision labels.** The "rev N" labels left in §3.1 to §3.6, §3.8, §3.9, §5.2, §5.4 to §5.6, §6, §8, §10 and §11 are removed (human decision 2026-10-09), together with ticket labels that were provenance; ADR references and the Backlog-ticket pointers on open §8 items stay. Sentences that narrated a resolution are rewritten as current fact, and the passages that were reworded, as they read before, are in the appendix at the end of this file. A test now fails when the brief's body cites a revision. Stale statements corrected on the way: §3.4 pointed at Epics TAI-6 and TAI-8 for a call site that was never built; §6 still listed a per-repo dev → review → merge/deploy subtask chain.
+
 ## rev 87 (2026-10-09)
 
 **TAI-512: brief sections 3.7, 4, 5.3 and 7 state current fact.** The "resolved (rev N)", "refined (rev N)" and "supersedes" narration is out of those four sections, along with their revision and ticket labels; the text as it read before is in the appendix at the end of this file. No rule changed. Stale statements corrected on the way: §3.7 and §4 still used candidate type names (`Design`, `Develop`, `Code Review`, Research/Implementation story types); §4 described a per-repo dev → review → merge/deploy subtask chain and an AI retry loop for `DesignReview`; §7 said the trigger for the root status rollup was still to be wired, when `/tai-ready` computes work in flight live and nothing calls `rollupStatus()`; §7 described the bulk sync without saying no command runs it.
@@ -2329,3 +2333,184 @@ claiming/assignment question, §5.5, not a cache-locking one.) Nothing is pruned
 is designed.)*
 
 ---
+
+---
+
+## Appendix: brief passages reworded when the revision labels were removed (TAI-520, 2026-10-09)
+
+Each block is a passage as it read before. Simple label removals, such as "(rev 11)" after a heading, are not listed.
+
+```text
+  - **Not the Atlassian Remote MCP Server** (`https://mcp.atlassian.com`) — this was the
+    original design (revs 1–16) and it does **not work** for TAI. Tested live (rev 17, Jira
+    `TAI-16`): authentication is fine
+```
+
+```text
+**Operation set resolved by implementation (rev 33, §8 item 7):** `src/core/storage/
+interface.ts` defines
+```
+
+```text
+> *(Corrected: an earlier revision of this note also claimed the wrapper inverted issue-link
+> direction. It does not — it passes `inwardIssue`/`outwardIssue` through faithfully. The
+> error was in reading Atlassian's docs, not in the wrapper. Ground truth, verified against
+> the live API: for the `Blocks` link type, the **inward** issue blocks the **outward** one.)*
+```
+
+```text
+**Design resolved (rev 25, TAI-41 ADR, §8.9/§8.22/§8.23):** `AutocompletionCondition
+```
+
+```text
+**Implemented (rev 26):** checkpoint/review-gate enforcement (TAI-42, `review-gate.ts`) is
+wired directly into `transition()` on both backends. The autocompletion decision engine
+itself (TAI-43, `autocompletion.ts`) is built and tested as a standalone pure-function
+module — `checkpointKind`, `evaluateAutocompletion`, `parseCompletionMarker` — but
+deliberately **not yet called from anywhere**: its own module doc explains why, whether
+an Orchestrator pauses for a human before invoking it or proceeds automatically is an
+orchestration decision that belongs to Epic TAI-6, not this engine. TAI-52 (Epic TAI-6's
+first Story) built the permission layer (`PersonaScopedWorkTracker`) that a future caller
+will sit behind, but the actual call site — something invoking `evaluateAutocompletion`
+and acting on its verdict — still doesn't exist; that's TAI-8's persona-invocation loop.
+```
+
+```text
+**Resolved (rev 11): there is only one sense of "workflow" — the per-Story-type process,**
+documented in `workflows/*.md` for **Kickoff**, **Story**, **Bug**, and **Spike**. The
+earlier idea of a separate, named "scenario" layer (`complete`/`quick`/`bugfix`,
+configuring which personas participate and what each does) was considered during the §4
+workflow-design pass and **dropped as unnecessary** — it turned out to already be absorbed
+by the story-type + optional-subtask design:
+```
+
+```text
+of work, when **completing** one (rev 41, §8.10 — refreshed before the completion decision
+itself,
+```
+
+```text
+**Review has no ticket entry (rev 78, TAI-425).** The `CodeReview` subtask is retired (rev 52), so the Code
+Reviewer
+```
+
+```text
+### 3.9 Comment Conventions (rev 11 — formalized here, previously design-notes-only)
+```
+
+```text
+| CodeReview | Code Reviewer | Implementation gate — **retired going forward, rev 52 (TAI-159 ADR, §5.4)**; kept in the schema only to parse historical tickets |
+```
+
+```text
+(renamed from `Spike`, rev 12 — collided with the `Spike` **Story**-level type; Jira issue-type names must be unique site-wide)
+```
+
+```text
+**How review, readiness and the merge work (rev 52, TAI-159 ADR; merge gate TAI-462):**
+```
+
+```text
+TA space, page 28704769). The earlier chains this replaced — the original Develop → Code Review → Merge/Deploy
+subtask chain and the rev 21 `CodeReview`-subtask flow (TAI-34 ADR, page 13860867, marked superseded) — are in
+`CHANGELOG.md`.
+```
+
+```text
+**Test-tier subtasks (rev 48, revised TAI-456):** a test
+```
+
+```text
+repo**, each subtask tagged with its repo via the native Jira **Component** field (§4,
+rev 11 — not a custom `repo` field).
+```
+
+```text
+TAI does **not blindly guess**, and (rev 75) **does not assign the session's human at creation
+  either**
+```
+
+```text
+At **claim and transition time** the rev 54 shortcut stays: when a ticket
+```
+
+```text
+### 5.6 Human Registry & the Two-Axis Owner Model (rev 12)
+```
+
+```text
+it has no default human Assignee (rev 74: the defaults above are applied in code on create;
+   for a `SpikeTask` the session asks
+```
+
+```text
+still succeeds with a loud warning).
+```
+
+```text
+**ranks** them (rev 75, ADR page 50692097) and surfaces
+```
+
+```text
+- **Git host is pluggable (rev 21, design resolved via TAI-33, §8.19).** A sibling
+```
+
+```text
+status — not the full breadth of either host's API. See the TAI-33 ADR (Confluence, TA
+  space). **Implemented (rev 25, TAI-38):** `src/core/git/interface.ts` plus a Bitbucket
+  backend at `src/core/git/bitbucket/`.
+```
+
+```text
+- **Review and merge act on a real git PR (TAI-34 ADR; revised rev 52, TAI-159 ADR).** See
+```
+
+```text
+- **PR title (rev 50, TAI-112): tied to the parent Story/Bug first, subtask second** —
+```
+
+```text
+stashing dirty state. **Resolved (rev 34, §8 item 8): worktree-swap is the default**
+  switch behavior — a plain checkout would reintroduce exactly the stashing problem
+  worktrees were adopted to avoid. Not yet implemented in code.
+```
+
+```text
+derive the affected repo for the Component field (§4, rev 11).
+```
+
+```text
+- **Multi-repo Story:** one dev→review→merge/deploy subtask chain per repo.
+```
+
+```text
+Remote MCP Server; see §3.2 for why that was tried and rejected (rev 17).
+```
+
+```text
+humans` (rev 12; supersedes the earlier native-Jira-Project-Role design, dropped
+  because Jira's Free plan can't create Project Roles and the filesystem backend has no
+  equivalent). Confluence-page-backed
+```
+
+```text
+defining subtask structure, precedence, and gates. (An earlier "named scenario"
+  sense — complete/quick/bugfix — was considered and dropped, rev 11 §3.5; absorbed by
+  the story-type + optional-subtask design.)
+```
+
+```text
+rev 56, TAI-286), backlinked from its §8 entry here
+```
+
+```text
+posture as rev 48's Analyst/Architect "ask the human" principle
+```
+
+```text
+bigger change than anything rev 52 did.
+```
+
+```text
+the existing project-level `Config` folder (§4 rev 13, which already holds untyped,
+```
