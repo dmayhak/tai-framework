@@ -184,7 +184,7 @@ absent, the automated tiers gate `Deploy` directly.
   checkpoint takes priority over all autocompletion settings.
 - **How sign-off/rejection is recorded:** **approval** is the human transitioning the
   `UAT` subtask to Done themselves — the transition itself is the signal, no comment
-  required (a human, not Tessa or any AI persona, must be the one performing it).
+  required (a human, not Tessa or any AI persona, decides it). That is a convention the user is accountable for, not something TAI can prove (brief §4, TAI-454): a persona performs it only when the human says so in their own message, and the CLI then leaves a stamped `Sign-off:` comment (TAI-475).
   **Rejection** is the human transitioning it back to Open. The routing decision
   (Dev vs. Requirements — see below) is best-effort, not strict: the human is
   *encouraged* to post a comment prefixed `Rejected: Dev` or `Rejected: Requirements`,

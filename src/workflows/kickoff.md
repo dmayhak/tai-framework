@@ -85,7 +85,7 @@ conversation — goes through the proposed breakdown one entry at a time, probes
 missing/incorrectly-scoped/incorrectly-sequenced epics, and revises the *same*
 work-breakdown Confluence doc in place as questions resolve — but **cannot complete or
 sign off `EpicReview` herself**. Only the human stakeholder can transition the subtask to
-Done; the transition itself is the signal, no `Approved:` comment marker needed. This is
+Done; the transition itself is the signal, no `Approved:` comment marker needed. That is a convention the user is accountable for, not something TAI can prove (brief §4, TAI-454): a persona performs it only when the human says so in their own message, and the CLI then leaves a stamped `Sign-off:` comment (TAI-475). This is
 `ALWAYS_HUMAN_GATED_SUBTASKS` (`story-schema.ts`), same enforcement class as `UAT` —
 never autocompletes, regardless of any autocompletion setting.
 

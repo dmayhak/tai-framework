@@ -37,6 +37,7 @@ import {
     renderInitStepResult,
     renderInitStatus,
     extractActingPersona,
+    actingPersonaOf,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 import type { InitState } from "../core/commands/target-init.js";
@@ -832,5 +833,16 @@ describe("extractActingPersona (TAI-477)", () => {
     it("rejects a missing or malformed persona id", () => {
         assert.throws(() => extractActingPersona(["--as"]), /--as needs a persona id/);
         assert.throws(() => extractActingPersona(["--as=Not A Persona", "issue"]), /not a persona id/);
+    });
+});
+
+describe("actingPersonaOf (TAI-475)", () => {
+    it("pairs a built-in persona id with its display name", () => {
+        assert.deepEqual(actingPersonaOf({ actingPersona: "tester" }), { id: "tester", displayName: "Tessa" });
+    });
+
+    it("uses the id itself for a persona with no built-in name, and is undefined when none was named", () => {
+        assert.deepEqual(actingPersonaOf({ actingPersona: "release-manager" }), { id: "release-manager", displayName: "release-manager" });
+        assert.equal(actingPersonaOf({}), undefined);
     });
 });
