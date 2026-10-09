@@ -34,6 +34,8 @@ export interface PrepareWorkTurnDeps {
     /** Confluence space the persona config's override/extension pages live in (brief §3.1). */
     readonly spaceKey: string;
     readonly personasDir?: string;
+    /** Size of the briefing in characters (TAI-464); the briefing's own default when absent. */
+    readonly briefingBudget?: number;
 }
 
 export interface WorkTurn {
@@ -100,7 +102,8 @@ export async function prepareWorkTurn(deps: PrepareWorkTurnDeps, key: IssueKey):
         deps.backend.docStore,
         deps.taiRoot,
         deps.projectKey,
-        key
+        key,
+        deps.briefingBudget !== undefined ? { budget: deps.briefingBudget } : {}
     );
 
     return {

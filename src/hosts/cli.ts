@@ -51,7 +51,7 @@ import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
 import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js";
-import type { BriefingChangeNote } from "../core/workspace/briefing.js";
+import { briefingBudgetFromEnv, type BriefingChangeNote } from "../core/workspace/briefing.js";
 import { cachePage } from "../core/cache/page-cache.js";
 import { CachingWorkTracker } from "../core/cache/caching-work-tracker.js";
 import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
@@ -1767,6 +1767,7 @@ async function main(): Promise<void> {
                 taiRoot: config.taiRoot,
                 projectKey: config.projectKey,
                 spaceKey: config.spaceKey,
+                briefingBudget: briefingBudgetFromEnv(),
             },
             toIssueKey(arg)
         );
