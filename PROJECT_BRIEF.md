@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 86). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 87). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -339,107 +339,86 @@ mechanism, not a new one.
 ### 3.7 Recursive Decomposition & Refinement
 For large projects, a single decomposition pass is too coarse. Personas can be invoked
 **recursively at progressively narrower scope**: the Analyst runs once against the overall
-project to propose a breakdown into Epics ("a project of projects"); the **second pass —
-scoped to each individual Epic, producing that Epic's Stories/Bugs — has the same shape**
-(rev 70, TAI-354; confirmed TAI-457). The Epic gets its own Kickoff Story; Ada proposes the
-breakdown in its `Research`; the human probes it and signs it off in `EpicReview`; Perry then
-creates the tickets. Perry does not decompose an Epic on her own in one turn (the rev 43
-shape, withdrawn). A small Epic still needs only `Research` and `EpicReview`. **Perry
-front-loads the Kickoff's known subtasks** — `Research`, `EpicReview`, and `Requirements` and
-`UxDesign` when she is pretty sure they are needed — in `Backlog` at initiation and runs
-`link-precedence` straight away, so nothing shows as ready ahead of its turn (TAI-457
-amendment). The framework does not fix
-how many passes happen or where they stop — it fixes that decomposition is a repeatable
-persona operation, applicable at whatever scope is handed to it. (This mirrors BMAD's
-scale-adaptive planning depth.)
+project to propose a breakdown into Epics ("a project of projects"), and the **second pass —
+scoped to one Epic, producing that Epic's Stories/Bugs — has the same shape**:
 
-**Scope-level count resolved (rev 37, §8 item 12): no fixed level ladder, no `Initiative`
-tier above Epic.** Decomposition is deliberately scope-relative and repeatable rather than
-a fixed `Project → Epic → Story` ladder with named levels — if a system genuinely needs
-something above Epic, that's a native-Jira concept a business configures on its own
-instance, not a new TAI schema type. **Where to stop is likewise not a formula:** "applicable
-at whatever scope is handed to it" means a human decides the scope for
-each invocation — an inherent judgment call, not something to compute.
+- The Epic gets its own Kickoff Story.
+- Ada proposes the breakdown in its `Research`.
+- The human probes it and signs it off in `EpicReview`.
+- Perry then creates the tickets. She does not decompose an Epic on her own in one turn.
 
-Separately, an **already-created Story** may need more detail before implementation
-subtasks can be meaningfully created under it. For this, a Story can carry a
-**refinement subtask** — e.g. an `Investigate` or `Design` type (§5.2) that routes to
-Analyst, Architect, DBA, etc., rather than an implementation-chain type like `Develop` or
-`Code Review`. A refinement subtask's output is not code; it's added detail (clarified
-acceptance criteria, a design decision, a data model) that lands on the Story's linked
-Confluence page, per §4's "who needs to know" comment rule. Refinement subtasks may spawn
-further refinement subtasks (e.g. an Architect's `Design` raises a question that needs a
-DBA's `Data Design`) but do not spawn implementation chains directly — turning refined
-output into actual implementation subtasks is a separate decision (the human's, or Perry's in
-grooming, per §3.8), made once the Story is judged ready.
+A small Epic needs only `Research` and `EpicReview`. **Perry front-loads the Kickoff's known
+subtasks** — `Research`, `EpicReview`, and `Requirements` and `UxDesign` when she is pretty
+sure they are needed — in `Backlog` at initiation and runs `link-precedence` straight away, so
+nothing shows as ready ahead of its turn.
 
-**Rolling-wave decomposition depth: "done" vs. "done enough" (rev 58, TAI-147/148).**
-Decomposition/refinement personas (Analyst, PM, Architect) don't uniformly flesh out
-every scope-relative pass to full detail. For a large Epic, taking every eventual Story to
-fully-specified acceptance criteria before any of them can start would be wasted,
-premature effort — the later ones will likely need revisiting anyway once earlier work
-informs them — and would delay getting started at all. Instead, decomposition follows a
-**rolling-wave** pattern (a real, established project-management term for exactly this):
-the full set of next-level items is created immediately, so the whole shape of the work is
-visible end to end — but only a **subset is taken to full depth** right now, with the rest
-landing genuinely shallow (a name and a one-line scope only) rather than either being
-skipped (invisible, no board presence) or forced to premature full detail.
+The framework does not fix how many passes happen or where they stop — it fixes that
+decomposition is a repeatable persona operation, applicable at whatever scope is handed to it.
+**There is no fixed level ladder and no `Initiative` tier above Epic** (§8 item 12): if a
+system needs something above Epic, that is a native-Jira concept a business configures on
+its own instance, not a TAI schema type. **Where to stop is not a formula either:** a human
+decides the scope for each invocation.
 
-- **What decides which items get full depth now is not a fixed lookahead count** — not
-  "the next one," not "the next N." TAI cannot know a team's real capacity/parallelism in
-  advance, so a hard-coded count would either starve a team that could handle more in
-  parallel or over-commit one that can't. Instead: whatever the real dependency/readiness
-  graph (§5.3, `workflows/dependencies.md`) already shows as unblocked gets full depth,
-  however many that turns out to be for a given Epic's actual shape — the same "compute
-  readiness live, don't guess at it" posture `/tai-ready` itself already uses.
-- **Explicit pull-forward stays available**, same as TAI-83's "Eager Subtask Creation"
-  exception elsewhere in this brief: a persona or human with a real, concrete reason (e.g.
-  requirements overlap with another in-flight project) can take a not-yet-unblocked item to
-  full depth ahead of its turn — the same "any persona/human with real in-context judgment
-  may act outside the default ordering" principle already established, not a new mechanism.
-- **A shallow item already known to need a refinement pass before it's actionable gets
-  that refinement subtask created now too**, sitting in `Backlog` alongside the shallow
-  parent, not deferred until the parent's own turn comes up — board visibility for
-  anticipated work, not just work already starting. This is the Story-level application of
-  the same "front-load the whole anticipated chain, not just the first step" principle
-  `workflows/dependencies.md`'s Eager Subtask Creation section already establishes at the
-  subtask level, extended one level up.
-- **No new status machinery needed** — the existing `Backlog`/`To Do` split (TAI-292, §5.3:
-  `To Do` iff fully actionable as written, `Backlog` otherwise) already models exactly
-  this. Rolling-wave decomposition is an application of status machinery that already
-  existed, previously undescribed as a deliberate decomposition-depth strategy.
+**Refinement subtasks.** An already-created Story may need more detail before implementation
+subtasks can be meaningfully created under it. For this, a Story can carry a **refinement
+subtask** — `Investigate`, `ArchitectureDesign`, `Database` and the like (§5.2), which route
+to the Analyst, Architect or DBA — rather than an implementation type like `Dev`.
 
-Concrete instances: `personas/pm.md`'s Epic decomposition (item 5) and Kickoff-time WBS/
-issue-creation (item 4), `personas/analyst.md`'s Epic → Story decomposition proposal
-(item 4), and `personas/architect.md`'s altitude-inheritance answer (rev 60, TAI-149/328,
-Core Principles: "Higher-altitude decisions are binding on lower-altitude work") — a
-Kickoff/Epic-level `ArchitectureDesign` is Architect's "full shape now" pass (system-level
-invariants, kept minimal), and each Story's own `ArchitectureDesign` is the later,
-full-depth pass that inherits it as a binding constraint rather than re-deciding it; a
-genuine conflict escalates to the human rather than being silently overridden — see those
-files for the persona-specific mechanics.
+- Its output is not code; it is added detail (clarified acceptance criteria, a design
+  decision, a data model) that lands on the Story's linked Confluence page, per §4's "who
+  needs to know" comment rule.
+- A refinement subtask may spawn further refinement subtasks (an `ArchitectureDesign` raises
+  a question that needs a `Database` pass).
+- It does not spawn implementation work directly. Turning refined output into implementation
+  subtasks is a separate decision (the human's, or Perry's in grooming, per §3.8), made once
+  the Story is judged ready.
+
+**Rolling-wave decomposition depth: "done" vs. "done enough".**
+Decomposition and refinement personas (Analyst, PM, Architect) don't flesh out every pass to
+full detail. For a large Epic, taking every eventual Story to fully-specified acceptance
+criteria before any can start would be wasted, premature effort — the later ones will need
+revisiting once earlier work informs them — and would delay starting at all. Decomposition
+follows a **rolling-wave** pattern instead: the full set of next-level items is created
+immediately, so the whole shape of the work is visible end to end, but only a **subset is
+taken to full depth** now. The rest land shallow (a name and a one-line scope), neither
+skipped nor forced to premature detail.
+
+- **Which items get full depth now is not a fixed lookahead count.** TAI cannot know a team's
+  capacity or parallelism in advance. Whatever the dependency/readiness graph (§5.3,
+  `workflows/dependencies.md`) already shows as unblocked gets full depth, however many that
+  is for the Epic's actual shape.
+- **Explicit pull-forward stays available.** A persona or human with a concrete reason (for
+  example, requirements overlap with another in-flight project) can take a not-yet-unblocked
+  item to full depth ahead of its turn — the same rule as eager subtask creation
+  (`workflows/dependencies.md`).
+- **A shallow item already known to need a refinement pass gets that refinement subtask
+  created now too**, in `Backlog` alongside the shallow parent, not deferred until the
+  parent's turn comes up: board visibility for anticipated work, not only work already
+  starting.
+- **No extra status machinery.** The `Backlog`/`To Do` split (§5.3: `To Do` only if fully
+  actionable as written, `Backlog` otherwise) already models this.
+
+Concrete instances: `personas/pm.md`'s Epic decomposition (item 5) and issue creation with
+the subtask assessment (item 4); `personas/analyst.md`'s Epic → Story decomposition proposal
+(item 5); and `personas/architect.md`'s altitude inheritance ("Higher-altitude decisions are
+binding on lower-altitude work") — a Kickoff/Epic-level `ArchitectureDesign` is the "full
+shape now" pass (system-level invariants, kept minimal), and each Story's own
+`ArchitectureDesign` is the later, full-depth pass that inherits it as a binding constraint;
+a genuine conflict escalates to the human rather than being silently overridden.
 
 **Elicitation escalation posture: collaborative by default, more assertive when it isn't
-converging (rev 59, TAI-147/148/324).** Elicitation-heavy personas draw requirements out of
+converging.** Elicitation-heavy personas (PM, Analyst, UX Designer) draw requirements out of
 the human rather than deciding for them — but escalate to more direct, pointed questions,
 including pushing back explicitly on an answer that's too thin to build against (an
 unmeasurable acceptance criterion, an unexamined assumption), when a conversation isn't
-converging on its own. Ease off once it firms up or the human signals they've had enough
-for now (an explicit "good enough," visible fatigue). Calibrated to stakes — a one-line
-bug-fix Story doesn't warrant the same pressure as a Kickoff-level PRD or Epic
-decomposition, the same right-sized-output judgment each persona already applies to depth
-of *output* applied here to depth of *elicitation*. First established for PM's PRD drafting
-(rev 58, TAI-147/148: Fast-path/Coaching-path pace choice, escalating within whichever path
-if things stay vague); promoted to a shared posture here once Ada's own review confirmed it
-applies the same way to her Kickoff discovery, decomposition, and refinement work — and
-Uma's own review (rev 61) confirmed the same for her Kickoff-time flow/wireframe
-elicitation, alongside a sharper "elicits, doesn't impose" principle (never volunteers a
-color, pattern, or visual direction unprompted — the vision being drawn out is the human's,
-not Uma's).
+converging on its own. They ease off once it firms up or the human signals they've had enough
+for now (an explicit "good enough," visible fatigue). It is calibrated to stakes: a one-line
+bug-fix Story doesn't warrant the same pressure as a Kickoff-level PRD or Epic decomposition.
 
-Concrete instances: `personas/pm.md`'s PRD drafting (item 2), `personas/analyst.md`'s
-Kickoff discovery, decomposition, and refinement (items 2/3/4/5), and
-`personas/ux-designer.md`'s Kickoff flow/wireframe development (item 1).
+Concrete instances: `personas/pm.md`'s PRD drafting (item 2, with its Fast-path/Coaching-path
+pace choice); `personas/analyst.md`'s Kickoff discovery, decomposition and refinement (items
+2 to 6); and `personas/ux-designer.md`'s Kickoff flow/wireframe development (item 1) with its
+"elicits, doesn't impose" principle.
 
 ### 3.8 Interaction Modes
 - A human can **initiate a persona** and interact with it (e.g. "what's ready for you to
@@ -536,14 +515,13 @@ These are settled. Change them deliberately and update this file if you do.
 - **A persona can never approve its own work.** In a *team* setting this is the norm and is
   ultimately enforced by the business/process — for now our code does not hard-lock it,
   because a **solo developer legitimately reviews their own work.** (Revisit if we add
-  org-level enforcement.) **Scope resolved (rev 31, §8 item 3): the same-human dimension,
-  not persona role** — workflow routing already guarantees a different persona role
-  reviews any given persona's output, so self-approval can only happen when one human
-  fills both roles (the solo-dev case named above). **What review separation means in
-  practice (TAI-458):** the reviewer is a human — one on the "PR Reviewers" roster for a
+  org-level enforcement.) **The rule is about the same human, not the persona role** (§8
+  item 3): workflow routing already sends a persona's output to a different persona role
+  for review, so self-approval can only happen when one human fills both roles (the
+  solo-dev case named above). **What review separation means in practice:** the reviewer is a human — one on the "PR Reviewers" roster for a
   PR, the human closing a `DesignReview` for a design. The AI prepares the findings or
   review notes and the human decides. A fresh context is preferred for preparing them, not
-  the session that wrote the work under review (making that the default is TAI-469).
+  the session that wrote the work under review.
 - **Checkpoints are enforced in Team AI's plugin layer,** not via native Jira validators
   (see §3.3). Checkpoints override autocompletion.
 - **A Jira-rejected transition is an unplanned checkpoint, not a normal failure.** Team AI
@@ -567,31 +545,23 @@ These are settled. Change them deliberately and update this file if you do.
   human must get involved. Context passed back and forth (e.g. reviewer → developer) is
   recorded as **Jira comments.** Comment placement follows a "who needs to know?" rule:
   if only the subtask's owner needs it, comment on the subtask; if multiple parties need
-  it, comment on the parent. **Triage ownership resolved (rev 32, §8 item 5):** routing a
-  failed checkpoint's retry isn't a discretionary act — the destination is already fixed
-  by the workflow's documented loop-back structure (§5.3's Dev ⇄ Test,
-  ArchitectureDesign ⇄ DesignReview, UAT rejection routing) and the retry-vs-escalate call
-  is already fixed by the single-retry counter above. It's deterministic plugin-layer
-  mechanics, not a judgment call requiring Orchestrator persona permission.
+  it, comment on the parent. **Routing a failed checkpoint is not a judgment call** (§8 item
+  5): the destination is fixed by the workflow's documented loop-backs (`workflows/story.md`,
+  `workflows/bug.md`) and retry-versus-escalate by the single-retry rule above. A human-gated
+  step (UAT, EpicReview, DesignReview) has no AI retry: every round ends with the human.
 - **Multi-repo:** a Story/Bug can touch **multiple repos**; a **subtask targets exactly one
-  repo.** Each repo touched gets its own dev → review → merge/deploy subtask chain under the
-  Story. **Decided (rev 11):** the affected repo is tracked via Jira's **native Component**
-  field, not a custom field — reuses existing Jira mechanics rather than provisioning a new
-  one. **Population is derived-with-manual-fallback:** a commit message beginning with the
+  repo.** Each repo touched gets its own PR → review and test → merge chain under the Story
+  (§5.4). The affected repo is tracked in Jira's **native Component** field, not a custom
+  field. **It is derived, with a manual fallback:** a commit message beginning with the
   Jira issue key (§6) is used to look up the touched repo and auto-populate Component; a
   human or persona can still set/correct it manually before any commit exists yet (e.g. at
   subtask creation, or if the automation can't resolve it).
 - **Confluence:** one Confluence space per Jira project. The space key is **configured, not
   derived** — it is **not** safe to assume it equals the Jira project key.
-  - *Corrected (rev 18).* Rev 11 asserted "the space key matches the Jira project key"
-    (`PROJ` → `PROJ`). That is **false in practice, and false on this very project**: TAI's
-    own Confluence space is keyed **`TA`**, not `TAI`. Confluence derives a space key from
-    the space *name* at creation time and will happily shorten or disambiguate it, and a
-    human can rename it afterwards — so the two keys drift for reasons entirely outside
-    TAI's control. The mismatch went unnoticed for six revisions because the MCP tooling
-    resolves a space by *name*, silently masking it. Any code that computes a space key from
-    a project key is therefore wrong: **`projectKey` and `spaceKey` are separate config
-    values**, and the storage backend takes both.
+  Confluence derives a space key from the space *name* at creation and may shorten or
+  disambiguate it, and a human can rename it afterwards (TAI's own space is keyed `TA`, not
+  `TAI`). **`projectKey` and `spaceKey` are separate config values**, and the storage backend
+  takes both; code that computes one from the other is wrong.
   Pages link to the Jira item that **needs that page as input.** Pages tie to the
   **parent** issue (Story or Epic — whichever the content is actually scoped to; e.g. an
   Epic-level decomposition proposal ties to the Epic itself, while a Kickoff's PRD/UX
@@ -600,41 +570,41 @@ These are settled. Change them deliberately and update this file if you do.
   those links, refreshed as needed. A doc needed by more than one ticket is **linked via
   `RelatesTo`** to the additional ticket (same bar as any other `RelatesTo` link,
   `workflows/dependencies.md`) rather than duplicated or moved to a shared ancestor.
-  - **Granularity (rev 11):** one page per persona-output instance (one ADR, one PRD, one
+  - **Granularity:** one page per persona-output instance (one ADR, one PRD, one
     test-plan, …) — matches the granularity already implicit in every persona's
     `confluenceOutputs` list. The UX Designer's wireframe/wireframe-index split (one page
     per screen + an index) is the one documented exception, since a single UX flow can
     span many distinct screens — not a new general default.
-  - **Folder structure (rev 11):** organized **by doc-type** within the project's space
+  - **Folder structure:** organized **by doc-type** within the project's space
     (an ADRs folder, a PRDs folder, a Test Plans folder, …), not by ticket hierarchy.
-  - **Naming convention (rev 11):** page titles are structured —
+  - **Naming convention:** page titles are structured —
     `<JIRA-KEY> — <Doc Type>: <short description>` (e.g. `PROJ-123 — ADR: Async job
     queue`). Unlike a Jira issue (whose native issue-type icon already distinguishes it
     in every view), a Confluence page has no equivalent type-icon affordance in its page
     tree or search results — the key and doc type need to be visible in the title itself
     for a human scanning a page list to know what's what.
-  - **Config-type content (rev 13):** the Persona Roster (§5.6) and persona extensions
+  - **Config-type content:** the Persona Roster (§5.6) and persona extensions
     (§3.1) aren't tied to any single ticket, so the `<JIRA-KEY> — <Doc Type>: …` naming
     convention above doesn't apply to them — there's no ticket key to put in the title. They
     get their own top-level **`Config`** folder in the project's space (sibling to the
     doc-type folders above), with plain descriptive titles (`Persona Roster`, and future
     persona-extension pages named after the persona).
-  - **Human edits to an already-gated doc (rev 11):** editing a Confluence page backing
+  - **Human edits to an already-gated doc:** editing a Confluence page backing
     an already-passed `ReviewGate` (e.g. the PRD, after the Kickoff PM+UX gate already
     signed off) **reopens that gate** — TAI flags it and requires re-approval before
     further downstream steps depending on that gate proceed. An `Approved:` sign-off
     means something about the content actually reviewed, not just that a comment once
     existed.
-- **Human-gated steps are conventions, made visible (TAI-454/475).** The CLI and the human share one
+- **Human-gated steps are conventions, made visible.** The CLI and the human share one
   Jira/Bitbucket identity, so TAI cannot prove who performed an action. A human-only step (a UAT, EpicReview or
   DesignReview sign-off, a Kickoff `Approved:` comment, a PR approval, closing an Epic) is therefore a
   convention the **user is accountable for**: a persona performs one only when the human says so in their own
   message. TAI makes the difference visible instead of pretending to enforce it — every comment the CLI posts
   ends with a stamp line, `Posted via the TAI CLI as <Name> (<persona id>).` (or `Posted via the TAI CLI.` when
-  the command named no persona, TAI-477), and a sign-off made through the CLI leaves a stamped `Sign-off:`
+  the command named no persona), and a sign-off made through the CLI leaves a stamped `Sign-off:`
   comment (`storage/stamp.ts`). A comment or sign-off with no stamp was made directly, in the Jira or Bitbucket
   UI. The stamp says only what the CLI knows: it cannot tell an AI session from a human typing the command.
-- **Writing Jira descriptions and comments (TAI-475, TAI-504).** A ticket description and a comment body are
+- **Writing Jira descriptions and comments.** A ticket description and a comment body are
   both sent as Jira wiki markup, not markdown: a blank line makes a paragraph and `* item` a bullet. They are
   read by people, so write them for reading: a short opening paragraph that says what the ticket is for, a
   blank line between paragraphs, and bullets when there are several items — scope, steps, acceptance points,
@@ -642,7 +612,7 @@ These are settled. Change them deliberately and update this file if you do.
   the CLI, never typed. The CLI backs this with a note, not a refusal: after `issue create`, `issue update` or
   `issue comment` writes text with an unbroken paragraph of more than 500 characters, it says so and names the
   command that rewrites it. Every persona doc carries a one-line pointer here.
-- **Writing Confluence page content (TAI-397).** TAI converts a persona's markdown to Confluence
+- **Writing Confluence page content.** TAI converts a persona's markdown to Confluence
   storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
   (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and
   merges labeled sentences, so write **one unwrapped line per paragraph or bullet** (repo `.md` files
@@ -668,12 +638,12 @@ These are settled. Change them deliberately and update this file if you do.
   depends on it; on a project that already has Epics she asks the human first. The output is the Architecture
   Overview page and a first draft of `project-context.md`, delivered as a PR. Existing ticket types only
   (`workflows/kickoff.md`).
-- **Unblocking human-gated work (TAI-389/395).** When a persona completes a subtask and that was the last open
+- **Unblocking human-gated work.** When a persona completes a subtask and that was the last open
   blocker of a **DesignReview, EpicReview or UAT**, it moves that item from Backlog to To Do in the same turn — a
   human is waiting to act on it, and Backlog is invisible to `/tai-ready` — and says in its hand-off what it
   unblocked. Anything else that became unblocked waits for grooming's promotion section, where Perry proposes it.
   This is persona guidance, not a code gate; every persona doc carries a one-line pointer here.
-- **Offering the assignee list (TAI-416/419).** When `issue create` (or `issue suggest <KEY>`, or the
+- **Offering the assignee list.** When `issue create` (or `issue suggest <KEY>`, or the
   transition-gate rejection) prints a "Needs an assignee" list, an **interactive** session offers it to the
   human — every candidate in the printed order with its reason, **plus "Leave unassigned"** — with its own
   question tool (AskUserQuestion in Claude Code, the equivalent in Gemini CLI), then runs `issue assign
@@ -684,38 +654,37 @@ These are settled. Change them deliberately and update this file if you do.
   locally in the same Jira-like folder structure to support offline work. **Full Confluence
   page content is cached** (it's input to many tasks). Each cached item stores a
   **cached-date**, compared against the source's **last-updated date** to avoid unnecessary
-  fetches. Refresh happens: manually on demand, and automatically the first time an item is
-  used in a session. **Before saving a locally-edited Confluence page or Jira item, always
+  fetches. Refresh happens at defined points (§3.6): starting or resuming a unit of work,
+  completing one, and the first time an item is used in a session. **Before saving a locally-edited Confluence page or Jira item, always
   fetch first and warn with a diff** so the user can resolve conflicts (no silent
   overwrite).
 - **Issue types:** Epics do **not** hold subtasks directly. Hierarchy is
-  **Epic → Story/Bug → Subtask.** We will use **distinct Story-level types** (e.g. Spike,
-  Research, Bug, Implementation — names not final) so a human scanning the backlog can tell
-  the kind of work at a glance. New types can be introduced as needed.
+  **Epic → Story/Bug → Subtask.** Story-level tickets have **distinct types** — Kickoff,
+  Story, Bug, Spike (§5.1) — so a human scanning the backlog can tell the kind of work at a
+  glance. New types can be introduced as needed.
 - **Subtasks are typed too, not generic.** Type is what routes a subtask to a persona
-  (e.g. `Dev` → Developer, `CodeReview` → Code Reviewer). Like Story types, this is an
-  open, extensible taxonomy — see §5.2 for the current set, which has evolved past the
-  original candidate names and now includes the DBA/DevOps routing types.
+  (e.g. `Dev` → Developer, `Database` → DBA). Like Story types, this is an open, extensible
+  taxonomy — see §5.2 for the current set.
 - **Decomposition is recursive, not one-shot.** The Analyst (or another persona) can be
   invoked at Project scope to propose Epics, then invoked again scoped to each Epic to
   propose Stories — the same operation applied at progressively narrower scope (§3.7).
 - **Refinement subtasks** let a Story get more detail before implementation subtasks are
-  created under it, via a subtask routed to Analyst/Architect/DBA/etc. rather than
-  Dev/Review/Merge. Their output is documentation/decisions, not code, and does not itself
-  spawn implementation work — that remains a separate human/Orchestrator decision (§3.7).
+  created under it, via a subtask routed to the Analyst, Architect or DBA rather than to
+  `Dev`. Their output is documentation and decisions, not code, and does not itself spawn
+  implementation work — that remains a separate decision, the human's or Perry's in grooming
+  (§3.7).
 - **Persona outputs and processes must generalize to unknown future target projects, not
-  stay TAI-specific (rev 57, TAI-317).** TAI exists to manage *other* projects, not just
+  stay TAI-specific.** TAI exists to manage *other* projects, not just
   itself (§1) — when scoping a new persona output type or capability (a new Confluence doc
   type, a new subtask type, a new checkpoint), the design question is "does this work for
   whatever project TAI is pointed at," not just "does this work for TAI's own single-repo
   TypeScript shape." A concrete first-pass mapping onto TAI's own project is fine, but the
   underlying *process* — which parts of a candidate structure apply, how to reframe or mark
   N/A the parts that don't for a given project's actual shape — must be captured as
-  reusable persona guidance, not left baked into a one-off TAI-specific doc. Raised live
-  during TAI-307's architecture-overview-doc scoping. `personas/analyst.md`'s Project Home
+  reusable persona guidance, not left baked into a one-off TAI-specific doc. `personas/analyst.md`'s Project Home
   Page and `personas/architect.md`'s Architecture Overview already model this explicitly
   and are the reference examples for future output types.
-- **Future-direction/extensibility awareness during elicitation (rev 59, TAI-147/324).**
+- **Future-direction/extensibility awareness during elicitation.**
   During Kickoff discovery, decomposition, or refinement, a persona stays alert for scope
   that touches a genuinely costly-to-change-later decision (e.g. a data model or tenancy
   shape that would be expensive to retrofit) and surfaces it as an explicit question —
@@ -726,10 +695,8 @@ These are settled. Change them deliberately and update this file if you do.
   technical direction question (e.g. "should the datastore scale horizontally") still hands
   to the Architect as usual. No fixed checklist of domain areas to probe — which areas are
   worth raising is inferred from context, since a table can't anticipate every project's
-  actual shape (reconciled directly against this same bullet's own anti-premature-
-  abstraction posture: probing costs little, building unrequested flexibility does).
-  **This awareness isn't limited to whatever's the explicit topic of the current ask
-  (sharpened rev 63, Dana's/TAI-152 persona review):** when a persona is looking at a
+  actual shape. Probing costs little; building unrequested flexibility does.
+  **This awareness isn't limited to whatever's the explicit topic of the current ask:** when a persona is looking at a
   broader artifact (a schema, a proposed decomposition, an architecture) while working
   the immediate piece of it, it scans adjacent parts of that same artifact it already has
   in view for the same class of costly-to-change-later risk, not just the piece directly
@@ -740,15 +707,12 @@ These are settled. Change them deliberately and update this file if you do.
   right-sizing instinct as the rest of this bullet. When a
   persona is unsure whether something clears the "worth raising" bar, it asks the human
   whether they want to explore future-direction thoughts here at all, rather than deciding
-  unilaterally to raise or skip it. Reserved at rev 57/58 for Analyst's and Architect's own
-  persona reviews to work out the concrete mechanics — `personas/analyst.md` landed it
-  first (rev 59, items 2/3/4/5); `personas/architect.md`'s own version (rev 60,
-  TAI-149/328) differs where the two personas' work differs: Aria's trigger fires only
-  during Kickoff-early or Story-level `ArchitectureDesign` (not Feasibility's time-boxed
-  scope, not the WBS batch scan), she asks the human directly rather than routing through
-  PM/Ada, and the answer gets dual-recorded — grounding context in her own ADR, plus a
-  `Requirements` subtask handed to PM (TAI-83 exception) for the PRD's Future
-  Considerations entry, since that document isn't Aria's own output type.
+  unilaterally to raise or skip it. The concrete mechanics are in the persona docs:
+  `personas/analyst.md` (items 2 to 6) and `personas/architect.md`, whose version differs
+  where the work differs — Aria's trigger fires only during Kickoff-early or Story-level
+  `ArchitectureDesign`, she asks the human directly, and the answer is recorded twice: as
+  grounding context in her ADR, and as a `Requirements` subtask handed to the PM for the
+  PRD's Future Considerations entry. `personas/dba.md` does the same for schema forks.
 
 ---
 
@@ -813,134 +777,94 @@ track it — no TAI-specific field, consistent with reusing `Priority` rather th
 a field for the Bug D5 expedited path.
 
 ### 5.3 Statuses & Dependencies
-Issues carry statuses (pending / in-progress / done, plus blocked/ready as derived from
-dependencies) and **"blocks / depends-on"** links that determine what is ready to be picked
-up vs. blocked. The default status lifecycle is
-**`Backlog → To Do → In Progress → Done`** for both story-level tickets and subtasks, with specific
-per-type loop-backs documented in `workflows/story.md`/`bug.md` (Dev ⇄ Test,
-ArchitectureDesign ⇄ DesignReview, UAT rejection routing). "Ready" vs. "blocked" is
-**derived**, not a stored status — computed from `SUBTASK_PRECEDENCE`
-(`isSubtaskReady()`/`resolveApplicablePrecedence()`, `schema/story-schema.ts`). The same graph is
-**enforced when a subtask is started** (TAI-476, `storage/precedence-gate.ts`): `transition()` refuses the
-start while a present subtask upstream is open, a test tier or UAT may start once `Dev` has started, and
-`force=true` is the human's override, recorded as a comment on the ticket. Still
-open: whether a business ever needs to customize this default lifecycle per-project,
-beyond the built-in loop-backs already modeled.
+Issues carry statuses and **"blocks / depends-on"** links that determine what is ready to be
+picked up and what is blocked. The status lifecycle, for story-level tickets and subtasks
+alike, is:
 
-**Naming and `In Review`, corrected against the actual Jira project (rev 15):** the
-status is natively named **`To Do`**, not `Open` — cosmetic, but this doc now uses Jira's
-real name rather than a made-up one. More substantively: Jira's default shared workflow
-carries an **`In Review`** status on *every* issue type by default, not just Kickoff — it
-isn't practical (or worth the ongoing maintenance) to give Kickoff a separate workflow
-just to withhold one status from every other type. Consistent with §3.3's "TAI's own
-plugin layer is the enforcer, not native Jira" philosophy: `In Review` being *available*
-on a Story/Bug/Spike/subtask is harmless — TAI's own logic decides which transitions are
-meaningful for a given type and never drives a non-Kickoff ticket into it. Only Kickoff's
-workflow (`workflows/kickoff.md`) actually uses it.
+```
+Backlog → To Do → In Progress → (In Review) → Done / Canceled
+```
 
-**`Canceled` (rev 16) — a second terminal state, for work abandoned before completion.**
-Gap found while reconciling against the real Jira site: no status for "we decided not to
-do this" existed anywhere (confirmed via the site's full Statuses admin list — nothing to
-reuse, a genuinely new status). Applies to **every issue type — story-level tickets and
-subtasks alike** — not just the Spike outcome that surfaced it (`workflows/spike.md`'s
-"cancelled/deferred" outcome previously had no distinct status to land in; it was marked
-`Done` with the outcome buried in a note, which this fixes). Reachable from `To Do` or
-`In Progress`, terminal like `Done`.
-- **Precedence treatment:** a `Canceled` subtask counts as **satisfied** for
-  `SUBTASK_PRECEDENCE` purposes, same as `Done` — it unblocks dependents rather than
-  leaving them permanently stuck (`isSubtaskReady()`, `schema/story-schema.ts`; the
-  function already takes a caller-supplied "done" set rather than hardcoding a status
-  string, so no code change is needed there — just documenting, here and at the call
-  site, that "done" for precedence purposes means `Done` **or** `Canceled`).
-- **Status category:** create it under Jira's **`Done`** category (not `To Do`/
-  `In Progress`) — Jira only has three status categories, and `Canceled` is terminal
-  work, not pending work, even though it isn't "completed" in the original sense.
-- Like the other statuses (§5.3 above), this is a manual Jira admin step (Issues →
-  Statuses → Add status, then add it to the actual workflow) — no MCP tool creates
-  statuses.
+Per-type loop-backs are documented in `workflows/story.md` and `workflows/bug.md` (a failed
+test tier, a `DesignReview` that asks for changes, UAT rejection routing). Whether a business
+ever needs to customize this lifecycle per project, beyond those loop-backs, is still open.
 
-**`Backlog` (rev 27) — a new PRE-`To Do` status; the default landing status for newly
-created tickets.** Added by the user directly in the live Jira project (manual admin
-step, same as `Canceled`). Distinct from a "blocked" ticket in the existing derived-
-readiness sense (§5.3's `SUBTASK_PRECEDENCE` machinery, unchanged and orthogonal — that's
-about a subtask waiting on a *sibling* subtask within an already-active Story) — `Backlog`
-is a coarser, upstream gate about whether a ticket should even be considered part of the
-active pipeline yet at all. A ticket sits in `Backlog` when it's newly created, has an
-incomplete spec, is blocked by something outside the precedence graph (another Story, an
-external dependency), or a human/process has otherwise judged it "not ready." Native Jira
-behavior, not something TAI enforces: `Backlog` items don't appear on the Kanban board.
+**Ready and blocked are derived, not stored.** They are computed from `SUBTASK_PRECEDENCE`
+(`isSubtaskReady()`/`resolveApplicablePrecedence()`, `schema/story-schema.ts`). The same
+graph is **enforced when a subtask is started** (`storage/precedence-gate.ts`):
+`transition()` refuses the start while a present subtask upstream is open, a test tier or UAT
+may start once `Dev` has started, and `force=true` is the human's override, recorded as a
+comment on the ticket.
 
-- **Lifecycle position:** `Backlog → To Do → In Progress → (In Review) → Done/Canceled`.
-  `To Do` is reached only once a ticket is judged ready. `Backlog → Done`/`Canceled` directly
-  (skipping `To Do`) is also valid, for a ticket that turns out unnecessary before ever
-  becoming ready.
-- **Default landing status:** any newly-created ticket lands in `Backlog`, not `To Do` —
-  Ada's proposed Epic/Story decomposition output, PM-created Story/Bug/Spike from a WBS
-  (§3.1), a refinement subtask's own output.
-- **Status category:** Jira's **`To Do`** category (not a new one) — matches how Jira's
-  own default Kanban/Scrum templates categorize a `Backlog` status; it's still pending
-  work, just not yet actionable.
-- **Readiness gate (`Backlog` → `To Do`) is a SOFT convention for now, not a hard-enforced
-  gate.** Unlike §5.5's assignment gate (rev 19, hard-enforced in `transition()` because
-  "has a human assignee" is a crisp boolean) — "ready" here has no single crisp signal yet
-  (spec-complete, unblocked, and human/process-judged are three different kinds of check).
-  A human (or a persona, once one exists with the authority to judge readiness) moves a
-  ticket `Backlog → To Do` manually; TAI's plugin layer does not currently gate this
-  transition. **Resolved (rev 29, §8 item 28): stays soft indefinitely** — no hard gate
-  planned; revisit only if a concrete "left `Backlog` too early" incident actually occurs.
-  **Refined (rev 57, TAI-292, 2026-09-03): a persona creating a subtask now IS one of
-  those "authority to judge readiness" cases, narrowly** — lands the subtask directly in
-  `To Do` instead of `Backlog` iff its description is fully actionable as written (no
-  further scoping/triage needed first); otherwise still `Backlog`, unchanged. See
-  `workflows/dependencies.md`'s "Initial Status & Priority for a Created Subtask" for the
-  full rule, including the companion priority decision (a created subtask's `Priority`
-  field is now always explicitly written to match its parent's, not left to `tai-ready`'s
-  display-only fallback).
-- Applies to **every issue type — story-level tickets and subtasks alike** — same scope
-  as `Canceled` (rev 16), for the same reason: a subtask can just as easily be created
-  ahead of its own readiness (e.g. a `Database` subtask flagged during Architecture work
-  but not yet detailed enough to start, `workflows/dependencies.md`'s "Dynamic Subtask
-  Insertion" section — corrected rev 36, previously mislabeled "§7's" note) as a
-  story-level ticket can.
+**The statuses are created by hand in Jira.** `Backlog` and `Canceled` are not Jira defaults:
+an admin adds each one (Issues → Statuses → Add status) and adds it to the workflow. No API
+or MCP tool creates statuses.
 
-**Epic status (rev 28) — `In Progress` is derived from children; `Done` is never
-auto-derived, always a deliberate human decision.**
+**`To Do` and `In Review`.** The names are Jira's own. Jira's default shared workflow carries
+`In Review` on every issue type, and it is not worth a separate workflow to withhold it:
+TAI's own logic decides which transitions are meaningful for a type (§3.3) and never drives
+a non-Kickoff ticket into it. Only the Kickoff workflow uses `In Review`
+(`workflows/kickoff.md`).
 
-- **`In Progress` is a simple derived signal (rewritten rev 71, TAI-374/387):** an Epic reads
-  `In Progress` once real BUILD work has started under it — a non-Kickoff child (Story, Bug,
-  Spike) reaching `In Progress`/`In Review`, written by the shared cascade gate. A child merely
-  in `To Do` does not make it `In Progress`; instead a non-Kickoff Story reaching `To Do`
-  schedules a Backlog Epic to `To Do` (the To Do cascade), and a **Kickoff Story never moves
-  its Epic in either direction** — an epic's own Kickoff is refinement, so an Epic in `Backlog`
-  may have its Kickoff running (`Backlog` = proposed and being fleshed out, `To Do` = approved
-  to build). Coarse by design — this isn't a percentage-complete rollup, just a
-  proposed/approved/building signal.
-- **Waiting work is marked, not given a status (TAI-390):** `To Do` means scheduled to start now.
-  Work waiting on another ticket carries a `depends-on` link, a later phase a `phase-N` label, and
-  work waiting on something external with no ticket carries Jira's **Flag** (`Issue.flagged`).
-  A flagged `To Do` ticket is not Ready Work (`/tai-ready` lists it under "On hold (flagged)");
-  unflagging returns it.
-- **`Done` is NOT derived from "all current children are `Done`/`Canceled`."** That's a
-  false-completion trap: Epics are open-ended thematic groupings (§5.1: "a feature set"),
-  and more Stories can always be decomposed under one later — brief §3.7's own recursive-
-  decomposition model assumes exactly this. TAI-9 ("Source control & multi-repo") is the
-  concrete proof already sitting in this project's own history: its GitHub `GitHost`
-  backend was explicitly deferred (§8.19's ADR decision), so "every currently-decomposed
-  child finished" did not mean "nothing more is coming" — the Epic correctly needed to
-  stay open rather than auto-closing the moment its first (Bitbucket-only) slice shipped.
-- **Epic → `Done` requires an explicit human judgment call:** someone decides "no more
-  Stories are realistically planned under this Epic" and transitions it manually. A
-  persona (PM, most naturally, given its role proposing/creating story-level tickets,
-  §3.1) MAY propose that an Epic looks complete, but never self-closes it — the same
-  "human sign-off is the default" posture as everywhere else (§3.4). Not a joint
-  two-persona gate like Kickoff's PM+UX sign-off — that pattern exists because a PRD+UX-
-  flow artifact has two genuinely distinct expert concerns; a single "is more work coming"
-  judgment doesn't need two reviewers.
-- **Explicitly deferred, not v1:** any automated "surface candidates for review" nudge
-  (e.g., a saved query for "all children `Done`/`Canceled`, no activity in N days") —
-  plausible future quality-of-life tooling, not an enforcement mechanism, and not
-  scheduled until a real need for it appears (same "don't build ahead of an observed
-  need" reasoning used throughout this brief).
+**`Canceled` — a second terminal state, for work abandoned before completion.** It applies to
+every issue type, is reachable from `To Do` or `In Progress`, and is terminal like `Done`.
+
+- **Precedence:** a `Canceled` subtask counts as **satisfied**, the same as `Done` — it
+  unblocks its dependents rather than leaving them stuck. "Done" for precedence purposes
+  means `Done` or `Canceled`.
+- **Status category:** Jira's **`Done`** category. Jira has three categories, and `Canceled`
+  is terminal work, not pending work.
+
+**`Backlog` — the status before `To Do`, and where every new ticket lands.** It is a coarser,
+earlier question than derived readiness (which is about a subtask waiting on a sibling inside
+an active Story): whether the ticket is part of the active pipeline yet at all. A ticket sits
+in `Backlog` when it is newly created, has an incomplete spec, is blocked by something outside
+the precedence graph (another Story, an external dependency), or has otherwise been judged
+not ready. `Backlog` items do not appear on Jira's Kanban board.
+
+- **Lifecycle position:** `To Do` is reached only once a ticket is judged ready. Going from
+  `Backlog` straight to `Done` or `Canceled` is valid, for a ticket that turns out to be
+  unnecessary.
+- **Default landing status:** any newly created ticket lands in `Backlog` — Epic shells,
+  Stories/Bugs/Spikes the PM creates, a refinement subtask's output. One exception: a
+  persona creating a subtask lands it in `To Do` if its description is fully actionable as
+  written, and in `Backlog` otherwise. A created subtask's `Priority` is always written to
+  match its parent's. See `workflows/dependencies.md`, "Initial Status & Priority for a
+  Created Subtask".
+- **Status category:** Jira's **`To Do`** category — pending work that is not yet actionable.
+- **The move from `Backlog` to `To Do` is a soft convention, not an enforced gate** (§8 item
+  28). "Ready" has no single crisp signal (spec-complete, unblocked and judged-ready are
+  three different checks), unlike §5.5's assignment gate, which is enforced because "has a
+  human assignee" is a plain yes or no. A human moves the ticket, or Perry proposes the move
+  in grooming and applies it after the human confirms (§3.8).
+- It applies to **every issue type**: a subtask can be created ahead of its own readiness
+  just as a story-level ticket can (`workflows/dependencies.md`, "Dynamic Subtask Insertion").
+
+**Epic status — `In Progress` is derived from children; `Done` is always a deliberate human
+decision.**
+
+- **`In Progress` is a simple derived signal.** An Epic reads `In Progress` once real build
+  work has started under it: a non-Kickoff child (Story, Bug, Spike) reaching `In Progress`
+  or `In Review`, written by the shared cascade gate. A child merely in `To Do` does not make
+  it `In Progress`; instead, a non-Kickoff Story reaching `To Do` moves a `Backlog` Epic to
+  `To Do` (the To Do cascade). **A Kickoff Story never moves its Epic in either direction** —
+  an Epic's own Kickoff is refinement, so an Epic in `Backlog` may have its Kickoff running
+  (`Backlog` = proposed and being fleshed out, `To Do` = approved to build). It is a
+  proposed/approved/building signal, not a percentage-complete rollup.
+- **Waiting work is marked, not given a status.** `To Do` means scheduled to start now. Work
+  waiting on another ticket carries a `depends-on` link, a later phase a `phase-N` label, and
+  work waiting on something external with no ticket carries Jira's **Flag**
+  (`Issue.flagged`). A flagged `To Do` ticket is not Ready Work (`/tai-ready` lists it under
+  "On hold (flagged)"); unflagging returns it.
+- **`Done` is not derived from "all current children are `Done` or `Canceled`".** Epics are
+  open-ended thematic groupings (§5.1), and more Stories can always be decomposed under one
+  later (§3.7), so "every child so far is finished" does not mean "nothing more is coming".
+- **Epic → `Done` is an explicit human judgment:** someone decides no more Stories are
+  realistically planned under it and transitions it. A persona (most naturally the PM) may
+  propose that an Epic looks complete but never closes it herself (§3.4). It is a single
+  judgment, not a two-persona gate like Kickoff's.
+- **Not built:** any automated nudge that surfaces Epics as candidates for closing (for
+  example, all children finished and no activity in N days).
 
 ### 5.4 Checkpoint Chain (canonical example)
 
@@ -1203,21 +1127,21 @@ from source; the workspace holds state that may not exist anywhere else yet.
     <project-key>/
       config/                    # project + workflow + persona config
       personas/                  # cached persona extensions (from Confluence);
-                                  #   roster.json (rev 12) — the Persona Roster (§5.6),
+                                  #   roster.json — the Persona Roster (§5.6),
                                   #   cached from its Confluence page (Jira backend) or
                                   #   read directly (filesystem backend)
       issues/
         <ISSUE-KEY>.json         # raw cached issue (epic/story/bug/subtask), + cachedAt;
                                   #   comments are part of this payload, not separate files
-        <ISSUE-KEY>/attachments/ # cached attachments/images, fetched lazily on first use (rev 11)
+        <ISSUE-KEY>/attachments/ # cached attachments/images, fetched lazily on first use
       confluence/
         <PAGE-ID>.md             # raw cached page content, + cachedAt; comments likewise
                                   #   part of this payload (§3.9 for the Q:/Approved:/
                                   #   Rejected: marker convention that reads them)
-        <PAGE-ID>/attachments/   # cached images/diagrams, fetched lazily on first use (rev 11)
+        <PAGE-ID>/attachments/   # cached images/diagrams, fetched lazily on first use
       links/                     # cached Jira↔Confluence link index
       last-sync.json             # checkpoint timestamp for the bulk "what changed since
-                                  #   last sync" JQL/CQL query (rev 11, see below)
+                                  #   last sync" JQL/CQL query (see below)
       discovered-constraints.json  # DEFERRED (§3.3) — not built in v1
   work/
     <project-key>/
@@ -1232,10 +1156,10 @@ from source; the workspace holds state that may not exist anywhere else yet.
 ```
 
 **Refresh & briefing (§3.6):** cached items store `cachedAt`, compared against the source's
-`lastUpdated`. Refresh happens at defined points — starting/resuming a unit of work, and
-first use of an item in a session — not live. Each refresh regenerates that subtask's
-`briefing.md` from the freshly-checked cache. Before saving any local edit back to a Jira
-item or Confluence page, always fetch first and warn on conflict (per §4) — never
+`lastUpdated`. Refresh happens at defined points — starting or resuming a unit of work,
+completing one, and first use of an item in a session — not live. Each refresh regenerates
+that subtask's `briefing.md` from the freshly-checked cache. Before saving any local edit back
+to a Jira item or Confluence page, always fetch first and warn on conflict (§4) — never
 silently overwrite.
 
 **Work journal:** `journal.md` is append-only, one entry per step, each with a timestamp
@@ -1243,65 +1167,48 @@ and enough detail to resume mid-task after an interruption. It is the record of 
 happened*, distinct from `briefing.md` (context going in) and `status.json` (current
 state).
 
-**Unit-of-work keying:** every unit of work below the initial brainstorming/setup phase is
-tied to a Jira **subtask**, and the subtask key is the folder name for its cache/workspace
-files (§4). **Resolved (rev 36, §8 item 11): there is no pre-subtask phase to give a home
-to.** The premise is declined — a persona creates the subtask as its first action, before
-doing any exploration/brainstorming, so journaling/caching always has a key to hang off of.
-This composes with **who may create a subtask** (§3.1's per-persona `create` permission,
-per issue type): any persona authorized to create a given subtask type may do so directly
-and proactively — PM pre-creating a Story's whole known `Dev`/`CodeReview`/`Deploy` chain
-up front, or a `SpikeTask` assigned at creation — the same "present-when-added" pattern
-already used for optional subtasks (`DesignReview`, `UAT`, `PostDeploy`, …) covers a
-subtask recognized as needed only mid-flight. **Story-level ticket creation is different
-and unchanged:** it keeps the existing **propose → PM confirms/creates** pattern (DevOps
-proposing a post-deploy Bug, Spike outcomes, Ada's Epic/Story decomposition) — a persona
-discovering the need for a whole new Story doesn't create it directly, only proposes it.
-Precedence-graph wiring for a subtask inserted mid-flight is already solved, not something
-a human/persona manages by hand — see `workflows/dependencies.md`'s "Dynamic Subtask
-Insertion" (`getNewPrecedenceEdgesForInsertedSubtask()`, `schema/story-schema.ts`).
+**Unit-of-work keying:** every unit of work is tied to a Jira **subtask**, and the subtask
+key is the folder name for its cache and workspace files (§4). There is no pre-subtask phase
+(§8 item 11): a persona creates the subtask as its first action, before any exploration, so
+journaling and caching always have a key to hang off.
 
-**Root status file:** `status.json` at the repo root is a **rollup/index**, not an
-authoritative source — it is itself a cache, of the same kind as everything else in this
-layout. It is built by scanning `.tai/work/**/status.json` and carries its own
-`generatedAt`.
+- **Who may create a subtask:** any persona whose `create` permission covers that subtask
+  type (§3.1) may create it directly and proactively — the PM attaching a Story's known
+  subtask set up front, or a subtask recognized as needed only mid-flight
+  (`workflows/dependencies.md`, eager subtask creation).
+- **Story-level tickets are different:** a persona that discovers the need for a whole new
+  Story, Bug or Spike **proposes** it and the PM confirms and creates it (DevOps proposing a
+  post-deploy Bug, a Spike's outcome, Ada's decomposition).
+- **Precedence for a subtask inserted mid-flight** is computed, not managed by hand — see
+  `workflows/dependencies.md`'s "Dynamic Subtask Insertion"
+  (`getNewPrecedenceEdgesForInsertedSubtask()`, `schema/story-schema.ts`).
 
-**Staleness rule resolved by implementation (rev 35, §8 item 10, TAI-56 ADR decision 6):
-there isn't one — always a full rescan on demand, never a TTL or trust-until-mismatch
-check.** `rollupStatus()` (`src/core/workspace/status.ts`) doesn't compare `generatedAt`
-against anything; it rescans `.tai/work/**/status.json` and overwrites the root file every
-time it's called. Unlike the Jira/Confluence cache (where staleness checks exist to avoid
-unnecessary *network* calls), this rollup only reads local files TAI's own process just
-wrote — no network cost to avoid, so nothing to gate a skip on. **Still open:** *when*
-`rollupStatus()` is invoked automatically (session start? every command? explicit refresh?)
-— unresolved because no CLI/command layer exists yet to wire a trigger into; nothing calls
-it outside its own tests today.
+**Root status file:** `status.json` is a **rollup/index**, not an authoritative source — a
+cache like everything else in this layout. `rollupStatus()` (`src/core/workspace/status.ts`)
+builds it by rescanning `.tai/work/**/status.json` in full every time it is called; there is
+no staleness check, because it only reads local files and has no network cost to avoid (§8
+item 10). **Nothing calls it today.** `/tai-ready` shows work in flight from a live search of
+the tracker instead, so it also sees work paused on another machine; a subtask's local
+`status.json`, when present, only annotates an entry that the live search already found.
 
-**Bulk change detection & explicit offline sync (rev 11):** the per-item `cachedAt`-vs-
-`lastUpdated` check above answers "is *this* item stale" but not "what changed while I
-was away." For that, TAI runs a bulk **JQL** (`updated >= "<last-sync>"`) / **CQL**
-equivalent query at defined refresh points, using `last-sync.json`'s checkpoint —
-reusing native search rather than polling every cached item individually. Day-to-day
-refresh stays **lazy** (on-demand, or first use in a session, per §4's existing rule);
-on top of that, an explicit full-sync command lets someone about to go offline (flight,
-no wifi) eagerly prime the whole project's cache once, rather than discovering gaps
-mid-flight.
+**Bulk change detection:** the per-item `cachedAt`-versus-`lastUpdated` check answers "is
+*this* item stale" but not "what changed while I was away". For that there is a bulk **JQL**
+query (`updated >= "<last-sync>"`, with a CQL equivalent planned for pages) driven by
+`last-sync.json`'s checkpoint — native search rather than polling every cached item
+(`bulkSync()`, `src/core/cache/sync.ts`). Day-to-day refresh stays **lazy**. **No command
+runs the bulk sync yet**; an explicit full-sync command, for someone about to go offline, is
+the intended use.
 
-**Attachments (rev 11):** images and other attachments (wireframes, diagrams) are cached
-the same lazy way as everything else — fetched and stored under the owning issue's or
-page's `attachments/` folder on first use, not proactively for the whole project. This
-matters specifically for UX/diagram-heavy docs, where the image often *is* the content.
+**Attachments:** images and other attachments (wireframes, diagrams) are cached the same lazy
+way — fetched and stored under the owning issue's or page's `attachments/` folder on first
+use, not proactively for the whole project. This matters for UX and diagram-heavy docs,
+where the image often *is* the content.
 
-**No cache locking, no eviction (rev 11):** the cache is disposable and always
-rebuildable from source (this section's opening line) — if two sessions write the same
-cached file concurrently, whichever write lands last simply reflects the most recently
-fetched state; nothing authoritative lives only in the cache, so this isn't a corruption
-risk worth solving for. (Two humans working the *same* subtask concurrently is a
-claiming/assignment question, §5.5, not a cache-locking one.) Nothing is pruned from
-`.tai/cache` for v1 — not worth building ahead of an observed need.
-
-*(Exact structure is provisional and will be finalized when the filesystem storage adapter
-is designed.)*
+**No cache locking, no eviction:** the cache is disposable and always rebuildable from
+source. If two sessions write the same cached file concurrently, whichever write lands last
+reflects the most recently fetched state; nothing authoritative lives only in the cache.
+(Two humans working the *same* subtask concurrently is a claiming question, §5.5, not a
+cache-locking one.) Nothing is pruned from `.tai/cache`.
 
 ---
 
