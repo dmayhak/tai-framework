@@ -383,7 +383,14 @@ function initSkillBody(taiHome: string): string {
         "walk the human through those Jira UI steps, then have them re-run `init run`. The " +
         "individual `init jira` / `init confluence` / `init bitbucket` / `init env` / " +
         "`init claude-md` / `init gemini-md` actions still exist, but you don't need them for the normal " +
-        "flow (`init run` writes both pointer files)."
+        "flow (`init run` writes both pointer files).\n\n" +
+        "**The project's own rules file (optional, not part of setup).** `init status` ends with a line about " +
+        "`project-context.md`: a short file in the project's repo (stack, commands, conventions, never-dos) that TAI " +
+        "prints in front of every persona. When it is missing, tell the human it exists and offer " +
+        "`init project-context`, which writes a starter template and never overwrites a file. The template is not " +
+        "printed to personas until it is filled in and its first line is deleted; the file is committed through a PR " +
+        "like any other change. A project that already has code gets a first draft from the mapping Spike instead " +
+        "(`/tai-kickoff`)."
     );
 }
 

@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 86 (2026-10-09)
+
+**TAI-516: `init` tells a project about `project-context.md` and can start one.** `init status` ends with a line saying whether the file is present, missing, or still an unfilled template. A new action, `init project-context`, writes a starter template (stack, commands, conventions, never) and never overwrites a file. The template begins with a marker line, and a file that still carries it is not printed to personas. It covers projects that were onboarded before TAI-470 and new projects with no code; a project with code gets its first draft from the mapping Spike (TAI-471). The file stays optional and is not an init step. Brief §4.
+
 ## rev 85 (2026-10-09)
 
 **TAI-471: a brownfield project is mapped before discovery.** `/tai-kickoff`'s briefing gains an "Existing code" section, computed from the repo's tracked files and the project's Spikes. With code and no map, Perry creates a Spike, "Map the existing system", with a `Feasibility` subtask owned by the Architect, and the Kickoff depends on it; on a project that already has Epics she asks the human first. The Architect's output is the Architecture Overview page and a first draft of `project-context.md` (TAI-470), delivered as a PR. Existing ticket types, no schema change (shape agreed 2026-10-08). Adapted from GSD's `map-codebase` and BMAD's `document-project`. Brief §4, `workflows/kickoff.md`, `personas/pm.md` item 1, `personas/architect.md` item 7.

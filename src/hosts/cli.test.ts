@@ -627,6 +627,13 @@ describe("renderInitStepResult / renderInitStatus (TAI-349)", () => {
         assert.doesNotMatch(failed, /Perry/);
     });
 
+    it("renderInitStatus reports the project's rules file without making it part of setup (TAI-516)", () => {
+        const state: InitState = { version: 1, steps: {} };
+        assert.doesNotMatch(renderInitStatus(state), /project-context/);
+        const text = renderInitStatus(state, { state: "missing", path: "/repo/project-context.md" });
+        assert.match(text, /Not part of setup:\n\n- \[ \] project-context\.md — none yet\. Optional: `.* init project-context`/);
+    });
+
     it("renderInitStatus appends the next-step hint only once every step is done", () => {
         const incomplete: InitState = {
             version: 1,

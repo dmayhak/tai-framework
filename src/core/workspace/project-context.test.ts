@@ -8,10 +8,15 @@ import { renderPersonaTurn } from "../persona/turn.js";
 import {
     PROJECT_CONTEXT_BUDGET,
     PROJECT_CONTEXT_FILE,
+    PROJECT_CONTEXT_TEMPLATE_MARKER,
     projectContextBudgetFromEnv,
     projectContextPath,
+    projectContextStatus,
+    projectContextTemplate,
     readProjectContext,
     renderProjectContext,
+    renderProjectContextStatus,
+    writeProjectContextTemplate,
 } from "./project-context.js";
 
 async function withProject(fn: (root: string) => Promise<void>): Promise<void> {
@@ -82,5 +87,57 @@ describe("project context (TAI-470)", () => {
         assert.ok(withContext.indexOf("---") < withContext.indexOf("RULES"));
         assert.ok(withContext.indexOf("RULES") < withContext.indexOf("BODY"));
         assert.equal(renderPersonaTurn(persona, "BODY", undefined), renderPersonaTurn(persona, "BODY"));
+    });
+});
+
+describe("the starter template and its status (TAI-516)", () => {
+    it("a project is missing, template or present", async () => {
+        await withProject(async (root) => {
+            const file = path.join(root, PROJECT_CONTEXT_FILE);
+            assert.deepEqual(await projectContextStatus(root, {}), { state: "missing", path: file });
+
+            assert.deepEqual(await writeProjectContextTemplate(root, {}), { written: true, path: file });
+            assert.equal((await projectContextStatus(root, {})).state, "template");
+
+            await writeFile(file, "# Rules\n\nRun `make test`.\n");
+            assert.equal((await projectContextStatus(root, {})).state, "present");
+        });
+    });
+
+    it("an unfilled template is not printed to personas", async () => {
+        await withProject(async (root) => {
+            await writeProjectContextTemplate(root, {});
+            assert.equal(await readProjectContext(root, {}), null);
+        });
+    });
+
+    it("the template has the four sections and starts with the marker line", () => {
+        const template = projectContextTemplate();
+        assert.ok(template.startsWith(`${PROJECT_CONTEXT_TEMPLATE_MARKER}\n`));
+        for (const heading of ["## Stack", "## Commands", "## Conventions", "## Never"]) assert.ok(template.includes(heading), heading);
+    });
+
+    it("never overwrites a file that is already there", async () => {
+        await withProject(async (root) => {
+            const file = path.join(root, PROJECT_CONTEXT_FILE);
+            await writeFile(file, "Ours.");
+            assert.deepEqual(await writeProjectContextTemplate(root, {}), { written: false, path: file });
+            assert.equal((await readProjectContext(root, {}))?.content, "Ours.");
+        });
+    });
+
+    it("writes to the path TAI_PROJECT_CONTEXT_FILE names", async () => {
+        await withProject(async (root) => {
+            await mkdir(path.join(root, "docs"));
+            const result = await writeProjectContextTemplate(root, { TAI_PROJECT_CONTEXT_FILE: "docs/rules.md" });
+            assert.deepEqual(result, { written: true, path: path.join(root, "docs/rules.md") });
+        });
+    });
+
+    it("the status line says what to do next in each state", () => {
+        const at = "/repo/project-context.md";
+        assert.match(renderProjectContextStatus({ state: "present", path: at }, "tai init"), /^- \[x\] project-context\.md/);
+        assert.match(renderProjectContextStatus({ state: "template", path: at }, "tai init"), /still the unfilled template .* delete its first line/);
+        assert.match(renderProjectContextStatus({ state: "missing", path: at }, "tai init"), /none yet\. Optional: `tai init project-context`/);
     });
 });
