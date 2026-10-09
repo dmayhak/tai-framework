@@ -127,11 +127,11 @@ safe to ship alongside the rest of a Story or needs to land ahead of it.
    `getNewPrecedenceEdgesForInsertedSubtask()` (see `schema/story-schema.ts` and
    `workflows/dependencies.md`). Concretely, via `{{TAI_CLI}} issue create
    <PROJECT-KEY> database <SUMMARY> parent=<STORY-KEY> persona=dba`.
-4. **WBS assembly (end of Kickoff):** Given Ada's proposed Story list at the end of
-   Kickoff, independently scans it for which proposed Stories will need `Database` — a
-   batch pass across the whole list, informal (no dedicated artifact), feeding the subtask
-   WBS PM assembles before creating the Story tickets (see `workflows/kickoff.md`). This is
-   the same judgment as #1 above, made proactively/upfront instead of reactively.
+4. **Correcting Perry's subtask assessment (TAI-457):** at the end of Kickoff Perry assesses, on her own,
+   which proposed Stories need `Database`, using the judgment in #1 above (see `workflows/kickoff.md`). Dana
+   is not run for that pass. When she picks up a Story or one of its subtasks and sees a `Database` subtask
+   missing, or present and not needed, she corrects it there under the create-when-you-know rule
+   (`workflows/dependencies.md`).
 
 ## Inputs
 

@@ -12,33 +12,32 @@ implementation work is scheduled.
 ## Who creates it
 **PM** creates the initial Jira shell for a new initiative — an Epic plus this
 Kickoff Story (reached through `/tai-kickoff [initiative]`, TAI-348/450, which needs no ticket and
-works on a fresh project or one that already has Epics) — then, per the general TAI-83 "Eager Subtask Creation" exception
-(`workflows/dependencies.md`), creates whichever of the subtasks below she's already
-judged appropriate to start (rev 66, found live 2026-09-24 — supersedes the prior
-"PM creates the container, not the subtasks" framing, which contradicted TAI-83's own
-rule the same way TAI-317/rev-57 already fixed once for `Investigate`/
-`ArchitectureDesign`). `Research` is typically startable immediately and `UxDesign` follows `EpicReview` (TAI-354), so Perry usually creates both directly once she judges them needed — creation
-authority and execution ownership stay separate axes, so `Research` still routes to
-Analyst and `UxDesign` to UX Designer regardless of who created the ticket. `Requirements`
-is Perry's own type but precedence-blocked behind `Research` and `EpicReview`, so it's
-created naturally when she starts PRD drafting, not at this initial moment.
-`ArchitectureDesign` stays a later, situational call (see `personas/pm.md` item 7) —
-judging whether it's warranted this early, before any real discovery has happened, would
-be speculation, not the real judgment TAI-83 requires. **`EpicReview` is different from
-all of these: Perry doesn't create it at this initial moment.** Ada creates it herself the
-moment her Research proposal exists (`personas/analyst.md` item 3, TAI-354) — it isn't a
-judgment call Perry is positioned to make this early, and it only ever makes sense once
-there's a proposal to review. (Perry's grant does allow her to create one later, once she
-actually knows an `EpicReview` is needed — TAI-389/394, human, 2026-10-05; this sentence is
-about the Kickoff moment, not a prohibition.) Each other subtask type's owning persona can still create its own if Perry hasn't
-already, same dedup-search-first mechanics as any other TAI-83 case (see `personas/pm.md`,
-`personas/analyst.md`, `personas/ux-designer.md`).
+works on a fresh project or one that already has Epics).
+
+**She then front-loads the known subtask chain, in `Backlog`, and links it (TAI-457, human decision
+2026-10-08).** Subtasks and their dependencies are created as soon as she is pretty sure they are needed, not
+when they are picked up, so nothing can show as ready or get done ahead of its turn — the same rule
+`workflows/dependencies.md` applies to a Story's subtasks.
+
+- `Research` — near-always.
+- `EpicReview` — always; it is mandatory, so there is nothing to judge. Ada finds it there and no longer
+  creates it herself.
+- `Requirements` and `UxDesign` — when Perry is pretty sure they are needed.
+- A type she is pretty sure is not needed gets a first-line `Skipped:` comment on the Kickoff instead.
+- `ArchitectureDesign` stays a later, situational call (see `personas/pm.md` item 7) — judging it before any
+  discovery has happened would be speculation.
+
+Right after creating them she runs `link-precedence <KICKOFF-KEY>`, so the blocking links exist from the
+start. Creation authority and execution ownership stay separate: `Research` and `EpicReview` still route to
+Analyst and `UxDesign` to UX Designer whoever created the ticket. Each type's owning persona can still create
+its own if it turns out to be missing, same dedup-search-first mechanics as any other case (see
+`personas/pm.md`, `personas/analyst.md`, `personas/ux-designer.md`).
 
 ## Who owns it (story-level)
 **PM is the default owner/driver of the Kickoff Story itself**, distinct from each
-subtask's own persona owner — consistent with PM's Orchestrator role (brief §3.8):
-Perry created the shell, sequences which subtasks start, and drives the story to the
-PM+UX review gate. **The Kickoff Story's `persona` field defaults to PM** (brief §5.6,
+subtask's own persona owner — consistent with PM owning the story-level tickets (brief §3.8):
+Perry created the shell and its known subtasks, and drives the story to the
+PM+UX review gate. She does not dispatch the subtasks: a human starts each one. **The Kickoff Story's `persona` field defaults to PM** (brief §5.6,
 the two-axis owner model) while `Research`/`Requirements`/`UxDesign`/`ArchitectureDesign`
 each route to their own persona at the subtask level. The native Jira **Assignee** is a
 real human holding the PM Project Role, picked via the assignment-helper (brief §5.6) —
@@ -66,9 +65,9 @@ Architect finalizes any design (see `personas/ux-designer.md`).
 **Satisfying an edge above doesn't trigger anything on its own** — see
 `workflows/dependencies.md`'s Layer 2 note (TAI-355): the next `/tai-work`/`/tai-ready`
 invocation is what actually re-engages a persona to continue, same as everywhere else in
-TAI. For a Kickoff specifically, `/tai-ready` now says what to run next: once a subtask's
-prerequisites are all Done it lists the subtask types that are unblocked but not created yet (TAI-373). A type
-left out on purpose is silenced with a first-line `Skipped: ux-design — backend-only epic` comment on the Kickoff
+TAI. For a Kickoff specifically, `/tai-ready` also has a fallback for a subtask that was not front-loaded:
+once a type's prerequisites are all Done it lists the types that are unblocked but not created yet (TAI-373).
+A type left out on purpose is silenced with a first-line `Skipped: ux-design — backend-only epic` comment on the Kickoff
 (TAI-443, brief §3.9).
 
 ## EpicReview gate (mandatory, human-gated, TAI-354)
@@ -102,8 +101,8 @@ and UX-flow *artifacts* once they exist; `EpicReview` is upstream of both — it
 epic/Story *shape* itself, before PRD/UX-flow work is built against it.
 
 **Reused at the Epic level, not just this initial project-level Kickoff (TAI-354):** when
-Perry later decomposes a specific Epic into Stories (`personas/pm.md` item 5), that pass
-now creates its own Kickoff-type Story under that Epic rather than deciding the breakdown
+a specific Epic is to be broken into Stories (`personas/pm.md` item 5), Perry
+creates its own Kickoff-type Story under that Epic rather than deciding the breakdown
 solo — the same `Research` → `EpicReview` sequence applies there too, scoped to one Epic
 instead of the whole project.
 
@@ -119,7 +118,7 @@ proposed and being fleshed out, `To Do` = fleshed out and approved to build, `In
 building. A Kickoff Story starting work or being scheduled **never moves its Epic**; every
 other child still does (`cascade-gate.ts`, `upwardCascadeTarget`). **None of this is gated by
 the review gate below:** that gate governs THIS Kickoff Story's own `Done` transition and the
-Story/Spike tickets spawned from it through WBS assembly; Epic shells and per-Epic Kickoff
+Story/Spike tickets spawned from it through the subtask assessment; Epic shells and per-Epic Kickoff
 Stories sit outside it, and each per-Epic Kickoff has its own gate when it needs one.
 
 ## Review Gate
@@ -175,29 +174,33 @@ blocks *further* gate-dependent steps, not work already spawned.
 - One or more Story/Spike tickets, created after the review gate passes, each with its
   assessed initial subtask set already attached
 
-## WBS assembly (after the review gate, before ticket creation)
+## Subtask assessment — the WBS (after the review gate, before ticket creation)
 
 Once the PM + UX Designer review gate passes, and before PM creates the actual Story/Spike
 tickets, there's one more step: figuring out what subtasks each proposed Story will
 actually need.
 
-- **Independent scan, not a joint pass:** Architect, DBA, DevOps, and UX Designer each
-  review Ada's whole proposed Story list on their own, checking only for their own subtask
-  type — does this Story need `ArchitectureDesign`? `Database`? `Infra`? Story-level
-  `UxDesign`? Each persona already owns this judgment call reactively elsewhere (see their
-  respective persona files); this is the same judgment made proactively and upfront.
-- **Informal:** no dedicated subtask or ticket-level artifact for the scan itself.
+- **Perry's own assessment (TAI-457).** For each proposed Story she judges whether it needs
+  `ArchitectureDesign`, `Database`, `Infra` or a Story-level `UxDesign`, using the bar each owning persona
+  publishes in its own doc. It is one pass by one persona — not four independent scans by Architect, DBA,
+  DevOps and UX Designer, which is how this step used to be described and never actually ran.
+- **Each owner corrects it on pick-up.** When Architect, DBA, DevOps or UX Designer picks up a Story (or one
+  of its subtasks) and sees that a subtask of their own type is missing, or present and not needed, they fix
+  it there, under the existing create-when-you-know rule (`workflows/dependencies.md`).
+- **Informal:** no dedicated subtask or ticket-level artifact for the assessment itself.
 - **Batch, not per-Story:** this happens once, across the whole proposed list, because
   individual Story tickets don't exist yet — they're the *output* of this step.
 - **Attaches to this Kickoff Story** — same ticket as Ada's work-breakdown doc, either as
   an extension of that page or a sibling page (exact granularity is a later, separate
   question).
-- **Clarifying questions** during the scan use the framework-wide comment convention: a
+- **Clarifying questions** use the framework-wide comment convention: a
   `Q:`-prefixed comment, native Jira reply-threading to keep the discussion together, and
   a closing resolution comment once settled (see design-notes doc for the full mechanism —
   this isn't a dedicated Q&A sibling doc, just comments).
 - PM then creates each Story/Spike ticket with its assessed initial subtask set already
   attached (see `personas/pm.md`).
+- Independent passes by the owning personas, run as subagents, are a possible later addition (alongside
+  TAI-469); they are not part of this step today.
 
 ## Naming Convention
 

@@ -1104,7 +1104,7 @@ AI roles that Claude/Gemini assume to do work. Each persona:
 | Role (`id`) | Display name |
 |---|---|
 | Analyst (`analyst`) | **Ada** |
-| PM / Orchestrator (`pm`) | **Perry** |
+| PM (`pm`) | **Perry** |
 | UX Designer (`ux-designer`) | **Uma** |
 | Architect (`architect`) | **Aria** |
 | Developer (`developer`) | **Dario** |
@@ -1348,12 +1348,15 @@ mechanism, not a new one.
 For large projects, a single decomposition pass is too coarse. Personas can be invoked
 **recursively at progressively narrower scope**: the Analyst runs once against the overall
 project to propose a breakdown into Epics ("a project of projects"); the **second pass —
-scoped to each individual Epic, producing that Epic's Stories/Bugs — is PM's, not
-Analyst's** (rev 43). PM is invoked directly on the Epic (`workOn: Epic`) and both
-decomposes and creates the resulting Stories/Bugs/Subtasks in that same turn, rather than
-waiting on a separate Analyst proposal pass at this level. (Ada remains available to PM
-as a research input if a specific question needs investigating, same as any other persona
-interaction — she just isn't the default owner of this pass.) The framework does not fix
+scoped to each individual Epic, producing that Epic's Stories/Bugs — has the same shape**
+(rev 70, TAI-354; confirmed TAI-457). The Epic gets its own Kickoff Story; Ada proposes the
+breakdown in its `Research`; the human probes it and signs it off in `EpicReview`; Perry then
+creates the tickets. Perry does not decompose an Epic on her own in one turn (the rev 43
+shape, withdrawn). A small Epic still needs only `Research` and `EpicReview`. **Perry
+front-loads the Kickoff's known subtasks** — `Research`, `EpicReview`, and `Requirements` and
+`UxDesign` when she is pretty sure they are needed — in `Backlog` at initiation and runs
+`link-precedence` straight away, so nothing shows as ready ahead of its turn (TAI-457
+amendment). The framework does not fix
 how many passes happen or where they stop — it fixes that decomposition is a repeatable
 persona operation, applicable at whatever scope is handed to it. (This mirrors BMAD's
 scale-adaptive planning depth.)
@@ -1363,7 +1366,7 @@ tier above Epic.** Decomposition is deliberately scope-relative and repeatable r
 a fixed `Project → Epic → Story` ladder with named levels — if a system genuinely needs
 something above Epic, that's a native-Jira concept a business configures on its own
 instance, not a new TAI schema type. **Where to stop is likewise not a formula:** "applicable
-at whatever scope is handed to it" means a human or the Orchestrator decides the scope for
+at whatever scope is handed to it" means a human decides the scope for
 each invocation — an inherent judgment call, not something to compute.
 
 Separately, an **already-created Story** may need more detail before implementation
@@ -1375,8 +1378,8 @@ acceptance criteria, a design decision, a data model) that lands on the Story's 
 Confluence page, per §4's "who needs to know" comment rule. Refinement subtasks may spawn
 further refinement subtasks (e.g. an Architect's `Design` raises a question that needs a
 DBA's `Data Design`) but do not spawn implementation chains directly — turning refined
-output into actual implementation subtasks is a separate decision (human or Orchestrator,
-per §3.8), made once the Story is judged ready.
+output into actual implementation subtasks is a separate decision (the human's, or Perry's in
+grooming, per §3.8), made once the Story is judged ready.
 
 **Rolling-wave decomposition depth: "done" vs. "done enough" (rev 58, TAI-147/148).**
 Decomposition/refinement personas (Analyst, PM, Architect) don't uniformly flesh out
@@ -1451,9 +1454,10 @@ Kickoff discovery, decomposition, and refinement (items 2/3/4/5), and
   do?").
 - A human can **initiate new work** (create a bug, request review of prior work, etc.).
 - A human can **query what's "ready"** for any persona.
-- An **AI Orchestrator** persona may (if granted permission) query what's next *and* kick
-  off that work via the appropriate persona — but human-gated checkpoints still stop/pause
-  the chain regardless.
+- **Nothing dispatches work (TAI-457).** Perry — the "Orchestrator" in older text — owns the
+  story-level tickets and runs grooming (`/tai-groom`): she sequences, creates and promotes
+  tickets with the human. She does not start another persona's work; a human starts every
+  piece of work, with `/tai-work` or `/tai-ready`.
 
 **Concrete kickoff commands (rev 11):** `/tai-work <KEY>` loads/refreshes that unit of
 work's briefing (§3.6) and invokes its owning persona directly. `/tai-ready [persona]`
@@ -2812,8 +2816,9 @@ each new persona to help build the next.
   sense — complete/quick/bugfix — was considered and dropped, rev 11 §3.5; absorbed by
   the story-type + optional-subtask design.)
 - **Work unit** — the standard branch/work granularity: a Jira Story or Bug.
-- **Orchestrator** — the PM persona that can query "what's ready" and dispatch work to other
-  personas, subject to checkpoints.
+- **Orchestrator** — an older name for the PM persona's role: she owns the story-level tickets
+  and runs grooming. She does not dispatch work to other personas; a human starts every piece
+  of work (§3.8, TAI-457).
 
 ---
 
