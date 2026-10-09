@@ -60,14 +60,11 @@ export async function findEditedAfterApproval(deps: EditedAfterApprovalDeps): Pr
         const kickoff = (await workTracker.getIssue(found.key)) ?? found;
         const approvedAt = latestApprovalAt(kickoff);
         if (!approvedAt) return [];
-        const edited: EditedAfterApproval[] = [];
-        for (const pageId of await workTracker.getLinkedPages(kickoff.key)) {
-            const page = await docStore.getPage({ id: pageId });
-            if (page && Date.parse(page.updatedAt) > Date.parse(approvedAt)) {
-                edited.push({ kickoffKey: kickoff.key, kickoffSummary: kickoff.summary, pageId: page.id, pageTitle: page.title, approvedAt, editedAt: page.updatedAt });
-            }
-        }
-        return edited;
+        // Bounded like the Kickoffs themselves: a Kickoff with many linked pages must not mean a long run of sequential reads.
+        const pages = await mapWithLimit(await workTracker.getLinkedPages(kickoff.key), READ_CONCURRENCY, (pageId) => docStore.getPage({ id: pageId }));
+        return pages
+            .filter((page): page is NonNullable<typeof page> => page !== null && Date.parse(page.updatedAt) > Date.parse(approvedAt))
+            .map((page) => ({ kickoffKey: kickoff.key, kickoffSummary: kickoff.summary, pageId: page.id, pageTitle: page.title, approvedAt, editedAt: page.updatedAt }));
     });
     return perKickoff.flat();
 }

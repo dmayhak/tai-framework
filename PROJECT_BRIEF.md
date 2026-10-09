@@ -1327,8 +1327,8 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
 37. **Extend the out-of-band-human-edit posture from git hosts to Jira/Confluence directly
     (2026-08-31, open).** §6/the TAI-34 ADR already establish that a human acting
     directly on the git host (reviewing, merging) is treated as authoritative, not fought —
-    detected on next refresh and reflected, same principle as §4's Confluence-gate-
-    reopening rule. That posture isn't yet extended to a human creating or editing a Jira
+    detected on next refresh and reflected, same principle as §4's rule for edits to an
+    approved page (shown, not fought). That posture isn't yet extended to a human creating or editing a Jira
     ticket or Confluence page directly, out of band. PM (Perry) and Analyst (Ada) are named
     as the biggest exposure — ticket/requirement content changing under them mid-flight —
     but every persona is exposed to some degree. Undesigned: how a persona notices a
