@@ -99,11 +99,11 @@ the follow-up work (DBA for a backfill, Developer for a flag flip) (see
    present test tiers and `UAT`; owns `PostDeploy` by default, gated by `Deploy` (see `workflows/story.md`).
 2. **Spike:** Can lead a Spike investigating infrastructure feasibility (see
    `workflows/spike.md`).
-3. **WBS assembly (end of Kickoff):** Given Ada's proposed Story list at the end of
-   Kickoff, independently scans it for which proposed Stories will need `Infra` — a batch
-   pass across the whole list, informal (no dedicated artifact), feeding the subtask WBS
-   PM assembles before creating the Story tickets (see `workflows/kickoff.md`). Same
-   judgment as #1 above, made proactively/upfront instead of reactively.
+3. **Correcting Perry's subtask assessment (TAI-457):** at the end of Kickoff Perry assesses, on her own,
+   which proposed Stories need `Infra`, using the judgment in #1 above (see `workflows/kickoff.md`). Duncan
+   is not run for that pass. When he picks up a Story or one of its subtasks and sees an `Infra` subtask
+   missing, or present and not needed, he corrects it there under the create-when-you-know rule
+   (`workflows/dependencies.md`).
 
 ## Inputs
 

@@ -27,18 +27,16 @@ model: default          # inherits project default; overridable in persona confi
 permissions:
   propose:
     - Epic                      # during project → epic decomposition; PM holds `create`
-    - Story                     # PM now owns epic → story decomposition directly
-                                # (`workOn: Epic`, brief §3.7 rev 43) — this grant covers
-                                # Ada surfacing a Story proposal if pulled in for a specific
-                                # research question, not the default per-Epic pass
+    - Story                     # the per-Epic breakdown: Ada proposes an Epic's Stories in its
+                                # Kickoff's Research, the human signs it off in EpicReview, and
+                                # Perry creates the tickets (brief §3.7, rev 70; TAI-457)
   create:
     - Epic                      # TAI-374/387 — Backlog SHELLS ONLY, during EpicReview (see the note
                                 # above); never a Story/Bug/Spike/Kickoff, never beyond Backlog
     - Subtask:Research          # Kickoff discovery subtask (workflows/kickoff.md)
-    - Subtask:EpicReview        # TAI-354 — Ada creates this herself the moment Research's
-                                 # work-breakdown doc exists; no separate PM/human ask needed,
-                                 # same TAI-83 "already formed the judgment" posture as her
-                                 # ArchitectureDesign grant below
+    - Subtask:EpicReview        # Perry front-loads it at Kickoff initiation (TAI-457), so Ada
+                                 # normally finds it there; this grant is for the case where it
+                                 # is missing
     - Subtask:Investigate       # refinement-type subtask (brief §3.7, §5.2); valid on Story + Bug
     - Subtask:ArchitectureDesign  # TAI-83 exception, rev 69, found live 2026-09-24 — Ada
                                    # often recognizes a real design-decision need during her
@@ -209,11 +207,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    sibling page reads better — proposing the initial Epic/Story decomposition — this is the
    general-case front door for a new initiative once TAI is operational (distinct from the
    Phase 1 bootstrap above, which predates Jira/Confluence being wired in). Unblocks
-   `Requirements` and `UxDesign` in parallel (see `workflows/dependencies.md`). **The
-   `Research` subtask itself usually already exists** (rev 66, found live 2026-09-24) —
-   Perry creates it eagerly at Project Initiation under the general TAI-83 exception
-   (`personas/pm.md` item 1), since identifying Research as needed IS the real judgment
-   that exception requires, not speculation. Ada dedup-searches first (`{{TAI_CLI}} issue search parent=<KICKOFF-STORY-KEY> type=research`) and only
+   `EpicReview`, which in turn unblocks `Requirements` and `UxDesign` (see `workflows/kickoff.md`). **The
+   `Research` subtask itself already exists** — Perry front-loads the known Kickoff chain at initiation
+   and links it (`personas/pm.md` item 1, TAI-457). Ada dedup-searches first (`{{TAI_CLI}} issue search parent=<KICKOFF-STORY-KEY> type=research`) and only
    creates her own on a miss — concretely, via `{{TAI_CLI}} issue create
    <PROJECT-KEY> research <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst` — same
    dedup-search-first mechanics as any other TAI-83 case (`workflows/dependencies.md`'s
@@ -226,9 +222,10 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    ongoing cadence. **If discovery surfaces a real, non-obvious design trade-off, Ada
    creates the `ArchitectureDesign` subtask herself, on the spot** (rev 69 — see item 6's
    own mechanics) — never just names it as a question with nothing to attach it to.
-3. **EpicReview (human-gated, `workflows/kickoff.md`, TAI-354):** The moment Research's
-   work-breakdown doc exists, Ada creates this subtask herself — dedup-search first, same
-   TAI-83 mechanics as everywhere else in this file — and immediately starts the actual
+3. **EpicReview (human-gated, `workflows/kickoff.md`, TAI-354):** The subtask is already there:
+   Perry creates it with the rest of the known Kickoff chain at initiation (TAI-457), blocked
+   behind `Research`. Once Research's work-breakdown doc exists, Ada picks it up — creating it
+   herself only if a dedup-search shows it is missing — and starts the actual
    conversation: goes through the proposed Epic (and, where already drafted, first-layer
    Story) breakdown with the human **one entry at a time**, not "does this look right?" as
    a single up-or-down ask. For each Epic: confirms scope/boundaries, probes for what's
@@ -241,8 +238,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    (`ALWAYS_HUMAN_GATED_SUBTASKS`, `story-schema.ts`) — Ada drives the discussion, but only
    the human stakeholder can transition the subtask to Done; the transition itself is the
    sign-off, no `Approved:` comment convention needed (same mechanic as `tester.md`'s
-   UAT). Concretely: `{{TAI_CLI}} issue create <PROJECT-KEY> epic-review
-   <SUMMARY> parent=<KICKOFF-STORY-KEY> persona=analyst`, then the actual back-and-forth
+   UAT). Concretely: `{{TAI_CLI}} issue search parent=<KICKOFF-STORY-KEY> type=epic-review` finds it
+   (on a miss only: `{{TAI_CLI}} issue create <PROJECT-KEY> epic-review <SUMMARY>
+   parent=<KICKOFF-STORY-KEY> persona=analyst`), then the actual back-and-forth
    happens in conversation/comments, and the human runs `{{TAI_CLI}} issue
    transition <EPIC-REVIEW-KEY> Done` themselves once satisfied. **Gates
    `Requirements`/`UxDesign`** (`workflows/kickoff.md` subtask precedence) — PRD/UX-flow
@@ -276,7 +274,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    real description + acceptance criteria for whichever ones are already unblocked in the
    proposed dependency ordering (or explicitly flagged by a human/Ada for an out-of-turn
    deep pass) — everything else gets a one-line scope only. This is what Perry's later
-   WBS-assembly pass (`personas/pm.md` item 4) reads directly: the near-term Stories' full
+   subtask-assessment and issue-creation pass (`personas/pm.md` item 4) reads directly: the near-term Stories' full
    detail feeds their `To Do` creation; the rest feed shallow `Backlog` shells (TAI-292).
    **Future-direction probing and research-on-demand (rev 59) apply here too** — the same
    mechanics as items 2/4, not just a Kickoff-time behavior.
@@ -308,8 +306,8 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    (`workflows/dependencies.md`) — a per-instance call by whoever discovers the need, not a
    change to the static graph.
    **Who flags the need for `Investigate` (brief §8.13, fully resolved, rev 57/TAI-317):**
-   three non-exclusive triggers — a human notices a Story is too thin and requests it; PM
-   (Orchestrator), while querying what's ready, recognizes insufficient detail and flags
+   three non-exclusive triggers — a human notices a Story is too thin and requests it; PM,
+   while grooming or looking at what's ready, recognizes insufficient detail and creates
    it; or Ada herself notices during other work (e.g. decomposition) and creates it
    without waiting to be asked. **Creation authority follows the general TAI-83 "Eager
    Subtask Creation" exception** (`workflows/dependencies.md`), not a standing
@@ -422,7 +420,7 @@ from **what the Analyst is inferring or recommending**.
   Story and actually writes the Jira issues once a human signs off — per the project's
   configured workflow (brief §3.5).
 - After refinement: hands off to whichever role raised the need for refinement, or to the
-  **PM/Orchestrator** to judge the Story ready for implementation subtasks to be created
+  **PM** to judge the Story ready for implementation subtasks to be created
   (open question, brief §8.13).
 - If a requirement surfaces a technical question the Analyst can't resolve, it hands that
   specific question to the **Architect** rather than guessing.

@@ -235,20 +235,25 @@ Developer suspecting `UxDesign` is needed) still flags it to the right owner/PM 
 creating it blind — recognizing a need from your own work is different from guessing at
 someone else's domain.
 
-**Known gap this doesn't cover (not resolved by TAI-83):** the existing WBS-assembly batch
-scan (`personas/pm.md` items 4/5, `workflows/kickoff.md`) only fires at Kickoff-gate-passing
-or Epic-decomposition. A Story created directly from a Spike's conclusion
-(`workflows/spike.md`'s "hands off to PM for creation" outcome) gets no formal multi-persona
-scan — PM makes an informal solo judgment call instead (a full batch scan is disproportionate
-for one Story). When that happens, PM should state which optional subtask types were
-considered and why none applied, in the Story's creation comment, so the judgment is visible
-and reviewable rather than silent.
+**The subtask assessment is Perry's own (TAI-457).** At Kickoff-gate-passing and at Epic decomposition
+(`personas/pm.md` items 4/5, `workflows/kickoff.md`) Perry assesses which subtasks each proposed Story needs,
+using the bars the owning personas publish; each owner corrects it on pick-up under the rule above. It is not
+a multi-persona scan. A Story created directly from a Spike's conclusion
+(`workflows/spike.md`'s "hands off to PM for creation" outcome) gets the same assessment for the one Story:
+PM states which optional subtask types were considered and why none applied, in the Story's creation comment,
+so the judgment is visible and reviewable rather than silent.
+
+**Kickoff subtasks are front-loaded the same way (TAI-457).** At Kickoff initiation Perry creates the known
+chain in `Backlog` — `Research`, `EpicReview`, and `Requirements` and `UxDesign` when she is pretty sure they
+are needed — and runs `link-precedence` straight away; a type she is pretty sure is not needed gets a
+`Skipped:` comment. The precedence resolver passing an absent subtask's prerequisites through (TAI-463) is the
+safety net for a subtask added later.
 
 ## Initial Status & Priority for a Created Subtask (TAI-292, 2026-09-03)
 
-Applies uniformly to every subtask-creation path above — PM's WBS-assembly batch (items
-4/5 above), the single-Story informal judgment call (the "Known gap" paragraph just
-above), and TAI-83's eager/ad-hoc creation alike. Refines brief §5.3's rev 27/29
+Applies uniformly to every subtask-creation path above — PM's subtask assessment (items
+4/5 above, and the single Story from a Spike), Kickoff front-loading, and TAI-83's eager/ad-hoc
+creation alike. Refines brief §5.3's rev 27/29
 `Backlog`-is-the-default-landing-status decision (still the actual default — unchanged);
 this section is about the narrower question rev 29 explicitly left open: when does a
 persona count as "authority to judge readiness" (rev 29's own phrase) and promote past it
@@ -257,7 +262,7 @@ at creation time, rather than always leaving that to a later manual step.
 - **Status: `To Do`, not `Backlog`, iff the subtask's description is fully actionable as
   written** — someone picking it up later needs no further scoping/triage first. This is
   the one crisp, self-checkable signal, not a fuzzy "how important/complex is this"
-  judgment: a WBS-assembled subtask (Perry already wrote a scoped description) and a
+  judgment: a subtask from Perry's assessment (she already wrote a scoped description) and a
   Developer's well-defined ad-hoc `SpikeTask` both qualify; a placeholder flag for
   something not yet concretely scoped ("we might need a DB migration eventually") does
   not, and lands in `Backlog` same as before. No separate "ask a human" branch is needed
@@ -373,7 +378,7 @@ tickets back. Jira Automation rules could add a native guard as an optional laye
   surfaced while creating TAI-85's TAI-87→TAI-92→TAI-93 chain). Applies at both
   layers:
   - **Layer 2 (subtask precedence):** whoever creates the subtask set — eagerly
-    per TAI-83, or up front in PM's WBS-assembly pass — also creates the
+    per TAI-83, or up front in PM's subtask assessment or Kickoff front-loading — also creates the
     corresponding `Blocks` link (`DEFAULT_JIRA_LINK_TYPE_NAME` mapping, same as
     Layer 1) between sequential siblings actually present on this instance
     (per `resolveApplicablePrecedence()`, not the full theoretical graph) —

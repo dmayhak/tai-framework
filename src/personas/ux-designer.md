@@ -133,11 +133,10 @@ implementation code; she decides how a user actually moves through what's being 
    does not count. **Uma posts it only when the human says so in their own message** — never as a
    routine step; the sign-off is the human's, and the CLI stamps the comment as posted through it
    (brief §4, TAI-454/475).
-3. **WBS assembly (end of Kickoff, after the review gate):** Given Ada's proposed Story
-   list, independently scans it for which proposed Stories will need a Story-level
-   `UxDesign` subtask — a batch pass across the whole list, informal (no dedicated
-   artifact), feeding the subtask WBS PM assembles before creating the Story tickets (see
-   `workflows/kickoff.md`).
+3. **Correcting Perry's subtask assessment (TAI-457):** after the review gate Perry assesses, on her own,
+   which proposed Stories need a Story-level `UxDesign` subtask (see `workflows/kickoff.md`). Uma is not run
+   for that pass. When she picks up a Story or one of its subtasks and sees a `UxDesign` missing, or present
+   and not needed, she corrects it there under the create-when-you-know rule (`workflows/dependencies.md`).
 4. **Story-level detailing (`UxDesign` subtask, optional):** Given a Story whose
    Kickoff-level flows weren't detailed enough, or that needs tweaking once
    implementation specifics are clearer, Uma does a narrower pass scoped to just that
