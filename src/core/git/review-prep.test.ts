@@ -19,6 +19,8 @@ import {
     splitDiffByFile,
     type DiffResult,
     type ReviewPrepInput,
+    readFileAtRef,
+    renderCheckoutSection,
 } from "./review-prep.js";
 import { withFakeSshAndEmptySshCommand } from "./fake-ssh.testing.js";
 import type { PullRequestRef } from "./interface.js";
@@ -427,5 +429,47 @@ describe("gatherDiff (real git)", () => {
         const d = await gatherDiff({ cwd: "/nonexistent-dir-for-test", repo: "acme/widgets", sourceBranch: "--upload-pack=evil", destinationBranch: "master" });
         assert.equal(d.kind, "unavailable");
         if (d.kind === "unavailable") assert.match(d.reason, /branch name/i);
+    });
+});
+
+describe("the reviewer's checkout (TAI-522 ADR decision 1)", () => {
+    const diffWith = (checkout: { branch: string | null; atPrHead: boolean } | undefined) =>
+        ({ kind: "ok", range: "origin/master...origin/feat", stat: "", files: [], sourceRef: "origin/feat", ...(checkout ? { checkout } : {}) }) as const;
+
+    it("always says to read surrounding files from the PR's fetched branch", () => {
+        assert.match(renderCheckoutSection(diffWith({ branch: "feat", atPrHead: true }))!, /`git show origin\/feat:<path>`/);
+    });
+
+    it("says the disk is the PR's code only when the working tree is at the PR's head", () => {
+        assert.match(renderCheckoutSection(diffWith({ branch: "feat", atPrHead: true }))!, /files on disk are the PR's code/);
+        const stale = renderCheckoutSection(diffWith({ branch: "master", atPrHead: false }))!;
+        assert.match(stale, /\*\*This working tree is on `master`, not at the PR's head\.\*\*/);
+        assert.match(stale, /NOT the code under review/);
+        assert.match(stale, /Do not report tests or lint as verified unless you ran them on the PR's code/);
+        assert.match(renderCheckoutSection(diffWith({ branch: null, atPrHead: false }))!, /on a detached HEAD, not at the PR's head/);
+    });
+
+    it("assumes the disk is not the PR's code when the checkout could not be read", () => {
+        assert.match(renderCheckoutSection(diffWith(undefined))!, /Assume the files on disk are NOT the code under review/);
+    });
+
+    it("has nothing to say when there is no diff", () => {
+        assert.equal(renderCheckoutSection({ kind: "unavailable", reason: "x" }), undefined);
+    });
+
+    it("the section sits before the review steps in the output", () => {
+        const out = renderReviewPrep(input({ diff: diffWith({ branch: "master", atPrHead: false }) }));
+        assert.ok(out.indexOf("## Your checkout") > 0);
+        assert.ok(out.indexOf("## Your checkout") < out.indexOf("## How to review"));
+    });
+
+    it("readFileAtRef refuses a path that leaves the repo", async () => {
+        assert.equal(await readFileAtRef(process.cwd(), "HEAD", "../outside.md"), null);
+        assert.equal(await readFileAtRef(process.cwd(), "HEAD", "/etc/passwd"), null);
+    });
+
+    it("readFileAtRef reads a file from a ref and is null when the ref has no such file", async () => {
+        assert.match((await readFileAtRef(process.cwd(), "HEAD", "package.json")) ?? "", /"name"/);
+        assert.equal(await readFileAtRef(process.cwd(), "HEAD", "no-such-file.md"), null);
     });
 });

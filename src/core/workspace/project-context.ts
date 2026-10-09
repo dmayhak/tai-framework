@@ -71,12 +71,35 @@ export async function projectContextStatus(projectRoot: string, env: Env = proce
     return { state, path: file };
 }
 
+/** `raw` as a project context, or `null` when it is missing, empty, or still the unfilled template.
+ *  `source` is what the rendered section says the rules came from. */
+export function projectContextFromText(source: string, raw: string | null): ProjectContext | null {
+    const content = raw?.trim() ?? "";
+    return content === "" || content.includes(PROJECT_CONTEXT_TEMPLATE_MARKER) ? null : { path: source, content };
+}
+
 /** The project's rules file, or `null` when it does not exist, cannot be read, is empty, or is
  *  still the unfilled starter template. */
 export async function readProjectContext(projectRoot: string, env: Env = process.env): Promise<ProjectContext | null> {
     const file = projectContextPath(projectRoot, env);
-    const content = (await readRaw(file))?.trim() ?? "";
-    return content === "" || content.includes(PROJECT_CONTEXT_TEMPLATE_MARKER) ? null : { path: file, content };
+    return projectContextFromText(file, await readRaw(file));
+}
+
+/**
+ * TAI-522 ADR decision 3: the rules file as it is on a git ref, for the review flow — the rules in
+ * force on the destination branch, whatever this clone has checked out. `readAtRef` reads one
+ * repo-relative path on that ref. `null` when the configured path is outside the repo (the caller
+ * falls back to the file on disk) is signalled by `outsideRepo`.
+ */
+export async function readProjectContextAtRef(
+    projectRoot: string,
+    ref: string,
+    readAtRef: (relPath: string) => Promise<string | null>,
+    env: Env = process.env
+): Promise<{ readonly outsideRepo: boolean; readonly context: ProjectContext | null }> {
+    const rel = path.relative(projectRoot, projectContextPath(projectRoot, env)).split(path.sep).join("/");
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return { outsideRepo: true, context: null };
+    return { outsideRepo: false, context: projectContextFromText(`${ref}:${rel}`, await readAtRef(rel)) };
 }
 
 /** The starter file `init project-context` writes: four headings and what belongs under each. */

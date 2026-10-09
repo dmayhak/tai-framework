@@ -238,7 +238,8 @@ function prSkillBody(taiHome: string): string {
         "best-effort, a resolution failure for one reviewer still lets the PR itself get created. " +
         "There is no CodeReview subtask to link to anymore (retired rev 52) — nothing further to " +
         "wire up manually.\n" +
-        "- `review-prep` (TAI-425) — read-only; the entry point of the review flow below. Loads the Code " +
+        "- `review-prep` (TAI-425) — writes nothing to the PR or the tracker (locally it fetches, and may " +
+        "fast-forward your default branch when that is clean); the entry point of the review flow below. Loads the Code " +
         "Reviewer persona, the PR's details, this PR's review steps and its diff in one output. Takes no " +
         "`<ISSUE-KEY>`; roster-gated like `review`, but refuses up front.\n" +
         "- `review` — records a real approve/request-changes decision on the PR itself. This is " +
@@ -312,9 +313,11 @@ function prSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review-prep <REPO> [PR-ID]\n` +
         "```\n\n" +
-        "It is read-only. It refuses at once if the acting human is not on the \"PR Reviewers\" roster, and " +
+        "It writes nothing to the PR or the tracker; locally it fetches the PR's branches and may fast-forward your " +
+        "default branch when that is a clean fast-forward. It refuses at once if the acting human is not on the \"PR Reviewers\" roster, and " +
         "otherwise prints the Code Reviewer persona's own instructions (a `# Persona: Cole (code-reviewer)` " +
-        "heading, like `/tai-work`), the PR's details, the review steps for THIS PR with its exact commands, " +
+        "heading, like `/tai-work`), the PR's details, a \"Your checkout\" section saying where to read files beyond " +
+        "the diff and whether the files on disk are the PR's code, the review steps for THIS PR with its exact commands, " +
         "and the diff. **Follow its output exactly, as that persona** — including its findings format and its " +
         "stop-and-wait rule. Do NOT fetch or diff the PR by hand, do NOT read the persona file yourself, and " +
         "do NOT run `render-findings`, `comment-findings`, `review` or `comment` until the output's own steps " +

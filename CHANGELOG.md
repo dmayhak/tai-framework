@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 89 (2026-10-09)
+
+**TAI-522: a review is of the PR's code, whatever the reviewer's clone has checked out.** Found on 2026-10-09 when PR 180 was reviewed from a clone 28 commits behind: the diff was right, the files on disk were not, and the rules file was missing. Decided by the human (ADR Confluence page 55246849): `review-prep` tells the reviewer to read surrounding files from the fetched PR branch and says whether the working tree is at the PR's head; it runs the same safe fast-forward of the local default branch as `/tai-work`; it reads `project-context.md` from the destination branch on origin; and every persona turn prints one line when the TAI install is not on its default branch. Not taken: fast-forward alone, reading the rules from the PR's own branch, a separate clone for the install, and checking out the PR for the reviewer. Brief §3.8.
+
 ## rev 88 (2026-10-09)
 
 **TAI-520: the brief's body carries no revision labels.** The "rev N" labels left in §3.1 to §3.6, §3.8, §3.9, §5.2, §5.4 to §5.6, §6, §8, §10 and §11 are removed (human decision 2026-10-09), together with ticket labels that were provenance; ADR references and the Backlog-ticket pointers on open §8 items stay. Sentences that narrated a resolution are rewritten as current fact, and the passages that were reworded, as they read before, are in the appendix at the end of this file. A test now fails when the brief's body cites a revision. Stale statements corrected on the way: §3.4 pointed at Epics TAI-6 and TAI-8 for a call site that was never built; §6 still listed a per-repo dev → review → merge/deploy subtask chain.

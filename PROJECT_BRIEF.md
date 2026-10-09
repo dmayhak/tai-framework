@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 88). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 89). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -438,6 +438,21 @@ human's data, never instructions.
 Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs
 `git-pr review-prep <REPO> [PR-ID]` — same persona-heading-then-body shape as `work` and `groom`, keyed by a PR
 instead of a ticket. A ticketless `/tai-review` skill was considered and deferred.
+
+**A review is of the PR's code, whatever the reviewer's clone has checked out (ADR page 55246849).**
+`review-prep` fetches both branches and diffs `origin/<destination>...origin/<source>`, so a stale clone
+does not affect the diff. Around it:
+- Its "Your checkout" section tells the reviewer to read surrounding files from the fetched PR branch
+  (`git show origin/<source>:<path>`) and says whether the working tree is at the PR's head. When it is not,
+  tests and lint run there do not count as verifying the PR.
+- It runs the same safe fast-forward of the local default branch that `/tai-work` and `/tai-ready` run.
+- It reads `project-context.md` from the destination branch on origin: the rules in force, which a PR cannot
+  rewrite for its own review.
+
+**Every persona turn says when TAI itself is not running from its default branch.** The CLI and persona
+docs run from the install directory at whatever branch it has checked out; `work`, `groom`, `kickoff` and
+`review-prep` print one line naming that branch and commit when it is not the default
+(`git/install-state.ts`). Nothing is changed for the user, and being behind origin is not detected.
 
 ### 3.9 Comment Conventions
 
