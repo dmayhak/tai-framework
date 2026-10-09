@@ -25,6 +25,7 @@ import {
     defaultTestTiersForBug,
     EXPEDITED_BUG_PRIORITY,
     ALWAYS_HUMAN_GATED_SUBTASKS,
+    STORY_SUBTASK_MAP,
     type SubtaskPrecedenceRule,
 } from "./story-schema.js";
 
@@ -88,6 +89,10 @@ describe("DesignReview gate (optional)", () => {
         );
     });
 
+    it("is registered as inherently human-gated -- Aria prepares it, but only a human can complete it (TAI-458)", () => {
+        assert.ok(ALWAYS_HUMAN_GATED_SUBTASKS.includes(SubtaskType.DesignReview));
+    });
+
     it("COLLAPSES: with no DesignReview, ArchitectureDesign unblocks Dev directly", () => {
         const present = [SubtaskType.ArchitectureDesign, SubtaskType.Dev];
         const rules = resolveApplicablePrecedence(StoryType.Story, present);
@@ -98,6 +103,19 @@ describe("DesignReview gate (optional)", () => {
             isSubtaskReady(SubtaskType.Dev, StoryType.Story, present, done(SubtaskType.ArchitectureDesign)),
             true
         );
+    });
+});
+
+describe("Requirements on a Story (TAI-458)", () => {
+    it("is an allowed Story subtask, for a future-direction question handed to the PM", () => {
+        assert.ok(STORY_SUBTASK_MAP[StoryType.Story].includes(SubtaskType.Requirements));
+    });
+
+    it("has no precedence edge on a Story: it neither waits on nor blocks its siblings", () => {
+        const present = [SubtaskType.Requirements, SubtaskType.ArchitectureDesign, SubtaskType.Dev];
+        const rules = resolveApplicablePrecedence(StoryType.Story, present);
+        assert.ok(!rules.some((r) => r.before === SubtaskType.Requirements || r.after === SubtaskType.Requirements));
+        assert.equal(isSubtaskReady(SubtaskType.Requirements, StoryType.Story, present, done()), true);
     });
 });
 

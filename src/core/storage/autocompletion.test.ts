@@ -43,6 +43,10 @@ describe("checkpointKind (TAI-41 ADR, §8.23)", () => {
         assert.equal(checkpointKind(issue({ issueType: SubtaskType.EpicReview })), "hard");
     });
 
+    it("is hard for DesignReview (TAI-458) -- Aria prepares it, but only a human can sign off", () => {
+        assert.equal(checkpointKind(issue({ issueType: SubtaskType.DesignReview })), "hard");
+    });
+
     it("is hard for a story-level issue whose StoryType has a REVIEW_GATES entry", () => {
         assert.equal(checkpointKind(issue({ issueType: StoryType.Kickoff })), "hard");
     });

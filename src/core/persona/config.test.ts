@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { StoryType, SubtaskType } from "../schema/story-schema.js";
+import { ALWAYS_HUMAN_GATED_SUBTASKS, StoryType, SubtaskType } from "../schema/story-schema.js";
 import type { AttachmentRef, Comment, CreatePageInput, DocStore, Page, PagePatch, PageRef, IssueKey } from "../storage/interface.js";
 import {
     emptyPersonaShell,
@@ -277,6 +277,16 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         // never creates a Story, Bug, Spike or Kickoff -- Perry does, in grooming.
         const analystCreatedIssues = analyst.permissions.create.filter((t) => t.kind === "issue");
         assert.deepEqual(analystCreatedIssues.map((t) => (t.kind === "issue" ? t.issueType : null)), ["epic"]);
+    });
+
+    it("no persona holds a complete grant for a human-gated subtask: UAT, EpicReview, DesignReview (TAI-458)", async () => {
+        const configs = await loadBuiltinPersonaConfigs();
+        for (const [id, config] of configs) {
+            const granted = config.permissions.complete.flatMap((t) => (t.kind === "subtask" ? [t.subtaskType] : []));
+            for (const type of ALWAYS_HUMAN_GATED_SUBTASKS) {
+                assert.ok(!granted.includes(type), `${id} must not be able to complete ${type}: a human closes it`);
+            }
+        }
     });
 
     it("every persona doc carries the human-gated unblock rule (TAI-395, ADR decision 11)", async () => {

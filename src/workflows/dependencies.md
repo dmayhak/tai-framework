@@ -154,7 +154,8 @@ its prerequisites through, so the graph collapses to the shape without it:
 - **`DesignReview`** gates `ArchitectureDesign → Dev` — unaffected by `CodeReview`'s
   retirement, since it reviews a design document, not a git PR (there's no git-host-native
   equivalent to defer to the way code review now has). When it's absent,
-  `ArchitectureDesign` gates `Dev` through it.
+  `ArchitectureDesign` gates `Dev` through it. `DesignReview` is **inherently
+  human-gated** (brief §3.3, TAI-458) — a human reviews the design and closes it.
 - **`UAT`** sits after the same never-fires-statically `Dev` edge and whichever automated
   tiers are present, and gates `Deploy`. When it's absent, the tiers gate `Deploy`
   directly, as before; with no tier present either, `Deploy` waits on `Dev` (TAI-456). `UAT` is **inherently human-gated** (brief §3.3) — it never
