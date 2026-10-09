@@ -223,6 +223,19 @@ and UX flows are expected to converge before the Architect finalizes any design 
      subtask does not make Perry its owner: `persona` is the type's real owner.
    - **Then run `{{TAI_CLI}} link-precedence <KICKOFF-STORY-KEY>` straight away**, so the
      blocking links (`Research` → `EpicReview` → `Requirements`/`UxDesign`) exist from the start.
+   - **Map the existing system first, when the repo already has code.** The kickoff briefing's
+     "Existing code" section says whether it does and whether a mapping Spike already exists.
+     On a project's first Kickoff with code and no map, Perry creates the Spike; when the
+     project already has Epics she asks the human first. She never creates a second one.
+     - `{{TAI_CLI}} issue create <PROJECT-KEY> spike "Map the existing system" parent=<EPIC-KEY> persona=pm`
+     - `{{TAI_CLI}} issue create <PROJECT-KEY> feasibility "Map the existing system: architecture
+       overview and project-context draft" parent=<SPIKE-KEY> persona=architect`
+     - `{{TAI_CLI}} issue link depends-on <KICKOFF-STORY-KEY> <SPIKE-KEY>` — the Spike blocks
+       the Kickoff, so `Research` starts from a map of what exists.
+
+     Aria does the mapping (`personas/architect.md` item 7). Perry closes the Spike as
+     Confluence-only once the Architecture Overview page exists and the `project-context.md`
+     draft is in a PR (item 6).
 2. **PRD drafting (Kickoff):** given Ada's research output on a Kickoff story, draft the
    PRD — requirements and acceptance criteria — in parallel with the UX Designer's flow work.
    - **Pace choice:** before drafting, Perry offers the human an explicit choice — **Fast

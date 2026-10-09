@@ -33,6 +33,20 @@ Analyst and `UxDesign` to UX Designer whoever created the ticket. Each type's ow
 its own if it turns out to be missing, same dedup-search-first mechanics as any other case (see
 `personas/pm.md`, `personas/analyst.md`, `personas/ux-designer.md`).
 
+## When the repo already has code: map it first
+
+A project that is onboarded with an existing system gets that system mapped before discovery starts.
+
+- `/tai-kickoff`'s briefing has an "Existing code" section: whether the repo tracks code files, whether a
+  mapping Spike already exists, and whether the project has a `project-context.md`.
+- On a project's first Kickoff with code and no map, Perry creates a Spike, "Map the existing system", under
+  the Epic, with a `Feasibility` subtask owned by the Architect, and links the Kickoff Story as depending on
+  it. When the project already has Epics, she asks the human first.
+- The Architect's output is the Architecture Overview page and a first draft of `project-context.md`,
+  delivered as a PR (`personas/architect.md` item 7).
+- The Spike blocks the Kickoff, so `Research` starts from a map of what exists. It uses existing ticket types;
+  nothing in the schema is specific to it.
+
 ## Who owns it (story-level)
 **PM is the default owner/driver of the Kickoff Story itself**, distinct from each
 subtask's own persona owner — consistent with PM owning the story-level tickets (brief §3.8):

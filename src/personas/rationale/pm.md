@@ -56,6 +56,12 @@ reversible and only silences a hint.
   judgment that it is needed. `ArchitectureDesign` at Kickoff is left for later because judging it
   before discovery would be the blind pre-population TAI-83 rules out.
 
+- **The mapping Spike (TAI-471; shape agreed 2026-10-08).** A brownfield project's existing system is
+  mapped before discovery, adapted from GSD's `map-codebase` and BMAD's `document-project`. The kickoff
+  command detects tracked code files and an existing mapping Spike, so the rule is not left to memory.
+  Perry asks first on a project that already has Epics because work has plainly gone on without a map
+  there, and a Spike that blocks a new Kickoff should be the human's choice.
+
 ## The Kickoff gate comment (TAI-454, TAI-475)
 
 TAI cannot prove who posted `Approved:`; the CLI and the human share one Jira identity. It is a

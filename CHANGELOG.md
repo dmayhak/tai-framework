@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 85 (2026-10-09)
+
+**TAI-471: a brownfield project is mapped before discovery.** `/tai-kickoff`'s briefing gains an "Existing code" section, computed from the repo's tracked files and the project's Spikes. With code and no map, Perry creates a Spike, "Map the existing system", with a `Feasibility` subtask owned by the Architect, and the Kickoff depends on it; on a project that already has Epics she asks the human first. The Architect's output is the Architecture Overview page and a first draft of `project-context.md` (TAI-470), delivered as a PR. Existing ticket types, no schema change (shape agreed 2026-10-08). Adapted from GSD's `map-codebase` and BMAD's `document-project`. Brief §4, `workflows/kickoff.md`, `personas/pm.md` item 1, `personas/architect.md` item 7.
+
 ## rev 84 (2026-10-09)
 
 **TAI-470: a project-context file in the target repo, put in front of every persona.** `project-context.md` at the target project's root holds its build and test commands, stack, conventions and things never to do. `work`, `groom`, `kickoff` and `git-pr review-prep` print it between the persona's instructions and the briefing, under its own size cap (`TAI_PROJECT_CONTEXT_BUDGET`, default 6,000 characters). It lives in the repo, not Confluence, so it is versioned with the code and reviewed in PRs (shape agreed 2026-10-08; the 2026-10-07 review had proposed a Config-folder page). Adapted from the Spec Kit constitution and BMAD's `project-context.md`. This repo has its own. Brief §4.
