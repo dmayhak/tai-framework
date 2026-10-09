@@ -1634,9 +1634,14 @@ These are settled. Change them deliberately and update this file if you do.
   the command named no persona, TAI-477), and a sign-off made through the CLI leaves a stamped `Sign-off:`
   comment (`storage/stamp.ts`). A comment or sign-off with no stamp was made directly, in the Jira or Bitbucket
   UI. The stamp says only what the CLI knows: it cannot tell an AI session from a human typing the command.
-- **Writing Jira comments (TAI-475).** A comment body is sent as Jira wiki markup, not markdown: a blank line
-  makes a paragraph and `* item` a bullet. Write short paragraphs and bullet several items; the stamp goes on
-  its own last line and is added by the CLI, never typed. Every persona doc carries a one-line pointer here.
+- **Writing Jira descriptions and comments (TAI-475, TAI-504).** A ticket description and a comment body are
+  both sent as Jira wiki markup, not markdown: a blank line makes a paragraph and `* item` a bullet. They are
+  read by people, so write them for reading: a short opening paragraph that says what the ticket is for, a
+  blank line between paragraphs, and bullets when there are several items — scope, steps, acceptance points,
+  things checked. Never one dense paragraph. On a comment, the stamp goes on its own last line and is added by
+  the CLI, never typed. The CLI backs this with a note, not a refusal: after `issue create`, `issue update` or
+  `issue comment` writes text with an unbroken paragraph of more than 500 characters, it says so and names the
+  command that rewrites it. Every persona doc carries a one-line pointer here.
 - **Writing Confluence page content (TAI-397).** TAI converts a persona's markdown to Confluence
   storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
   (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and

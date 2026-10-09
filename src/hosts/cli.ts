@@ -106,6 +106,7 @@ import {
 } from "../core/git/review-findings.js";
 import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/config.js";
 import { postIssueComment } from "../core/storage/handoff.js";
+import { wallOfTextNote } from "../core/storage/readable-text.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -2007,6 +2008,9 @@ async function main(): Promise<void> {
             };
             const issue = await config.backend.workTracker.createIssue(input);
             console.log(renderIssueRef(issue));
+            // TAI-504: a note, never a refusal, when the description is a wall of text.
+            const createNote = wallOfTextNote("description", fields["description"], `issue update ${issue.key} description=…`);
+            if (createNote) console.log(`\n${createNote}`);
             if (assignmentNote) console.log(`\n${assignmentNote}`);
             // TAI-419: still unassigned under a persona (2+ candidates, nobody named) -> the ranked list, the
             // session's human pinned first. The ticket already exists; "leave unassigned" is a valid outcome.
@@ -2044,6 +2048,8 @@ async function main(): Promise<void> {
             const patch = parseIssueUpdatePatch(fields);
             const issue = await config.backend.workTracker.updateIssue(toIssueKey(issueKey), patch);
             console.log(renderIssueRef(issue));
+            const updateNote = wallOfTextNote("description", fields["description"], `issue update ${issue.key} description=…`);
+            if (updateNote) console.log(`\n${updateNote}`);
             return;
         }
 
@@ -2166,6 +2172,8 @@ async function main(): Promise<void> {
                 ? `\n\n_The existing hand-off comment could not be edited (${posted.editFailure}), so this one was added next to it._`
                 : "";
             console.log(`${heading}${note}\n\n${posted.comment.body}`);
+            const commentNote = wallOfTextNote("comment", body);
+            if (commentNote) console.log(`\n${commentNote}`);
             return;
         }
 

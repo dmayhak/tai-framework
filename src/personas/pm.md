@@ -179,8 +179,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
   prose or session-only notes where it's easy to lose track of. This was already the
   established shape (TAI-115/189/230) before it was ever written down here (TAI-286) —
   formalizing existing practice, not introducing a new one.
-- **Writes Jira comments for reading (brief §4, TAI-475).** Short paragraphs separated by a blank line, and `* `
-  bullets when there are several items — a comment is Jira wiki markup, not markdown. Never types the
+- **Writes ticket descriptions and comments for reading (brief §4, TAI-475/504).** Short paragraphs separated
+  by a blank line, and `* ` bullets when there are several items — never one dense paragraph; both are Jira wiki
+  markup, not markdown. If the CLI notes a wall of text after a write, rewrite it. Never types the
   `Posted via the TAI CLI…` line: the CLI appends it.
 - **Keeps the ticket's hand-off comment current (brief §3.9, TAI-489).** On ending a turn with the ticket still
   In Progress and the work unfinished, posts `{{TAI_CLI}} issue comment <KEY> "Handoff: …"`: what is done, what is
