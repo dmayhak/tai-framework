@@ -107,6 +107,7 @@ import {
 import { loadPersonaConfig, resolveActingPersonaId } from "../core/persona/config.js";
 import { postIssueComment } from "../core/storage/handoff.js";
 import { wallOfTextNote } from "../core/storage/readable-text.js";
+import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -546,6 +547,27 @@ function renderPullRequestRef(pr: PullRequestRef, personaId: string, linkedIssue
     return lines.join("\n");
 }
 
+/** TAI-462: what `git-pr merge` prints when the merge gate is not met. Nothing was merged. */
+export function renderMergeRefused(blockers: readonly string[], personaId: string): string {
+    return [
+        `# Merge refused (as ${personaId})`,
+        "",
+        "Nothing was merged. The merge gate is not met:",
+        "",
+        ...blockers.map((b) => `- ${b}`),
+        "",
+        "Get what is missing (a fresh approval, the request-changes withdrawn, the tier finished) and run the merge again. " +
+            "To merge anyway, add `force=true`: it leaves a stamped override comment on the PR. Use it for a very minor " +
+            "fix pushed after the approval (a typo or wording, no behavior change); for anything else, only when the human says so.",
+    ].join("\n");
+}
+
+/** `TAI_PR_REQUIRED_APPROVALS`, when set to something usable (shared by `/tai-ready` and the merge gate). */
+function requiredApprovalsFromEnv(): { readonly requiredApprovals?: number } {
+    const n = Number(process.env["TAI_PR_REQUIRED_APPROVALS"]);
+    return process.env["TAI_PR_REQUIRED_APPROVALS"] && Number.isFinite(n) && n >= 0 ? { requiredApprovals: n } : {};
+}
+
 function renderGitMutationResult(
     result: GitMutationResult,
     personaId: string,
@@ -939,7 +961,8 @@ export function parseIssueUpdatePatch(fields: Readonly<Record<string, string>>):
  *  merge reads ALL of it -- including a second reviewer's and anything after the last commit --
  *  before deciding. Full bodies on purpose (the point is that they get READ, not skimmed). Ends with
  *  the decision prompt; this is surfacing, never a gate -- whether a comment is actionable is a
- *  judgment call (the human's 2026-10-02 policy: very minor -> fix, test, merge; review-worthy -> ask). */
+ *  judgment call (the human's 2026-10-02 policy: very minor -> fix, test, merge; review-worthy -> ask).
+ *  TAI-462: a pushed fix makes the approval stale, so that merge now needs `force=true`. */
 export function renderPullRequestComments(prId: string, comments: readonly PullRequestComment[]): string {
     if (comments.length === 0) {
         return `# Comments on PR ${prId}\n\nNo comments on PR ${prId}. Confirm that is expected for a PR that was reviewed before merging.`;
@@ -960,7 +983,8 @@ export function renderPullRequestComments(prId: string, comments: readonly PullR
     lines.push(
         "---",
         "Before merging, decide for EACH comment above: fix it (only if very minor -- a typo or wording, no behavior change -- " +
-            "then run the tests, push, and note it on the PR), file a ticket for it, or skip it with a stated reason. " +
+            "then run the tests, push, and note it on the PR; that push makes the approval stale, so merge with force=true, " +
+            "which records the override on the PR), file a ticket for it, or skip it with a stated reason. " +
             "Anything review-worthy (a behavior change, a logic or parity finding, a design question) is NOT merged automatically: " +
             "ask the human first. Verify a reviewer's factual claims before acting on them."
     );
@@ -1441,7 +1465,7 @@ async function main(): Promise<void> {
             "     | git-pr render-findings <FINDINGS-JSON-OR-@FILE>\n" +
             "     | git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>\n" +
             "     | git-pr unapprove <REPO> [PR-ID]\n" +
-            "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n" +
+            "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward] [force=true]\n" +
             "  [PR-ID] is optional on review/comment/comments/comment-findings/unapprove/merge — omit it to " +
             "resolve against REPO's sole open PR; if more than one is open, the error lists them so " +
             "you can pass one explicitly.";
@@ -1695,7 +1719,9 @@ async function main(): Promise<void> {
         }
 
         if (action === "merge") {
-            const { prIdArg, strategy } = parseMergeArgs(gitArgs);
+            // TAI-462: `force=true` anywhere among the trailing args is the merge-gate override.
+            const force = gitArgs.includes("force=true");
+            const { prIdArg, strategy } = parseMergeArgs(gitArgs.filter((a) => a !== "force=true"));
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
 
             // Brief §5.4: merge is "gated on GitHost.getCommitStatuses being green first" —
@@ -1718,20 +1744,38 @@ async function main(): Promise<void> {
                 return;
             }
 
+            // TAI-462: the merge gate -- fresh approvals, no standing request-changes, every test
+            // tier on the ticket Done. The ticket is whichever one this PR is linked to; the
+            // <ISSUE-KEY> given is only the fallback (it is sometimes borrowed for permission).
+            const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, pr.url);
+            const prTicket = linkedKey ?? issue.key;
+            const verdict = await checkMergeGate(
+                { gitHost, workTracker: config.backend.workTracker, ...requiredApprovalsFromEnv() },
+                pr,
+                prTicket
+            );
+            if (!verdict.ok && !force) {
+                console.log(renderMergeRefused(verdict.blockers, personaId));
+                return;
+            }
+
             const result = await gitHost.mergePullRequest(repo, prId, strategy);
+            if (result.ok && !verdict.ok) {
+                // Past the gate on purpose: say so on the PR, stamped, after the merge went through.
+                await gitHost.addPullRequestComment(repo, prId, stampComment(mergeOverrideComment(verdict.blockers), actingPersonaOf(config)));
+            }
 
             // rev 52 (TAI-159 ADR §4; generalized TAI-293): self-closing Done trigger — a
             // second write in this same command, same shape `git-pr create`'s PR+link
             // already has. The <ISSUE-KEY> this merge was invoked with isn't assumed to BE
             // the linked issue (it's sometimes borrowed purely for permission resolution) —
-            // `findLinkedIssueForPR` searches for whichever In-Progress Dev/Story/Bug/Spike/
-            // Epic issue's own remote link actually points at this PR. Best-effort: a merge
+            // `linkedKey` (found above, before the merge) is whichever In-Progress Dev/Story/Bug/
+            // Spike/Epic issue's own remote link actually points at this PR. Best-effort: a merge
             // that can't be correlated to any tracked issue still succeeds, only the side
             // effect is skipped.
             let closedIssueKey: string | undefined;
             let rebaseCommentPostedOn: string | undefined;
             if (result.ok) {
-                const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, result.pullRequest.url);
                 if (linkedKey) {
                     await config.backend.workTracker.transition(linkedKey, Status.Done);
                     closedIssueKey = linkedKey;
@@ -1743,14 +1787,17 @@ async function main(): Promise<void> {
                 // Posting this comment is purely informational (not a decision with
                 // consequences), so it runs automatically as part of reporting the failure —
                 // unlike `git-pr unapprove`, which stays suggested-only, never automatic.
-                const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, pr.url);
                 if (linkedKey) {
                     await config.backend.workTracker.addComment(linkedKey, stampComment(rebaseNeededCommentBody(pr.url), actingPersonaOf(config)));
                     rebaseCommentPostedOn = linkedKey;
                 }
             }
 
-            console.log(renderGitMutationResult(result, personaId, closedIssueKey, rebaseCommentPostedOn));
+            const overrideNote =
+                result.ok && !verdict.ok
+                    ? `\n\nMerged past the merge gate with force=true; an override comment on the PR records why it was not met:\n${verdict.blockers.map((b) => `- ${b}`).join("\n")}`
+                    : "";
+            console.log(renderGitMutationResult(result, personaId, closedIssueKey, rebaseCommentPostedOn) + overrideNote);
             return;
         }
 

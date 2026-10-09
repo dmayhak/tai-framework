@@ -14,6 +14,7 @@ import type {
     PullRequestId,
     PullRequestState,
     PullRequestRef,
+    PullRequestActivity,
     PullRequestComment,
     CreatePullRequestInput,
     CommitSha,
@@ -28,6 +29,8 @@ import {
     toCommitStatus,
     toComment,
     toPullRequestComment,
+    toPullRequestActivity,
+    type BitbucketActivityJson,
     toHumanRef,
     type BitbucketRepositoryJson,
     type BitbucketPullRequestJson,
@@ -209,6 +212,19 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
                 `/repositories/${workspace}/${slug}/pullrequests/${id}/comments`
             );
             return raw.filter((c) => c.deleted !== true).map(toPullRequestComment);
+        },
+
+        // TAI-462: Bitbucket returns the feed newest first; the gate reads it oldest first. Sorted
+        // by date rather than just reversed, so the order does not depend on the host's paging.
+        async listPullRequestActivity(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestActivity[]> {
+            const { workspace, slug } = splitRepoId(repo);
+            const raw = await client.paginate<BitbucketActivityJson>(
+                `/repositories/${workspace}/${slug}/pullrequests/${id}/activity`
+            );
+            return raw
+                .map(toPullRequestActivity)
+                .filter((a): a is PullRequestActivity => a !== null)
+                .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
         },
 
         async mergePullRequest(

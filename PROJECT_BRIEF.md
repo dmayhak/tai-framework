@@ -1996,9 +1996,29 @@ exactly one `Assignee` (§5.5's hard gate), and there's no honest single assigne
 - **Test-tier readiness moves off the static precedence graph onto three new
   live-computed `/tai-ready` lists** — `readyToReview` (open PRs where the current human
   is an eligible reviewer, per a new "PR Reviewers" roster), `readyToTest` (In-Progress
-  `Dev` subtasks whose PR has met its required-approval count), `readyToMerge` (same,
-  additionally CI-green) — extending TAI-107/108's existing `readyToMerge` pattern
+  `Dev` subtasks with an open PR — no approval requirement, testing runs alongside review), `readyToMerge`
+  (PRs that pass the merge gate below and are CI-green) — extending TAI-107/108's existing `readyToMerge` pattern
   (§5.4's own live-git-host-query idiom) rather than inventing a new one.
+- **The merge gate (TAI-462; human decisions TAI-455/TAI-456).** `git-pr merge` refuses unless all of
+  these hold, and `/tai-ready`'s `readyToMerge` applies the same rule (one function, `core/git/merge-gate.ts`):
+  1. **The required number of fresh approvals** (`TAI_PR_REQUIRED_APPROVALS`, default 1). An approval counts only
+     if it was cast while the PR's head was the commit it has now — compared on the commit, from the host's
+     activity feed, since an update can repeat the same commit. An older approval is reported as "approved before
+     the latest changes" and not counted. TAI unapproves nothing on anyone's behalf, and the result is the same
+     on a host tier that resets approvals and one that does not.
+  2. **No request-changes left standing.** It is a reviewer's tool; only its author can withdraw it. Test
+     failures do not use it — a failed tier already blocks the merge.
+  3. **Every test tier present on the ticket is Done** (or Canceled). A tier that was never created does not
+     block, and a test tier's own PR does not wait on itself.
+  4. **CI**, as before: any commit status that exists must be successful.
+
+  `git-pr merge … force=true` merges past rules 1 to 3 (not CI) and leaves a stamped `Merge-gate override:`
+  comment on the PR listing what was not met. It **replaces the old "very minor fix → fix, test, merge"
+  judgment rule**: a fix pushed after approval makes that approval stale, so the merge is refused; for a very
+  minor fix (a typo or wording, no behavior change) the one merging uses `force=true` and the override is on
+  record. For anything else, `force=true` is used only when the human says so. Observed on Bitbucket (scratch
+  repo PR 12, 2026-10-08): a withdrawn approval or request-changes disappears from the feed, a request-changes
+  replaces the same user's approval, and a PR author can request changes on their own PR.
 - **`Dev` → Done has two triggers:** `git-pr merge` transitions the linked `Dev` subtask
   as part of the same call that performs the merge (self-closing, not a separate
   cross-persona action); a refresh-based fallback catches a PR merged out-of-band (a

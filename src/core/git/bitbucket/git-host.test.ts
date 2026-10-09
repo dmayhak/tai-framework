@@ -342,6 +342,41 @@ describe("listPullRequestComments (TAI-383)", () => {
     });
 });
 
+describe("listPullRequestActivity (TAI-462)", () => {
+    const user = { account_id: "acct-1", display_name: "Del" };
+    const upd = (date: string, hash: string) => ({ update: { date, state: "OPEN", source: { commit: { hash } } }, pull_request: {} });
+
+    it("returns updates, approvals and change requests oldest first, across pages, leaving other kinds out", async () => {
+        const host = hostWith(
+            stubFetch((method, url) => {
+                assert.equal(method, "GET");
+                if (url.includes("page2")) return json({ values: [upd("2026-10-08T10:00:00Z", "aaa111")] });
+                assert.ok(url.includes("/repositories/dmayhak/tai-framework/pullrequests/7/activity"));
+                return json({
+                    // Bitbucket's own order: newest first.
+                    values: [
+                        { changes_requested: { date: "2026-10-08T10:05:00Z", user }, pull_request: {} },
+                        { comment: { id: 1, created_on: "2026-10-08T10:04:00Z" }, pull_request: {} },
+                        upd("2026-10-08T10:03:00Z", "bbb222"),
+                        { approval: { date: "2026-10-08T10:02:00Z", user }, pull_request: {} },
+                    ],
+                    next: "https://api.bitbucket.org/2.0/repositories/dmayhak/tai-framework/pullrequests/7/activity?page2",
+                });
+            })
+        );
+        const activity = await host.listPullRequestActivity(REPO, toPullRequestId("7"));
+        assert.deepEqual(
+            activity.map((a) => (a.kind === "update" ? `update ${a.sourceCommit}` : `${a.kind} ${a.human.displayName}`)),
+            ["update aaa111", "approval Del", "update bbb222", "changesRequested Del"]
+        );
+    });
+
+    it("skips an update entry that carries no source commit", async () => {
+        const host = hostWith(stubFetch(() => json({ values: [{ update: { date: "2026-10-08T10:00:00Z", source: { commit: null } }, pull_request: {} }] })));
+        assert.deepEqual(await host.listPullRequestActivity(REPO, toPullRequestId("7")), []);
+    });
+});
+
 describe("mergePullRequest — the §3.3 rejection-vs-connectivity split", () => {
     it("returns ok:true with the merged PR on success", async () => {
         const host = hostWith(stubFetch(() => json({ ...PR_JSON, state: "MERGED" })));

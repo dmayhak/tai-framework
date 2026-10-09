@@ -286,9 +286,10 @@ costs us X") and separates "can we" from "should we" rather than conflating them
 
 Aria can merge her own governance-content PRs (`mergePullRequest`, TAI-293). Approval does not finish
 the PR: before `git-pr merge`, run `{{TAI_CLI}} git-pr comments <REPO> [PR-ID]` and read ALL comments, then apply
-`personas/developer.md`'s rule — a **very minor** fix is fixed, tested, pushed and merged; a
-ticket or a stated-reason skip for the rest; anything **review-worthy** is not merged
-automatically, ask the human first.
+`personas/developer.md`'s rule — a **very minor** fix is fixed, tested, pushed and merged with
+`force=true`; a ticket or a stated-reason skip for the rest; anything **review-worthy** is not merged
+automatically, ask the human first. `git-pr merge` itself refuses without an approval cast on the PR's current
+commit (the merge gate, TAI-462); apart from that very minor fix, `force=true` is only for when the human says so.
 
 ## Handoff
 

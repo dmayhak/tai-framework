@@ -38,6 +38,7 @@ import {
     renderInitStatus,
     extractActingPersona,
     actingPersonaOf,
+    renderMergeRefused,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 import type { InitState } from "../core/commands/target-init.js";
@@ -121,6 +122,7 @@ describe("renderPullRequestComments (TAI-383)", () => {
     it("ends with the decision prompt: fix only if very minor, ticket, or skip with a reason; ask if review-worthy", () => {
         const out = renderPullRequestComments("126", [comment("1", "x", "2026-10-02T14:49:49Z")]);
         assert.match(out, /very minor/i);
+        assert.match(out, /merge with force=true/);
         assert.match(out, /ticket/i);
         assert.match(out, /review-worthy/i);
         assert.match(out, /ask the human/i);
@@ -844,5 +846,17 @@ describe("actingPersonaOf (TAI-475)", () => {
     it("uses the id itself for a persona with no built-in name, and is undefined when none was named", () => {
         assert.deepEqual(actingPersonaOf({ actingPersona: "release-manager" }), { id: "release-manager", displayName: "release-manager" });
         assert.equal(actingPersonaOf({}), undefined);
+    });
+});
+
+describe("renderMergeRefused (TAI-462)", () => {
+    it("says nothing was merged, lists every unmet rule, and names the override and when to use it", () => {
+        const out = renderMergeRefused(["Needs 1 approval on the current commit (abc); has 0.", "Test tier TAI-5 (integration-test) is In Progress, not Done."], "developer");
+        assert.match(out, /^# Merge refused \(as developer\)/);
+        assert.match(out, /Nothing was merged/);
+        assert.match(out, /- Needs 1 approval on the current commit \(abc\); has 0\./);
+        assert.match(out, /- Test tier TAI-5/);
+        assert.match(out, /force=true/);
+        assert.match(out, /only when the human says so/);
     });
 });
