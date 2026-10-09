@@ -556,7 +556,7 @@ export function renderMergeRefused(blockers: readonly string[], personaId: strin
         "",
         ...blockers.map((b) => `- ${b}`),
         "",
-        "Get what is missing (a fresh approval, the request-changes withdrawn, the tier finished) and run the merge again. " +
+        "Get what is missing (a fresh approval, the request-changes withdrawn, the tier finished, the UAT signed off) and run the merge again. " +
             "To merge anyway, add `force=true`: it leaves a stamped override comment on the PR. Use it for a very minor " +
             "fix pushed after the approval (a typo or wording, no behavior change); for anything else, only when the human says so.",
     ].join("\n");
@@ -1745,7 +1745,7 @@ async function main(): Promise<void> {
             }
 
             // TAI-462: the merge gate -- fresh approvals, no standing request-changes, every test
-            // tier on the ticket Done. The ticket is whichever one this PR is linked to; the
+            // tier on the ticket Done, UAT Done unless labeled uat-after-merge (TAI-507). The ticket is whichever one this PR is linked to; the
             // <ISSUE-KEY> given is only the fallback (it is sometimes borrowed for permission).
             const linkedKey = await findLinkedIssueForPR(config.backend.workTracker, config.projectKey, pr.url);
             const prTicket = linkedKey ?? issue.key;

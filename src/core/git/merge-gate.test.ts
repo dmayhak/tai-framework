@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { toHumanId, toIssueKey, type HumanRef, type Issue, type IssueFilter } from "../storage/interface.js";
 import { toCommitSha, toPullRequestId, toRepoId, type PullRequestActivity, type PullRequestRef, type PullRequestReviewer } from "./interface.js";
-import { checkMergeGate, evaluateMergeGate, mergeOverrideComment } from "./merge-gate.js";
+import { UAT_AFTER_MERGE_LABEL, checkMergeGate, evaluateMergeGate, mergeOverrideComment } from "./merge-gate.js";
 
 const del: HumanRef = { id: toHumanId("acct-del"), displayName: "Del" };
 const ana: HumanRef = { id: toHumanId("acct-ana"), displayName: "Ana" };
@@ -20,12 +20,13 @@ const approved = (human = del): PullRequestReviewer => ({ human, status: "approv
 function pr(reviewers: readonly PullRequestReviewer[]): PullRequestRef {
     return { id: toPullRequestId("7"), repo: toRepoId("w/r"), reviewers, sourceCommit: HEAD } as unknown as PullRequestRef;
 }
-const gate = (reviewers: readonly PullRequestReviewer[], activity: readonly PullRequestActivity[], extra: { required?: number; tiers?: Issue[] } = {}) =>
-    evaluateMergeGate({ pullRequest: pr(reviewers), activity, requiredApprovals: extra.required ?? 1, testTiers: extra.tiers ?? [] });
+const gate = (reviewers: readonly PullRequestReviewer[], activity: readonly PullRequestActivity[], extra: { required?: number; tiers?: Issue[]; uat?: Issue[] } = {}) =>
+    evaluateMergeGate({ pullRequest: pr(reviewers), activity, requiredApprovals: extra.required ?? 1, testTiers: extra.tiers ?? [], uat: extra.uat ?? [] });
 
 function tier(key: string, status: Status, issueType: SubtaskType = SubtaskType.IntegrationTest): Issue {
-    return { key: toIssueKey(key), projectKey: "TAI", issueType, status, parentKey: toIssueKey("TAI-1") } as unknown as Issue;
+    return { key: toIssueKey(key), projectKey: "TAI", issueType, status, parentKey: toIssueKey("TAI-1"), labels: [] } as unknown as Issue;
 }
+const uat = (key: string, status: Status, labels: readonly string[] = []): Issue => ({ ...tier(key, status, SubtaskType.Uat), labels });
 
 describe("merge gate: fresh approvals", () => {
     it("passes with an approval cast on the current commit", () => {
@@ -94,6 +95,20 @@ describe("merge gate: request-changes and test tiers", () => {
         assert.equal(gate([approved()], [update(), approval()], { tiers: [tier("TAI-5", Status.Canceled)] }).ok, true);
     });
 
+    it("refuses while a UAT on the ticket is not Done, naming it and the label (TAI-507)", () => {
+        const verdict = gate([approved()], [update(), approval()], { uat: [uat("TAI-8", Status.ToDo)] });
+        assert.deepEqual(verdict.blockers, ["UAT TAI-8 is To Do, not Done, and does not carry the uat-after-merge label."]);
+    });
+
+    it("passes once the UAT is Done, or was canceled", () => {
+        assert.equal(gate([approved()], [update(), approval()], { uat: [uat("TAI-8", Status.Done)] }).ok, true);
+        assert.equal(gate([approved()], [update(), approval()], { uat: [uat("TAI-8", Status.Canceled)] }).ok, true);
+    });
+
+    it("does not wait for an open UAT that carries the uat-after-merge label", () => {
+        assert.equal(gate([approved()], [update(), approval()], { uat: [uat("TAI-8", Status.Backlog, ["other", UAT_AFTER_MERGE_LABEL])] }).ok, true);
+    });
+
     it("lists every unmet rule, not just the first", () => {
         const verdict = gate([{ human: ana, status: "changesRequested" }], [update()], { tiers: [tier("TAI-5", Status.ToDo)] });
         assert.equal(verdict.blockers.length, 3);
@@ -130,6 +145,14 @@ describe("checkMergeGate: gathering", () => {
 
     it("does not make a test tier's own PR wait on that tier", async () => {
         assert.equal((await checkMergeGate(deps, pr([approved()]), integ.key)).ok, true);
+    });
+
+    it("asks for the UAT subtask with the tiers and blocks on it", async () => {
+        const acceptance = uat("TAI-8", Status.ToDo);
+        const withUat = { ...deps, workTracker: { ...deps.workTracker, search: async (filter: IssueFilter) => (searches.push(filter), [acceptance]) } };
+        const verdict = await checkMergeGate(withUat, pr([approved()]), dev.key);
+        assert.ok(searches.at(-1)?.issueTypes?.includes(SubtaskType.Uat));
+        assert.deepEqual(verdict.blockers, ["UAT TAI-8 is To Do, not Done, and does not carry the uat-after-merge label."]);
     });
 
     it("checks approvals only when the PR is tied to no ticket", async () => {

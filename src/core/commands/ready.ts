@@ -614,7 +614,7 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         ];
 
         // TAI-462: the same merge gate `git-pr merge` applies (fresh approvals, no standing
-        // request-changes, test tiers Done), then CI. A PR with no approval at all is skipped
+        // request-changes, test tiers Done, UAT Done unless labeled uat-after-merge), then CI. A PR with no approval at all is skipped
         // before the gate's own reads -- it cannot pass, and most open PRs are in that state.
         const gateDeps = { gitHost: deps.gitHost, workTracker: deps.workTracker, requiredApprovals };
         const merge: ReadyToMergeCandidate[] = [];

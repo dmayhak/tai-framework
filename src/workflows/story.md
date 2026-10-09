@@ -147,9 +147,9 @@ never created for new work):
 - **Once the merge gate is met and CI is green** — surfaced as **`readyToMerge`** — **whoever owns the `Dev`
   subtask merges, always**: `git-pr merge <DEV-SUBTASK-KEY> <REPO> ...`. The gate (brief §5.4, TAI-462):
   the configured number of approvals cast on the PR's current commit, no request-changes left standing,
-  every test tier present on the ticket Done, and `GitHost.getCommitStatuses` green (CI is load-bearing, not
-  advisory). When the ticket has a `UAT` subtask without the `uat-after-merge` label, the merge also waits
-  for its sign-off — by convention; the gate does not check it yet. Real practice, not self-certification (`cannotApprove: own-output` is
+  every test tier present on the ticket Done, a `UAT` subtask on the ticket Done unless it carries the
+  `uat-after-merge` label (TAI-507), and `GitHost.getCommitStatuses` green (CI is load-bearing, not
+  advisory). Real practice, not self-certification (`cannotApprove: own-output` is
   untouched) — the approval already happened as a separate, independent review action.
   **This same command also transitions the `Dev` subtask itself to Done**, as a second
   write in the same call — the actual completion signal for the unit of work.
@@ -204,8 +204,8 @@ absent, the automated tiers gate `Deploy` directly.
 - **Placement (TAI-456):** before the merge by default — the stakeholder accepts what is about to be merged,
   from the PR's branch. A ticket may place it after the merge instead (for example when acceptance needs the
   deployed system): the **`uat-after-merge` label on the `UAT` subtask** records that, set when the human
-  asks. Either way it still gates `Deploy`. Before-merge is a convention for now: the merge gate does not read
-  `UAT` or the label yet.
+  asks. Either way it still gates `Deploy`. The merge gate enforces the placement (TAI-507): an open
+  `UAT` without the label blocks the merge.
 
 - **Owner:** the Tester persona drives the run, but a **human stakeholder must
   sign off** — `UAT` is **inherently human-gated** (brief §3.3) and **never

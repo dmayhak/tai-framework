@@ -198,8 +198,8 @@ classification upfront (see "When this persona is invoked" item 3).
 - On a failure before the merge: the tier goes back to To Do and **Developer** gets the failure detail as a
   comment on the `Dev` subtask, which is still In Progress.
 - On a failure after the merge: a new linked Bug, via **PM**.
-- After a human stakeholder signs off `UAT`: nothing further from Tessa. By default the `Dev` owner was
-  holding the merge for it; with `uat-after-merge`, `Deploy` was.
+- After a human stakeholder signs off `UAT`: nothing further from Tessa. By default the merge gate was
+  holding the merge for it (TAI-507); with `uat-after-merge`, `Deploy` was.
 - After a human stakeholder rejects `UAT`: routes to **Developer** (an implementation miss) or to
   **PM/Requirements** (an acceptance-criteria gap) — a human decides which; not the automatic single-retry
   loop used for the automated tiers (see `workflows/story.md` — "UAT gate"). Concretely:

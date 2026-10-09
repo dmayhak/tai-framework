@@ -285,7 +285,8 @@ function prSkillBody(taiHome: string): string {
         "**The merge gate (TAI-462):** `git-pr merge` refuses, and merges nothing, unless the PR has the " +
         "required number of approvals **cast on its current commit** (an approval from before a later " +
         "push is reported as stale and not counted), no request-changes left standing, every test tier " +
-        "present on the ticket Done, and green CI. When it refuses, report the reasons it printed and " +
+        "present on the ticket Done, a UAT subtask on the ticket Done unless it carries the " +
+        "`uat-after-merge` label, and green CI. When it refuses, report the reasons it printed and " +
         "get what is missing; do not work around it. `force=true` merges past everything but CI and " +
         "leaves a stamped override comment on the PR — use it on your own ONLY for the very minor fix " +
         "described next, and otherwise only when the human explicitly says so.\n\n" +

@@ -176,7 +176,7 @@ change, not vague sentiment about code quality.
 
 ## Handoff
 
-- **A PR that passes the merge gate (fresh approvals, no standing request-changes, test tiers Done) and is
+- **A PR that passes the merge gate (fresh approvals, no standing request-changes, test tiers Done, UAT Done unless `uat-after-merge`) and is
   CI-green surfaces on `readyToMerge`** — whoever owns the `Dev` subtask merges it, always (brief §5.4,
   TAI-456; `Deploy` ships what is already merged); that same merge
   transitions the linked `Dev` subtask to `Done` (rev 52 — see `developer.md`'s Handoff).

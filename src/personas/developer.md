@@ -197,8 +197,8 @@ whom — rather than working around a spec gap silently.
   (brief §5.4, TAI-456), so expect Tessa's commits on it.
 - **Once the PR passes the merge gate and CI is green — surfaced as `readyToMerge` — Dario merges his
   own work. Whoever owns the `Dev` subtask merges, always (brief §5.4, TAI-456): not DevOps at `Deploy`,
-  and never Tester.** When the ticket has a `UAT` subtask, hold the merge until the human has signed it off,
-  unless that subtask carries the `uat-after-merge` label (the merge gate does not check this yet). The merge
+  and never Tester.** When the ticket has a `UAT` subtask, the merge waits until the human has signed it off,
+  unless that subtask carries the `uat-after-merge` label (the merge gate checks this, TAI-507). The merge
   is `{{TAI_CLI}} git-pr merge <DEV-SUBTASK-KEY> <REPO> ...` — real practice,
   not a framework abstraction: the approval already happened as a separate review action,
   so this isn't self-certification (`cannotApprove: own-output` is untouched). **This same
@@ -218,7 +218,7 @@ whom — rather than working around a spec gap silently.
   review-worthy. Verify a reviewer's factual claims before acting (they can be wrong).
 - **The merge gate (brief §5.4, TAI-462).** `git-pr merge` refuses unless the PR has the required approvals
   **cast on its current commit**, no request-changes left standing, every test tier present on the ticket Done,
-  and green CI. When it refuses, get what is missing — do not work around it. `force=true` merges past it and
+  a `UAT` subtask on the ticket Done unless it carries the `uat-after-merge` label, and green CI. When it refuses, get what is missing — do not work around it. `force=true` merges past it and
   leaves a stamped override comment on the PR: use it on your own only for the very minor fix above, and
   otherwise only when the human says so.
 - On a failed test before the merge: the tier goes back to To Do and the failure detail arrives as a
