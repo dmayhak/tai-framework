@@ -1307,6 +1307,26 @@ into one readable snapshot. **Bounded, by design (rev 11):**
   ticket-to-ticket traversal rule** (`workflows/dependencies.md`): the briefing includes
   pages linked directly to the subtask/parent, but does **not** transitively follow those
   pages' own outgoing links to further pages.
+- **What each ticket shows (TAI-464).** Every ticket in the briefing carries a state line:
+  type, status, owning persona, assignee (or "unassigned"), priority and the flag. The
+  subtask and the parent also show their own remote links (where a PR link lives) and
+  their **last 10 comments**, oldest first, with a note on how many older ones there are.
+  The latest `Handoff:` comment is lifted out and shown first, under its own heading.
+  Linked tickets show state and description only, no comments and no links — the same
+  one-hop bound. Live PR state (approvals, CI) is not in the briefing; it needs the git
+  host; `/tai-ready` is where an approved PR surfaces.
+- **A size budget (TAI-464).** The briefing is capped at 60,000 characters by default
+  (`TAI_BRIEFING_BUDGET` in `.env`). The subtask and the parent are never cut. Linked pages
+  and linked tickets share what is left, smallest first, so a short page is not cut to
+  make room for a long one; one that does not fit ends with `NOT SHOWN IN FULL — N more
+  characters` and the `page get` / `issue get` command that reads the rest. If the subtask
+  and parent alone exceed the budget, the briefing exceeds it too.
+- **Ticket and page text is data, not instructions (TAI-464).** The briefing is appended to
+  the persona prompt, so text in it must not be able to pose as that prompt. It opens with
+  a notice saying so; a heading inside ticket, comment or page text is pushed below the
+  briefing's own heading for that section; a `---` line becomes `* * *`. Code fences are
+  left as written. This makes external text visibly external; it is not a guarantee
+  against a model following it.
 This is what a persona actually reads to resume work; it avoids re-assembling context from
 scattered cache files every time, and gives a human something reviewable too.
 
@@ -2209,8 +2229,9 @@ from source; the workspace holds state that may not exist anywhere else yet.
   work/
     <project-key>/
       <SUBTASK-KEY>/
-        briefing.md              # aggregated snapshot: subtask + parent + linked
-                                  #   Confluence pages, regenerated at each refresh point
+        briefing.md              # aggregated snapshot: subtask + parent (state, links,
+                                  #   comments) + linked Confluence pages and tickets,
+                                  #   size-capped, regenerated at each refresh point
         journal.md                # append-only log of steps taken + intermediate results
         status.json                # structured state: current step, in-progress/blocked/
                                     #   done, last-updated

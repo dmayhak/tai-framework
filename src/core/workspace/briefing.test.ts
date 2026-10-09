@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { DependencyRelation, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
-import { toIssueKey, toPageId, type DocStore, type Issue, type IssueLink, type Page, type PageId, type WorkTracker } from "../storage/interface.js";
-import { generateBriefing } from "./briefing.js";
+import { toIssueKey, toPageId, type DocStore, type Issue, type IssueLink, type Page, type PageId, type RemoteLink, type WorkTracker } from "../storage/interface.js";
+import { BRIEFING_BUDGET, briefingBudgetFromEnv, generateBriefing } from "./briefing.js";
 
 function issue(overrides: Partial<Issue> = {}): Issue {
     return {
@@ -42,8 +42,12 @@ class FakeWorkTracker implements Partial<WorkTracker> {
     constructor(
         private readonly issues: Map<string, Issue>,
         private readonly linkedPages: Map<string, readonly PageId[]>,
-        private readonly linkedIssues: Map<string, readonly IssueLink[]> = new Map()
+        private readonly linkedIssues: Map<string, readonly IssueLink[]> = new Map(),
+        private readonly remoteLinks: Map<string, readonly RemoteLink[]> = new Map()
     ) {}
+    async getRemoteLinks(key: string): Promise<readonly RemoteLink[]> {
+        return this.remoteLinks.get(key) ?? [];
+    }
     async getIssue(key: string): Promise<Issue | null> {
         return this.issues.get(key) ?? null;
     }
@@ -477,5 +481,52 @@ describe("generateBriefing change notes (TAI-285 ADR)", () => {
 
             assert.deepEqual(changeNotes, [{ key: toIssueKey("TAI-1"), severity: "structural", fields: ["relationship"] }]);
         });
+    });
+});
+
+describe("generateBriefing: remote links and budget (TAI-464)", () => {
+    it("reads the remote links of the subtask and the parent, not of a linked ticket", async () => {
+        await withTempDir(async (dir) => {
+            const parent = issue({ key: toIssueKey("TAI-1"), issueType: StoryType.Story });
+            const subtask = issue({ key: toIssueKey("TAI-2"), parentKey: parent.key });
+            const linked = issue({ key: toIssueKey("TAI-9") });
+            const tracker = new FakeWorkTracker(
+                new Map([
+                    [parent.key, parent],
+                    [subtask.key, subtask],
+                    [linked.key, linked],
+                ]),
+                new Map(),
+                new Map([[subtask.key, [{ key: linked.key, relation: DependencyRelation.RelatesTo }]]]),
+                new Map([
+                    [subtask.key, [{ url: "https://example.com/pr/7", title: "PR 7" }]],
+                    [parent.key, [{ url: "https://example.com/spec", title: "Spec" }]],
+                    [linked.key, [{ url: "https://example.com/other", title: "Other" }]],
+                ])
+            ) as unknown as WorkTracker;
+            const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", subtask.key);
+            assert.ok(markdown.includes("- PR 7 — https://example.com/pr/7"), markdown);
+            assert.ok(markdown.includes("- Spec — https://example.com/spec"));
+            assert.ok(!markdown.includes("https://example.com/other"));
+        });
+    });
+
+    it("passes the budget through to the rendered file", async () => {
+        await withTempDir(async (dir) => {
+            const subtask = issue({ key: toIssueKey("TAI-2") });
+            const tracker = new FakeWorkTracker(new Map([[subtask.key, subtask]]), new Map([[subtask.key, [toPageId("5")]]])) as unknown as WorkTracker;
+            const docStore = new FakeDocStore(new Map([["5", page("5", "Long", "x".repeat(20_000))]])) as unknown as DocStore;
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", subtask.key, { budget: 5_000 });
+            assert.ok(markdown.length <= 5_000);
+            assert.ok(markdown.includes("Read the rest with `page get id=5`"));
+        });
+    });
+
+    it("reads TAI_BRIEFING_BUDGET, falling back to the default on anything unusable", () => {
+        assert.equal(briefingBudgetFromEnv({ TAI_BRIEFING_BUDGET: "20000" }), 20_000);
+        assert.equal(briefingBudgetFromEnv({}), BRIEFING_BUDGET);
+        assert.equal(briefingBudgetFromEnv({ TAI_BRIEFING_BUDGET: "lots" }), BRIEFING_BUDGET);
+        assert.equal(briefingBudgetFromEnv({ TAI_BRIEFING_BUDGET: "-5" }), BRIEFING_BUDGET);
     });
 });
