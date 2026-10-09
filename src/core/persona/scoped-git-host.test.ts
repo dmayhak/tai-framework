@@ -53,6 +53,11 @@ class RecordingGitHost implements GitHost {
         return prFixture({ repo: input.repo, title: input.title, sourceBranch: input.sourceBranch });
     }
 
+    async listPullRequestActivity(): Promise<readonly []> {
+        this.calls.push("listPullRequestActivity");
+        return [];
+    }
+
     async getPullRequest(_repo: RepoId, _id: PullRequestId): Promise<PullRequestRef | null> {
         this.calls.push("getPullRequest");
         return null;

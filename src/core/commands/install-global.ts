@@ -209,7 +209,7 @@ function prSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr render-findings <FINDINGS-JSON-OR-@FILE>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr unapprove <REPO> [PR-ID]\n` +
-        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward]\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward] [force=true]\n` +
         "```\n\n" +
         "**`review-prep`/`review`/`comment`/`comment-findings`/`unapprove` take NO `<ISSUE-KEY>`** — unlike " +
         "`create`/`merge`, none is scoped to one issue at all (rev 52, TAI-159 ADR): each resolves " +
@@ -282,12 +282,20 @@ function prSkillBody(taiHome: string): string {
         "- `comments` (TAI-383) — read-only: lists EVERY comment on the PR, in order, with author, " +
         "time, inline file/line, and the full body. Takes no `<ISSUE-KEY>` and needs no roster " +
         "membership. This is the first half of the comments-before-merge step below.\n\n" +
+        "**The merge gate (TAI-462):** `git-pr merge` refuses, and merges nothing, unless the PR has the " +
+        "required number of approvals **cast on its current commit** (an approval from before a later " +
+        "push is reported as stale and not counted), no request-changes left standing, every test tier " +
+        "present on the ticket Done, and green CI. When it refuses, report the reasons it printed and " +
+        "get what is missing; do not work around it. `force=true` merges past everything but CI and " +
+        "leaves a stamped override comment on the PR — use it on your own ONLY for the very minor fix " +
+        "described next, and otherwise only when the human explicitly says so.\n\n" +
         "**Comments-before-merge (TAI-382/383) — even an approved PR:** an approval is a decision, " +
         "not the end of the PR. Before running `git-pr merge`, run `git-pr comments <REPO> [PR-ID]` " +
         "and read ALL comments — including a second reviewer's and anything posted after the last " +
         "commit. For EACH one, decide and tell the human which: (a) **fix it** — only if it is " +
         "**very minor** (a typo, a title or comment wording, a rename; no behavior change; trivially " +
-        "verified): fix it, run the tests, push, note it on the PR, and merge — no need to ask; " +
+        "verified): fix it, run the tests, push, note it on the PR, and merge with `force=true` — no need " +
+        "to ask (the push made the approval stale; `force=true` records the override on the PR); " +
         "(b) **file a ticket** for it; or (c) **skip it** with a stated reason. Anything " +
         "**review-worthy** (a behavior change, a logic or parity finding, a design question — " +
         "anything a reviewer would want to look at again) is NOT fixed-and-merged on your own: do " +

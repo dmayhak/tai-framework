@@ -125,6 +125,21 @@ export interface PullRequestComment extends Comment {
     readonly inline?: { readonly path: string; readonly line?: number };
 }
 
+/**
+ * TAI-462: one entry of a PR's history, as far as the merge gate needs it -- when the source
+ * branch's head was a given commit, and who approved or requested changes when. What makes an
+ * approval FRESH (cast on the PR's current head) can only be told from this, since a host
+ * that does not reset approvals on a new commit (Bitbucket's free tier) still reports the
+ * reviewer as approved.
+ *
+ * Only decisions that still stand are expected here: Bitbucket drops a withdrawn approval or
+ * request-changes from its feed (checked live on dmayhak/tait PR 12, 2026-10-08).
+ */
+export type PullRequestActivity =
+    | { readonly kind: "update"; readonly at: string; readonly sourceCommit: CommitSha }
+    | { readonly kind: "approval"; readonly at: string; readonly human: HumanRef }
+    | { readonly kind: "changesRequested"; readonly at: string; readonly human: HumanRef };
+
 export type CommitStatusState = "successful" | "failed" | "inProgress" | "stopped";
 
 export interface CommitStatus {
@@ -214,6 +229,11 @@ export interface GitHost {
      * reviewer's. Read-only, so no persona gate (same as `getPullRequest`).
      */
     listPullRequestComments(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestComment[]>;
+    /**
+     * TAI-462: the PR's updates, approvals and change requests, OLDEST first. Read-only, so no
+     * persona gate. Entries of any other kind (comments, tasks) are left out.
+     */
+    listPullRequestActivity(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestActivity[]>;
 
     /**
      * Read-only by design — TAI-32 (this project's own Bitbucket Pipelines work) found no
