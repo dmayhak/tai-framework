@@ -95,5 +95,6 @@ issue-type field already carries the `StoryType.Spike` signal.
 
 ## Human Overrides
 
-Same general rule as Kickoff/Story/Bug: a human-added subtask type outside
-`STORY_SUBTASK_MAP[Spike]` gets flagged on refresh, not blocked or auto-removed.
+Same general rule as Kickoff/Story/Bug: a subtask type outside `STORY_SUBTASK_MAP[Spike]`
+is noted when it is created through the CLI, not blocked or auto-removed (see
+`workflows/kickoff.md`, "Human Overrides").

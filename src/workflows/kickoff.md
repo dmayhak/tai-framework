@@ -241,12 +241,14 @@ initiative itself gets deprioritized before discovery concludes.
 ## Human Overrides (unforeseen subtask types)
 
 A human can add a subtask type outside `STORY_SUBTASK_MAP[Kickoff]` directly in Jira
-(e.g. a `Database` subtask, bypassing the "spawn a Spike instead" rule below). TAI
-**flags it on the next refresh** (comment/journal note to whoever's driving the Kickoff)
-but does **not** block progress or auto-remove it — humans can override AI process
-judgment; TAI's job is visibility, not enforcement here. Same pattern as D13's
-"create/adjust and flag" for late-arriving precedence edges (`workflows/dependencies.md`).
-This is expected to generalize to Story/Bug/Spike, not just Kickoff.
+(e.g. a `Database` subtask, bypassing the "spawn a Spike instead" rule below). TAI does
+**not** block it or remove it — humans can override AI process judgment; TAI's job is
+visibility, not enforcement here.
+
+**What is visible:** when a subtask is created through the CLI (`issue create`) and its type
+is not listed for its parent's type, the CLI prints a note naming the types that are listed,
+and creates the ticket anyway. This holds for Kickoff, Story, Bug and Spike alike. A subtask
+added directly in Jira gets no note; nothing scans for one afterwards.
 
 ## Decided: no Feasibility/Database/Infra under Kickoff
 

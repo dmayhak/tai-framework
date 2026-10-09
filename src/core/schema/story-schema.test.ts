@@ -26,6 +26,7 @@ import {
     EXPEDITED_BUG_PRIORITY,
     ALWAYS_HUMAN_GATED_SUBTASKS,
     STORY_SUBTASK_MAP,
+    subtaskOutsideMapNote,
     type SubtaskPrecedenceRule,
 } from "./story-schema.js";
 
@@ -570,5 +571,33 @@ describe("an absent subtask passes its predecessors through (TAI-463)", () => {
             .map((r) => `${r.before}>${r.after}`)
             .sort();
         assert.deepEqual(added, ["dev>uat", "uat>deploy"]);
+    });
+});
+
+describe("subtaskOutsideMapNote (TAI-479)", () => {
+    it("is null for every subtask type its parent's type lists", () => {
+        for (const storyType of Object.values(StoryType)) {
+            for (const subtaskType of STORY_SUBTASK_MAP[storyType]) {
+                assert.equal(subtaskOutsideMapNote(subtaskType, storyType), null, `${subtaskType} under ${storyType}`);
+            }
+        }
+    });
+
+    it("names the parent's type and the listed types when the type is not listed", () => {
+        const note = subtaskOutsideMapNote(SubtaskType.Database, StoryType.Kickoff)!;
+        assert.match(note, /^Note: a "database" subtask is not one of the types expected under a kickoff \(research, epic-review, requirements, ux-design, architecture-design\)\./);
+        assert.match(note, /The ticket was created\./);
+    });
+
+    it("says the retired code-review type is retired", () => {
+        assert.match(subtaskOutsideMapNote(SubtaskType.CodeReview, StoryType.Story)!, /`code-review` is retired: review happens on the PR\./);
+        assert.doesNotMatch(subtaskOutsideMapNote(SubtaskType.Triage, StoryType.Story)!, /retired/);
+    });
+
+    it("has nothing to say about a story-level ticket, or a subtask whose parent is not story-level", () => {
+        assert.equal(subtaskOutsideMapNote(StoryType.Story, "epic"), null);
+        assert.equal(subtaskOutsideMapNote("epic", StoryType.Story), null);
+        assert.equal(subtaskOutsideMapNote(SubtaskType.Dev, "epic"), null);
+        assert.equal(subtaskOutsideMapNote(SubtaskType.Dev, SubtaskType.Dev), null);
     });
 });

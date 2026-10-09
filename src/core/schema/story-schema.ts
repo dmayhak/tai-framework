@@ -241,6 +241,23 @@ export const STORY_SUBTASK_MAP: Record<StoryType, SubtaskType[]> = {
     ],
 };
 
+/**
+ * TAI-479 (human decision TAI-455): the note `issue create` prints when a subtask's type is not
+ * listed in `STORY_SUBTASK_MAP` for its parent's type. A note, never a refusal: a human or a persona
+ * may have a real reason, and the ticket already exists. `null` when the type is listed, and for
+ * anything that is not a subtask under a story-level ticket.
+ */
+export function subtaskOutsideMapNote(subtaskType: StoryType | SubtaskType | "epic", parentType: StoryType | SubtaskType | "epic"): string | null {
+    if (!isSubtaskIssueType(subtaskType) || !isStoryIssueType(parentType)) return null;
+    const allowed = STORY_SUBTASK_MAP[parentType];
+    if (allowed.includes(subtaskType)) return null;
+    const retired = subtaskType === SubtaskType.CodeReview ? " `code-review` is retired: review happens on the PR." : "";
+    return (
+        `Note: a "${subtaskType}" subtask is not one of the types expected under a ${parentType} (${allowed.join(", ")}).${retired} ` +
+        "The ticket was created. It gets no place in the precedence graph unless that type has one for this parent; link it by hand if it must block something, or cancel it if it was a mistake."
+    );
+}
+
 // Subtask types that are INHERENTLY human-gated (brief §3.3): they always
 // require a human sign-off and can never autocomplete, even when
 // autocompletion is otherwise enabled for the persona/project — a

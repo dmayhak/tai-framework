@@ -134,6 +134,7 @@ import {
     defaultPersonaFor,
     DependencyRelation,
     isSubtaskIssueType,
+    subtaskOutsideMapNote,
     Status,
     SubtaskType,
     DEFAULT_PERSONA_DISPLAY_NAME,
@@ -2160,6 +2161,12 @@ async function main(): Promise<void> {
             if (!issue.persona) console.log(`\n${PERSONA_LESS_CREATE_WARNING(issue.key)}`);
             const outsideGrantNote = await actingGrantNote(config, "create", issue.issueType);
             if (outsideGrantNote) console.log(`\n${outsideGrantNote}`);
+            // TAI-479: a subtask type its parent's type does not list gets a note, not a refusal. Best effort.
+            if (issue.parentKey && isSubtaskIssueType(issue.issueType)) {
+                const parent = await config.backend.workTracker.getIssue(issue.parentKey).catch(() => null);
+                const mapNote = parent ? subtaskOutsideMapNote(issue.issueType, parent.issueType) : null;
+                if (mapNote) console.log(`\n${mapNote}`);
+            }
             return;
         }
 

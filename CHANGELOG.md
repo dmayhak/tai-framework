@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 91 (2026-10-09)
+
+**TAI-479: `issue create` notes a subtask type that its parent's type does not list.** Human decision TAI-455, row 5: warn, do not block. `STORY_SUBTASK_MAP` was read by nothing; `issue create` now compares a new subtask's type with the entry for its parent's type and prints a note naming the listed types, creating the ticket regardless. `workflows/kickoff.md` and `workflows/spike.md` said an outside type is "flagged on the next refresh", which was never built; they now say what happens. Brief §5.2.
+
 ## rev 90 (2026-10-09)
 
 **TAI-478: the persona grants match the persona docs, and a mismatch is visible.** Human decision TAI-455 (rows 1 and 2). Perry's `complete` grant gains Spike, Kickoff, Story and Bug (she could not close a Spike under her own list; Epic stays out, since closing one is the human's decision). DevOps loses its `gitHost: mergePullRequest` grant: whoever owns the Dev subtask merges (TAI-456). The per-field `update` grants are deleted from all nine persona files and from the code; most named fields that do not exist. `issue create` and a transition to Done now print a note, without refusing, when the acting persona has no `create` or `complete` grant for the type. A Cancel does not trigger the note. Brief §3.1 and §4.
