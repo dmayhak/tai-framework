@@ -1944,7 +1944,28 @@ auto-derived, always a deliberate human decision.**
   need" reasoning used throughout this brief).
 
 ### 5.4 Checkpoint Chain (canonical example)
-For an implementation Story touching one repo:
+
+**The sequence as it stands (TAI-456, human decision 2026-10-08): verify, then merge.** Everything further down
+this section is the history of how the chain got here; where it disagrees with this block, this block wins.
+```
+[Dev opens PR, stays In Progress] --> [review + test tiers, in parallel; UAT] --> [merge, by whoever owns Dev] --> [Deploy] --> [PostDeploy]
+```
+1. **PR open.** Developer opens the PR from the Story's branch; `Dev` stays In Progress.
+2. **Review and the test tiers run in parallel** against that PR. **Test code goes in the same branch and PR**
+   as the `Dev` work it tests. Tester marks a tier **Done on a pass**; a tier does not wait for a merge.
+3. **UAT, when present, is before merge by default** — the stakeholder accepts what is about to be merged. A
+   ticket may place it after the merge instead: the `uat-after-merge` label on the `UAT` subtask records that.
+   (The merge gate does not check UAT yet; before-merge is a convention until it does.)
+4. **Merge**, through the merge gate below. **Whoever owns the `Dev` subtask merges, always.** PM and Architect
+   merge their own governance PRs; Tester never merges; `Deploy` is not where a PR gets merged.
+5. **Deploy ships what is already merged.** It waits on `Dev` being Done, the present test tiers and `UAT`.
+6. **A test failure before the merge** sends that tier back to To Do. `Dev` never left In Progress, and the fix
+   is more commits on the same PR.
+7. **A failure found after the merge is a new linked Bug.** Nothing reopens `Dev`.
+8. **Test code discovered only after the merge** opens its own PR, reviewed like any other and merged by the
+   `Dev` owner; that tier stays In Progress until its PR merges. Nothing goes straight to the default branch.
+
+**History.** The original design, for an implementation Story touching one repo:
 ```
 [Develop subtask]  --blocks-->  [Code Review subtask]  --blocks-->  [Merge/Deploy subtask]
 ```
@@ -2032,22 +2053,21 @@ mechanics): TAI-159 ADR (Confluence, TA space page 28704769). TAI-34's ADR (page
 13860867) is marked superseded but left in place for history — its out-of-band-human-
 action principle is kept and extended above, not replaced.
 
-**Test-tier subtasks (rev 48):** `IntegrationTest`/`SystemTest`/`E2ETest` sit outside this
-canonical chain in the `SUBTASK_PRECEDENCE` graph (they gate `Deploy`, not `Merge/Deploy`
-directly), but a Test tier can still carry its own real code (e.g. a live-backend
-integration test). When it does, Tester opens that PR herself (`gitHost: createPullRequest`,
-same mechanics as Developer's step above) and it goes through Code Reviewer like any other —
-Tester was NOT also granted `mergePullRequest`, so there's still no self-merge path for her.
+**Test-tier subtasks (rev 48, revised TAI-456):** a test tier's code normally lands in the `Dev` branch and PR
+(item 2 above), and the tiers gate both the merge (the merge gate) and `Deploy`. Tester keeps
+`gitHost: createPullRequest` for one case only: test code discovered after the `Dev` PR has merged (item 8). She
+opens that PR herself, it is reviewed like any other, and the `Dev` owner merges it — Tester was not granted
+`mergePullRequest`, so there is no self-merge path for her.
 
 See TAI-33's ADR for the `GitHost` interface this depends on.
 
-For a **multi-repo** Story: repeat the Develop→Code Review→Merge/Deploy chain **once per
+For a **multi-repo** Story: repeat the PR → review and test → merge chain **once per
 repo**, each subtask tagged with its repo via the native Jira **Component** field (§4,
 rev 11 — not a custom `repo` field).
 
 **Note:** the as-built Story/Bug graph elaborates this canonical shape with parallel
-prerequisites (`ArchitectureDesign` / `Database` / `Infra` → `Dev`), parallel test tiers
-between `CodeReview` and `Deploy`, and a `PostDeploy` follow-up — see
+prerequisites (`ArchitectureDesign` / `Database` / `Infra` → `Dev`), test tiers and `UAT`
+between `Dev` and `Deploy`, and a `PostDeploy` follow-up — see
 `workflows/dependencies.md` for the full precedence graph.
 
 Story-level work is not always dev-related — Stories may be brainstorm, design, research,

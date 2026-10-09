@@ -130,8 +130,8 @@ to prevent that: `Dev` now stays **In Progress** until its PR actually merges (n
 review passes), so a rule requiring `Dev` to be **Done** never actually fires while the
 PR-backed flow is what's really gating anything. **Real readiness for these types comes
 exclusively from `ready.ts`'s live-computed lists** (`readyToTest` — an open PR on the
-linked `Dev` subtask, no approval check; `readyToMerge` — same candidates, additionally
-approved-per-the-configured-count and CI-green), checked against Bitbucket's actual PR
+linked `Dev` subtask, no approval check; `readyToMerge` — PRs that pass the merge gate
+(brief §5.4, TAI-462) and are CI-green), checked against Bitbucket's actual PR
 state on every `/tai-ready` call, not from a Jira-status fact. See
 `personas/developer.md`'s Handoff section and `workflows/story.md`'s PR-backed section for
 the mechanics.
