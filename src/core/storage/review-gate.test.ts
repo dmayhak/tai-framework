@@ -17,6 +17,19 @@ describe("NEEDS CLARIFICATION markers in linked pages (TAI-480)", () => {
         assert.deepEqual(findClarificationQuestions("**NEEDS CLARIFICATION: which regions?**"), ["which regions?"]);
     });
 
+    it("counts a marker whose two words are split by emphasis or a line break", () => {
+        assert.deepEqual(findClarificationQuestions("**NEEDS** CLARIFICATION: which regions?"), ["which regions?"]);
+        assert.deepEqual(findClarificationQuestions("**NEEDS CLARIFICATION**: which regions?"), ["which regions?"]);
+        assert.deepEqual(findClarificationQuestions("_NEEDS_ _CLARIFICATION_ which regions?"), ["which regions?"]);
+        assert.deepEqual(findClarificationQuestions("Open point: NEEDS\nCLARIFICATION: retention period?"), ["retention period?"]);
+    });
+
+    it("does not count a longer word that only starts with the marker", () => {
+        assert.deepEqual(findClarificationQuestions("This section NEEDS CLARIFICATIONS from several teams."), []);
+        assert.deepEqual(findClarificationQuestions("A NEEDS CLARIFICATION-free draft."), []);
+        assert.deepEqual(findClarificationQuestions("NEEDS CLARIFICATION - which plan?"), ["which plan?"]);
+    });
+
     it("ignores a marker inside inline code or a fenced block, so a page can describe the convention", () => {
         const content = ["Mark a gap with `NEEDS CLARIFICATION: <question>`.", "", "```", "NEEDS CLARIFICATION: example only", "```", "", "~~~text", "NEEDS CLARIFICATION: another example", "~~~"].join("\n");
         assert.deepEqual(findClarificationQuestions(content), []);

@@ -167,8 +167,9 @@ anyway.
 **How it is checked.** When the Kickoff Story is moved to Done, `transition()` reads every
 Confluence page linked to the Story and refuses the move while any of them contains the
 marker, naming each page and question (`storage/review-gate.ts`, the same on both backends).
-It scans all linked pages, not only the PRD and UX flows, so the work-breakdown and WBS pages
-are held to it too. A marker inside code formatting (an inline code span or a fenced block)
+It scans all linked pages, not only the PRD and UX flows, so Ada's work-breakdown page and
+Perry's subtask-assessment page are held to it too. The marker is the two words in capitals;
+bold or italics on it, or a line break between the words, does not hide it. A marker inside code formatting (an inline code span or a fenced block)
 does not count, so a page can describe the convention. `force=true` does not get past it.
 
 This gives a concrete, gate-checkable stopping point for how deep the

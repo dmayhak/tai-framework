@@ -99,6 +99,11 @@ export function reviewGateReason(key: IssueKey, missing: readonly Persona[]): st
  *
  * A marker inside code formatting (a fenced block or an inline code span) does not count, so a page
  * can describe the convention without tripping the gate.
+ *
+ * Pages on the Jira backend are converted from Confluence storage to markdown, so a marker may come
+ * back with emphasis on part of it (`**NEEDS** CLARIFICATION`) or a line break between its two
+ * words. Both still count: the two words are joined before the line scan. A longer word that merely
+ * starts with the marker (`NEEDS CLARIFICATIONS`, `NEEDS CLARIFICATION-free`) does not.
  */
 export const CLARIFICATION_MARKER = "NEEDS CLARIFICATION";
 
@@ -111,15 +116,17 @@ export interface UnresolvedClarifications {
 
 const FENCED_BLOCK = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
 const INLINE_CODE = /`[^`\n]*`/g;
-const MARKER_LINE = /NEEDS CLARIFICATION\s*:?\s*(.*)$/;
+/** The marker's two words with only whitespace and emphasis characters between them. */
+const SPLIT_MARKER = /NEEDS[\s*_~]+CLARIFICATION(?![A-Za-z]|-[A-Za-z])/g;
+const MARKER_LINE = /NEEDS CLARIFICATION(?![A-Za-z]|-[A-Za-z])[*_~]*\s*:?\s*(.*)$/;
 
 /** Every unresolved marker in one page's markdown, in order. */
 export function findClarificationQuestions(content: string): string[] {
-    const prose = content.replace(FENCED_BLOCK, "").replace(INLINE_CODE, "");
+    const prose = content.replace(FENCED_BLOCK, "").replace(INLINE_CODE, "").replace(SPLIT_MARKER, CLARIFICATION_MARKER);
     const questions: string[] = [];
     for (const line of prose.split("\n")) {
         const match = MARKER_LINE.exec(line);
-        if (match) questions.push(match[1]!.replace(/[*_\s]+$/, "").trim());
+        if (match) questions.push(match[1]!.replace(/^[-–—]\s*/, "").replace(/[*_\s]+$/, "").trim());
     }
     return questions;
 }
