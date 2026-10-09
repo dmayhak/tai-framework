@@ -29,7 +29,7 @@ separate field, a real human holding the PM Project Role.
 | `IntegrationTest` | Tester | |
 | `SystemTest` | Tester | |
 | `E2ETest` | Tester | |
-| `UAT` | Tester + human stakeholder | Optional, **inherently human-gated** (never autocompletes) — before the merge by default (`uat-after-merge` label places it after), and gates `Deploy` |
+| `UAT` | Tester + human stakeholder | Optional, **inherently human-gated** — before the merge by default (`uat-after-merge` label places it after), and gates `Deploy` |
 | `Database` | DBA | Schema, migrations, query tuning, performance — not just schema work |
 | `Infra` | DevOps | |
 | `Deploy` | DevOps (default, overridable) | Manual or gated deployment of what is already merged — not where the PR gets merged |
@@ -182,7 +182,7 @@ subtask exists, `ArchitectureDesign` unblocks `Dev` directly (see
 
 - **Owner (TAI-458):** the Architect persona prepares the review, and a **human reviews the
   design and closes the subtask** — `DesignReview` is **inherently human-gated** (brief
-  §3.3, `ALWAYS_HUMAN_GATED_SUBTASKS`) and **never autocompletes**, like `UAT` below. Aria
+  §3.3, `ALWAYS_HUMAN_GATED_SUBTASKS`), like `UAT` below. Aria
   writes the review notes, preferably in a fresh context rather than the session that wrote
   the design; she holds no `complete` grant for it.
 - **How the pass is recorded:** the human moves the `DesignReview` subtask to Done. That is
@@ -208,9 +208,7 @@ absent, the automated tiers gate `Deploy` directly.
   `UAT` without the label blocks the merge.
 
 - **Owner:** the Tester persona drives the run, but a **human stakeholder must
-  sign off** — `UAT` is **inherently human-gated** (brief §3.3) and **never
-  autocompletes**, even where autocompletion is otherwise enabled. A human-gated
-  checkpoint takes priority over all autocompletion settings.
+  sign off** — `UAT` is **inherently human-gated** (brief §3.3).
 - **How sign-off/rejection is recorded:** **approval** is the human transitioning the
   `UAT` subtask to Done themselves — the transition itself is the signal, no comment
   required (a human, not Tessa or any AI persona, decides it). That is a convention the user is accountable for, not something TAI can prove (brief §4, TAI-454): a persona performs it only when the human says so in their own message, and the CLI then leaves a stamped `Sign-off:` comment (TAI-475).

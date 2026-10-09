@@ -2,7 +2,7 @@
  * TAI Framework — persona action-permission predicates (TAI-51 ADR decision 3)
  *
  * Pure functions over `PersonaConfig` + `Issue`, no I/O — same "pure decision function,
- * caller wires it up" shape as `autocompletion.ts`/`review-gate.ts`. These answer "what may
+ * caller wires it up" shape as `review-gate.ts`. These answer "what may
  * persona X itself do", the axis orthogonal to `Roster` (`persona/roster.ts`, TAI-14), which
  * answers "which humans may act as persona X."
  *

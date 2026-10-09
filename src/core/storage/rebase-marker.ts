@@ -2,8 +2,8 @@
  * TAI Framework — "Rebase needed:" comment marker (TAI-217/219)
  *
  * A system-posted status marker, not a human checkpoint decision (contrast
- * `comment-markers.ts`'s `Q:`/`Approved:`/`Rejected:`, which ARE human decisions) — closer in
- * spirit to `autocompletion.ts`'s `Complete:` marker: automatically posted by `git-pr merge`'s
+ * `comment-markers.ts`'s `Q:`/`Approved:`/`Rejected:`, which ARE human decisions):
+ * automatically posted by `git-pr merge`'s
  * conflict-rejection path (cli.ts), read back by `tai-ready` to flag the Dev subtask's Ready
  * Work line.
  *

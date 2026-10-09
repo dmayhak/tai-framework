@@ -59,12 +59,10 @@ permissions:
     - own-output                # hard rule, brief §3.4 / §4 — no self-certification
 
 checkpoints:
-  humanSignOffDefault: true      # brief §3.4 default; autocompletion is opt-in per project config
+  humanSignOffDefault: true      # brief §3.4: a human signs off work
   alwaysHumanGated:
-    - Subtask:EpicReview          # TAI-354 — EpicReview NEVER autocompletes; a human
-                                   # stakeholder signs off (by transitioning it to Done
-                                   # themselves, same mechanic as tester.md's UAT), and this
-                                   # overrides any autocompletion setting.
+    - Subtask:EpicReview          # TAI-354 — a human stakeholder signs off, by moving it
+                                   # to Done themselves (same mechanic as tester.md's UAT).
 
 confluenceOutputs:
   - type: requirements-spec

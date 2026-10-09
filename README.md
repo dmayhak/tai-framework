@@ -44,8 +44,7 @@ here and the brief ever disagree, the brief wins.
   offline work, refreshed on demand — never from conversation memory alone.
 - **Checkpoints are real, not cosmetic.** Some subtasks (e.g. `UAT`, `EpicReview`) are
   *inherently* human-gated — an AI persona can drive the work, but only a human can sign
-  off, no matter what autocompletion settings say. Everything else defaults to requiring
-  human sign-off too, unless a project explicitly configures autocompletion for it.
+  off. A human starts every piece of work and signs it off; nothing completes itself.
 - **Nothing runs on a timer.** There's no background daemon watching Jira. Every step
   happens because a human (or an AI session acting for them) explicitly asks "what's
   ready?" or "work this ticket" — see [Usage](#usage) below.

@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 94 (2026-10-09)
+
+**TAI-482: autocompletion, `Complete:` markers and the `blocked-external` label are retired.** Human decision TAI-455, rows 8 and 9; the human chose on 2026-10-09 to delete the module as well. Autocompletion was designed (TAI-41 ADR) and built as a standalone module (`storage/autocompletion.ts`, TAI-43) that nothing ever called; the module and its test are deleted. §3.4 is now "Human Sign-off": a human signs off work and nothing completes itself. §8 items 9, 22 and 23 read "retired". The "never autocompletes" wording is gone from the persona files, the workflow docs and code comments; the three human-gated subtask types are unchanged. The `blocked-external` label, which was never applied by any code, is out of §3.3. §3.4 as it read before is in the appendix at the end of this file.
+
 ## rev 93 (2026-10-09)
 
 **TAI-481: an edit to an approved page is shown and reopens nothing.** Human decision TAI-455, row 7. The brief, `workflows/kickoff.md` and `personas/architect.md` said that editing a page behind a passed gate reopens the gate and requires re-approval; no code ever did that. `/tai-ready` and `/tai-groom` now list, as information, every page linked to a Done Kickoff Story that was updated after that Kickoff's latest `Approved:` comment, while the Kickoff's Epic is open. Nothing is blocked. The docs say so, and the brief's cross-references to a "gate-reopening rule" are reworded. Brief §3.9, §4, §5.4, §6.
@@ -2534,3 +2538,32 @@ bigger change than anything rev 52 did.
 ```text
 the existing project-level `Config` folder (§4 rev 13, which already holds untyped,
 ```
+
+---
+
+## Appendix: brief §3.4 Autocompletion before it was retired (TAI-482, 2026-10-09)
+
+The ability for a persona to complete work without human sign-off, when configurable
+conditions are met. **Human sign-off is the default.** Autocompletion is configurable by:
+persona, by task type, and per-Jira-issue (likely via a custom field), each with a
+configurable set of conditions that must be satisfied.
+
+Conditions are richer than a simple checklist and are likely themselves prompt-based, e.g.:
+- "Code review has no major issues and fewer than *X* minor ones."
+- "DB design passes DBA review and satisfies the Analyst's requirements."
+
+**The design (TAI-41 ADR; §8 items 9, 22, 23):** `AutocompletionCondition
+{ id, description }` (the `description` is the prompt text above); `transition()` never
+evaluates a condition live — the deciding persona evaluates it and records PASS/FAIL via a
+`Complete:` Jira-comment marker (extending §3.9's convention), which `transition()` reads.
+Checkpoints are `hard` (never autocompletes — `ALWAYS_HUMAN_GATED_SUBTASKS`/
+`REVIEW_GATES`) or `conditional` (this section's default, autocompletion-eligible per the
+above). See the TAI-41 ADR (Confluence, TA space).
+
+**What is built:** checkpoint and review-gate enforcement (`review-gate.ts`) is wired into
+`transition()` on both backends. The autocompletion decision engine (`autocompletion.ts`:
+`checkpointKind`, `evaluateAutocompletion`, `parseCompletionMarker`) is built and tested as a
+standalone pure-function module but is **not called from anywhere**. Whether something
+pauses for a human before invoking it, or proceeds automatically, is an orchestration
+decision that has not been made; the permission layer a future caller would sit behind
+(`PersonaScopedWorkTracker`) exists, the call site does not.

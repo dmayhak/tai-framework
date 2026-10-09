@@ -33,7 +33,7 @@ permissions:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 
 checkpoints:
-  humanSignOffDefault: true      # brief §3.4 default; autocompletion opt-in per project config
+  humanSignOffDefault: true      # brief §3.4: a human signs off work
   selfAuthoredReviewSeparation: default   # The reviewer is a human on the "PR Reviewers"
                                           # roster; the AI prepares the findings, preferably in
                                           # a fresh context, not the session that wrote the code
