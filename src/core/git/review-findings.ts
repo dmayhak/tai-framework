@@ -236,11 +236,15 @@ export function raisesNoIssue(findings: ReviewFindings): boolean {
  * `null` when review-prep was not run in this clone for this PR; that is said too. `liveCommit` is
  * the PR's head as the git host reports it now, when the caller has asked: `reviewOf.commit` is
  * copied from the same review-prep run as the manifest, so only the live head can show that the
- * author pushed after the review was prepared.
+ * author pushed after the review was prepared. `null` means the caller asked and could not find
+ * out, which is said: "not moved" and "could not check" must not look the same. `undefined` means
+ * nobody asked.
  */
-export function coverageNotes(findings: ReviewFindings, manifest: ReviewManifest | null, liveCommit?: string): string[] {
+export function coverageNotes(findings: ReviewFindings, manifest: ReviewManifest | null, liveCommit?: string | null): string[] {
     const notes: string[] = [];
-    if (liveCommit !== undefined && !sameCommitHash(liveCommit, findings.reviewOf.commit)) {
+    if (liveCommit === null) {
+        notes.push("_Could not check whether the PR has moved since this review was prepared._");
+    } else if (liveCommit !== undefined && !sameCommitHash(liveCommit, findings.reviewOf.commit)) {
         notes.push(`**This review is of commit ${findings.reviewOf.commit}. The PR is now at ${liveCommit}: the changes pushed since have NOT been reviewed.**`);
     }
     if (!manifest) return [...notes, "_Not cross-checked: `review-prep` has not been run for this PR in this clone, so the list of changed files is unknown._"];
@@ -375,7 +379,7 @@ export function renderReviewFindings(
         readonly summary: readonly ReviewFinding[];
     } = partitionInlineFindings(findings.findings),
     manifest: ReviewManifest | null = null,
-    liveCommit?: string
+    liveCommit?: string | null
 ): string {
     const lines: string[] = ["## Review", "", findings.overview, "", ...renderCoverage(findings.coverage, coverageNotes(findings, manifest, liveCommit)), ""];
 
@@ -429,7 +433,7 @@ export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
 }
 
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
-export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string): string {
+export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string | null): string {
     return `${renderReviewFindings(findings, undefined, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
 }
 

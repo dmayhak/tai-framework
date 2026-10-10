@@ -679,10 +679,10 @@ export async function createdSubtaskMapNote(
     return parent ? subtaskOutsideMapNote(issue.issueType, parent.issueType) : null;
 }
 
-/** TAI-527: the PR's current head for the findings preview, or `undefined` when it cannot be looked up. */
-async function previewLiveCommit(config: ResolvedConfig, reviewOf: { readonly repo: string; readonly pr: string }): Promise<string | undefined> {
+/** TAI-527: the PR's current head for the findings preview; `null` when the PR is not found. Throws when the host cannot be reached. */
+async function previewLiveCommit(config: ResolvedConfig, reviewOf: { readonly repo: string; readonly pr: string }): Promise<string | null> {
     const { gitHost } = await resolveReviewerGitHost(config);
-    return (await gitHost.getPullRequest(toRepoId(reviewOf.repo), toPullRequestId(reviewOf.pr)))?.sourceCommit;
+    return (await gitHost.getPullRequest(toRepoId(reviewOf.repo), toPullRequestId(reviewOf.pr)))?.sourceCommit ?? null;
 }
 
 /** TAI-527: why findings written for one PR may not be posted on another, or `null` when they match. */
@@ -1582,8 +1582,8 @@ async function main(): Promise<void> {
             // TAI-411: the preview carries the numbered next-step options; comment-findings (below) posts
             // renderReviewFindings alone, so the options never reach the PR.
             // The preview shows a moved head too, so the human learns it BEFORE choosing to post or approve.
-            // Best effort: with no git-host credentials the preview is still rendered, without that line.
-            const liveCommit = await previewLiveCommit(config, findings.reviewOf).catch(() => undefined);
+            // Best effort: when the head cannot be looked up the preview is still rendered, and says it could not check.
+            const liveCommit = await previewLiveCommit(config, findings.reviewOf).catch(() => null);
             console.log(renderFindingsPreview(findings, manifest, liveCommit));
             return;
         }
@@ -1663,9 +1663,12 @@ async function main(): Promise<void> {
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             // TAI-527: an approval counts for the PR's current commit, so it is refused when review-prep
             // last ran here for an older one. A request for changes is always allowed.
-            const live = await gitHost.getPullRequest(repo, prId);
-            const refusal = live ? reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), live.sourceCommit) : null;
-            if (refusal) throw new Error(refusal);
+            // Looked up only for an approval, so a request for changes never depends on this read succeeding.
+            if (decision === "approve") {
+                const live = await gitHost.getPullRequest(repo, prId);
+                const refusal = live ? reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), live.sourceCommit) : null;
+                if (refusal) throw new Error(refusal);
+            }
             // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
             await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
             console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);

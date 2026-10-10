@@ -364,6 +364,13 @@ describe("a review is tied to a commit (TAI-527, from the review of PR 187)", ()
         assert.throws(() => parseReviewFindings(notHex), /"reviewOf\.commit" must be a commit hash/);
     });
 
+    it("says so when the head could not be looked up: not moved and could not check must not look the same", () => {
+        assert.match(coverageNotes(validFindings, manifest, null).join("\n"), /Could not check whether the PR has moved since this review was prepared/);
+        assert.match(renderFindingsPreview(validFindings, manifest, null), /Could not check whether the PR has moved/);
+        assert.doesNotMatch(coverageNotes(validFindings, manifest).join("\n"), /Could not check/);
+        assert.doesNotMatch(coverageNotes(validFindings, manifest, "abc123def456").join("\n"), /Could not check/);
+    });
+
     it("still reports a moved head when review-prep never ran in this clone", () => {
         const notes = coverageNotes(validFindings, null, "ffff00001111");
         assert.equal(notes.length, 2);
