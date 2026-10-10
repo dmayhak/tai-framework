@@ -98,7 +98,7 @@ import {
 } from "../core/commands/git-pr.js";
 import {
     parseReviewFindings,
-    approvalOfUnpreparedCommit,
+    reviewDecisionRefusal,
     renderReviewFindings,
     renderFindingsPreview,
     partitionInlineFindings,
@@ -127,7 +127,7 @@ import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
-import { toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
+import { toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
 import { gatherDiff, readFileAtRef, readReviewManifest, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
@@ -677,6 +677,12 @@ export async function createdSubtaskMapNote(
     if (!parentKey || !isSubtaskIssueType(issue.issueType)) return null;
     const parent = parentAlreadyRead !== undefined ? parentAlreadyRead : await fetchParent(parentKey).catch(() => null);
     return parent ? subtaskOutsideMapNote(issue.issueType, parent.issueType) : null;
+}
+
+/** TAI-527: the PR's current head for the findings preview, or `undefined` when it cannot be looked up. */
+async function previewLiveCommit(config: ResolvedConfig, reviewOf: { readonly repo: string; readonly pr: string }): Promise<string | undefined> {
+    const { gitHost } = await resolveReviewerGitHost(config);
+    return (await gitHost.getPullRequest(toRepoId(reviewOf.repo), toPullRequestId(reviewOf.pr)))?.sourceCommit;
 }
 
 /** TAI-527: why findings written for one PR may not be posted on another, or `null` when they match. */
@@ -1575,7 +1581,10 @@ async function main(): Promise<void> {
             const manifest = await readReviewManifest(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr);
             // TAI-411: the preview carries the numbered next-step options; comment-findings (below) posts
             // renderReviewFindings alone, so the options never reach the PR.
-            console.log(renderFindingsPreview(findings, manifest));
+            // The preview shows a moved head too, so the human learns it BEFORE choosing to post or approve.
+            // Best effort: with no git-host credentials the preview is still rendered, without that line.
+            const liveCommit = await previewLiveCommit(config, findings.reviewOf).catch(() => undefined);
+            console.log(renderFindingsPreview(findings, manifest, liveCommit));
             return;
         }
 
@@ -1654,11 +1663,9 @@ async function main(): Promise<void> {
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             // TAI-527: an approval counts for the PR's current commit, so it is refused when review-prep
             // last ran here for an older one. A request for changes is always allowed.
-            if (decision === "approve") {
-                const live = await gitHost.getPullRequest(repo, prId);
-                const unprepared = live ? approvalOfUnpreparedCommit(await readReviewManifest(config.taiRoot, repoArg, String(prId)), live.sourceCommit) : null;
-                if (unprepared) throw new Error(unprepared);
-            }
+            const live = await gitHost.getPullRequest(repo, prId);
+            const refusal = live ? reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), live.sourceCommit) : null;
+            if (refusal) throw new Error(refusal);
             // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
             await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
             console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);

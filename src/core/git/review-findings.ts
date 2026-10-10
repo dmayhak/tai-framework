@@ -175,9 +175,14 @@ function oneLine(value: string): string {
     return value.replace(/\s+/g, " ").replace(/`/g, "'").trim();
 }
 
-/** Hosts hand out commit hashes at different lengths; one is the other's prefix when they name the same commit. */
+/** The usual short hash. Anything shorter is too little to say two hashes name the same commit. */
+export const MIN_COMMIT_HASH = 7;
+
+/** Hosts hand out commit hashes at different lengths; one is the other's prefix when they name the
+ *  same commit. Both must be at least a short hash long, so a mistyped one-character value cannot
+ *  pass as a match. */
 export function sameCommitHash(a: string, b: string): boolean {
-    return a.length > 0 && b.length > 0 && (a.startsWith(b) || b.startsWith(a));
+    return a.length >= MIN_COMMIT_HASH && b.length >= MIN_COMMIT_HASH && (a.startsWith(b) || b.startsWith(a));
 }
 
 function parseReviewOf(raw: unknown): ReviewOf {
@@ -191,6 +196,9 @@ function parseReviewOf(raw: unknown): ReviewOf {
     if (typeof prRaw !== "string" && typeof prRaw !== "number") throw new Error('Findings JSON "reviewOf" is missing "pr".');
     const pr = String(prRaw).trim();
     if (repo === "" || pr === "" || commit === "") throw new Error('Findings JSON "reviewOf" needs a non-empty repo, pr and commit.');
+    if (!/^[0-9a-f]+$/i.test(commit) || commit.length < MIN_COMMIT_HASH) {
+        throw new Error(`Findings JSON "reviewOf.commit" must be a commit hash of at least ${MIN_COMMIT_HASH} characters, copied from review-prep's output; got ${JSON.stringify(commit)}.`);
+    }
     return { repo, pr, commit };
 }
 
@@ -421,8 +429,8 @@ export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
 }
 
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
-export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null): string {
-    return `${renderReviewFindings(findings, undefined, manifest)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
+export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string): string {
+    return `${renderReviewFindings(findings, undefined, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
 }
 
 /**
@@ -437,4 +445,9 @@ export function approvalOfUnpreparedCommit(manifest: ReviewManifest | null, live
         `Not approved: the PR is now at commit ${liveCommit}, and \`review-prep\` last ran here for ${manifest.commit}. ` +
         "The changes pushed since have not been reviewed. Run `review-prep` again, review what changed, then approve."
     );
+}
+
+/** The same rule keyed by the decision: only an approval is gated. A request for changes always goes through. */
+export function reviewDecisionRefusal(decision: "approve" | "requestChanges", manifest: ReviewManifest | null, liveCommit: string): string | null {
+    return decision === "approve" ? approvalOfUnpreparedCommit(manifest, liveCommit) : null;
 }

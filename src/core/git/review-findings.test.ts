@@ -17,6 +17,7 @@ import {
     raisesNoIssue,
     LARGE_DIFF_LINES,
     approvalOfUnpreparedCommit,
+    reviewDecisionRefusal,
     sameCommitHash,
     type ReviewFindings,
     type ReviewManifest,
@@ -282,7 +283,7 @@ describe("the coverage block and reviewOf (TAI-527 ADR decision 1)", () => {
     });
 
     it("accepts a numeric pr in reviewOf and keeps it as text", () => {
-        const parsed = parseReviewFindings(JSON.stringify({ ...validFindings, reviewOf: { repo: "acme/widgets", pr: 7, commit: "abc" } }));
+        const parsed = parseReviewFindings(JSON.stringify({ ...validFindings, reviewOf: { repo: "acme/widgets", pr: 7, commit: "abc123d" } }));
         assert.equal(parsed.reviewOf.pr, "7");
     });
 
@@ -349,9 +350,18 @@ describe("a review is tied to a commit (TAI-527, from the review of PR 187)", ()
     it("says nothing when the head is the reviewed commit, at either hash length", () => {
         assert.doesNotMatch(coverageNotes(validFindings, manifest, "abc123def456").join("\n"), /NOT been reviewed/);
         assert.doesNotMatch(coverageNotes(validFindings, manifest, "abc123def4567890aabbccdd").join("\n"), /NOT been reviewed/);
-        assert.equal(sameCommitHash("abc123", "abc123def456"), true);
-        assert.equal(sameCommitHash("abc124", "abc123def456"), false);
-        assert.equal(sameCommitHash("", "abc123"), false);
+        assert.equal(sameCommitHash("abc123d", "abc123def456"), true);
+        assert.equal(sameCommitHash("abc124d", "abc123def456"), false);
+        assert.equal(sameCommitHash("", "abc123def456"), false);
+    });
+
+    it("a hash shorter than a short hash never counts as the same commit, and is refused in reviewOf", () => {
+        assert.equal(sameCommitHash("a", "abc123def456"), false);
+        assert.equal(sameCommitHash("abc123", "abc123def456"), false);
+        const short = JSON.stringify({ ...validFindings, reviewOf: { repo: "acme/widgets", pr: "7", commit: "a" } });
+        assert.throws(() => parseReviewFindings(short), /"reviewOf\.commit" must be a commit hash of at least 7 characters/);
+        const notHex = JSON.stringify({ ...validFindings, reviewOf: { repo: "acme/widgets", pr: "7", commit: "the latest one" } });
+        assert.throws(() => parseReviewFindings(notHex), /"reviewOf\.commit" must be a commit hash/);
     });
 
     it("still reports a moved head when review-prep never ran in this clone", () => {
@@ -363,6 +373,17 @@ describe("a review is tied to a commit (TAI-527, from the review of PR 187)", ()
 
     it("an approval is refused when review-prep last ran here for an older commit", () => {
         assert.match(approvalOfUnpreparedCommit(manifest, "ffff00001111") ?? "", /^Not approved: the PR is now at commit ffff00001111, and `review-prep` last ran here for abc123def456\./);
+    });
+
+    it("only an approval is gated: a request for changes on a moved PR goes through", () => {
+        assert.match(reviewDecisionRefusal("approve", manifest, "ffff00001111") ?? "", /^Not approved/);
+        assert.equal(reviewDecisionRefusal("requestChanges", manifest, "ffff00001111"), null);
+        assert.equal(reviewDecisionRefusal("approve", manifest, "abc123def456"), null);
+    });
+
+    it("the preview carries the moved-head line too, so the human sees it before choosing", () => {
+        assert.match(renderFindingsPreview(validFindings, manifest, "ffff00001111"), /have NOT been reviewed/);
+        assert.doesNotMatch(renderFindingsPreview(validFindings, manifest), /have NOT been reviewed/);
     });
 
     it("an approval goes ahead on the prepared commit, and when there is no manifest to compare", () => {

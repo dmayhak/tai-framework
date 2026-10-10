@@ -86,9 +86,11 @@ output. The causes found:
   persona prompt plus the steps used most of the budget, so a 73-line PR came back "DIFF NOT SHOWN IN
   FULL". Hence the diff as a file.
 - One reviewer ran the suite in an improvised worktree and read nothing critically; another read
-  critically and ran nothing. CI already runs the suite and the merge gate requires it, so review-prep
-  shows the CI result and the reviewer's effort goes into reading. A built-in worktree check command
-  was considered and not taken (worktree machinery is deferred, TAI-115).
+  critically and ran nothing. The decision was to show the CI result for the commit under review, so
+  that where CI has run and passed the reviewer's effort goes into reading. Where no CI result exists
+  the output says nothing has run the suite. That is this repo's own case: its pipeline has no
+  automatic trigger, which the first review of this change pointed out. A built-in worktree check
+  command was considered and not taken (worktree machinery is deferred, TAI-115).
 
 The coverage block is self-declared. It cannot prove a file was read; it puts the claim on the record
 next to the review, where the human deciding can see it.
