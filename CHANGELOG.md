@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 95 (2026-10-09)
+
+**TAI-527: a review must show what it read and ran.** About ten PRs in a row had come back from review with no issues found; two side-by-side comparisons showed a second reviewer finding real issues from the same output. Decided by the human (ADR Confluence page 55640065): the findings JSON gains a required `coverage` block and a `reviewOf` block, checked by `render-findings` and `comment-findings`, with a cross-check against the PR's changed files and a line on an empty review of a large diff; `review-prep` writes the complete diff to a file under `.tai/review/`, prints the CI result for the commit under review, and puts the author's description last, labelled as claims to verify. Not taken: an unenforced coverage statement, a built-in worktree check command, hiding the description, and trimming the persona section to fit the diff inline. A findings file in the old format is refused until it has the two new blocks. Brief §3.8.
+
 ## rev 94 (2026-10-09)
 
 **TAI-482: autocompletion, `Complete:` markers and the `blocked-external` label are retired.** Human decision TAI-455, rows 8 and 9; the human chose on 2026-10-09 to delete the module as well. Autocompletion was designed (TAI-41 ADR) and built as a standalone module (`storage/autocompletion.ts`, TAI-43) that nothing ever called; the module and its test are deleted. §3.4 is now "Human Sign-off": a human signs off work and nothing completes itself. §8 items 9, 22 and 23 read "retired". The "never autocompletes" wording is gone from the persona files, the workflow docs and code comments; the three human-gated subtask types are unchanged. The `blocked-external` label, which was never applied by any code, is out of §3.3. §3.4 as it read before is in the appendix at the end of this file.

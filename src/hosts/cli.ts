@@ -129,7 +129,7 @@ import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from ".
 import { toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
-import { gatherDiff, readFileAtRef, renderReviewPrep } from "../core/git/review-prep.js";
+import { gatherDiff, readFileAtRef, readReviewManifest, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
 import { renderPersonaTurn } from "../core/persona/turn.js";
 import {
     defaultPersonaFor,
@@ -676,6 +676,12 @@ export async function createdSubtaskMapNote(
     if (!parentKey || !isSubtaskIssueType(issue.issueType)) return null;
     const parent = parentAlreadyRead !== undefined ? parentAlreadyRead : await fetchParent(parentKey).catch(() => null);
     return parent ? subtaskOutsideMapNote(issue.issueType, parent.issueType) : null;
+}
+
+/** TAI-527: why findings written for one PR may not be posted on another, or `null` when they match. */
+export function reviewOfMismatch(reviewOf: { readonly repo: string; readonly pr: string }, repo: string, prId: string): string | null {
+    if (reviewOf.repo.toLowerCase() === repo.toLowerCase() && reviewOf.pr === prId) return null;
+    return `These findings say they review ${reviewOf.repo} PR ${reviewOf.pr}, not ${repo} PR ${prId}. Nothing was posted. Post them on the PR they were written for, or review this one.`;
 }
 
 /** TAI-522 ADR decision 4: one line when TAI itself is not running from its default branch. */
@@ -1564,9 +1570,11 @@ async function main(): Promise<void> {
             const [findingsArg] = actionArgs;
             if (!findingsArg) throw new Error(usage);
             const findings = parseReviewFindings(findingsArg);
+            // TAI-527: cross-check the coverage against what review-prep saved for this PR in this clone.
+            const manifest = await readReviewManifest(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr);
             // TAI-411: the preview carries the numbered next-step options; comment-findings (below) posts
             // renderReviewFindings alone, so the options never reach the PR.
-            console.log(renderFindingsPreview(findings));
+            console.log(renderFindingsPreview(findings, manifest));
             return;
         }
 
@@ -1594,6 +1602,11 @@ async function main(): Promise<void> {
                 destinationBranch: pr.destinationBranch,
             });
 
+            // TAI-527 ADR decisions 2 and 4: CI on the commit under review, and the whole diff as a file.
+            // Both best effort: a failure costs that section, never the review.
+            const ci = await gitHost.getCommitStatuses(repo, pr.sourceCommit).catch(() => null);
+            const reviewFiles = await writeReviewFiles(config.taiRoot, repoArg, String(prId), pr.sourceCommit, diff).catch(() => null);
+
             // TAI-522 ADR decision 2: the same safe fast-forward of the local default branch that `work` and
             // `ready` run. After gatherDiff, whose fetch of the two PR branches must not be skipped by a debounce.
             const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
@@ -1618,6 +1631,8 @@ async function main(): Promise<void> {
                     linkedKey,
                     diff,
                     projectContext,
+                    ci,
+                    reviewFiles,
                 })
             );
             return;
@@ -1692,6 +1707,10 @@ async function main(): Promise<void> {
             const { prIdArg, findingsArg } = parseFindingsCommentArgs(gitArgs);
             const findings = parseReviewFindings(findingsArg);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            // TAI-527: a review is of one PR. Refuse to post findings written for another.
+            const wrongPr = reviewOfMismatch(findings.reviewOf, repoArg, String(prId));
+            if (wrongPr) throw new Error(wrongPr);
+            const manifest = await readReviewManifest(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr);
 
             const { inline: eligible, summary } = partitionInlineFindings(findings.findings);
             const posted: ReviewFinding[] = [];
@@ -1718,7 +1737,7 @@ async function main(): Promise<void> {
             const comment = await gitHost.addPullRequestComment(
                 repo,
                 prId,
-                stampComment(renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] }), actingPersonaOf(config))
+                stampComment(renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] }, manifest), actingPersonaOf(config))
             );
             const failureNote = inlineFailures.length > 0
                 ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`

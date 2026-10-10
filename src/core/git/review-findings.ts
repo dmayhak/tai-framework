@@ -42,12 +42,50 @@ export interface ReviewFinding {
 
 export type ReviewLeaning = "approve" | "requestChanges" | "neither";
 
+/** TAI-527 ADR decision 1: which PR, at which commit, the review is of. Copied from review-prep's output. */
+export interface ReviewOf {
+    readonly repo: string;
+    readonly pr: string;
+    readonly commit: string;
+}
+
+/**
+ * TAI-527 ADR decision 1: what the review is based on. Self-declared — code cannot prove it — but
+ * required, printed with the review and cross-checked against the PR's changed files, so "no issues"
+ * and "did not look" stop looking the same.
+ */
+export interface ReviewCoverage {
+    /** Changed files the reviewer read in full. At least one. */
+    readonly filesRead: readonly string[];
+    /** Commands actually run for this review (tests, lint, a grep), each as typed. May be empty. */
+    readonly commandsRun: readonly string[];
+    /** Claims from the ticket or the author checked against the code, each with how. May be empty. */
+    readonly claimsVerified: readonly string[];
+    /** What was not read, run or checked. Never empty: "nothing" is not an answer a review can give. */
+    readonly notChecked: string;
+}
+
 export interface ReviewFindings {
+    readonly reviewOf: ReviewOf;
     readonly overview: string;
+    readonly coverage: ReviewCoverage;
     readonly findings: readonly ReviewFinding[];
     readonly leaning: ReviewLeaning;
     readonly leaningReason: string;
 }
+
+/** What review-prep saved about the PR's diff, for the cross-check (`review-prep.ts` writes it). */
+export interface ReviewManifest {
+    readonly repo: string;
+    readonly pr: string;
+    readonly commit: string;
+    readonly files: readonly string[];
+    readonly diffLines: number;
+}
+
+/** A diff at least this big with no issue raised gets a line saying so (TAI-527 ADR). */
+export const LARGE_DIFF_LINES = 200;
+export const LARGE_DIFF_FILES = 8;
 
 const VALID_SEVERITIES: readonly string[] = SEVERITY_ORDER;
 const VALID_LEANINGS: readonly string[] = ["approve", "requestChanges", "neither"];
@@ -78,7 +116,9 @@ export function parseReviewFindings(raw: string): ReviewFindings {
     }
     const obj = parsed as Record<string, unknown>;
 
+    const reviewOf = parseReviewOf(obj["reviewOf"]);
     const overview = requireString(obj, "overview", "Findings JSON");
+    const coverage = parseCoverage(obj["coverage"]);
     if (!Array.isArray(obj["findings"])) throw new Error('Findings JSON is missing a "findings" array.');
     const leaning = obj["leaning"];
     if (typeof leaning !== "string" || !VALID_LEANINGS.includes(leaning)) {
@@ -117,7 +157,95 @@ export function parseReviewFindings(raw: string): ReviewFindings {
         };
     });
 
-    return { overview, findings, leaning: leaning as ReviewLeaning, leaningReason };
+    return { reviewOf, overview, coverage, findings, leaning: leaning as ReviewLeaning, leaningReason };
+}
+
+const COVERAGE_HELP =
+    'Add it as review-prep\'s steps describe: "coverage": { "filesRead": [...], "commandsRun": [...], "claimsVerified": [...], "notChecked": "..." }.';
+
+function stringList(value: unknown, field: string): string[] {
+    if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+        throw new Error(`Findings JSON "coverage.${field}" must be an array of strings. ${COVERAGE_HELP}`);
+    }
+    return (value as string[]).map((v) => v.trim()).filter((v) => v !== "");
+}
+
+function parseReviewOf(raw: unknown): ReviewOf {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw new Error('Findings JSON is missing "reviewOf" — copy it from review-prep\'s output: "reviewOf": { "repo": "...", "pr": "...", "commit": "..." }.');
+    }
+    const o = raw as Record<string, unknown>;
+    const repo = requireString(o, "repo", 'Findings JSON "reviewOf"').trim();
+    const commit = requireString(o, "commit", 'Findings JSON "reviewOf"').trim();
+    const prRaw = o["pr"];
+    if (typeof prRaw !== "string" && typeof prRaw !== "number") throw new Error('Findings JSON "reviewOf" is missing "pr".');
+    const pr = String(prRaw).trim();
+    if (repo === "" || pr === "" || commit === "") throw new Error('Findings JSON "reviewOf" needs a non-empty repo, pr and commit.');
+    return { repo, pr, commit };
+}
+
+function parseCoverage(raw: unknown): ReviewCoverage {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw new Error(`Findings JSON is missing "coverage": a review has to say what it is based on. ${COVERAGE_HELP}`);
+    }
+    const o = raw as Record<string, unknown>;
+    const filesRead = stringList(o["filesRead"], "filesRead");
+    const commandsRun = stringList(o["commandsRun"], "commandsRun");
+    const claimsVerified = stringList(o["claimsVerified"], "claimsVerified");
+    const notChecked = typeof o["notChecked"] === "string" ? o["notChecked"].trim() : "";
+    if (filesRead.length === 0) throw new Error('Findings JSON "coverage.filesRead" is empty: a review that read no file is not a review.');
+    if (notChecked === "") {
+        throw new Error('Findings JSON "coverage.notChecked" is empty. Say what you did not read, run or check; every review leaves something out.');
+    }
+    return { filesRead, commandsRun, claimsVerified, notChecked };
+}
+
+/** Changed files the reviewer did not list under `filesRead`. Paths compare exactly, after trimming a leading "./". */
+export function unreadChangedFiles(coverage: ReviewCoverage, manifest: ReviewManifest): string[] {
+    const norm = (p: string): string => p.replace(/^\.\//, "");
+    const read = new Set(coverage.filesRead.map(norm));
+    return manifest.files.filter((f) => !read.has(norm(f)));
+}
+
+/** True when the review raises nothing but praise. */
+export function raisesNoIssue(findings: ReviewFindings): boolean {
+    return findings.findings.every((f) => f.severity === "good");
+}
+
+/**
+ * The lines the CLI adds about a review's basis: changed files not claimed as read, a review of a
+ * different commit than the one review-prep saw, and an empty review of a large diff. `manifest` is
+ * `null` when review-prep was not run in this clone for this PR; that is said too.
+ */
+export function coverageNotes(findings: ReviewFindings, manifest: ReviewManifest | null): string[] {
+    if (!manifest) return ["_Not cross-checked: `review-prep` has not been run for this PR in this clone, so the list of changed files is unknown._"];
+    const notes: string[] = [];
+    if (manifest.commit !== findings.reviewOf.commit) {
+        notes.push(`**This review is of commit ${findings.reviewOf.commit}; the PR was at ${manifest.commit} when \`review-prep\` last ran here.**`);
+    }
+    const unread = unreadChangedFiles(findings.coverage, manifest);
+    if (unread.length > 0) {
+        notes.push(`**${unread.length} of ${manifest.files.length} changed files are not listed as read:** ${unread.map((f) => `\`${f}\``).join(", ")}`);
+    }
+    if (raisesNoIssue(findings) && (manifest.diffLines >= LARGE_DIFF_LINES || manifest.files.length >= LARGE_DIFF_FILES)) {
+        notes.push(`**No issue was raised on a diff of ${manifest.files.length} files and ${manifest.diffLines} lines.** Check what this review is based on before relying on it.`);
+    }
+    return notes;
+}
+
+function renderCoverage(coverage: ReviewCoverage, notes: readonly string[]): string[] {
+    const list = (items: readonly string[]): string => (items.length === 0 ? "none" : items.map((i) => `\`${i}\``).join(", "));
+    const lines = [
+        "### What this review is based on",
+        "",
+        `- **Files read (${coverage.filesRead.length}):** ${list(coverage.filesRead)}`,
+        `- **Commands run:** ${list(coverage.commandsRun)}`,
+        `- **Claims verified:** ${coverage.claimsVerified.length === 0 ? "none" : ""}`,
+        ...coverage.claimsVerified.map((c) => `  - ${c}`),
+        `- **Not checked:** ${coverage.notChecked}`,
+    ];
+    if (notes.length > 0) lines.push("", ...notes);
+    return lines;
 }
 
 const LEANING_LABEL: Record<ReviewLeaning, string> = {
@@ -221,9 +349,10 @@ export function renderReviewFindings(
     partition: {
         readonly inline: readonly ReviewFinding[];
         readonly summary: readonly ReviewFinding[];
-    } = partitionInlineFindings(findings.findings)
+    } = partitionInlineFindings(findings.findings),
+    manifest: ReviewManifest | null = null
 ): string {
-    const lines: string[] = ["## Review", "", findings.overview, ""];
+    const lines: string[] = ["## Review", "", findings.overview, "", ...renderCoverage(findings.coverage, coverageNotes(findings, manifest)), ""];
 
     const { inline, summary } = partition;
     if (inline.length > 0) lines.push(renderInlineTally(inline), "");
@@ -275,6 +404,6 @@ export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
 }
 
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
-export function renderFindingsPreview(findings: ReviewFindings): string {
-    return `${renderReviewFindings(findings)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
+export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null): string {
+    return `${renderReviewFindings(findings, undefined, manifest)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
 }

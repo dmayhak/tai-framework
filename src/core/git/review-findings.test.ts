@@ -12,11 +12,23 @@ import {
     partitionInlineFindings,
     isInlineEligible,
     renderInlineComment,
+    coverageNotes,
+    unreadChangedFiles,
+    raisesNoIssue,
+    LARGE_DIFF_LINES,
     type ReviewFindings,
+    type ReviewManifest,
 } from "./review-findings.js";
 
 const validFindings: ReviewFindings = {
+    reviewOf: { repo: "acme/widgets", pr: "7", commit: "abc123def456" },
     overview: "Small, well-scoped change.",
+    coverage: {
+        filesRead: ["src/db.ts"],
+        commandsRun: ["npm test"],
+        claimsVerified: ["The query is parameterized: read src/db.ts line 42, it is not."],
+        notChecked: "The migration files; I did not run the linter.",
+    },
     findings: [
         {
             severity: "critical",
@@ -231,5 +243,94 @@ describe("render-findings next-step options (TAI-411)", () => {
             assert.ok(!posted.includes("What would you like to do"));
             assert.equal(optionLines(posted).filter((l) => /post and approve|post the findings only/.test(l)).length, 0);
         }
+    });
+});
+
+describe("the coverage block and reviewOf (TAI-527 ADR decision 1)", () => {
+    const without = (field: string): string => {
+        const copy = JSON.parse(JSON.stringify(validFindings)) as Record<string, unknown>;
+        delete copy[field];
+        return JSON.stringify(copy);
+    };
+    const withCoverage = (patch: Record<string, unknown>): string => JSON.stringify({ ...validFindings, coverage: { ...validFindings.coverage, ...patch } });
+
+    it("refuses a payload with no coverage block, saying what to add", () => {
+        assert.throws(() => parseReviewFindings(without("coverage")), /missing "coverage": a review has to say what it is based on.*"filesRead"/s);
+    });
+
+    it("refuses a payload with no reviewOf", () => {
+        assert.throws(() => parseReviewFindings(without("reviewOf")), /missing "reviewOf" — copy it from review-prep's output/);
+    });
+
+    it("refuses a review that read no file, or that leaves notChecked empty", () => {
+        assert.throws(() => parseReviewFindings(withCoverage({ filesRead: [] })), /"coverage\.filesRead" is empty/);
+        assert.throws(() => parseReviewFindings(withCoverage({ filesRead: ["  "] })), /"coverage\.filesRead" is empty/);
+        assert.throws(() => parseReviewFindings(withCoverage({ notChecked: "  " })), /"coverage\.notChecked" is empty/);
+    });
+
+    it("refuses a coverage list that is not an array of strings", () => {
+        assert.throws(() => parseReviewFindings(withCoverage({ commandsRun: "npm test" })), /"coverage\.commandsRun" must be an array of strings/);
+        assert.throws(() => parseReviewFindings(withCoverage({ claimsVerified: [1] })), /"coverage\.claimsVerified" must be an array of strings/);
+    });
+
+    it("accepts a review that ran nothing and verified no claim, as long as it says what it did not check", () => {
+        const parsed = parseReviewFindings(withCoverage({ commandsRun: [], claimsVerified: [] }));
+        assert.deepEqual(parsed.coverage.commandsRun, []);
+        assert.deepEqual(parsed.coverage.claimsVerified, []);
+    });
+
+    it("accepts a numeric pr in reviewOf and keeps it as text", () => {
+        const parsed = parseReviewFindings(JSON.stringify({ ...validFindings, reviewOf: { repo: "acme/widgets", pr: 7, commit: "abc" } }));
+        assert.equal(parsed.reviewOf.pr, "7");
+    });
+
+    it("prints the coverage with the review, where it will be posted", () => {
+        const out = renderReviewFindings(validFindings);
+        assert.match(out, /### What this review is based on/);
+        assert.match(out, /- \*\*Files read \(1\):\*\* `src\/db\.ts`/);
+        assert.match(out, /- \*\*Commands run:\*\* `npm test`/);
+        assert.match(out, / {2}- The query is parameterized: read src\/db\.ts line 42, it is not\./);
+        assert.match(out, /- \*\*Not checked:\*\* The migration files; I did not run the linter\./);
+        assert.ok(out.indexOf("### What this review is based on") < out.indexOf("**Leaning:"));
+    });
+
+    it("says none where a list is empty", () => {
+        const out = renderReviewFindings({ ...validFindings, coverage: { ...validFindings.coverage, commandsRun: [], claimsVerified: [] } });
+        assert.match(out, /- \*\*Commands run:\*\* none/);
+        assert.match(out, /- \*\*Claims verified:\*\* none/);
+    });
+});
+
+describe("cross-checking a review against the PR's changed files (TAI-527)", () => {
+    const manifest = (over: Partial<ReviewManifest> = {}): ReviewManifest => ({ repo: "acme/widgets", pr: "7", commit: "abc123def456", files: ["src/db.ts", "src/api.ts"], diffLines: 40, ...over });
+    const clean: ReviewFindings = { ...validFindings, findings: [{ severity: "good", category: "Style", title: "Tidy", file: "src/db.ts", issue: "Reads well." }], leaning: "approve" };
+
+    it("names every changed file the reviewer did not list as read", () => {
+        assert.deepEqual(unreadChangedFiles(validFindings.coverage, manifest()), ["src/api.ts"]);
+        assert.deepEqual(unreadChangedFiles({ ...validFindings.coverage, filesRead: ["./src/db.ts", "src/api.ts"] }, manifest()), []);
+        assert.match(coverageNotes(validFindings, manifest()).join("\n"), /\*\*1 of 2 changed files are not listed as read:\*\* `src\/api\.ts`/);
+    });
+
+    it("says so when review-prep has not been run for this PR in this clone", () => {
+        assert.match(coverageNotes(validFindings, null).join("\n"), /Not cross-checked: `review-prep` has not been run for this PR in this clone/);
+    });
+
+    it("says when the review is of a different commit than review-prep last saw", () => {
+        assert.match(coverageNotes(validFindings, manifest({ commit: "fff000" })).join("\n"), /This review is of commit abc123def456; the PR was at fff000/);
+    });
+
+    it("flags a review that raises no issue on a large diff, and not one on a small diff or with a real finding", () => {
+        const all = { ...clean, coverage: { ...clean.coverage, filesRead: ["src/db.ts", "src/api.ts"] } };
+        assert.equal(raisesNoIssue(all), true);
+        assert.match(coverageNotes(all, manifest({ diffLines: LARGE_DIFF_LINES })).join("\n"), /No issue was raised on a diff of 2 files and 200 lines/);
+        assert.deepEqual(coverageNotes(all, manifest({ diffLines: LARGE_DIFF_LINES - 1 })), []);
+        const withIssue = { ...validFindings, coverage: all.coverage };
+        assert.equal(raisesNoIssue(withIssue), false);
+        assert.deepEqual(coverageNotes(withIssue, manifest({ diffLines: 5000 })), []);
+    });
+
+    it("the notes are part of the rendered review and of the preview", () => {
+        assert.match(renderReviewFindings(validFindings, undefined, manifest()), /1 of 2 changed files are not listed as read/);
+        assert.match(renderFindingsPreview(validFindings, manifest()), /1 of 2 changed files are not listed as read/);
     });
 });
