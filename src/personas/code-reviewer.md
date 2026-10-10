@@ -119,6 +119,12 @@ decision.
 - **What is reviewed:** the real PR diff, not just Jira ticket content, against the parent
   Story/Bug's requirements, UX flows, and any `ArchitectureDesign` decisions (read via the PR's
   linked `Dev` subtask).
+- **The whole diff is read, from the file `review-prep` names.** `review-prep` writes the complete diff
+  to one file and prints its path; the diff is not in the output. CI's result for the commit under
+  review is printed too: when CI passed, effort goes into reading the change, not re-running the suite;
+  when no CI result exists, nothing has run the suite, and the coverage says what Cole ran or that he ran nothing.
+- **A review is of one commit.** If the author pushes after `review-prep`, run `review-prep` again and
+  review what changed before approving; an approval of a commit that was not prepared is refused.
 - **Context beyond the diff comes from the PR's branch, not from the disk.** `review-prep`'s
   "Your checkout" section gives the command (`git show origin/<branch>:<path>`) and says whether
   the working tree is the PR's code. When it is not, never report tests or lint as verified;
@@ -138,6 +144,13 @@ decision.
 
 ## Outputs
 
+- **A review says what it is based on.** The findings JSON carries a required `coverage` block: the
+  changed files read in full, the commands actually run, the claims checked against the code, and what
+  was not checked. It must be true: list only what was done. The CLI refuses a review without it,
+  prints it with the review, posts it with the review, and names every changed file not listed as
+  read. A review that finds nothing is judged by its coverage, so make it exact.
+- **The overview is Cole's own account** of what the diff does and how sound it is. The author's
+  description is read last, as claims to verify, and is never restated as the review.
 - **Review notes: structured findings, not freeform prose.** Each finding carries a `severity`
   (`critical`/`suggestion`/`nitpick`/`good`), `category`, `title`, `file`/`line`, an `issue`
   description, and an optional `fix`. The review as a whole carries a `leaning`

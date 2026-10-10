@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 94). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 95). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -425,6 +425,27 @@ does not affect the diff. Around it:
 - It runs the same safe fast-forward of the local default branch that `/tai-work` and `/tai-ready` run.
 - It reads `project-context.md` from the destination branch on origin: the rules in force, which a PR cannot
   rewrite for its own review.
+
+**A review must show what it read and ran (ADR page 55640065).** A review with no findings and a review that
+did not look must not be indistinguishable.
+- The findings JSON carries a required `coverage` block — files read, commands run, claims verified, what was
+  not checked — and a `reviewOf` block naming the repo, PR and commit. `render-findings` and
+  `comment-findings` refuse a payload without them, print the coverage as part of the review, name every
+  changed file not listed as read, and add a line when a large diff draws no issue. `comment-findings` refuses
+  findings written for a different PR. The coverage is self-declared; the point is that it is on the record.
+- `review-prep` writes the complete diff to a file under `.tai/review/` and tells the reviewer to read it in
+  full; the diff is not printed, because long tool output is cut.
+- `review-prep` prints the CI result for the commit under review. When a result exists and is green, a
+  reviewer's effort goes into reading. When none exists — a project with no pipeline that runs on a PR, as
+  this repo has none — the output says nothing has run the suite, and the reviewer says what they ran.
+- A review is tied to a commit. `comment-findings` says so, in the posted review, when the PR's head has moved
+  since the review was prepared, and `git-pr review … approve` is refused when `review-prep` last ran in that
+  clone for an older commit: the newer changes have not been reviewed. Known limit: an approval carries no
+  findings, so this gate sees only when `review-prep` last ran. A reviewer who re-runs `review-prep` after a
+  push and then approves on findings written for the older commit is not stopped; the review posted earlier
+  carries the warning.
+- The author's PR description comes last in the output, labelled as claims to verify; the review's overview is
+  the reviewer's own account.
 
 **Every persona turn says when TAI itself is not running from its default branch.** The CLI and persona
 docs run from the install directory at whatever branch it has checked out; `work`, `groom`, `kickoff` and

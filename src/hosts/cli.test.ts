@@ -37,6 +37,7 @@ import {
     renderInitStepResult,
     renderInitStatus,
     createdSubtaskMapNote,
+    reviewOfMismatch,
     extractActingPersona,
     actingPersonaOf,
     renderMergeRefused,
@@ -911,5 +912,17 @@ describe("createdSubtaskMapNote (TAI-479): when issue create prints the subtask-
     it("prints nothing when the parent cannot be fetched", async () => {
         const failing = async (): Promise<never> => Promise.reject(new Error("tracker down"));
         assert.equal(await createdSubtaskMapNote({ issueType: SubtaskType.Triage, parentKey: key }, undefined, failing), null);
+    });
+});
+
+describe("reviewOfMismatch (TAI-527): findings are posted only on the PR they review", () => {
+    it("is null when the repo and PR match, ignoring the repo's letter case", () => {
+        assert.equal(reviewOfMismatch({ repo: "Acme/Widgets", pr: "12" }, "acme/widgets", "12"), null);
+    });
+
+    it("names both PRs and says nothing was posted when they differ", () => {
+        const reason = reviewOfMismatch({ repo: "acme/widgets", pr: "12" }, "acme/widgets", "13")!;
+        assert.match(reason, /review acme\/widgets PR 12, not acme\/widgets PR 13\. Nothing was posted\./);
+        assert.ok(reviewOfMismatch({ repo: "acme/other", pr: "12" }, "acme/widgets", "12"));
     });
 });
