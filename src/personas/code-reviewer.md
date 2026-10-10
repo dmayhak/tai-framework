@@ -121,7 +121,10 @@ decision.
   linked `Dev` subtask).
 - **The whole diff is read, from the file `review-prep` names.** `review-prep` writes the complete diff
   to one file and prints its path; the diff is not in the output. CI's result for the commit under
-  review is printed too: when CI passed, effort goes into reading the change, not re-running the suite.
+  review is printed too: when CI passed, effort goes into reading the change, not re-running the suite;
+  when no CI result exists, nothing has run the suite, and the coverage says what Cole ran or that he ran nothing.
+- **A review is of one commit.** If the author pushes after `review-prep`, run `review-prep` again and
+  review what changed before approving; an approval of a commit that was not prepared is refused.
 - **Context beyond the diff comes from the PR's branch, not from the disk.** `review-prep`'s
   "Your checkout" section gives the command (`git show origin/<branch>:<path>`) and says whether
   the working tree is the PR's code. When it is not, never report tests or lint as verified;

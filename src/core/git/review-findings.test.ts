@@ -16,6 +16,8 @@ import {
     unreadChangedFiles,
     raisesNoIssue,
     LARGE_DIFF_LINES,
+    approvalOfUnpreparedCommit,
+    sameCommitHash,
     type ReviewFindings,
     type ReviewManifest,
 } from "./review-findings.js";
@@ -332,5 +334,51 @@ describe("cross-checking a review against the PR's changed files (TAI-527)", () 
     it("the notes are part of the rendered review and of the preview", () => {
         assert.match(renderReviewFindings(validFindings, undefined, manifest()), /1 of 2 changed files are not listed as read/);
         assert.match(renderFindingsPreview(validFindings, manifest()), /1 of 2 changed files are not listed as read/);
+    });
+});
+
+describe("a review is tied to a commit (TAI-527, from the review of PR 187)", () => {
+    const manifest: ReviewManifest = { repo: "acme/widgets", pr: "7", commit: "abc123def456", files: ["src/db.ts"], diffLines: 10 };
+
+    it("the posted review says when the PR's head has moved since the review was prepared", () => {
+        const notes = coverageNotes(validFindings, manifest, "ffff00001111").join("\n");
+        assert.match(notes, /This review is of commit abc123def456\. The PR is now at ffff00001111: the changes pushed since have NOT been reviewed\./);
+        assert.match(renderReviewFindings(validFindings, undefined, manifest, "ffff00001111"), /have NOT been reviewed/);
+    });
+
+    it("says nothing when the head is the reviewed commit, at either hash length", () => {
+        assert.doesNotMatch(coverageNotes(validFindings, manifest, "abc123def456").join("\n"), /NOT been reviewed/);
+        assert.doesNotMatch(coverageNotes(validFindings, manifest, "abc123def4567890aabbccdd").join("\n"), /NOT been reviewed/);
+        assert.equal(sameCommitHash("abc123", "abc123def456"), true);
+        assert.equal(sameCommitHash("abc124", "abc123def456"), false);
+        assert.equal(sameCommitHash("", "abc123"), false);
+    });
+
+    it("still reports a moved head when review-prep never ran in this clone", () => {
+        const notes = coverageNotes(validFindings, null, "ffff00001111");
+        assert.equal(notes.length, 2);
+        assert.match(notes[0]!, /NOT been reviewed/);
+        assert.match(notes[1]!, /Not cross-checked/);
+    });
+
+    it("an approval is refused when review-prep last ran here for an older commit", () => {
+        assert.match(approvalOfUnpreparedCommit(manifest, "ffff00001111") ?? "", /^Not approved: the PR is now at commit ffff00001111, and `review-prep` last ran here for abc123def456\./);
+    });
+
+    it("an approval goes ahead on the prepared commit, and when there is no manifest to compare", () => {
+        assert.equal(approvalOfUnpreparedCommit(manifest, "abc123def456"), null);
+        assert.equal(approvalOfUnpreparedCommit(manifest, "abc123def4567890"), null);
+        assert.equal(approvalOfUnpreparedCommit(null, "ffff00001111"), null);
+    });
+});
+
+describe("coverage entries are safe to post (TAI-527, from the review of PR 187)", () => {
+    it("collapses each entry to one line and replaces backticks, so it cannot break the posted markdown", () => {
+        const parsed = parseReviewFindings(
+            JSON.stringify({ ...validFindings, coverage: { filesRead: ["src/db.ts"], commandsRun: ["npm test \\\n  --watch `date`"], claimsVerified: ["line one\nline two"], notChecked: "the\nrest" } })
+        );
+        assert.deepEqual(parsed.coverage.commandsRun, ["npm test \\ --watch 'date'"]);
+        assert.deepEqual(parsed.coverage.claimsVerified, ["line one line two"]);
+        assert.equal(parsed.coverage.notChecked, "the rest");
     });
 });

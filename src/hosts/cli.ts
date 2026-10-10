@@ -98,6 +98,7 @@ import {
 } from "../core/commands/git-pr.js";
 import {
     parseReviewFindings,
+    approvalOfUnpreparedCommit,
     renderReviewFindings,
     renderFindingsPreview,
     partitionInlineFindings,
@@ -1651,6 +1652,13 @@ async function main(): Promise<void> {
 
             const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            // TAI-527: an approval counts for the PR's current commit, so it is refused when review-prep
+            // last ran here for an older one. A request for changes is always allowed.
+            if (decision === "approve") {
+                const live = await gitHost.getPullRequest(repo, prId);
+                const unprepared = live ? approvalOfUnpreparedCommit(await readReviewManifest(config.taiRoot, repoArg, String(prId)), live.sourceCommit) : null;
+                if (unprepared) throw new Error(unprepared);
+            }
             // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
             await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
             console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
@@ -1711,6 +1719,8 @@ async function main(): Promise<void> {
             const wrongPr = reviewOfMismatch(findings.reviewOf, repoArg, String(prId));
             if (wrongPr) throw new Error(wrongPr);
             const manifest = await readReviewManifest(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr);
+            // The PR's head now: the only thing that can show a push made after the review was prepared.
+            const liveCommit = (await gitHost.getPullRequest(repo, prId))?.sourceCommit;
 
             const { inline: eligible, summary } = partitionInlineFindings(findings.findings);
             const posted: ReviewFinding[] = [];
@@ -1737,7 +1747,7 @@ async function main(): Promise<void> {
             const comment = await gitHost.addPullRequestComment(
                 repo,
                 prId,
-                stampComment(renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] }, manifest), actingPersonaOf(config))
+                stampComment(renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] }, manifest, liveCommit), actingPersonaOf(config))
             );
             const failureNote = inlineFailures.length > 0
                 ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`

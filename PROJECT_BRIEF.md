@@ -435,8 +435,12 @@ did not look must not be indistinguishable.
   findings written for a different PR. The coverage is self-declared; the point is that it is on the record.
 - `review-prep` writes the complete diff to a file under `.tai/review/` and tells the reviewer to read it in
   full; the diff is not printed, because long tool output is cut.
-- `review-prep` prints the CI result for the commit under review. CI runs the suite and the merge gate
-  requires it, so a reviewer's effort goes into reading.
+- `review-prep` prints the CI result for the commit under review. When a result exists and is green, a
+  reviewer's effort goes into reading. When none exists — a project with no pipeline that runs on a PR, as
+  this repo has none — the output says nothing has run the suite, and the reviewer says what they ran.
+- A review is tied to a commit. `comment-findings` says so, in the posted review, when the PR's head has moved
+  since the review was prepared, and `git-pr review … approve` is refused when `review-prep` last ran in that
+  clone for an older commit: the newer changes have not been reviewed.
 - The author's PR description comes last in the output, labelled as claims to verify; the review's overview is
   the reviewer's own account.
 

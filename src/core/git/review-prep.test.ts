@@ -512,6 +512,16 @@ describe("the diff as a file (TAI-527 ADR decision 4)", () => {
         }
     });
 
+    it("finds the manifest whatever letter case the repo is given in", async () => {
+        const root = await mkdtemp(path.join(tmpdir(), "tai-review-files-"));
+        try {
+            await writeReviewFiles(root, "Acme/Widgets", "12", "abc123", twoFiles);
+            assert.equal((await readReviewManifest(root, "acme/widgets", "12"))?.commit, "abc123");
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+
     it("a second run for the same PR overwrites the first", async () => {
         const root = await mkdtemp(path.join(tmpdir(), "tai-review-files-"));
         try {
@@ -590,6 +600,7 @@ describe("the review steps ask for reviewOf and coverage (TAI-527 ADR decision 1
         assert.match(text, /`coverage` is required and must be true/);
         assert.match(text, /the CLI names every changed file you did not list under `filesRead`/);
         assert.match(text, /A review with nothing under `notChecked` is refused/);
+        assert.match(text, /leave tokens, passwords and other secrets out of any command you list/);
     });
 
     it("shows the PR's commit in the facts section", () => {

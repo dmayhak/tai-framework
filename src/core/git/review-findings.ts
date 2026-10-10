@@ -167,7 +167,17 @@ function stringList(value: unknown, field: string): string[] {
     if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
         throw new Error(`Findings JSON "coverage.${field}" must be an array of strings. ${COVERAGE_HELP}`);
     }
-    return (value as string[]).map((v) => v.trim()).filter((v) => v !== "");
+    return (value as string[]).map(oneLine).filter((v) => v !== "");
+}
+
+/** Coverage entries are posted to the PR inside code formatting: keep each on one line and free of backticks. */
+function oneLine(value: string): string {
+    return value.replace(/\s+/g, " ").replace(/`/g, "'").trim();
+}
+
+/** Hosts hand out commit hashes at different lengths; one is the other's prefix when they name the same commit. */
+export function sameCommitHash(a: string, b: string): boolean {
+    return a.length > 0 && b.length > 0 && (a.startsWith(b) || b.startsWith(a));
 }
 
 function parseReviewOf(raw: unknown): ReviewOf {
@@ -192,7 +202,7 @@ function parseCoverage(raw: unknown): ReviewCoverage {
     const filesRead = stringList(o["filesRead"], "filesRead");
     const commandsRun = stringList(o["commandsRun"], "commandsRun");
     const claimsVerified = stringList(o["claimsVerified"], "claimsVerified");
-    const notChecked = typeof o["notChecked"] === "string" ? o["notChecked"].trim() : "";
+    const notChecked = typeof o["notChecked"] === "string" ? oneLine(o["notChecked"]) : "";
     if (filesRead.length === 0) throw new Error('Findings JSON "coverage.filesRead" is empty: a review that read no file is not a review.');
     if (notChecked === "") {
         throw new Error('Findings JSON "coverage.notChecked" is empty. Say what you did not read, run or check; every review leaves something out.');
@@ -215,12 +225,18 @@ export function raisesNoIssue(findings: ReviewFindings): boolean {
 /**
  * The lines the CLI adds about a review's basis: changed files not claimed as read, a review of a
  * different commit than the one review-prep saw, and an empty review of a large diff. `manifest` is
- * `null` when review-prep was not run in this clone for this PR; that is said too.
+ * `null` when review-prep was not run in this clone for this PR; that is said too. `liveCommit` is
+ * the PR's head as the git host reports it now, when the caller has asked: `reviewOf.commit` is
+ * copied from the same review-prep run as the manifest, so only the live head can show that the
+ * author pushed after the review was prepared.
  */
-export function coverageNotes(findings: ReviewFindings, manifest: ReviewManifest | null): string[] {
-    if (!manifest) return ["_Not cross-checked: `review-prep` has not been run for this PR in this clone, so the list of changed files is unknown._"];
+export function coverageNotes(findings: ReviewFindings, manifest: ReviewManifest | null, liveCommit?: string): string[] {
     const notes: string[] = [];
-    if (manifest.commit !== findings.reviewOf.commit) {
+    if (liveCommit !== undefined && !sameCommitHash(liveCommit, findings.reviewOf.commit)) {
+        notes.push(`**This review is of commit ${findings.reviewOf.commit}. The PR is now at ${liveCommit}: the changes pushed since have NOT been reviewed.**`);
+    }
+    if (!manifest) return [...notes, "_Not cross-checked: `review-prep` has not been run for this PR in this clone, so the list of changed files is unknown._"];
+    if (!sameCommitHash(manifest.commit, findings.reviewOf.commit)) {
         notes.push(`**This review is of commit ${findings.reviewOf.commit}; the PR was at ${manifest.commit} when \`review-prep\` last ran here.**`);
     }
     const unread = unreadChangedFiles(findings.coverage, manifest);
@@ -350,9 +366,10 @@ export function renderReviewFindings(
         readonly inline: readonly ReviewFinding[];
         readonly summary: readonly ReviewFinding[];
     } = partitionInlineFindings(findings.findings),
-    manifest: ReviewManifest | null = null
+    manifest: ReviewManifest | null = null,
+    liveCommit?: string
 ): string {
-    const lines: string[] = ["## Review", "", findings.overview, "", ...renderCoverage(findings.coverage, coverageNotes(findings, manifest)), ""];
+    const lines: string[] = ["## Review", "", findings.overview, "", ...renderCoverage(findings.coverage, coverageNotes(findings, manifest, liveCommit)), ""];
 
     const { inline, summary } = partition;
     if (inline.length > 0) lines.push(renderInlineTally(inline), "");
@@ -406,4 +423,18 @@ export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
 export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null): string {
     return `${renderReviewFindings(findings, undefined, manifest)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
+}
+
+/**
+ * TAI-527: why an approval may not be recorded right now, or `null`. An approval counts for the
+ * PR's current commit (the merge gate), so it must not be cast on a commit nobody prepared a review
+ * of: when review-prep last ran in this clone for an older commit, the newer changes are unseen.
+ * With no manifest there is nothing to compare (a human who reviewed elsewhere), and it goes ahead.
+ */
+export function approvalOfUnpreparedCommit(manifest: ReviewManifest | null, liveCommit: string): string | null {
+    if (!manifest || sameCommitHash(manifest.commit, liveCommit)) return null;
+    return (
+        `Not approved: the PR is now at commit ${liveCommit}, and \`review-prep\` last ran here for ${manifest.commit}. ` +
+        "The changes pushed since have not been reviewed. Run `review-prep` again, review what changed, then approve."
+    );
 }

@@ -396,7 +396,7 @@ export function renderReviewInstructions(input: { readonly repo: string; readonl
         "}",
         "```",
         "",
-        "`reviewOf` is exactly as printed above: copy it. **`coverage` is required and must be true.** It is printed with your review and posted with it, and the CLI names every changed file you did not list under `filesRead`. List only what you did: a file you skimmed is not read, a test you did not run is not run, and \"the author says the suite passes\" is the author's claim, not yours. If you ran nothing, `commandsRun` is `[]` and `notChecked` says so. A review with nothing under `notChecked` is refused.",
+        "`reviewOf` is exactly as printed above: copy it. **`coverage` is required and must be true.** It is printed with your review and posted with it, and the CLI names every changed file you did not list under `filesRead`. List only what you did: a file you skimmed is not read, a test you did not run is not run, and \"the author says the suite passes\" is the author's claim, not yours. If you ran nothing, `commandsRun` is `[]` and `notChecked` says so. A review with nothing under `notChecked` is refused. Coverage entries are posted to the PR as written: leave tokens, passwords and other secrets out of any command you list.",
         "",
         "`line`, when given, is the line number in the NEW (current) version of the file — the same numbering the diff's `+` side uses. A finding about a deleted line, or one you can only place on the old side of the diff, should omit `line` rather than guess (`line` anchors a real inline PR comment, so a wrong or old-side number posts to the wrong place or is rejected by Bitbucket). `line`/`fix` are optional per finding, everything else is required. An empty `findings` array is a valid outcome for clean code — don't invent issues to justify the review — but then your coverage is all the human has to judge the review by, so make it exact. Write this JSON to a temporary file (your host's own scratch location if it has one, otherwise any plain temp path); every command below takes it as `@<path>`, never as prose you type into the command yourself.",
         "3. **Run `git-pr render-findings @<path>`, then paste its ENTIRE stdout verbatim into your own reply as ordinary chat text — then STOP. This is the complete output of \"review this PR,\" full stop.** A tool call's own output is not reliably visible to the human as chat content (TAI-258) — running the command is not enough, and neither is summarizing it. Quote the real markdown it printed, in full, **including the numbered \"what would you like to do?\" list at its end (TAI-411), which is how the human learns their options; never trim it.** Do NOT, in this same turn: run `git-pr comment-findings`, run `git-pr review`, or ask a question via any interactive tool. End your turn right here and wait for the human's own next message, an ordinary NEW turn, not a same-turn continuation.",
@@ -474,7 +474,7 @@ export function renderCiStatus(statuses: readonly CommitStatus[] | null, commit:
     const lines = statuses.map((s) => `- ${s.name || s.key}: **${s.state}**${s.url ? ` (${s.url})` : ""}`);
     const allGreen = statuses.every((s) => s.state === "successful");
     const verdict = allGreen
-        ? "CI ran on this commit and passed, and the merge gate requires it. Spend your effort on reading the change, not on re-running the suite."
+        ? "CI ran on this commit and passed. Spend your effort on reading the change, not on re-running the suite."
         : "CI has not passed on this commit. Do not lean towards approve on the strength of the tests; say what is failing or still running.";
     return [...head, ...lines, "", verdict].join("\n");
 }
@@ -489,7 +489,9 @@ export interface ReviewFiles {
 }
 
 function reviewDir(taiRoot: string, repo: string, prId: string): string {
-    return path.resolve(taiRoot, "review", `${repo.replace(/[^A-Za-z0-9._-]+/g, "-")}-pr-${prId.replace(/[^A-Za-z0-9._-]+/g, "-")}`);
+    // Lowercased: the repo is matched case-insensitively elsewhere (`reviewOfMismatch`), and on a
+    // case-sensitive filesystem a differently-cased repo would otherwise miss its own manifest.
+    return path.resolve(taiRoot, "review", `${repo.toLowerCase().replace(/[^a-z0-9._-]+/g, "-")}-pr-${prId.replace(/[^A-Za-z0-9._-]+/g, "-")}`);
 }
 
 /**
