@@ -191,6 +191,18 @@ const COMMIT_STATUS_STATE: Record<BitbucketCommitStatusJson["state"], CommitStat
     STOPPED: "stopped",
 };
 
+const BITBUCKET_STATE: Record<CommitStatusState, BitbucketCommitStatusJson["state"]> = {
+    successful: "SUCCESSFUL",
+    failed: "FAILED",
+    inProgress: "INPROGRESS",
+    stopped: "STOPPED",
+};
+
+/** Our commit-status state as Bitbucket's build-status API spells it. */
+export function toBitbucketState(state: CommitStatusState): BitbucketCommitStatusJson["state"] {
+    return BITBUCKET_STATE[state];
+}
+
 export function toCommitStatus(status: BitbucketCommitStatusJson): CommitStatus {
     return {
         key: status.key,

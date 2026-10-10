@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 95). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 96). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -922,9 +922,16 @@ decision.**
      block, and a test tier's own PR does not wait on itself.
   4. **A `UAT` subtask present on the ticket is Done** (or Canceled), unless it carries the `uat-after-merge`
      label. No `UAT` subtask, no wait.
-  5. **CI**, as before: any commit status that exists must be successful.
+  5. **A check result on the current commit, when the project has a check command** (`TAI_CHECK_COMMAND`).
+     `git-pr check` runs that command on the PR's head commit — from a clean working tree at exactly that
+     commit, or it refuses — and records the outcome on the commit as a status naming who ran it and where
+     (`git/local-check.ts`, ADR page 55672833). No status at all on the commit refuses the merge. It is how a
+     project with no CI on pull requests gets its suite run before a merge; the result is self-attested. A
+     project that sets no check command skips this rule.
+  6. **CI**, as before: any commit status that exists must be successful, whether a pipeline or `git-pr
+     check` produced it.
 
-  `git-pr merge … force=true` merges past rules 1 to 4 (not CI) and leaves a stamped `Merge-gate override:`
+  `git-pr merge … force=true` merges past rules 1 to 5 (never a failed or running status) and leaves a stamped `Merge-gate override:`
   comment on the PR listing what was not met. It **replaces the old "very minor fix → fix, test, merge"
   judgment rule**: a fix pushed after approval makes that approval stale, so the merge is refused; for a very
   minor fix (a typo or wording, no behavior change) the one merging uses `force=true` and the override is on

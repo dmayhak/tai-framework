@@ -22,6 +22,7 @@
 import type {
     CommitSha,
     CommitStatus,
+    CreateCommitStatusInput,
     CreatePullRequestInput,
     GitHost,
     GitMutationResult,
@@ -129,5 +130,10 @@ export class PersonaScopedGitHost implements GitHost {
 
     getCommitStatuses(repo: RepoId, commit: CommitSha): Promise<readonly CommitStatus[]> {
         return this.inner.getCommitStatuses(repo, commit);
+    }
+
+    /** Not persona-gated: recording a check result is not one of the granted git-host actions. */
+    createCommitStatus(repo: RepoId, commit: CommitSha, input: CreateCommitStatusInput): Promise<CommitStatus> {
+        return this.inner.createCommitStatus(repo, commit, input);
     }
 }

@@ -94,6 +94,8 @@ export interface FindReadyWorkDeps {
     /** rev 52 (TAI-159 ADR): required approval count for readyToTest/readyToMerge.
      *  Defaults to 1 (the pre-rev-52 single-reviewer behavior) when omitted. */
     readonly requiredApprovals?: number;
+    /** TAI-534: the project has a check command, so a PR whose commit has no status is not ready to merge. */
+    readonly checkRequired?: boolean;
     /** rev 52: the current human (resolved from BITBUCKET_EMAIL), for readyToReview's
      *  eligibility check. readyToReview is empty without this. */
     readonly currentHuman?: HumanRef;
@@ -568,7 +570,7 @@ async function syncTestTiersToToDo(
  *  (TAI-211/212), neither of which needs `taiRoot` for this part. */
 type PRSectionDeps = Pick<
     FindReadyWorkDeps,
-    "workTracker" | "projectKey" | "gitHost" | "repos" | "requiredApprovals" | "currentHuman" | "prReviewers"
+    "workTracker" | "projectKey" | "gitHost" | "repos" | "requiredApprovals" | "checkRequired" | "currentHuman" | "prReviewers"
 >;
 
 interface PRSections {
@@ -622,6 +624,8 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
             if (approvalCount(c.pullRequest) < requiredApprovals) continue;
             if (!(await checkMergeGate(gateDeps, c.pullRequest, c.issueKey)).ok) continue;
             const statuses = await deps.gitHost.getCommitStatuses(c.pullRequest.repo, c.pullRequest.sourceCommit);
+            // TAI-534: with a check command configured, "no result at all" is not ready either.
+            if (deps.checkRequired && statuses.length === 0) continue;
             if (isGreen(statuses)) merge.push(c);
         }
         readyToMerge = merge;
@@ -895,6 +899,8 @@ export interface FindReadyPRWorkDeps {
     readonly gitHost?: Pick<GitHost, "listPullRequests" | "getCommitStatuses" | "listPullRequestActivity">;
     readonly repos?: readonly RepoId[];
     readonly requiredApprovals?: number;
+    /** TAI-534: the project has a check command, so a PR whose commit has no status is not ready to merge. */
+    readonly checkRequired?: boolean;
     readonly currentHuman?: HumanRef;
     readonly prReviewers?: readonly HumanRef[];
 }

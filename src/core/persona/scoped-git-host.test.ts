@@ -111,6 +111,11 @@ class RecordingGitHost implements GitHost {
         this.calls.push("getCommitStatuses");
         return [];
     }
+
+    async createCommitStatus(_repo: RepoId, _commit: unknown, input: { key: string; name: string; state: CommitStatus["state"] }): Promise<CommitStatus> {
+        this.calls.push("createCommitStatus");
+        return { key: input.key, name: input.name, state: input.state };
+    }
 }
 
 function prFixture(overrides: Partial<PullRequestRef>): PullRequestRef {

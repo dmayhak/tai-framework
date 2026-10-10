@@ -453,3 +453,42 @@ describe("malformed RepoId", () => {
         await assert.rejects(() => host.getRepository(toRepoId("not-a-workspace-slash-slug")), /Malformed RepoId/);
     });
 });
+
+describe("createCommitStatus (TAI-534)", () => {
+    it("posts a build status on the commit in Bitbucket's own spelling, and returns it mapped back", async () => {
+        const calls: { url: string; method: string; body: unknown }[] = [];
+        const host = hostWith(
+            stubFetch((method, url, body) => {
+                calls.push({ url, method, body });
+                return json({ key: "tai-check", name: "TAI check", state: "SUCCESSFUL", url: "https://example.test/pr/7" });
+            })
+        );
+        const created = await host.createCommitStatus(REPO, toCommitSha("abc123def456"), {
+            key: "tai-check",
+            name: "TAI check",
+            state: "successful",
+            url: "https://example.test/pr/7",
+            description: "passed in 30s: npm test",
+        });
+        assert.equal(calls.length, 1);
+        assert.match(calls[0]!.url, /\/commit\/abc123def456\/statuses\/build$/);
+        assert.equal(calls[0]!.method, "POST");
+        assert.deepEqual(calls[0]!.body, { key: "tai-check", name: "TAI check", state: "SUCCESSFUL", url: "https://example.test/pr/7", description: "passed in 30s: npm test" });
+        assert.deepEqual(created, { key: "tai-check", name: "TAI check", state: "successful", url: "https://example.test/pr/7" });
+    });
+
+    it("spells a failed result FAILED and leaves out a description that was not given", async () => {
+        let body: Record<string, unknown> = {};
+        const host = hostWith(
+            stubFetch((_method, _url, sent) => {
+                body = sent as Record<string, unknown>;
+                return json({ key: "tai-check", name: "TAI check", state: "FAILED" });
+            })
+        );
+        const created = await host.createCommitStatus(REPO, toCommitSha("abc123def456"), { key: "tai-check", name: "TAI check", state: "failed", url: "https://example.test/pr/7" });
+        assert.equal(body["state"], "FAILED");
+        assert.ok(!("description" in body));
+        assert.equal(created.state, "failed");
+    });
+});
+

@@ -188,10 +188,16 @@ isn't finished until it's merged.
     **not** merged automatically — ask the human first. If unsure which, it is review-worthy.
 
   Verify a reviewer's factual claims before acting (they can be wrong).
+- **Record the check for each commit (brief §5.4).** When the project has a check command
+  (`TAI_CHECK_COMMAND`), run `{{TAI_CLI}} git-pr check <REPO> [PR-ID]` once the PR is open, and again
+  after every push: a result belongs to one commit. It runs the project's check command and records
+  the outcome on the commit. It refuses unless the working tree is clean and at the PR's head, so
+  commit first. A failed result is fixed with more commits, never forced past.
 - **The merge gate (brief §5.4).** `git-pr merge` refuses unless the PR has the required approvals
   **cast on its current commit**, no request-changes left standing, every test tier present on the
-  ticket Done, a `UAT` subtask on the ticket Done unless it carries the `uat-after-merge` label, and
-  green CI. When it refuses, get what is missing — do not work around it. `force=true` merges past it
+  ticket Done, a `UAT` subtask on the ticket Done unless it carries the `uat-after-merge` label, a
+  passing check result on the current commit when the project has a check command, and no failed or
+  running CI. When it refuses, get what is missing — do not work around it. `force=true` merges past it
   and leaves a stamped override comment on the PR: use it on your own only for the very minor fix
   above, and otherwise only when the human says so.
 - **Once the PR passes the merge gate and CI is green — surfaced as `readyToMerge` — Dario merges his

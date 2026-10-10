@@ -712,6 +712,48 @@ async function inProgressTestTier(
     return testTier;
 }
 
+describe("readyToMerge and a required check result (TAI-534)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+    const run = async (statuses: readonly CommitStatus[], checkRequired: boolean | undefined): Promise<number> => {
+        let count = -1;
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost: new FakeGitHost(new Map([[repo, [pr]]]), statuses),
+                repos: [repo],
+                ...(checkRequired !== undefined ? { checkRequired } : {}),
+            });
+            count = result.readyToMerge.length;
+        });
+        return count;
+    };
+    const passed: CommitStatus = { key: "tai-check", name: "TAI check", state: "successful" };
+
+    test("an approved PR with no status at all is not ready when the project requires a check", async () => {
+        assert.equal(await run([], true), 0);
+    });
+
+    test("it is ready once the commit has a successful result", async () => {
+        assert.equal(await run([passed], true), 1);
+    });
+
+    test("a project that requires no check behaves as before: no status at all is ready", async () => {
+        assert.equal(await run([], false), 1);
+        assert.equal(await run([], undefined), 1);
+    });
+
+    test("a failed result is never ready, required or not", async () => {
+        const failed: CommitStatus = { ...passed, state: "failed" };
+        assert.equal(await run([failed], true), 0);
+        assert.equal(await run([failed], false), 0);
+    });
+});
+
 describe("findReadyWork readyToTest / readyToMerge", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 

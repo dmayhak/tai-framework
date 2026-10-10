@@ -50,6 +50,21 @@ Merging one's own PR is not self-certification: the approval already happened as
 action, and `cannotApprove: own-output` is untouched. Framework-internal work needs no `Deploy`
 subtask.
 
+## A recorded local check (TAI-534, ADR Confluence page 55672833)
+
+Found on 2026-10-09: nothing ran the test suite on a PR in this repo. The Bitbucket free tier allows
+50 build minutes a month, about 25 runs, and one day produced 17 PRs, so the automatic pipeline
+triggers had been removed. The merge gate's CI rule passed with no status at all.
+
+Decided by the human: `git-pr check` runs the project's own check command on the PR's head commit and
+records the result as a commit status; the merge gate requires one when a check command is
+configured; the author runs it, by command. A missing result can be forced past with a recorded
+override, a failed one cannot. Not taken: a pipeline run per PR (quota), running it automatically at
+PR creation (later pushes still need a run), and counting only a reviewer's run (needs worktrees,
+deferred under TAI-115).
+
+The result is self-attested: it names who ran it and on which machine.
+
 ## Read the comments before merging (TAI-382/TAI-383)
 
 An approved PR was merged with unread reviewer comments on it. The rule since: read all comments, then

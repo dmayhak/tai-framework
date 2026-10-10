@@ -579,7 +579,7 @@ describe("CI on the commit under review (TAI-527 ADR decision 2)", () => {
     });
 
     it("says when nothing ran, and when the status could not be read", () => {
-        assert.match(renderCiStatus([], "abc123"), /No CI result is recorded for abc123\. Nothing has run the test suite on this code unless you do/);
+        assert.match(renderCiStatus([], "abc123"), /No check or CI result is recorded for abc123\. Nothing has run the test suite on this code unless you do/);
         assert.match(renderCiStatus(null, "abc123"), /Could not read the CI status of abc123\. Say so under `notChecked`/);
     });
 

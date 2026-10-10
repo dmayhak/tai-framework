@@ -469,7 +469,7 @@ export function renderCiStatus(statuses: readonly CommitStatus[] | null, commit:
     const head = ["## CI on the commit under review", ""];
     if (statuses === null) return [...head, `Could not read the CI status of ${commit}. Say so under \`notChecked\`.`].join("\n");
     if (statuses.length === 0) {
-        return [...head, `No CI result is recorded for ${commit}. Nothing has run the test suite on this code unless you do; say what you ran, or that you ran nothing.`].join("\n");
+        return [...head, `No check or CI result is recorded for ${commit}. Nothing has run the test suite on this code unless you do; say what you ran, or that you ran nothing. (The author records one with \`git-pr check\` when the project has a check command.)`].join("\n");
     }
     const lines = statuses.map((s) => `- ${s.name || s.key}: **${s.state}**${s.url ? ` (${s.url})` : ""}`);
     const allGreen = statuses.every((s) => s.state === "successful");
