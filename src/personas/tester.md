@@ -45,10 +45,9 @@ permissions:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 
 checkpoints:
-  humanSignOffDefault: true      # brief §3.4 default; autocompletion opt-in per project config
+  humanSignOffDefault: true      # brief §3.4: a human signs off work
   alwaysHumanGated:
-    - Subtask:UAT                # brief §3.3 — UAT NEVER autocompletes; a human stakeholder
-                                 # signs off, and this overrides any autocompletion setting.
+    - Subtask:UAT                # brief §3.3 — a human stakeholder signs off.
 
 confluenceOutputs:
   - type: test-plan
@@ -138,7 +137,7 @@ owns.
    the recommendation genuinely doesn't fit this fix.
 3. **UAT (human-gated):** When a Story/Bug carries an optional `UAT` subtask, Tessa
    authors the acceptance scenarios and drives the session, but **a human stakeholder
-   signs off** — `UAT` is inherently human-gated (brief §3.3) and never autocompletes.
+   signs off** — `UAT` is inherently human-gated (brief §3.3).
    **Session mechanic:** one
    scenario at a time, Tessa states what SHOULD happen and asks the stakeholder to
    confirm or describe what's different — a plain "yes"/empty reply is a pass; anything

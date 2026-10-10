@@ -52,8 +52,8 @@ export interface RosterLike {
  * backend is permissive by design, and the live Jira project's own capability flag
  * (`strictWorkflow: false`, conformance.ts) confirms Jira doesn't either. A gate keyed to
  * "coming from In Review" would be trivially bypassable by transitioning straight from `To
- * Do`/`In Progress` to `Done`, which defeats the entire point of a "hard" checkpoint (TAI-41
- * ADR) that's supposed to never autocomplete. So this checks only the one thing that
+ * Do`/`In Progress` to `Done`, which defeats the entire point of a gate only a
+ * human's approval passes. So this checks only the one thing that
  * actually matters: is the TARGET `Done` for a gated StoryType — regardless of where it's
  * coming from.
  */

@@ -266,10 +266,8 @@ export function subtaskOutsideMapNote(subtaskType: StoryType | SubtaskType | "ep
     );
 }
 
-// Subtask types that are INHERENTLY human-gated (brief §3.3): they always
-// require a human sign-off and can never autocomplete, even when
-// autocompletion is otherwise enabled for the persona/project — a
-// human-gated checkpoint takes priority over all autocompletion settings.
+// Subtask types that are INHERENTLY human-gated (brief §3.3): a persona prepares or drives
+// each one and holds no `complete` grant for it; a human closes it.
 export const ALWAYS_HUMAN_GATED_SUBTASKS: SubtaskType[] = [
     SubtaskType.Uat, // Tester drives the run; a human stakeholder must sign off
     SubtaskType.EpicReview, // TAI-354 — Analyst drives the discussion; a human stakeholder must sign off

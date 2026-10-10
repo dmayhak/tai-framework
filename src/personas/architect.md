@@ -48,11 +48,9 @@ permissions:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 
 checkpoints:
-  humanSignOffDefault: true      # brief §3.4 default; autocompletion opt-in per project config
+  humanSignOffDefault: true      # brief §3.4: a human signs off work
   alwaysHumanGated:
-    - Subtask:DesignReview        # TAI-458 — DesignReview NEVER autocompletes; a human reviews
-                                   # the design and closes it, and this overrides any
-                                   # autocompletion setting.
+    - Subtask:DesignReview        # TAI-458 — a human reviews the design and closes it.
   selfAuthoredReviewSeparation: default   # The DesignReview decision is a human's. Aria prepares
                                           # the review notes, preferably in a fresh context, not
                                           # the session that wrote the design (TAI-458; making

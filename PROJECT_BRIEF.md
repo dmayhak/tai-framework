@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 93). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-09 (rev 94). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -170,15 +170,13 @@ research:** native Jira workflow conditions/validators/post-functions can only b
 programmatically by Atlassian *Connect/Forge apps*, not by a normal OAuth-authenticated
 integration (which is what our MCP-based access is). Therefore:
 
-> **Team AI's own plugin layer is the enforcer of checkpoints and autocompletion rules.**
+> **Team AI's own plugin layer is the enforcer of checkpoints.**
 > We check conditions *before* ever calling the Jira "transition" API. Native Jira
 > validators, if an admin chooses to configure matching ones by hand, serve only as
 > optional defense-in-depth — they are not something Team AI deploys itself.
 
 Checkpoints are modeled as **dependent subtasks in a "blocks / depends-on" chain**
-(see §5.4). Human-gated checkpoints **take priority over all autocompletion settings** —
-if a checkpoint requires a human, work pauses there even when autocompletion is otherwise
-enabled. Three subtask types are **inherently human-gated**: `UAT`, `EpicReview` and
+(see §5.4). If a checkpoint requires a human, work pauses there. Three subtask types are **inherently human-gated**: `UAT`, `EpicReview` and
 `DesignReview` (`ALWAYS_HUMAN_GATED_SUBTASKS`, `story-schema.ts`). A persona prepares or drives each one, holds no `complete` grant for it, and
 a human closes it.
 
@@ -188,8 +186,9 @@ an admin-configured validator, a missing required field, a permission gap, or a 
 change by another human or agent. This resolves an earlier open question: **Team AI always
 attempts the real Jira transition** (it doesn't skip straight past Jira based on our own
 checks alone), and if Jira rejects it, that rejection is never treated as an ordinary
-failure. Work stops immediately, the Jira-returned reason is captured verbatim in the
-unit's work journal (§3.6/§7), and the item is flagged for human intervention.
+failure. Work stops immediately and the Jira-returned reason is returned verbatim to whoever
+ran the command, for a human to deal with. It is not written to the work journal, and nothing
+is marked on the ticket.
 
 Because the AI usually cannot self-diagnose an admin's validator or a permissions problem,
 **this case is explicitly excluded from the single-retry pattern** used for review
@@ -199,11 +198,6 @@ This is enforced **once, centrally, in the storage plugin's `transition` operati
 (§3.2), not repeated in each persona's own instructions. The operation returns either
 success or a structured "blocked-by-source" result; every persona and the Orchestrator
 react to that result identically, so no persona needs its own logic for this case.
-
-Where possible, the block is also surfaced **inside Jira itself** — a comment stating the
-reason, and (if configured) a label such as `blocked-external` — so it's visible to anyone
-looking directly at the Jira board, not only to someone checking Team AI's local status
-file.
 
 > **Deferred (not v1): learning from Jira-side rejections.** The core behavior above —
 > attempt the real transition, treat rejection as an unplanned checkpoint, escalate, no
@@ -217,31 +211,14 @@ file.
 > hasn't hit yet. Don't presuppose the mechanism; figure that out when this refinement is
 > actually scheduled. See open question §8.15.
 
-### 3.4 Autocompletion
-The ability for a persona to complete work without human sign-off, when configurable
-conditions are met. **Human sign-off is the default.** Autocompletion is configurable by:
-persona, by task type, and per-Jira-issue (likely via a custom field), each with a
-configurable set of conditions that must be satisfied.
+### 3.4 Human Sign-off
+**A human signs off work; nothing completes itself.** A persona finishes its own subtask when
+its work is done, as the human driving the session, and the human-gated steps (§3.3, §4) are
+closed only when the human says so. There is no autocompletion: no setting, condition or
+comment marker lets a persona complete work in place of a human's sign-off.
 
-Conditions are richer than a simple checklist and are likely themselves prompt-based, e.g.:
-- "Code review has no major issues and fewer than *X* minor ones."
-- "DB design passes DBA review and satisfies the Analyst's requirements."
-
-**The design (TAI-41 ADR; §8 items 9, 22, 23):** `AutocompletionCondition
-{ id, description }` (the `description` is the prompt text above); `transition()` never
-evaluates a condition live — the deciding persona evaluates it and records PASS/FAIL via a
-`Complete:` Jira-comment marker (extending §3.9's convention), which `transition()` reads.
-Checkpoints are `hard` (never autocompletes — `ALWAYS_HUMAN_GATED_SUBTASKS`/
-`REVIEW_GATES`) or `conditional` (this section's default, autocompletion-eligible per the
-above). See the TAI-41 ADR (Confluence, TA space).
-
-**What is built:** checkpoint and review-gate enforcement (`review-gate.ts`) is wired into
-`transition()` on both backends. The autocompletion decision engine (`autocompletion.ts`:
-`checkpointKind`, `evaluateAutocompletion`, `parseCompletionMarker`) is built and tested as a
-standalone pure-function module but is **not called from anywhere**. Whether something
-pauses for a human before invoking it, or proceeds automatically, is an orchestration
-decision that has not been made; the permission layer a future caller would sit behind
-(`PersonaScopedWorkTracker`) exists, the call site does not.
+Checkpoint and review-gate enforcement (`storage/review-gate.ts`) is part of `transition()`
+on both backends.
 
 **Hard rule:** a persona may **never** approve/self-certify its own work. (See §4, item on
 same-persona approval.)
@@ -519,8 +496,7 @@ These are settled. Change them deliberately and update this file if you do.
   enforced by the issue commands: when a command names the acting persona (`--as`) and that persona
   has no grant for the type it created or moved to Done, the CLI prints a note and the command still
   goes ahead. There are no per-field `update` grants.
-- **Human sign-off is the default;** autocompletion is opt-in and condition-gated, per
-  persona / per task type / per issue.
+- **A human signs off work.** There is no autocompletion (§3.4).
 - **A persona can never approve its own work.** In a *team* setting this is the norm and is
   ultimately enforced by the business/process — for now our code does not hard-lock it,
   because a **solo developer legitimately reviews their own work.** (Revisit if we add
@@ -532,7 +508,7 @@ These are settled. Change them deliberately and update this file if you do.
   review notes and the human decides. A fresh context is preferred for preparing them, not
   the session that wrote the work under review.
 - **Checkpoints are enforced in Team AI's plugin layer,** not via native Jira validators
-  (see §3.3). Checkpoints override autocompletion.
+  (see §3.3).
 - **A Jira-rejected transition is an unplanned checkpoint, not a normal failure.** Team AI
   always attempts the real Jira transition after its own checks pass; if Jira itself
   rejects it, work stops, the reason is journaled, and it escalates directly to a
@@ -1242,7 +1218,7 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
 6. **Default persona roster and permissions** — resolved: nine personas, each permission block audited against the schema (§3.1, `personas/*.md`).
 7. **Storage interface operation set** — resolved: `WorkTracker`/`DocStore` in `src/core/storage/interface.ts`, proven identical across backends by the conformance suite (§3.2).
 8. **Ticket-switch mechanic** — resolved: worktree swap, not plain checkout (§6). Design only; TAI-115, deferred to v2.
-9. **Autocompletion condition format** — resolved (TAI-41 ADR; TAI-43): `AutocompletionCondition`/`AutocompletionConfig`, AND-only, in `autocompletion.ts`; not yet called from anywhere (§3.4).
+9. **Autocompletion condition format** — retired (TAI-482): there is no autocompletion (§3.4). The TAI-41 ADR in Confluence records the design that was retired; it does not describe how TAI works.
 10. **Root status-file reconciliation** — resolved: always a full rescan on demand, at the same refresh points as §3.6 (§7).
 11. **Pre-subtask work location** — resolved: there is no pre-subtask phase; a persona creates the subtask as its first action (§7).
 12. **Decomposition scope levels** — resolved: no fixed ladder and no Initiative tier; decomposition is scope-relative and repeatable (§3.7).
@@ -1266,8 +1242,8 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
 19. **Git-hosting plugin abstraction** — resolved (TAI-33 ADR; TAI-38): a sibling `GitHost` interface, not part of `StorageBackend`, at `src/core/git/` (§6).
 20. **Code review must act on a real git PR** — resolved (TAI-34 ADR; TAI-159 ADR): review and merge act on the real PR, and the `CodeReview` subtask is retired in favour of the host's live approval state (§5.4).
 21. **Explicit uncertainty markers** — resolved, narrow: `NEEDS CLARIFICATION:` in Kickoff-stage docs only, blocking the PM + UX review gate while one remains (`workflows/kickoff.md`).
-22. **Structured completion marker** — resolved (TAI-41 ADR; TAI-43): `Complete: <SubtaskType>` with one PASS/FAIL line per condition, no inference fallback (§3.9, `autocompletion.ts`).
-23. **Finer-grained checkpoint taxonomy** — resolved (TAI-41 ADR): two kinds, `hard` and `conditional`; the three-way split was declined (`checkpointKind`, `autocompletion.ts`).
+22. **Structured completion marker** — retired (TAI-482) with autocompletion: there is no `Complete:` marker.
+23. **Finer-grained checkpoint taxonomy** — retired (TAI-482): with no autocompletion there is one kind of gate, human-gated (§3.3).
 24. **Lightweight persona manifest file** — deferred: no consumer yet. Not the same thing as the Persona Roster (§5.6).
 25. **Brief-compliance gate in each workflow doc** — resolved: one pointer line at the top of each `workflows/*.md`, not a duplicated checklist.
 26. **Retrospective / correct-course workflow type** — declined: no real need yet; a Bug or an edited Story covers it.
@@ -1278,8 +1254,7 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
     someone (most likely a human, though possibly any persona noticing something worth a
     second set of human eyes) should be able to flag a task/Story as needing human review
     before it proceeds, even when the AI review(s) for that stage already passed. Distinct
-    from the existing `humanSignOffDefault`/checkpoint machinery (brief §3.4), which is
-    about whether a given gate autocompletes at all — this is an override layered on TOP
+    from the existing human-gated checkpoints (§3.3) — this is an override layered on TOP
     of a gate that would otherwise pass, raised at arbitrary points, not fixed to one
     subtask type. Genuinely undecided, flagged live rather than designed on the spot — same
     posture as the Analyst/Architect "ask the human" principle (`personas/analyst.md`/
@@ -1362,7 +1337,7 @@ each new persona to help build the next.
   since that unblocks everything before the Jira MCP path is fully wired.
 - **Phase 4+:** Implement each remaining persona and immediately use it on the next Story in
   the backlog. Wire in the Atlassian MCP storage adapter. Layer in checkpoints,
-  autocompletion, multi-repo, caching.
+  multi-repo, caching.
 
 ---
 
@@ -1400,9 +1375,7 @@ each new persona to help build the next.
   (§8.18), never a dependency.
 - **Storage plugin / backend** — a swappable implementation of the source-of-truth
   interface (Jira, filesystem, other).
-- **Checkpoint** — a human-oversight gate modeled as a dependent subtask; overrides
-  autocompletion.
-- **Autocompletion** — condition-gated completion of work without human sign-off.
+- **Checkpoint** — a human-oversight gate modeled as a dependent subtask.
 - **Workflow** — the per-Story-type process (Kickoff/Story/Bug/Spike, `workflows/*.md`)
   defining subtask structure, precedence, and gates. There is no separate "named scenario"
   sense (complete/quick/bugfix); the story-type plus optional-subtask design covers it (§3.5).

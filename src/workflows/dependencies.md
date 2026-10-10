@@ -158,8 +158,7 @@ its prerequisites through, so the graph collapses to the shape without it:
   human-gated** (brief §3.3, TAI-458) — a human reviews the design and closes it.
 - **`UAT`** sits after the same never-fires-statically `Dev` edge and whichever automated
   tiers are present, and gates `Deploy`. When it's absent, the tiers gate `Deploy`
-  directly, as before; with no tier present either, `Deploy` waits on `Dev` (TAI-456). `UAT` is **inherently human-gated** (brief §3.3) — it never
-  autocompletes, even where autocompletion is otherwise enabled.
+  directly, as before; with no tier present either, `Deploy` waits on `Dev` (TAI-456). `UAT` is **inherently human-gated** (brief §3.3).
 
 ### What the `SpikeTask` subtask deliberately has no rule for
 The ad-hoc `SpikeTask` subtask (used inside a Story/Bug) has no entry in

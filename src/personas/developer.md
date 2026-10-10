@@ -52,7 +52,7 @@ permissions:
     - own-output                  # hard rule, brief §3.4 / §4 — cannot approve his own PR or mark his own test results
 
 checkpoints:
-  humanSignOffDefault: true      # brief §3.4 default; autocompletion opt-in per project config
+  humanSignOffDefault: true      # brief §3.4: a human signs off work
 
 confluenceOutputs:
   - type: implementation-notes
