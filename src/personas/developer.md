@@ -192,7 +192,8 @@ isn't finished until it's merged.
   (`TAI_CHECK_COMMAND`), run `{{TAI_CLI}} git-pr check <REPO> [PR-ID]` once the PR is open, and again
   after every push: a result belongs to one commit. It runs the project's check command and records
   the outcome on the commit. It refuses unless the working tree is clean and at the PR's head, so
-  commit first. A failed result is fixed with more commits, never forced past.
+  commit first, and it records nothing if the command changed tracked files or the head moved while it
+  ran. The command does not get TAI's own settings (`TAI_*`, `BITBUCKET_*`). A failed result is fixed with more commits, never forced past.
 - **The merge gate (brief §5.4).** `git-pr merge` refuses unless the PR has the required approvals
   **cast on its current commit**, no request-changes left standing, every test tier present on the
   ticket Done, a `UAT` subtask on the ticket Done unless it carries the `uat-after-merge` label, a

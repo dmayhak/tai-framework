@@ -925,7 +925,10 @@ decision.**
   5. **A check result on the current commit, when the project has a check command** (`TAI_CHECK_COMMAND`).
      `git-pr check` runs that command on the PR's head commit — from a clean working tree at exactly that
      commit, or it refuses — and records the outcome on the commit as a status naming who ran it and where
-     (`git/local-check.ts`, ADR page 55672833). No status at all on the commit refuses the merge. It is how a
+     (`git/local-check.ts`, ADR page 55672833). The tree is read again after the command: if it changed
+     tracked files or the head moved, nothing is recorded. The command runs without TAI's own settings (no
+     `TAI_*` or `BITBUCKET_*` variable reaches it), so the PR's code does not see TAI's credentials. No status
+     at all on the commit refuses the merge. It is how a
      project with no CI on pull requests gets its suite run before a merge; the result is self-attested. A
      project that sets no check command skips this rule.
   6. **CI**, as before: any commit status that exists must be successful, whether a pipeline or `git-pr

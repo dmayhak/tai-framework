@@ -270,7 +270,8 @@ function prSkillBody(taiHome: string): string {
         "actually get posted — see the review-flow section below.\n" +
         "- `check` (TAI-534) — `git-pr check <REPO> [PR-ID]`: runs the project's check command (`TAI_CHECK_COMMAND`) " +
         "on the PR's head commit and records the result on that commit. It refuses unless the working tree is clean " +
-        "and at the PR's head. The PR's author runs it once the PR is open and again after every push; a result " +
+        "and at the PR's head, and records nothing if the command changed tracked files or the head moved while it ran. " +
+        "The command runs without TAI's own settings (no `TAI_*` or `BITBUCKET_*` variable reaches it). The PR's author runs it once the PR is open and again after every push; a result " +
         "counts for one commit only. Not roster-gated and takes no `<ISSUE-KEY>`.\n" +
         "- `unapprove` (TAI-217/219) — withdraws a previously-cast approval. Only ever run because " +
         "the human explicitly asked for it, in their own words — never automatically, not even " +

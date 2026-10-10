@@ -115,12 +115,11 @@ import { renderEditedAfterApproval, tryFindEditedAfterApproval } from "../core/c
 import { detectExistingCode } from "../core/git/existing-code.js";
 import {
     checkCommandFromEnv,
-    checkPrecondition,
-    checkStatusInput,
     machineName,
-    missingCheckBlocker,
+    mergeBlockersWithCheck,
+    performLocalCheck,
     readWorkingTree,
-    renderCheckResult,
+    renderLocalCheckOutcome,
     runCheckCommand,
 } from "../core/git/local-check.js";
 import {
@@ -137,7 +136,7 @@ import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
-import { toCommitSha, toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
+import { toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
 import { gatherDiff, readFileAtRef, readReviewManifest, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
@@ -1710,16 +1709,18 @@ async function main(): Promise<void> {
             if (pr.state !== "open") throw new Error(`PR ${prId} on ${repo} is ${pr.state} -- there is nothing to check.`);
 
             const cwd = process.cwd();
-            const { headSha, porcelain } = await readWorkingTree(cwd, config.taiRoot);
-            const refusal = checkPrecondition({ headSha, prCommit: pr.sourceCommit, prBranch: pr.sourceBranch, porcelain });
-            if (refusal) throw new Error(refusal);
-
-            const run = await runCheckCommand(command, cwd);
-            const me = await backend.gitHost.getCurrentUser();
-            // The full local hash, not the host's short one: the status is recorded on exactly what was checked.
-            await backend.gitHost.createCommitStatus(repo, toCommitSha(headSha), checkStatusInput(run, me.displayName, machineName(), pr.url));
-            console.log(renderCheckResult(run, headSha.slice(0, 12), String(prId)));
-            if (!run.passed) process.exitCode = 1;
+            const outcome = await performLocalCheck({
+                gitHost: backend.gitHost,
+                repo,
+                pullRequest: pr,
+                command,
+                readTree: () => readWorkingTree(cwd, config.taiRoot),
+                run: (cmd) => runCheckCommand(cmd, cwd),
+                machine: machineName(),
+            });
+            console.log(renderLocalCheckOutcome(outcome, String(prId)));
+            // Anything but a recorded pass is a failure of the command as a whole.
+            if (!(outcome.kind === "recorded" && outcome.run.passed)) process.exitCode = 1;
             return;
         }
 
@@ -1943,9 +1944,8 @@ async function main(): Promise<void> {
             );
             // TAI-534: with a check command configured, a commit with no result at all is a blocker too
             // (a result that exists and is not successful was refused above, and force cannot pass that).
-            const missingCheck = missingCheckBlocker(checkCommandFromEnv(), statuses, pr.sourceCommit);
-            const blockers = [...verdict.blockers, ...(missingCheck ? [missingCheck] : [])];
-            if (blockers.length > 0 && !force) {
+            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers: verdict.blockers, checkCommand: checkCommandFromEnv(), statuses, commit: pr.sourceCommit, force });
+            if (!proceed) {
                 console.log(renderMergeRefused(blockers, personaId));
                 return;
             }
