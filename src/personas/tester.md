@@ -8,9 +8,10 @@ enabled: true
 extensible: true       # user/business extensions ADD to this file; they never override it
 model: default          # inherits project default; overridable in persona config
 
-# Intended permission grants (brief §3.1). Not yet enforced in code — the storage plugin
-# layer will read and apply this block once the Jira/filesystem adapters exist (brief §9
-# Phase 3+). The brief originally had a single `Test` routing candidate (brief §5.2); the
+# Permission grants (brief §3.1). What is enforced: `workOn` when /tai-work loads this persona,
+# and `gitHost` when a PR is created or merged. `create` and `complete` are noted, not enforced: with
+# `--as`, the CLI prints a note and the command still goes ahead. There are no per-field `update` grants.
+# The brief originally had a single `Test` routing candidate (brief §5.2); the
 # three tiers here (`IntegrationTest`/`SystemTest`/`E2ETest`) and `Triage` elaborate on it.
 # `UAT` (human-gated, owned by Tester + a stakeholder) is brief §5.2's rev-10 addition and
 # is fully represented below (create/workOn/alwaysHumanGated + the `uat-plan` output).

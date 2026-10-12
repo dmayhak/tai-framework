@@ -8,5 +8,6 @@ write a change as current fact there and add the history (what changed, why, whi
 as an entry in `CHANGELOG.md`.
 
 ## Gemini-specific
-- Atlassian MCP server (Jira + Confluence) will be configured in `~/.gemini/settings.json`
-  when we reach the Jira phase (see brief §9). Not active in Phase 0/1.
+- **No Atlassian MCP server required (TAI-126).** TAI talks to Jira and Confluence over their REST APIs
+  directly, through the CLI (`src/hosts/cli.ts`); the global `tai-*` skills in `~/.gemini/skills/` call it.
+  Don't configure or reach for an MCP server for ticket or page work.

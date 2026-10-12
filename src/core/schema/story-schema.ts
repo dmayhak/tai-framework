@@ -698,10 +698,9 @@ export const REVIEW_GATES: ReviewGate[] = [
  * construct (no OutputType enum). Every type's output is already documented
  * in prose (each persona's confluenceOutputs front-matter, each workflow
  * doc's Output section, Spike's variable-outcome handling). Nothing consumes
- * "what kind of output is this" programmatically yet (no storage plugin, no
- * reporting layer — still Phase 0/1); adding a construct now would be a
+ * "what kind of output is this" programmatically yet (no reporting layer reads
+ * it); adding a construct now would be a
  * second source of truth alongside the front-matter, with the same drift
- * risk just fixed for the PostDeploy/D15 note above. Revisit once the
- * storage plugin or a reporting need actually requires querying this in
- * code (brief §9 Phase 3+).
+ * risk just fixed for the PostDeploy/D15 note above. Revisit once a
+ * reporting need actually requires querying this in code.
  */

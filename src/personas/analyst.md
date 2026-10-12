@@ -8,8 +8,9 @@ enabled: true
 extensible: true       # user/business extensions ADD to this file; they never override it
 model: default          # inherits project default; overridable in persona config
 
-# Intended permission grants (§3.1). Not yet enforced in code — the storage plugin layer
-# will read and apply this block once the Jira/filesystem adapters exist (§9 Phase 3+).
+# Permission grants (brief §3.1). What is enforced: `workOn` when /tai-work loads this persona,
+# and `gitHost` when a PR is created or merged. `create` and `complete` are noted, not enforced: with
+# `--as`, the CLI prints a note and the command still goes ahead. There are no per-field `update` grants.
 # Subtask type names follow the taxonomy in brief §5.2 (open/extensible — expect this list
 # to grow, e.g. if a "Data Design" type is confirmed for DBA, some of that may route
 # through Analyst first as an Investigate step).
@@ -20,10 +21,9 @@ model: default          # inherits project default; overridable in persona confi
 # ADR page 47349832): Ada holds `create` for Epic, used only for Backlog shells created as each
 # epic is agreed during EpicReview — a Backlog shell IS the proposal; the human sign-off is the
 # move to To Do. She records the shell's Jira key in the work-breakdown doc in the same step.
-# Keeping these as distinct verbs (not both listed under `create`) matters once this
-# block is read by real permission-enforcement code (§9 Phase 3+) — a single overloaded
-# `create` verb shared by two personas would make Ada's proposal indistinguishable from
-# an actual authorized write.
+# Keeping these as distinct verbs (not both listed under `create`) matters because a single
+# overloaded `create` verb shared by two personas would make Ada's proposal indistinguishable
+# from an actual authorized write.
 # Rationale and history for this persona: rationale/analyst.md (not loaded at run time).
 permissions:
   propose:

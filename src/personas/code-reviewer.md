@@ -8,9 +8,9 @@ enabled: true
 extensible: true       # user/business extensions ADD to this file; they never override it
 model: default          # inherits project default; overridable in persona config
 
-# Intended permission grants (brief §3.1). Not yet enforced in code — the storage plugin
-# layer will read and apply this block once the Jira/filesystem adapters exist (brief §9
-# Phase 3+).
+# Permission grants (brief §3.1). What is enforced: `workOn` when /tai-work loads this persona,
+# and `gitHost` when a PR is created or merged. `create` and `complete` are noted, not enforced: with
+# `--as`, the CLI prints a note and the command still goes ahead. There are no per-field `update` grants.
 #
 # rev 52 (TAI-159 ADR — CodeReview subtask retirement): Cole no longer has any Jira
 # `Subtask` type of his own. Pre-rev-52 this block granted create/workOn/complete on
