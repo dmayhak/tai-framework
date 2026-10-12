@@ -21,9 +21,11 @@ import type {
     CommitStatus,
     GitMutationResult,
     InlineCommentInput,
+    CreateCommitStatusInput,
 } from "../interface.js";
 import { RestClient, BitbucketRejection } from "./rest-client.js";
 import {
+    toBitbucketState,
     toRepoRef,
     toPullRequestRef,
     toCommitStatus,
@@ -266,6 +268,22 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
                 `/repositories/${workspace}/${slug}/commit/${commit}/statuses`
             );
             return statuses.map(toCommitStatus);
+        },
+
+        async createCommitStatus(repo: RepoId, commit: CommitSha, input: CreateCommitStatusInput): Promise<CommitStatus> {
+            const { workspace, slug } = splitRepoId(repo);
+            const created = await client.request<BitbucketCommitStatusJson>(
+                "POST",
+                `/repositories/${workspace}/${slug}/commit/${commit}/statuses/build`,
+                {
+                    key: input.key,
+                    name: input.name,
+                    state: toBitbucketState(input.state),
+                    url: input.url,
+                    ...(input.description !== undefined ? { description: input.description } : {}),
+                }
+            );
+            return toCommitStatus(created);
         },
     };
 }

@@ -466,16 +466,16 @@ export function renderAuthorDescription(pr: Pick<PullRequestRef, "description">)
 
 /** TAI-527 ADR decision 2: what CI says about the PR's current commit. `null` = could not be read. */
 export function renderCiStatus(statuses: readonly CommitStatus[] | null, commit: string): string {
-    const head = ["## CI on the commit under review", ""];
+    const head = ["## Checks on the commit under review", ""];
     if (statuses === null) return [...head, `Could not read the CI status of ${commit}. Say so under \`notChecked\`.`].join("\n");
     if (statuses.length === 0) {
-        return [...head, `No CI result is recorded for ${commit}. Nothing has run the test suite on this code unless you do; say what you ran, or that you ran nothing.`].join("\n");
+        return [...head, `No check or CI result is recorded for ${commit}. Nothing has run the test suite on this code unless you do; say what you ran, or that you ran nothing. (The author records one with \`git-pr check\` when the project has a check command.)`].join("\n");
     }
     const lines = statuses.map((s) => `- ${s.name || s.key}: **${s.state}**${s.url ? ` (${s.url})` : ""}`);
     const allGreen = statuses.every((s) => s.state === "successful");
     const verdict = allGreen
-        ? "CI ran on this commit and passed. Spend your effort on reading the change, not on re-running the suite."
-        : "CI has not passed on this commit. Do not lean towards approve on the strength of the tests; say what is failing or still running.";
+        ? "Every recorded check on this commit passed. Each line above says what produced it: a pipeline, or a local run by the person named, which is their own report. Spend your effort on reading the change."
+        : "Not every recorded check on this commit has passed. Do not lean towards approve on the strength of the tests; say what is failing or still running.";
     return [...head, ...lines, "", verdict].join("\n");
 }
 

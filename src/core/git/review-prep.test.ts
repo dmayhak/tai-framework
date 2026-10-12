@@ -569,23 +569,23 @@ describe("CI on the commit under review (TAI-527 ADR decision 2)", () => {
     it("says CI passed and that the reviewer should spend effort on reading", () => {
         const out = renderCiStatus([{ key: "build", name: "Pipeline", state: "successful", url: "https://ci/1" }], "abc123");
         assert.match(out, /- Pipeline: \*\*successful\*\* \(https:\/\/ci\/1\)/);
-        assert.match(out, /CI ran on this commit and passed/);
+        assert.match(out, /Every recorded check on this commit passed/);
     });
 
     it("says not to lean on the tests when CI failed or is still running", () => {
         for (const state of ["failed", "inProgress", "stopped"] as const) {
-            assert.match(renderCiStatus([{ key: "build", name: "Pipeline", state }], "abc123"), /CI has not passed on this commit/);
+            assert.match(renderCiStatus([{ key: "build", name: "Pipeline", state }], "abc123"), /Not every recorded check on this commit has passed/);
         }
     });
 
     it("says when nothing ran, and when the status could not be read", () => {
-        assert.match(renderCiStatus([], "abc123"), /No CI result is recorded for abc123\. Nothing has run the test suite on this code unless you do/);
+        assert.match(renderCiStatus([], "abc123"), /No check or CI result is recorded for abc123\. Nothing has run the test suite on this code unless you do/);
         assert.match(renderCiStatus(null, "abc123"), /Could not read the CI status of abc123\. Say so under `notChecked`/);
     });
 
     it("the section appears in review-prep only when CI was looked up", () => {
-        assert.match(renderReviewPrep(input({ ci: [] })), /## CI on the commit under review/);
-        assert.doesNotMatch(renderReviewPrep(input()), /## CI on the commit under review/);
+        assert.match(renderReviewPrep(input({ ci: [] })), /## Checks on the commit under review/);
+        assert.doesNotMatch(renderReviewPrep(input()), /## Checks on the commit under review/);
     });
 });
 

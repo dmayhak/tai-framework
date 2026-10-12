@@ -114,6 +114,15 @@ import { checkMergeGate, mergeOverrideComment } from "../core/git/merge-gate.js"
 import { renderEditedAfterApproval, tryFindEditedAfterApproval } from "../core/commands/edited-after-approval.js";
 import { detectExistingCode } from "../core/git/existing-code.js";
 import {
+    checkCommandFromEnv,
+    machineName,
+    mergeBlockersWithCheck,
+    performLocalCheck,
+    readWorkingTree,
+    renderLocalCheckOutcome,
+    runCheckCommand,
+} from "../core/git/local-check.js";
+import {
     projectContextBudgetFromEnv,
     projectContextStatus,
     readProjectContext,
@@ -492,6 +501,7 @@ async function tryResolveReadyGitDeps(
           readonly gitHost: GitHost;
           readonly repos: readonly RepoId[];
           readonly requiredApprovals?: number;
+          readonly checkRequired?: boolean;
           readonly currentHuman?: HumanRef;
           readonly prReviewers?: readonly HumanRef[];
       }
@@ -544,6 +554,8 @@ async function tryResolveReadyGitDeps(
         gitHost: backend.gitHost,
         repos,
         ...(requiredApprovals !== undefined ? { requiredApprovals } : {}),
+        // TAI-534: with a check command configured, ready-to-merge needs a result on the commit too.
+        checkRequired: checkCommandFromEnv() !== null,
         currentHuman,
         ...(prReviewers ? { prReviewers } : {}),
     };
@@ -1564,6 +1576,7 @@ async function main(): Promise<void> {
             "     | git-pr render-findings <FINDINGS-JSON-OR-@FILE>\n" +
             "     | git-pr comment-findings <REPO> [PR-ID] <FINDINGS-JSON-OR-@FILE>\n" +
             "     | git-pr unapprove <REPO> [PR-ID]\n" +
+            "     | git-pr check <REPO> [PR-ID]   (runs TAI_CHECK_COMMAND on the PR's head commit, from a clean checkout of it, and records the result on the commit)\n" +
             "     | git-pr merge <ISSUE-KEY> <REPO> [PR-ID] [mergeCommit|squash|fastForward] [force=true]\n" +
             "  [PR-ID] is optional on review/comment/comments/comment-findings/unapprove/merge — omit it to " +
             "resolve against REPO's sole open PR; if more than one is open, the error lists them so " +
@@ -1677,6 +1690,40 @@ async function main(): Promise<void> {
 
         // TAI-383 (TAI-382): read-only, so neither persona- nor roster-gated -- anyone about to merge
         // (or just curious) can read a PR's comments. Same optional-[PR-ID] resolution as the rest.
+        // TAI-534 ADR: run the project's check command on the PR's head commit and record the result on that
+        // commit. Not roster- or persona-gated: the author runs it, and a reviewer at the PR's head may too.
+        if (action === "check") {
+            const [repoArg, prIdArg] = actionArgs;
+            if (!repoArg) throw new Error(usage);
+            const command = checkCommandFromEnv();
+            if (!command) {
+                throw new Error("No check command is configured. Set TAI_CHECK_COMMAND in this project's .env to the command that verifies a commit (for example its typecheck, lint and tests).");
+            }
+            const backend = createBitbucketBackend({
+                auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")),
+            });
+            const repo = toRepoId(repoArg);
+            const prId = await resolvePullRequestId(backend.gitHost, repo, prIdArg);
+            const pr = await backend.gitHost.getPullRequest(repo, prId);
+            if (!pr) throw new Error(`PR ${prId} not found on ${repo}.`);
+            if (pr.state !== "open") throw new Error(`PR ${prId} on ${repo} is ${pr.state} -- there is nothing to check.`);
+
+            const cwd = process.cwd();
+            const outcome = await performLocalCheck({
+                gitHost: backend.gitHost,
+                repo,
+                pullRequest: pr,
+                command,
+                readTree: () => readWorkingTree(cwd, config.taiRoot),
+                run: (cmd) => runCheckCommand(cmd, cwd),
+                machine: machineName(),
+            });
+            console.log(renderLocalCheckOutcome(outcome, String(prId)));
+            // Anything but a recorded pass is a failure of the command as a whole.
+            if (!(outcome.kind === "recorded" && outcome.run.passed)) process.exitCode = 1;
+            return;
+        }
+
         if (action === "comments") {
             const [repoArg, prIdArg] = actionArgs;
             if (!repoArg) throw new Error(usage);
@@ -1895,15 +1942,18 @@ async function main(): Promise<void> {
                 pr,
                 prTicket
             );
-            if (!verdict.ok && !force) {
-                console.log(renderMergeRefused(verdict.blockers, personaId));
+            // TAI-534: with a check command configured, a commit with no result at all is a blocker too
+            // (a result that exists and is not successful was refused above, and force cannot pass that).
+            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers: verdict.blockers, checkCommand: checkCommandFromEnv(), statuses, commit: pr.sourceCommit, force });
+            if (!proceed) {
+                console.log(renderMergeRefused(blockers, personaId));
                 return;
             }
 
             const result = await gitHost.mergePullRequest(repo, prId, strategy);
-            if (result.ok && !verdict.ok) {
+            if (result.ok && blockers.length > 0) {
                 // Past the gate on purpose: say so on the PR, stamped, after the merge went through.
-                await gitHost.addPullRequestComment(repo, prId, stampComment(mergeOverrideComment(verdict.blockers), actingPersonaOf(config)));
+                await gitHost.addPullRequestComment(repo, prId, stampComment(mergeOverrideComment(blockers), actingPersonaOf(config)));
             }
 
             // rev 52 (TAI-159 ADR §4; generalized TAI-293): self-closing Done trigger — a
@@ -1944,7 +1994,7 @@ async function main(): Promise<void> {
 
         throw new Error(
             `Unknown git-pr action "${action}" — expected "create", "review-prep", "review", "comment", "render-findings", ` +
-                `"comment-findings", "unapprove", or "merge".`
+                `"comment-findings", "unapprove", "check", or "merge".`
         );
     }
 

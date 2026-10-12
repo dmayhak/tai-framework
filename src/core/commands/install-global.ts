@@ -268,6 +268,11 @@ function prSkillBody(taiHome: string): string {
         "the diff) falls back into the summary instead of being silently dropped, and the failure " +
         "is reported alongside the summary comment's own output. This is how review findings " +
         "actually get posted — see the review-flow section below.\n" +
+        "- `check` (TAI-534) — `git-pr check <REPO> [PR-ID]`: runs the project's check command (`TAI_CHECK_COMMAND`) " +
+        "on the PR's head commit and records the result on that commit. It refuses unless the working tree is clean " +
+        "and at the PR's head, and records nothing if the command changed tracked files or the head moved while it ran. " +
+        "The command runs without TAI's own settings (no `TAI_*` or `BITBUCKET_*` variable reaches it). The PR's author runs it once the PR is open and again after every push; a result " +
+        "counts for one commit only. Not roster-gated and takes no `<ISSUE-KEY>`.\n" +
         "- `unapprove` (TAI-217/219) — withdraws a previously-cast approval. Only ever run because " +
         "the human explicitly asked for it, in their own words — never automatically, not even " +
         "when `merge` itself suggests it (see below). The main real use: Bitbucket's free tier has " +
@@ -291,8 +296,9 @@ function prSkillBody(taiHome: string): string {
         "required number of approvals **cast on its current commit** (an approval from before a later " +
         "push is reported as stale and not counted), no request-changes left standing, every test tier " +
         "present on the ticket Done, a UAT subtask on the ticket Done unless it carries the " +
-        "`uat-after-merge` label, and green CI. When it refuses, report the reasons it printed and " +
-        "get what is missing; do not work around it. `force=true` merges past everything but CI and " +
+        "`uat-after-merge` label, a check result on the current commit when the project has a check command " +
+        "(`git-pr check`), and no failed or running CI. When it refuses, report the reasons it printed and " +
+        "get what is missing; do not work around it. `force=true` merges past everything but a failed or running status and " +
         "leaves a stamped override comment on the PR — use it on your own ONLY for the very minor fix " +
         "described next, and otherwise only when the human explicitly says so.\n\n" +
         "**Comments-before-merge (TAI-382/383) — even an approved PR:** an approval is a decision, " +

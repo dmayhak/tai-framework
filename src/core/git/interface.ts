@@ -149,6 +149,16 @@ export interface CommitStatus {
     readonly url?: string;
 }
 
+export interface CreateCommitStatusInput {
+    /** Stable per kind of check: a second post with the same key replaces the first. */
+    readonly key: string;
+    readonly name: string;
+    readonly state: CommitStatusState;
+    /** Where a reader goes for more; git hosts require one. */
+    readonly url: string;
+    readonly description?: string;
+}
+
 /**
  * Same rejection-vs-connectivity SHAPE as `storage/interface.ts`'s `MutationResult` (brief
  * §3.3 / TAI-33 ADR decision 3) — a git-host mutation gets an identical ok/reason rejection
@@ -236,11 +246,16 @@ export interface GitHost {
     listPullRequestActivity(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestActivity[]>;
 
     /**
-     * Read-only by design — TAI-32 (this project's own Bitbucket Pipelines work) found no
-     * reliable way to force a CI run on a PR-only pipeline retroactively; this interface
-     * reports status, it does not attempt to guarantee triggering one (ADR decision 2).
+     * Reports status; it does not trigger a CI run — TAI-32 (this project's own Bitbucket Pipelines
+     * work) found no reliable way to force one on a PR-only pipeline retroactively (ADR decision 2).
      */
     getCommitStatuses(repo: RepoId, commit: CommitSha): Promise<readonly CommitStatus[]>;
+
+    /**
+     * TAI-534: records a check result on a commit — what `git-pr check` posts after running the
+     * project's check command locally. Posting the same `key` again for the commit replaces it.
+     */
+    createCommitStatus(repo: RepoId, commit: CommitSha, input: CreateCommitStatusInput): Promise<CommitStatus>;
 }
 
 export interface GitHostBackend {
