@@ -314,6 +314,12 @@ describe("renderReviewInstructions", () => {
         assert.match(text, /Read the whole diff before anything else/);
         assert.match(text, /Read the author's description LAST, as claims to check/);
     });
+
+    it("tells the reviewer to search the whole branch for the old form and sibling copies (TAI-538)", () => {
+        assert.match(text, /look beyond the diff/i);
+        assert.match(text, /search the whole PR branch for the OLD form/);
+        assert.match(text, /other copies of the same list/);
+    });
 });
 
 describe("renderReviewPrep", () => {
