@@ -8,9 +8,10 @@ enabled: true
 extensible: true       # user/business extensions ADD to this file; they never override it
 model: default          # inherits project default; overridable in persona config
 
-# Intended permission grants (brief §3.1). Not yet enforced in code — the storage plugin
-# layer will read and apply this block once the Jira/filesystem adapters exist (brief §9
-# Phase 3+). Subtask type names below extend the open, evolving taxonomy in brief §5.2
+# Permission grants (brief §3.1). What is enforced: `workOn` when /tai-work loads this persona,
+# and `gitHost` when a PR is created or merged. `create` and `complete` are noted, not enforced: with
+# `--as`, the CLI prints a note and the command still goes ahead. There are no per-field `update` grants.
+# Subtask type names below extend the open, evolving taxonomy in brief §5.2
 # (the brief's `Develop` candidate is named `Dev` here; the ad-hoc `SpikeTask` subtask is
 # not in the brief's §5.2 list).
 # Rationale and history for this persona: rationale/developer.md (not loaded at run time).
