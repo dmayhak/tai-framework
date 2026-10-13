@@ -261,6 +261,10 @@ Worth setting up now, while you're already thinking about how this project runs:
   assignment is proposed as a batch and applied only after you confirm. The meeting
   itself, and its cadence, stay yours. A Backlog ticket untouched for 60 days shows up
   as stale; set `TAI_STALE_BACKLOG_DAYS` in `.env` to change that.
+- **Before closing a Story or Bug**, run `/tai-verify <KEY>` (TAI-468): Tessa checks the finished work against the
+  Story's numbered `AC-n` criteria and the Dev PR diffs and posts one `Verified:` / `Not verified:` comment.
+  `/tai-ready` marks a Story whose Dev work is done and which has none "not verified", and closing it without
+  one prints a warning; neither blocks anything.
 - **A recurring standup**, if this team wants one — same reasoning, same "your calendar,
   not TAI's job" answer.
 

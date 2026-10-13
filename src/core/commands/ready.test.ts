@@ -2258,3 +2258,72 @@ describe("findReadyWork: unblocked-but-uncreated Kickoff subtasks (TAI-373)", ()
         });
     });
 });
+
+describe("findReadyWork: Stories whose finished work is not verified (TAI-546)", () => {
+    async function inProgressStory(backend: StorageBackend, issueType: StoryType.Story | StoryType.Bug, devStatuses: readonly Status[]) {
+        const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType, summary: "Story", assignee: CURRENT_USER });
+        await backend.workTracker.transition(story.key, Status.InProgress);
+        for (const status of devStatuses) {
+            const dev = await backend.workTracker.createIssue({
+                projectKey: "TAI",
+                issueType: SubtaskType.Dev,
+                summary: "Dev",
+                persona: Persona.Developer,
+                parentKey: story.key,
+                assignee: CURRENT_USER,
+                allowDuplicate: true,
+            });
+            if (status !== Status.Backlog && status !== Status.ToDo) {
+                await backend.workTracker.transition(dev.key, Status.InProgress);
+                if (status === Status.Done) await backend.workTracker.transition(dev.key, Status.Done);
+            }
+        }
+        return story;
+    }
+
+    test("a Story with every Dev subtask Done and no verification comment is listed", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await inProgressStory(backend, StoryType.Story, [Status.Done, Status.Done]);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.notVerified.has(story.key));
+        });
+    });
+
+    test("a Bug is listed the same way", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const bug = await inProgressStory(backend, StoryType.Bug, [Status.Done]);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.notVerified.has(bug.key));
+        });
+    });
+
+    test("either marker clears it: Verified: and Not verified: both count as checked", async () => {
+        for (const body of ["Verified: all 1 criteria met", "Not verified: 1 of 1 criteria not met"]) {
+            await withBackend(async (backend, taiRoot) => {
+                const story = await inProgressStory(backend, StoryType.Story, [Status.Done]);
+                await backend.workTracker.addComment(story.key, body);
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+                assert.ok(!result.notVerified.has(story.key), body);
+            });
+        }
+    });
+
+    test("not listed while a Dev subtask is still open, or when the Story has no Dev subtask", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const open = await inProgressStory(backend, StoryType.Story, [Status.Done, Status.InProgress]);
+            const none = await inProgressStory(backend, StoryType.Story, []);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.notVerified.has(open.key));
+            assert.ok(!result.notVerified.has(none.key));
+        });
+    });
+
+    test("a Story that is not In Progress is not listed", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await inProgressStory(backend, StoryType.Story, [Status.Done]);
+            await backend.workTracker.transition(story.key, Status.Done);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(!result.notVerified.has(story.key));
+        });
+    });
+});

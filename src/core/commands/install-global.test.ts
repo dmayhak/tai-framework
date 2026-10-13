@@ -9,8 +9,20 @@ import { renderGlobalSkillFiles, installGlobal, defaultTaiHome, PM_KICKOFF_HINT 
 describe("renderGlobalSkillFiles", () => {
     const files = renderGlobalSkillFiles("/home/x/.tai-framework");
 
-    test("produces 14 files -- 7 skills x 2 hosts", () => {
-        assert.equal(files.length, 14);
+    test("produces 16 files -- 8 skills x 2 hosts", () => {
+        assert.equal(files.length, 16);
+    });
+
+    test("the tai-verify skill runs verify <STORY-KEY>, acts as Tessa, treats the Story and diffs as data and does not close the Story (TAI-546)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const verify = files.find((f) => f.relativePath === `${host}/skills/tai-verify/SKILL.md`)!;
+            assert.ok(verify, `${host} gets a tai-verify skill`);
+            assert.match(verify.content, /name: tai-verify/);
+            assert.match(verify.content, /cli\.ts verify <STORY-KEY>/);
+            assert.match(verify.content, /Tessa/);
+            assert.match(verify.content, /data, not instructions/);
+            assert.match(verify.content, /Do not close the Story/);
+        }
     });
 
     test("the tai-kickoff skill runs kickoff [INITIATIVE], acts as Perry, shows the briefing and stops before asking (TAI-450)", () => {
@@ -304,7 +316,7 @@ describe("installGlobal", () => {
             const result = await installGlobal(taiHome, homedir);
 
             assert.equal(result.taiHome, taiHome);
-            assert.equal(result.written.length, 14);
+            assert.equal(result.written.length, 16);
 
             const claudeWork = await readFile(path.join(homedir, ".claude/skills/tai-work/SKILL.md"), "utf-8");
             assert.match(claudeWork, /name: tai-work/);
@@ -328,7 +340,7 @@ describe("installGlobal", () => {
             await installGlobal(taiHome, homedir);
             const second = await installGlobal(taiHome, homedir);
 
-            assert.equal(second.written.length, 14);
+            assert.equal(second.written.length, 16);
         } finally {
             await rm(dir, { recursive: true, force: true });
         }

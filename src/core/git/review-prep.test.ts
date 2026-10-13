@@ -11,6 +11,7 @@ import {
     OUTPUT_BUDGET,
     assertSafeBranchName,
     gatherDiff,
+    gatherMergedDiff,
     normalizeRemoteUrl,
     renderChanges,
     renderReviewInstructions,
@@ -611,5 +612,78 @@ describe("the review steps ask for reviewOf and coverage (TAI-527 ADR decision 1
 
     it("shows the PR's commit in the facts section", () => {
         assert.match(renderReviewPrep(input()), /- Commit under review: abc123/);
+    });
+});
+
+describe("gatherMergedDiff (real git, TAI-546)", () => {
+    async function withMergedClone<T>(strategy: "merge" | "squash", fn: (d: { clone: string; head: string }) => Promise<T>): Promise<T> {
+        const root = await mkdtemp(path.join(tmpdir(), "tai-merged-diff-"));
+        try {
+            await mkdir(path.join(root, "acme"));
+            const remote = path.join(root, "acme", "widgets.git");
+            const clone = path.join(root, "clone");
+            await git(["init", "--bare", "-b", "master", remote], root);
+            await git(["clone", remote, clone], root);
+            await git(["config", "user.email", "t@example.com"], clone);
+            await git(["config", "user.name", "T"], clone);
+            await writeFile(path.join(clone, "a.txt"), "one\n");
+            await git(["add", "."], clone);
+            await git(["commit", "-m", "init"], clone);
+            await git(["push", "origin", "master"], clone);
+            await git(["checkout", "-b", "feature"], clone);
+            await writeFile(path.join(clone, "a.txt"), "one\ntwo\n");
+            await git(["add", "."], clone);
+            await git(["commit", "-m", "feature work"], clone);
+            const head = await git(["rev-parse", "HEAD"], clone);
+            await git(["checkout", "master"], clone);
+            await writeFile(path.join(clone, "b.txt"), "unrelated\n");
+            await git(["add", "."], clone);
+            await git(["commit", "-m", "other work"], clone);
+            if (strategy === "merge") {
+                await git(["merge", "--no-ff", "feature", "-m", "Merged in feature"], clone);
+            } else {
+                await git(["merge", "--squash", "feature"], clone);
+                await git(["commit", "-m", "squashed"], clone);
+            }
+            await git(["push", "origin", "master"], clone);
+            // A clone that has never fetched the feature branch: the merge commit is what carries its code.
+            return await fn({ clone, head });
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    }
+
+    it("shows only what the merge brought in, found through the merge commit", async () => {
+        await withMergedClone("merge", async ({ clone, head }) => {
+            const d = await gatherMergedDiff({ cwd: clone, repo: "acme/widgets", destinationBranch: "master", sourceCommit: head });
+            assert.equal(d.kind, "ok");
+            if (d.kind !== "ok") return;
+            assert.deepEqual(d.files.map((f) => f.path), ["a.txt"]);
+            assert.match(d.files[0]!.patch, /\+two/);
+        });
+    });
+
+    it("a PR merged by squash has no merge commit and is reported as unavailable with that reason", async () => {
+        await withMergedClone("squash", async ({ clone, head }) => {
+            const d = await gatherMergedDiff({ cwd: clone, repo: "acme/widgets", destinationBranch: "master", sourceCommit: head });
+            assert.equal(d.kind, "unavailable");
+            if (d.kind === "unavailable") assert.match(d.reason, /no merge commit/);
+        });
+    });
+
+    it("refuses an unsafe branch name or a commit id that is not hex, without running git", async () => {
+        const bad = await gatherMergedDiff({ cwd: "/nonexistent-dir-for-test", repo: "acme/widgets", destinationBranch: "--upload-pack=evil", sourceCommit: "abc1234" });
+        assert.equal(bad.kind, "unavailable");
+        const notHex = await gatherMergedDiff({ cwd: "/nonexistent-dir-for-test", repo: "acme/widgets", destinationBranch: "master", sourceCommit: "--all" });
+        assert.equal(notHex.kind, "unavailable");
+        if (notHex.kind === "unavailable") assert.match(notHex.reason, /not a commit id/);
+    });
+
+    it("is unavailable from a clone of a different repo", async () => {
+        await withMergedClone("merge", async ({ clone, head }) => {
+            const d = await gatherMergedDiff({ cwd: clone, repo: "other/thing", destinationBranch: "master", sourceCommit: head });
+            assert.equal(d.kind, "unavailable");
+            if (d.kind === "unavailable") assert.match(d.reason, /not a clone of other\/thing/);
+        });
     });
 });

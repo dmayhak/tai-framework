@@ -13,7 +13,7 @@
  *
  * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
  * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
- * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-audit`), installed
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-verify`/`tai-audit`), installed
  * once via `install-global` (below) rather than generated per-project as
  * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
  * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
@@ -139,7 +139,7 @@ import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from ".
 import { toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
-import { gatherDiff, readFileAtRef, readReviewManifest, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
+import { gatherDiff, gatherMergedDiff, readFileAtRef, readReviewManifest, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
 import { renderPersonaTurn } from "../core/persona/turn.js";
 import {
     defaultPersonaFor,
@@ -150,8 +150,10 @@ import {
     SubtaskType,
     DEFAULT_PERSONA_DISPLAY_NAME,
     Persona,
-    type StoryType,
+    StoryType,
 } from "../core/schema/story-schema.js";
+import { unverifiedCloseNote } from "../core/storage/verification.js";
+import { findVerifyPullRequests, renderVerifyTurn } from "../core/commands/verify.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
 import { loadRoster, type Roster } from "../core/personas/roster.js";
@@ -817,7 +819,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote})${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote})${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}${result.notVerified.has(c.issue.key) ? ` ⚠️ not verified -- run \`verify ${c.issue.key}\` before closing` : ""}`
             );
             actionableCount++;
         };
@@ -2055,6 +2057,43 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-468/546: `verify <STORY-KEY>` -- loads Tessa with the Story's numbered acceptance criteria and the diff of
+    // every Dev PR on it, open or merged. Read-only: she posts the one stamped Verified:/Not verified: comment herself.
+    if (subcommand === "verify") {
+        if (!arg) throw new Error("Usage: verify <STORY-KEY>");
+        const story = await config.backend.workTracker.getIssue(toIssueKey(arg));
+        if (!story) throw new Error(`${arg}: no such issue.`);
+        if (story.issueType !== StoryType.Story && story.issueType !== StoryType.Bug) {
+            throw new Error(`${arg} is a ${story.issueType} -- verify takes a Story or a Bug.`);
+        }
+        const tester = await loadPersonaConfig(config.backend.docStore, "tester", { spaceKey: config.spaceKey });
+        // Read-only, so no reviewer-roster gate: it only reads pull requests and diffs.
+        const gitHost = createBitbucketBackend({ auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")) }).gitHost;
+        const rows = await findVerifyPullRequests({ workTracker: config.backend.workTracker, gitHost, projectKey: config.projectKey }, story.key);
+        const withDiffs = [];
+        for (const row of rows) {
+            if (!row.pr) {
+                withDiffs.push({ ...row, diff: null });
+            } else if (row.pr.state === "merged") {
+                withDiffs.push({ ...row, diff: await gatherMergedDiff({ cwd: process.cwd(), repo: row.repo, destinationBranch: row.pr.destinationBranch, sourceCommit: row.pr.sourceCommit }) });
+            } else if (row.pr.state === "open") {
+                withDiffs.push({ ...row, diff: await gatherDiff({ cwd: process.cwd(), repo: row.repo, sourceBranch: row.pr.sourceBranch, destinationBranch: row.pr.destinationBranch }) });
+            } else {
+                withDiffs.push({ ...row, diff: null, note: `the pull request was ${row.pr.state}, so its code is not part of the Story` });
+            }
+        }
+        console.log(
+            withTurnNotes([await installWarning()]) +
+                renderVerifyTurn({
+                    persona: tester,
+                    story,
+                    pullRequests: withDiffs,
+                    projectContext: await loadProjectContextSection(),
+                })
+        );
+        return;
+    }
+
     // TAI-450 (TAI-348 decision): `/tai-kickoff [INITIATIVE...]` -- loads Perry with her Project initiation behavior
     // and a read-only briefing of the Epics and Kickoff Stories that already exist, so she dedups. No ticket needed.
     // The initiative is every remaining word, so an unquoted multi-word description survives.
@@ -2382,9 +2421,13 @@ async function main(): Promise<void> {
             // refusal. Done only: a Cancel is a grooming action the human confirms, not a claim of completion.
             const completeNote = result.ok && status === Status.Done ? await actingGrantNote(config, "complete", result.issue.issueType) : null;
 
+            // TAI-468/546: closing a Story or Bug that has no Verified: / Not verified: comment still goes through;
+            // the note says so. Show-only, nothing is blocked.
+            const unverifiedNote = result.ok && status === Status.Done ? unverifiedCloseNote(result.issue) : null;
+
             console.log(
                 result.ok
-                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "")
+                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "") + (unverifiedNote ? `\n\n${unverifiedNote}` : "")
                     : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")

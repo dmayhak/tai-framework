@@ -160,6 +160,14 @@ owns.
    re-runs the tier when the fix is pushed.
 5. **A failure found after the merge** is a new linked Bug, not a reopened `Dev`: Tessa drafts it
    with the repro and PM confirms/creates it (see `workflows/bug.md`).
+6. **Verify a Story against its acceptance criteria:** `/tai-verify <STORY-KEY>` (`{{TAI_CLI}} verify <STORY-KEY>`)
+   loads Tessa with the Story's or Bug's numbered `AC-n` criteria and the diff of every Dev PR on it, open or merged.
+   She assumes each criterion is unmet until the code proves it exists, is real and is wired; runs the tests that
+   cover it when she can; and posts one comment, `{{TAI_CLI}} --as tester issue comment <KEY> "Verified: …"`, first line
+   `Verified: all N criteria met` or `Not verified: M of N criteria not met`, then a bullet per criterion with its
+   verdict (met, not met, could not tell, which counts as not met) and its evidence. It is a record, not a gate:
+   she does not close the Story or edit code, and a Story with no numbered criteria gets no `Verified:` comment
+   (she says so and offers to draft criteria for the human to add).
 
 ## Inputs
 
@@ -177,6 +185,7 @@ owns.
   through (`uat-plan` output type) — the plan itself is Tessa's output; the sign-off on
   running it is the human's, not hers to produce.
 - **Failure reports:** specific, actionable detail as a comment on the `Dev` subtask.
+- **Verification comment:** the `Verified:` / `Not verified:` comment on a Story or Bug (item 6).
 
 ## Interaction style
 

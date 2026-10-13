@@ -193,7 +193,7 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         readyToTest: [],
         readyToMerge: [],
         blockedBy: new Map(),
-        staleLivingDocs: [],
+        staleLivingDocs: [], notVerified: new Set<IssueKey>(),
         assigneeSuggestions: new Map(),
     };
 
@@ -245,6 +245,14 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         assert.match(out, /## In Progress/);
         assert.ok(out.includes(FLAG_MARKER));
         assert.ok(!out.includes("On hold"));
+    });
+
+    it("an In Progress Story that is not verified carries the warning and names the command; a verified one does not (TAI-546)", () => {
+        const story = makeIssue({ status: Status.InProgress, issueType: StoryType.Story });
+        const flagged = renderReadyWork({ ...emptyResult, inProgress: [{ issue: story }], notVerified: new Set<IssueKey>([story.key]) });
+        assert.match(flagged, new RegExp(`not verified -- run \\\`verify ${story.key}\\\` before closing`));
+        const plain = renderReadyWork({ ...emptyResult, inProgress: [{ issue: story }] });
+        assert.ok(!plain.includes("not verified"));
     });
 
     it("an In Progress line carries no local-history note (TAI-490: nothing wrote the file it came from)", () => {
@@ -756,7 +764,7 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
     it("renderReadyWork points the review line at git-pr review-prep", () => {
         const out = renderReadyWork({
             ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [],
-            blockedBy: new Map(), staleLivingDocs: [], assigneeSuggestions: new Map(),
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
         });
         assert.match(out, /git-pr review-prep ws\/repo 9/);
         assert.doesNotMatch(out, /git-pr review <REPO> approve/);
@@ -779,7 +787,7 @@ describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
         readyToTest: [],
         readyToMerge: [],
         blockedBy: new Map(),
-        staleLivingDocs: [],
+        staleLivingDocs: [], notVerified: new Set<IssueKey>(),
         assigneeSuggestions: new Map(),
     };
     const kickoff = makeIssue({ key: toIssueKey("EXA-2"), persona: "pm" as never, status: Status.InProgress });
