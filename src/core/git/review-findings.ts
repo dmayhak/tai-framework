@@ -225,6 +225,9 @@ export function unreadChangedFiles(coverage: ReviewCoverage, manifest: ReviewMan
     return manifest.files.filter((f) => !read.has(norm(f)));
 }
 
+/** `git` and any options before its subcommand: `-C <dir>`, `-c <k=v>`, `--no-pager`, `--git-dir=<dir>` (TAI-543). */
+const GIT = String.raw`\bgit(?:\s+(?:-[Cc]\s+\S+|--?[\w-]+(?:=\S+)?))*`;
+
 /**
  * TAI-541: does a listed command search the PR's branch for something beyond its diff? `git grep`,
  * `git ls-tree` and `git log -S`/`-G` do; so does `git show <ref>:<path>` of a file the PR did not change
@@ -233,9 +236,9 @@ export function unreadChangedFiles(coverage: ReviewCoverage, manifest: ReviewMan
  * ran none from one that did.
  */
 export function searchesBranch(command: string, changedFiles: readonly string[] | null): boolean {
-    if (/\bgit\s+(grep|ls-tree)\b/.test(command)) return true;
-    if (/\bgit\s+log\b[^|;&]*\s-[SG]/.test(command)) return true;
-    const show = /\bgit\s+show\s+(?:\S+?):(\S+)/.exec(command);
+    if (new RegExp(`${GIT}\\s+(?:grep|ls-tree)\\b`).test(command)) return true;
+    if (new RegExp(`${GIT}\\s+log\\b[^|;&]*\\s-[SG]`).test(command)) return true;
+    const show = new RegExp(`${GIT}\\s+show(?:\\s+-\\S+)*\\s+[^\\s-]\\S*?:(\\S+)`).exec(command);
     if (show && changedFiles) {
         const path = show[1]!.replace(/^\.\//, "").replace(/["')]+$/, "");
         return !changedFiles.includes(path);

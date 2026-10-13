@@ -428,6 +428,21 @@ describe("a review that searched nothing, and a claim with no how (TAI-541)", ()
         assert.ok(searchesBranch("git log --oneline -G 'old' origin/x", changed));
     });
 
+    it("counts the search when git has options before the subcommand (TAI-543)", () => {
+        assert.ok(searchesBranch("git -C /work/repo grep -n old origin/x", changed));
+        assert.ok(searchesBranch("git --no-pager grep -n old origin/x", changed));
+        assert.ok(searchesBranch("git -c core.pager=cat ls-tree -r origin/x", changed));
+        assert.ok(searchesBranch("git --git-dir=/r/.git log -S old origin/x", changed));
+        assert.ok(searchesBranch("git -C /work/repo show origin/x:src/other.ts", changed));
+    });
+
+    it("skips options before the show ref, and does not read an option value as a ref:path (TAI-543)", () => {
+        assert.ok(searchesBranch("git show --stat origin/x:src/other.ts", changed));
+        assert.ok(searchesBranch("git show --no-patch --stat origin/x:src/other.ts", changed));
+        assert.ok(!searchesBranch("git show --stat origin/x:src/db.ts", changed));
+        assert.ok(!searchesBranch("git show --format=%h:%s HEAD", changed));
+    });
+
     it("counts git show of a file the PR did not change, not of one it did, and not without the manifest", () => {
         assert.ok(searchesBranch("git show origin/x:src/other.ts", changed));
         assert.ok(!searchesBranch("git show origin/x:src/db.ts", changed));
