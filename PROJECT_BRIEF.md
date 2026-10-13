@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-13 (rev 97). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-13 (rev 98). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -428,7 +428,9 @@ did not look must not be indistinguishable.
 - The findings JSON carries a required `coverage` block — files read, commands run, claims verified, what was
   not checked — and a `reviewOf` block naming the repo, PR and commit. `render-findings` and
   `comment-findings` refuse a payload without them, print the coverage as part of the review, name every
-  changed file not listed as read, and add a line when a large diff draws no issue. `comment-findings` refuses
+  changed file not listed as read, add a line when a large diff draws no issue, add a line when no listed command
+  searched the branch (`git grep`, `git ls-tree`, `git log -S`, or `git show` of an unchanged file — TAI-541), and add a
+  line counting verified claims that give no how (no dash or colon before it). `comment-findings` refuses
   findings written for a different PR. The coverage is self-declared; the point is that it is on the record.
 - `review-prep` writes the complete diff to a file under `.tai/review/` and tells the reviewer to read it in
   full; the diff is not printed, because long tool output is cut.

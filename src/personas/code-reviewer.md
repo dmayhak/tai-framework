@@ -148,7 +148,9 @@ decision.
   changed files read in full, the commands actually run, the claims checked against the code, and what
   was not checked. It must be true: list only what was done. The CLI refuses a review without it,
   prints it with the review, posts it with the review, and names every changed file not listed as
-  read. A review that finds nothing is judged by its coverage, so make it exact.
+  read, notes when none of the commands run searched the branch (`git grep`, `git ls-tree`, `git log -S`, or
+  `git show` of a file the PR did not change), and notes each verified claim that gives no how (a dash or a
+  colon, then how it was checked). A review that finds nothing is judged by its coverage, so make it exact.
 - **The overview is Cole's own account** of what the diff does and how sound it is. The author's
   description is read last, as claims to verify, and is never restated as the review.
 - **Review notes: structured findings, not freeform prose.** Each finding carries a `severity`

@@ -12,10 +12,12 @@ import {
     partitionInlineFindings,
     isInlineEligible,
     renderInlineComment,
+    claimGivesHow,
     coverageNotes,
     unreadChangedFiles,
     raisesNoIssue,
     LARGE_DIFF_LINES,
+    searchesBranch,
     approvalOfUnpreparedCommit,
     reviewDecisionRefusal,
     sameCommitHash,
@@ -28,7 +30,7 @@ const validFindings: ReviewFindings = {
     overview: "Small, well-scoped change.",
     coverage: {
         filesRead: ["src/db.ts"],
-        commandsRun: ["npm test"],
+        commandsRun: ["npm test", "git grep -n find_user origin/feature/x"],
         claimsVerified: ["The query is parameterized: read src/db.ts line 42, it is not."],
         notChecked: "The migration files; I did not run the linter.",
     },
@@ -408,5 +410,65 @@ describe("coverage entries are safe to post (TAI-527, from the review of PR 187)
         assert.deepEqual(parsed.coverage.commandsRun, ["npm test \\ --watch 'date'"]);
         assert.deepEqual(parsed.coverage.claimsVerified, ["line one line two"]);
         assert.equal(parsed.coverage.notChecked, "the rest");
+    });
+});
+
+describe("a review that searched nothing, and a claim with no how (TAI-541)", () => {
+    const withCoverage = (commandsRun: string[], claimsVerified: string[]): ReviewFindings => ({
+        ...validFindings,
+        coverage: { ...validFindings.coverage, commandsRun, claimsVerified },
+    });
+    const changed = ["src/db.ts", "src/api.ts"];
+    const manifest = (): ReviewManifest => ({ repo: "acme/widgets", pr: "7", commit: "abc123def456", files: changed, diffLines: 40 });
+
+    it("counts git grep, git ls-tree and git log -S/-G as a search of the branch", () => {
+        assert.ok(searchesBranch("git grep -n old origin/x -- src", changed));
+        assert.ok(searchesBranch("git ls-tree --name-only origin/x src/", changed));
+        assert.ok(searchesBranch("git log -S oldName origin/x", changed));
+        assert.ok(searchesBranch("git log --oneline -G 'old' origin/x", changed));
+    });
+
+    it("counts git show of a file the PR did not change, not of one it did, and not without the manifest", () => {
+        assert.ok(searchesBranch("git show origin/x:src/other.ts", changed));
+        assert.ok(!searchesBranch("git show origin/x:src/db.ts", changed));
+        assert.ok(!searchesBranch("git show origin/x:./src/api.ts", changed));
+        assert.ok(!searchesBranch("git show origin/x:src/other.ts", null));
+    });
+
+    it("does not count review-prep, issue get, a test run or a grep of the diff file", () => {
+        for (const c of ["git-pr review-prep dmayhak/tai-framework 191", "issue get TAI-540", "npm test", "grep_search pattern .* in diff.patch", "grep -n old .tai/review/diff.patch"]) {
+            assert.ok(!searchesBranch(c, changed), c);
+        }
+    });
+
+    it("adds a note when no listed command searched the branch, and none when one did", () => {
+        const none = coverageNotes(withCoverage(["git-pr review-prep r 1", "issue get TAI-1"], []), manifest());
+        assert.match(none.join("\n"), /No command that searched the branch is listed/);
+        assert.doesNotMatch(coverageNotes(validFindings, manifest()).join("\n"), /searched the branch/);
+    });
+
+    it("adds the note too when review-prep never ran in this clone", () => {
+        assert.match(coverageNotes(withCoverage([], []), null).join("\n"), /No command that searched the branch is listed/);
+    });
+
+    it("reads a claim as having a how after a dash or a colon", () => {
+        assert.ok(claimGivesHow("The query is parameterized — read src/db.ts line 42, it is not."));
+        assert.ok(claimGivesHow("Nothing imports it: git grep over src found no use."));
+        assert.ok(claimGivesHow("Header fixed - read both files"));
+        assert.ok(!claimGivesHow("The status module and its tests are removed."));
+        assert.ok(!claimGivesHow("CHANGELOG rev 97 is present."));
+        assert.ok(!claimGivesHow("well-known fact"));
+    });
+
+    it("notes the claims that give no how, counting them", () => {
+        const notes = coverageNotes(withCoverage(["git grep -n a origin/x"], ["Removed: git grep found none.", "The module is removed.", "CHANGELOG rev 97 is present."]), manifest()).join("\n");
+        assert.match(notes, /2 of 3 verified claims do not say how they were checked/);
+        assert.match(notes, /"The module is removed\."/);
+        assert.doesNotMatch(notes, /Removed: git grep/);
+    });
+
+    it("adds no claims note when every claim gives a how, or there are none", () => {
+        assert.doesNotMatch(coverageNotes(validFindings, manifest()).join("\n"), /do not say how/);
+        assert.doesNotMatch(coverageNotes(withCoverage(["git grep -n a origin/x"], []), manifest()).join("\n"), /do not say how/);
     });
 });
