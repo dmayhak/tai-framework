@@ -555,7 +555,7 @@ function groomSkillBody(taiHome: string): string {
         "```\n\n" +
         "The output starts with a `# Persona: Perry (pm)` heading and Perry's own instructions, then a `---` separator, " +
         "then the grooming briefing: eight numbered sections (epics with nothing under them, Backlog Kickoff Stories " +
-        "awaiting sequencing, Backlog tickets whose blockers are all done, flagged tickets, approved epics with nothing " +
+        "awaiting sequencing, Backlog tickets with no open blocker (each Story, Bug or Spike with readiness warnings), flagged tickets, approved epics with nothing " +
         "scheduled, stale Backlog tickets, tickets TAI cannot read, tickets that need an assignee). For the rest of this " +
         "turn, act as that persona and follow its grooming behavior against the briefing.\n\n" +
         "**Show the briefing first — before any question (TAI-423, found live in Gemini CLI, which asked a question " +

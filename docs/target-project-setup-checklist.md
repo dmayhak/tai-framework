@@ -254,7 +254,8 @@ Worth setting up now, while you're already thinking about how this project runs:
   2026-10-02 — this reverses the 2026-08-25 "no planning command" decision).** Run
   `/tai-groom` (the whole board) or `/tai-groom <EPIC-KEY>` (one epic): she shows what
   needs grooming — epics with nothing under them, Kickoff Stories to sequence, Backlog
-  tickets whose blockers are done, flagged and stale tickets, tickets that need an
+  tickets with no open blocker (each Story, Bug or Spike with warnings for what is
+  missing: numbered `AC-n` criteria, a Dev subtask, links), flagged and stale tickets, tickets that need an
   assignee — and proposes the changes. She creates Backlog tickets, links and phase
   labels on her own; every `Backlog → To Do` move, epic approval, flag, cancel and
   assignment is proposed as a batch and applied only after you confirm. The meeting
