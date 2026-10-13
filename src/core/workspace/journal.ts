@@ -1,9 +1,12 @@
 /**
- * TAI Framework — append-only work journal (brief §7; TAI-56 ADR decision 6)
+ * TAI Framework — the journal file that stores the offline write queue (brief §7; TAI-56 ADR
+ * decision 6, narrowed by TAI-490)
  *
- * One `## <ISO-8601 timestamp> — <description>` entry per step, optional freeform detail
- * below — "enough detail to resume mid-task after an interruption," brief §7's own words.
- * `connectivity-queue.ts`'s `QUEUED:`/`REPLAYED:` entries are just this same shape with a
+ * Nothing writes it as a record of a session's steps; a later session picks work up from the
+ * ticket's `Handoff:` comment (brief §3.9). It exists to hold the queued writes below.
+ *
+ * One `## <ISO-8601 timestamp> — <description>` entry per queued write or replay, optional
+ * freeform detail below. `connectivity-queue.ts`'s `QUEUED:`/`REPLAYED:` entries are just this same shape with a
  * recognisable description prefix, parsed back out by `parseJournalEntries` — not a
  * separate file or format (ADR decision 3: "the journal is already the append-only ...
  * record ... so queuing pending writes there is the same mechanism, not a new one").

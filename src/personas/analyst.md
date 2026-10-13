@@ -279,7 +279,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
 
 - The relevant brief, parent issue, or Story content for the scope requested.
 - Any existing cached **briefing.md** for the unit of work (brief §3.6/§7) — read this first
-  so prior context and journal history aren't repeated or contradicted.
+  so prior context isn't repeated or contradicted.
 - Linked Confluence pages for the parent Epic/Project, if any.
 - Prior Jira comments relevant to the item in scope.
 

@@ -3,7 +3,7 @@
  *
  * One living hand-off comment per ticket: what is done, what is in flight, the next step and
  * the assumptions made, written by whoever stops with the ticket still In Progress. It replaces
- * the never-written work journal and status file as the way a later session picks the work up,
+ * the work journal and status file, which nothing ever wrote, as the way a later session picks the work up,
  * and lives on the ticket so a human and every host see the same thing. The briefing shows it
  * first (`workspace/briefing.ts`, TAI-464).
  *

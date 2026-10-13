@@ -98,14 +98,6 @@ export function journalPath(taiRoot: string, projectKey: string, subtaskKey: str
     return path.join(workItemDir(taiRoot, projectKey, subtaskKey), "journal.md");
 }
 
-export function workStatusPath(taiRoot: string, projectKey: string, subtaskKey: string): string {
-    return path.join(workItemDir(taiRoot, projectKey, subtaskKey), "status.json");
-}
-
-export function rootStatusPath(taiRoot: string): string {
-    return path.join(taiRoot, "status.json");
-}
-
 // ---------- shared JSON I/O ----------
 
 /** Reads and JSON-parses a file; returns null (not an error) if it doesn't exist yet — a

@@ -240,11 +240,17 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
     it("a flagged In Progress item stays under In Progress with the marker", () => {
         const out = renderReadyWork({
             ...emptyResult,
-            inProgress: [{ issue: makeIssue({ status: Status.InProgress, flagged: true }), hasLocalHistory: false }],
+            inProgress: [{ issue: makeIssue({ status: Status.InProgress, flagged: true }) }],
         });
         assert.match(out, /## In Progress/);
         assert.ok(out.includes(FLAG_MARKER));
         assert.ok(!out.includes("On hold"));
+    });
+
+    it("an In Progress line carries no local-history note (TAI-490: nothing wrote the file it came from)", () => {
+        const out = renderReadyWork({ ...emptyResult, inProgress: [{ issue: makeIssue({ status: Status.InProgress }) }] });
+        assert.match(out, /## In Progress/);
+        assert.ok(!/local (session )?history/.test(out));
     });
 });
 
