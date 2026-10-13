@@ -12,9 +12,7 @@ import {
     lastSyncPath,
     pageCachePath,
     readJsonFile,
-    rootStatusPath,
     workItemDir,
-    workStatusPath,
     writeJsonFile,
 } from "./paths.js";
 
@@ -32,8 +30,6 @@ describe("path builders match brief §7's layout", () => {
         assert.equal(workItemDir(root, "TAI", "TAI-1"), "/tai-root/work/TAI/TAI-1");
         assert.equal(briefingPath(root, "TAI", "TAI-1"), "/tai-root/work/TAI/TAI-1/briefing.md");
         assert.equal(journalPath(root, "TAI", "TAI-1"), "/tai-root/work/TAI/TAI-1/journal.md");
-        assert.equal(workStatusPath(root, "TAI", "TAI-1"), "/tai-root/work/TAI/TAI-1/status.json");
-        assert.equal(rootStatusPath(root), "/tai-root/status.json");
     });
 });
 

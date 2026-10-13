@@ -99,10 +99,8 @@ function readySkillBody(taiHome: string): string {
         "a different machine/session):\n\n" +
         "- **In Progress — resume this** — issues already at `Status.InProgress`/`InReview`, no " +
         "precedence re-check (already started once; precedence gates OFFERING new work, not " +
-        "resuming it). Each line notes whether THIS machine has local session history for it " +
-        "(\"local session history here\") or not (\"no local history — started elsewhere, read " +
-        "fresh\") — a flag only; full detail (currentStep etc.) surfaces via `/tai-work`'s own " +
-        "briefing once picked, not inline here. A `Dev` subtask carrying a \"⚠️ needs rebase " +
+        "resuming it). Full detail surfaces via " +
+        "`/tai-work`'s own briefing once picked, not inline here. A `Dev` subtask carrying a \"⚠️ needs rebase " +
         "(merge conflicts)\" flag (TAI-217/219) means a `git-pr merge` attempt hit a conflict and " +
         "posted a `Rebase needed:` comment on it — self-clears once that PR actually merges, no " +
         "separate action needed.\n" +

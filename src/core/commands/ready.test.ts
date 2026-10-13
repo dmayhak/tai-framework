@@ -21,7 +21,6 @@ import {
 } from "../git/interface.js";
 import { UnreadableIssueError, takeUnreadableIssues } from "../storage/unreadable-issues.js";
 import { findReadyWork, findReadyPRWork } from "./ready.js";
-import { writeWorkStatus } from "../workspace/status.js";
 import { writeLivingDocSnapshot } from "../workspace/living-doc-staleness.js";
 
 const CURRENT_USER: HumanRef = { id: toHumanId("del@example.com"), displayName: "Del", email: "del@example.com" };
@@ -532,50 +531,6 @@ describe("findReadyWork in-progress split", () => {
 
             const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
             assert.ok(result.inProgress.some((c) => c.issue.key === dev.key), "already-started work is never silently dropped");
-        });
-    });
-
-    test("hasLocalHistory is true when this machine has a status.json for the item", async () => {
-        await withBackend(async (backend, taiRoot) => {
-            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
-            const dev = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: SubtaskType.Dev,
-                summary: "Has local history",
-                persona: Persona.Developer,
-                parentKey: story.key,
-                assignee: CURRENT_USER,
-            });
-            await backend.workTracker.transition(dev.key, Status.InProgress);
-            await writeWorkStatus(taiRoot, "TAI", {
-                subtaskKey: dev.key,
-                currentStep: "writing tests",
-                state: "in-progress",
-                updatedAt: "x",
-            });
-
-            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
-            const candidate = result.inProgress.find((c) => c.issue.key === dev.key);
-            assert.equal(candidate?.hasLocalHistory, true);
-        });
-    });
-
-    test("hasLocalHistory is false when there's no local record — started elsewhere", async () => {
-        await withBackend(async (backend, taiRoot) => {
-            const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "Story" });
-            const dev = await backend.workTracker.createIssue({
-                projectKey: "TAI",
-                issueType: SubtaskType.Dev,
-                summary: "No local history",
-                persona: Persona.Developer,
-                parentKey: story.key,
-                assignee: CURRENT_USER,
-            });
-            await backend.workTracker.transition(dev.key, Status.InProgress);
-
-            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
-            const candidate = result.inProgress.find((c) => c.issue.key === dev.key);
-            assert.equal(candidate?.hasLocalHistory, false);
         });
     });
 

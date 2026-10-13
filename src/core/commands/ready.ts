@@ -15,13 +15,10 @@
  *   3. TAI-196/200 (2026-08-26): a candidate already at `Status.InProgress`/`InReview` skips
  *      that precedence check entirely (already started once — precedence gates OFFERING new
  *      work, not resuming already-started work) and lands in `inProgress` instead of `ready`.
- *      This REPLACES the old, purely-local `rollupStatus()` "Already in flight" section —
- *      that one couldn't show work paused on a different machine/session; this one is
- *      sourced from the same live Jira search as `ready`, so it works everywhere. Local
- *      `.tai/work/` history, when present on THIS machine, only ever ANNOTATES an entry
- *      already justified by that live check (a single `readWorkStatus` read per candidate —
- *      local filesystem I/O, not a network round-trip, so unlike this file's other N+1
- *      git-host calls this one isn't worth bounding/documenting as a scaling caveat).
+ *      This REPLACES the old, purely-local "Already in flight" section — that one couldn't
+ *      show work paused on a different machine/session; this one is sourced from the same
+ *      live Jira search as `ready`, so it works everywhere. Nothing local is read (TAI-490:
+ *      the per-item status file was never written, so the label built on it never appeared).
  *
  * **rev 52 (TAI-159 ADR — CodeReview subtask retirement):** three live git-host-queried
  * lists extend the same "computed live, per refresh point" philosophy TAI-107/108's
@@ -58,7 +55,6 @@ import {
 } from "../schema/story-schema.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
-import { readWorkStatus } from "../workspace/status.js";
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -141,16 +137,10 @@ export interface ReadyToMergeCandidate {
 const GOVERNANCE_ISSUE_TYPES: readonly (StoryType | "epic")[] = [StoryType.Story, StoryType.Bug, StoryType.Spike, "epic"];
 
 /** An issue that's already started (live Jira status `In Progress`/`In Review`), not
- *  genuinely-not-started work (TAI-196/200). `hasLocalHistory` FLAGS (never details) whether
- *  THIS machine has session history for it (`.tai/work/<project>/<key>/status.json`) — full
- *  detail (currentStep etc.) only surfaces once it's actually picked, via `/tai-work`'s own
- *  briefing, not inline here. Membership comes entirely from live Jira status, never local
- *  file presence, so a stale/drifted local cache can never produce a wrong or phantom entry
- *  (brief §7: local status is index-only, it only ever ANNOTATES an entry already justified
- *  by the live check). */
+ *  genuinely-not-started work (TAI-196/200). Membership comes entirely from live Jira status;
+ *  full detail only surfaces once it's actually picked, via `/tai-work`'s own briefing. */
 export interface InProgressCandidate {
     readonly issue: Issue;
-    readonly hasLocalHistory: boolean;
 }
 
 /** TAI-373: an In Progress Kickoff Story whose precedence graph now allows subtask types nobody has created
@@ -788,8 +778,6 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     // between a ready and an in-progress sibling costs nothing extra to look up twice.
     const inProgress: InProgressCandidate[] = [];
     for (const issue of inProgressIssues) {
-        const local = await readWorkStatus(deps.taiRoot, deps.projectKey, issue.key);
-
         let withPriority = issue;
         if (issue.priority === undefined && isSubtaskIssueType(issue.issueType) && issue.parentKey) {
             let ctx = parentContexts.get(issue.parentKey);
@@ -800,7 +788,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
             if (ctx) withPriority = { ...issue, priority: ctx.priority };
         }
 
-        inProgress.push({ issue: withPriority, hasLocalHistory: local !== null });
+        inProgress.push({ issue: withPriority });
     }
     inProgress.sort((a, b) => priorityRank(a.issue.priority) - priorityRank(b.issue.priority));
 

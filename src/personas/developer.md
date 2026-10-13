@@ -154,7 +154,7 @@ persona when the spec doesn't cover something.
 
 - The Story/Bug's requirements, UX flows, and any `ArchitectureDesign` or `Database`/
   `Infra` outputs relevant to the work.
-- Any existing cached briefing/journal for the unit of work, read first.
+- Any existing cached briefing for the unit of work, read first.
 
 ## Outputs
 

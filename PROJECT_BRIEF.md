@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-09 (rev 96). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-13 (rev 97). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -290,19 +290,16 @@ into one readable snapshot. **Bounded, by design:**
 This is what a persona actually reads to resume work; it avoids re-assembling context from
 scattered cache files every time, and gives a human something reviewable too.
 
-Alongside the briefing, Team AI maintains an **append-only work journal** per unit of work,
-recording every step taken and intermediate result as it happens — not just a final state.
-If a session is interrupted, the journal shows exactly what was done and where to pick back
-up. See §7 for the concrete file layout.
+A session that stops with the work unfinished leaves a `Handoff:` comment on the ticket (§3.9),
+which the briefing shows first; that, not a local file, is how the work is picked back up. See §7
+for the concrete file layout.
 
 **Connectivity loss mid-unit-of-work:** distinct from the filesystem backend's
 offline mode (§3.2, a deliberate backend choice) — this is a *Jira-backed* project
 losing connectivity transiently. TAI **degrades to the local cache** for reads (clearly
 flagged to the human as possibly stale) and **queues writes** (comments, transitions,
-assignments) in the work journal rather than failing outright, replaying them
-automatically once connectivity returns — the journal is already the append-only "what
-happened, what's next" record (above), so queuing pending writes there is the same
-mechanism, not a new one.
+assignments) in the work journal (`journal.md`, an append-only file that holds only these queued
+writes) rather than failing outright, replaying them automatically once connectivity returns.
 
 ### 3.7 Recursive Decomposition & Refinement
 For large projects, a single decomposition pass is too coarse. Personas can be invoked
@@ -1167,10 +1164,8 @@ from source; the workspace holds state that may not exist anywhere else yet.
         briefing.md              # aggregated snapshot: subtask + parent (state, links,
                                   #   comments) + linked Confluence pages and tickets,
                                   #   size-capped, regenerated at each refresh point
-        journal.md                # append-only log of steps taken + intermediate results
-        status.json                # structured state: current step, in-progress/blocked/
-                                    #   done, last-updated
-  status.json                     # root-level rollup of in-flight subtasks (see below)
+        journal.md                # the offline write queue: queued and replayed writes
+                                  #   (§3.6); not a record of a session's steps
 ```
 
 **Refresh & briefing (§3.6):** cached items store `cachedAt`, compared against the source's
@@ -1180,10 +1175,11 @@ that subtask's `briefing.md` from the freshly-checked cache. Before saving any l
 to a Jira item or Confluence page, always fetch first and warn on conflict (§4) — never
 silently overwrite.
 
-**Work journal:** `journal.md` is append-only, one entry per step, each with a timestamp
-and enough detail to resume mid-task after an interruption. It is the record of *what
-happened*, distinct from `briefing.md` (context going in) and `status.json` (current
-state).
+**Work journal:** `journal.md` is append-only, one entry per queued write or replay, each with
+a timestamp. It is the offline write queue's storage and nothing else, distinct from
+`briefing.md` (context going in). Resuming work uses the ticket's `Handoff:` comment (§3.9), not a
+local file; a per-item `status.json` and a root status rollup were designed here and removed
+(TAI-490) because nothing ever wrote them.
 
 **Unit-of-work keying:** every unit of work is tied to a Jira **subtask**, and the subtask
 key is the folder name for its cache and workspace files (§4). There is no pre-subtask phase
@@ -1200,14 +1196,6 @@ journaling and caching always have a key to hang off.
 - **Precedence for a subtask inserted mid-flight** is computed, not managed by hand — see
   `workflows/dependencies.md`'s "Dynamic Subtask Insertion"
   (`getNewPrecedenceEdgesForInsertedSubtask()`, `schema/story-schema.ts`).
-
-**Root status file:** `status.json` is a **rollup/index**, not an authoritative source — a
-cache like everything else in this layout. `rollupStatus()` (`src/core/workspace/status.ts`)
-builds it by rescanning `.tai/work/**/status.json` in full every time it is called; there is
-no staleness check, because it only reads local files and has no network cost to avoid (§8
-item 10). **Nothing calls it today.** `/tai-ready` shows work in flight from a live search of
-the tracker instead, so it also sees work paused on another machine; a subtask's local
-`status.json`, when present, only annotates an entry that the live search already found.
 
 **Bulk change detection:** the per-item `cachedAt`-versus-`lastUpdated` check answers "is
 *this* item stale" but not "what changed while I was away". For that there is a bulk **JQL**
@@ -1250,11 +1238,11 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
 7. **Storage interface operation set** — resolved: `WorkTracker`/`DocStore` in `src/core/storage/interface.ts`, proven identical across backends by the conformance suite (§3.2).
 8. **Ticket-switch mechanic** — resolved: worktree swap, not plain checkout (§6). Design only; TAI-115, deferred to v2.
 9. **Autocompletion condition format** — retired (TAI-482): there is no autocompletion (§3.4). The TAI-41 ADR in Confluence records the design that was retired; it does not describe how TAI works.
-10. **Root status-file reconciliation** — resolved: always a full rescan on demand, at the same refresh points as §3.6 (§7).
+10. **Root status-file reconciliation** — withdrawn (TAI-490): there is no status file; nothing ever wrote one (§7).
 11. **Pre-subtask work location** — resolved: there is no pre-subtask phase; a persona creates the subtask as its first action (§7).
 12. **Decomposition scope levels** — resolved: no fixed ladder and no Initiative tier; decomposition is scope-relative and repeatable (§3.7).
 13. **Refinement subtask triggering** — resolved (TAI-317): a human, the PM or the Analyst may flag a Story for `Investigate`; whoever has the in-context judgment creates it (`workflows/dependencies.md`, eager subtask creation); no formal "ready for implementation" marker.
-14. **Escalation notification channel** — resolved: a comment or label plus the status rollup is enough for v1; active push is deferred, not declined.
+14. **Escalation notification channel** — resolved: a comment or label is enough for v1; active push is deferred, not declined.
 15. **Learning-loop design (deferred, §3.3):** this entire mechanism — proactive metadata
     checks, the proposed/confirmed constraint cache, promotion authority (human only, or
     can the Orchestrator do it under a configured permission?), sharing scope (local vs.

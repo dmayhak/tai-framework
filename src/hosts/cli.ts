@@ -813,14 +813,11 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
     if (result.inProgress.length > 0) {
         lines.push("## In Progress — resume this", "");
         const renderInProgressLine = (c: (typeof result.inProgress)[number]) => {
-            const historyNote = c.hasLocalHistory
-                ? "local session history here"
-                : "no local history — started elsewhere, read fresh";
             const rebaseFlag = hasUnresolvedRebaseMarker(c.issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
             const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote}) — ${historyNote}${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote})${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}`
             );
             actionableCount++;
         };
