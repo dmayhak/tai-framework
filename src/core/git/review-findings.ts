@@ -225,6 +225,29 @@ export function unreadChangedFiles(coverage: ReviewCoverage, manifest: ReviewMan
     return manifest.files.filter((f) => !read.has(norm(f)));
 }
 
+/**
+ * TAI-541: does a listed command search the PR's branch for something beyond its diff? `git grep`,
+ * `git ls-tree` and `git log -S`/`-G` do; so does `git show <ref>:<path>` of a file the PR did not change
+ * (needs the manifest's changed-file list, so without one `git show` does not count). A plain text match
+ * on what the reviewer typed: it cannot tell a useful search from a pointless one, only a review that
+ * ran none from one that did.
+ */
+export function searchesBranch(command: string, changedFiles: readonly string[] | null): boolean {
+    if (/\bgit\s+(grep|ls-tree)\b/.test(command)) return true;
+    if (/\bgit\s+log\b[^|;&]*\s-[SG]/.test(command)) return true;
+    const show = /\bgit\s+show\s+(?:\S+?):(\S+)/.exec(command);
+    if (show && changedFiles) {
+        const path = show[1]!.replace(/^\.\//, "").replace(/["')]+$/, "");
+        return !changedFiles.includes(path);
+    }
+    return false;
+}
+
+/** TAI-541: a verified claim has a how when it reads "<claim> — <how checked>" or "<claim>: <how checked>". */
+export function claimGivesHow(claim: string): boolean {
+    return /(?:\s[—–-]{1,2}\s|:\s)\S/.test(claim);
+}
+
 /** True when the review raises nothing but praise. */
 export function raisesNoIssue(findings: ReviewFindings): boolean {
     return findings.findings.every((f) => f.severity === "good");
@@ -242,6 +265,13 @@ export function raisesNoIssue(findings: ReviewFindings): boolean {
  */
 export function coverageNotes(findings: ReviewFindings, manifest: ReviewManifest | null, liveCommit?: string | null): string[] {
     const notes: string[] = [];
+    if (!findings.coverage.commandsRun.some((c) => searchesBranch(c, manifest?.files ?? null))) {
+        notes.push("**No command that searched the branch is listed** (`git grep`, `git ls-tree`, `git log -S`, or a `git show` of a file the PR did not change). A change can leave the old form behind outside its diff; this review would not have found it.");
+    }
+    const noHow = findings.coverage.claimsVerified.filter((c) => !claimGivesHow(c));
+    if (noHow.length > 0) {
+        notes.push(`**${noHow.length} of ${findings.coverage.claimsVerified.length} verified claims do not say how they were checked** (no "claim — how" or "claim: how"): ${noHow.map((c) => `"${c.length > 60 ? `${c.slice(0, 57)}...` : c}"`).join("; ")}`);
+    }
     if (liveCommit === null) {
         notes.push("_Could not check whether the PR has moved since this review was prepared._");
     } else if (liveCommit !== undefined && !sameCommitHash(liveCommit, findings.reviewOf.commit)) {
