@@ -436,6 +436,14 @@ describe("a review that searched nothing, and a claim with no how (TAI-541)", ()
         assert.ok(searchesBranch("git -C /work/repo show origin/x:src/other.ts", changed));
     });
 
+    it("answers fast on a long run of -C tokens that matches nothing (TAI-543 review)", () => {
+        const start = Date.now();
+        assert.ok(!searchesBranch(`git ${"-C ".repeat(200)}x`, changed));
+        assert.ok(!searchesBranch(`git ${"-c ".repeat(200)}status`, changed));
+        assert.ok(searchesBranch(`git ${"-C -C ".repeat(50)}grep -n old origin/x`, changed));
+        assert.ok(Date.now() - start < 1000, "a long option run must not backtrack");
+    });
+
     it("skips options before the show ref, and does not read an option value as a ref:path (TAI-543)", () => {
         assert.ok(searchesBranch("git show --stat origin/x:src/other.ts", changed));
         assert.ok(searchesBranch("git show --no-patch --stat origin/x:src/other.ts", changed));

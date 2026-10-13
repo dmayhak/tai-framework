@@ -225,8 +225,8 @@ export function unreadChangedFiles(coverage: ReviewCoverage, manifest: ReviewMan
     return manifest.files.filter((f) => !read.has(norm(f)));
 }
 
-/** `git` and any options before its subcommand: `-C <dir>`, `-c <k=v>`, `--no-pager`, `--git-dir=<dir>` (TAI-543). */
-const GIT = String.raw`\bgit(?:\s+(?:-[Cc]\s+\S+|--?[\w-]+(?:=\S+)?))*`;
+/** `git` and any options before its subcommand: `-C <dir>`, `-c <k=v>`, `--no-pager`, `--git-dir=<dir>` (TAI-543). A `-C`/`-c` value never starts with a dash: otherwise `-C -C -C ...` can be split many ways and the match backtracks exponentially. */
+const GIT = String.raw`\bgit(?:\s+(?:-[Cc]\s+[^\s-]\S*|--?[\w-]+(?:=\S+)?))*`;
 
 /**
  * TAI-541: does a listed command search the PR's branch for something beyond its diff? `git grep`,
