@@ -54,6 +54,7 @@ import {
 } from "../schema/story-schema.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
+import { hasVerification } from "../storage/verification.js";
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -203,6 +204,9 @@ export interface ReadyWorkResult {
     /** TAI-419 (ADR decision 13c): the best assignee suggestion for each unassigned ready ticket, keyed by issue key.
      *  Empty when `suggestAssignee` was not supplied. Informational only -- never excludes anything. */
     readonly assigneeSuggestions: ReadonlyMap<IssueKey, string>;
+    /** TAI-468/546: In Progress Stories and Bugs whose Dev subtasks are all Done but that carry no `Verified:` /
+     *  `Not verified:` comment (`verify <KEY>` posts one). Show-only: it never excludes or blocks anything. */
+    readonly notVerified: ReadonlySet<IssueKey>;
 }
 
 interface ParentPrecedenceContext {
@@ -821,6 +825,16 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         if (blockers.length > 0) blockedBy.set(issue.key, blockers);
     }
 
+    const notVerified = new Set<IssueKey>();
+    for (const { issue } of inProgress) {
+        if (issue.issueType !== StoryType.Story && issue.issueType !== StoryType.Bug) continue;
+        if (hasVerification(issue.comments)) continue;
+        const devs = (
+            await deps.workTracker.search({ projectKey: deps.projectKey, parentKey: issue.key, issueTypes: [SubtaskType.Dev], exhaustive: true })
+        ).filter((d) => d.status !== Status.Canceled);
+        if (devs.length > 0 && devs.every((d) => d.status === Status.Done)) notVerified.add(issue.key);
+    }
+
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
     const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);
 
@@ -848,6 +862,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         blockedBy,
         staleLivingDocs,
         assigneeSuggestions,
+        notVerified,
     };
 }
 

@@ -19,6 +19,7 @@
 
 import { DependencyRelation, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { findClarificationQuestions } from "../storage/review-gate.js";
+import { ACCEPTANCE_CRITERION_LINE } from "../storage/verification.js";
 import { isFlagged, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue, takeUnreadableIssues, type UnreadableIssue } from "../storage/unreadable-issues.js";
 
@@ -63,9 +64,6 @@ export interface GroomingResult {
     readonly needsAssigneeOverflow: number;
     readonly staleThresholdDays: number;
 }
-
-/** An acceptance criterion is a description line that starts with `AC-<number>` (TAI-472), ignoring list or emphasis marks. */
-const ACCEPTANCE_CRITERION_LINE = /^[\s>*_\-•]*(?:\*\*|__)?AC-\d+\b/m;
 
 /** Story, Bug and Spike are the tickets the readiness check is for (TAI-472, human decision 2026-10-13). */
 const READINESS_TYPES: readonly string[] = [StoryType.Story, StoryType.Bug, StoryType.Spike];

@@ -175,6 +175,7 @@ installed and a project is configured (or you're using the filesystem quickstart
 | `/tai-audit` | Report-only sweep of the open backlog for staleness/drift (stale notes, missing links, decision drift, …). |
 | `/tai-kickoff [initiative]` | Start a project or a new initiative with Perry (PM): she checks what Epics and Kickoffs already exist, then creates the Epic + Kickoff Story. Needs no ticket, and works on a fresh project or one that already has Epics. |
 | `/tai-groom [epic]` | Backlog grooming with Perry (PM): a briefing of the whole board, or one epic — sequence Kickoffs, schedule a first wave, promote unblocked work, assign owners. Needs no ticket; every change is proposed and applied only after you confirm. |
+| `/tai-verify <STORY-KEY>` | Check a Story's or Bug's finished work against its numbered `AC-n` acceptance criteria: Tessa (Tester) reads the criteria and the Dev PR diffs and posts one `Verified:` / `Not verified:` comment. Show-only; nothing is blocked. |
 
 **A typical flow, end to end:**
 

@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-13 (rev 99). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-13 (rev 100). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -457,7 +457,7 @@ TAI's own comment-scanning logic (§3.6) is what interprets these — none of th
 native Jira/Confluence features (plain Jira comments have no built-in resolved flag;
 Confluence's native inline-comment resolve checkmark exists but isn't used for this, see
 below). `Q:`, `Approved:` and `Rejected:` apply to **both** Jira issue comments and Confluence
-comments (page-level and inline) — not just Jira; `Skipped:` and `Handoff:` are Jira-only.
+comments (page-level and inline) — not just Jira; `Skipped:`, `Handoff:` and `Verified:` are Jira-only.
 
 - **`Q:`** — an open question. Native reply-threading (Jira) or the comment/reply
   relationship (Confluence) keeps the discussion together; a thread is **closed** once a
@@ -482,6 +482,14 @@ comments (page-level and inline) — not just Jira; `Skipped:` and `Handoff:` ar
   there is none, or if the old one cannot be edited). Nothing scans it to decide anything; the work briefing
   shows it first (§3.6), which is how the next session — any host, or a human — picks the work up. A
   hand-off covering several tickets at once is the human's own business, outside TAI.
+- **`Verified:` / `Not verified:`** — Jira issue comments only: the result of `verify <STORY-KEY>` (the
+  `/tai-verify` skill), which loads Tessa with a Story's or Bug's `AC-n` acceptance criteria and the diff of every
+  Dev PR on it, open or merged. She posts one stamped comment whose first line is `Verified: all N criteria met`
+  or `Not verified: M of N criteria not met`, then one bullet per criterion with its verdict and evidence; a
+  criterion she could not tell counts as not met. It is a record for a human to read, not a gate: `/tai-ready`
+  marks an In Progress Story or Bug whose Dev subtasks are all Done and which has neither comment "not verified",
+  and moving a Story or Bug to Done without one prints a warning, but nothing blocks the merge or the close. A
+  later Dev commit does not invalidate an earlier comment; run `verify` again to get a fresh one.
 
 **Why not Confluence's native inline-comment resolve checkmark:** considered and
 rejected as the signal for any of the above, for two concrete reasons — (1) the
@@ -618,7 +626,7 @@ These are settled. Change them deliberately and update this file if you do.
   `issue comment` writes text with an unbroken paragraph of more than 500 characters, it says so and names the
   command that rewrites it. Every persona doc carries a one-line pointer here. **Acceptance criteria** in a
   Story, Bug or Spike description are numbered lines, `AC-1`, `AC-2`, …, so a reader and the grooming check can
-  find and refer to each one.
+  find and refer to each one; `verify <STORY-KEY>` (§3.9) checks the finished work against them.
 - **Writing Confluence page content.** TAI converts a persona's markdown to Confluence
   storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
   (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and

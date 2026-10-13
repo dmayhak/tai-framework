@@ -175,6 +175,64 @@ export async function gatherDiff(input: GatherDiffInput): Promise<DiffResult> {
     }
 }
 
+export interface GatherMergedDiffInput {
+    readonly cwd: string;
+    /** `workspace/repo`, as given on the command line. */
+    readonly repo: string;
+    readonly destinationBranch: string;
+    /** The merged PR's head commit: the merge commit on the destination branch has it as its second parent. */
+    readonly sourceCommit: string;
+}
+
+/**
+ * TAI-546: the diff of a PR that has already merged, found through its merge commit (the first merge on
+ * the destination branch's first-parent history whose second parent is the PR's head), shown as
+ * `<first parent>..<merge>`. A PR merged another way (squash, fast-forward) has no such commit, so the
+ * result is `unavailable` with that reason. Never throws, like `gatherDiff`.
+ */
+export async function gatherMergedDiff(input: GatherMergedDiffInput): Promise<DiffResult> {
+    try {
+        assertSafeBranchName(input.destinationBranch);
+        if (!/^[0-9a-f]{7,64}$/i.test(input.sourceCommit)) throw new Error(`"${input.sourceCommit}" is not a commit id`);
+    } catch (err) {
+        return { kind: "unavailable", reason: (err as Error).message };
+    }
+
+    let origin: string;
+    try {
+        origin = (await git(["remote", "get-url", "origin"], input.cwd)).trim();
+    } catch (err) {
+        return { kind: "unavailable", reason: `this directory is not a git repository with an origin remote (${errorText(err)})` };
+    }
+    if (normalizeRemoteUrl(origin) !== input.repo.toLowerCase()) {
+        return { kind: "unavailable", reason: `this directory is not a clone of ${input.repo} (its origin is ${origin})` };
+    }
+
+    const dest = input.destinationBranch;
+    try {
+        await runRemoteGit(["fetch", "origin", `+refs/heads/${dest}:refs/remotes/origin/${dest}`], input.cwd);
+    } catch (err) {
+        return { kind: "unavailable", reason: `git fetch from origin failed (${errorText(err)})` };
+    }
+
+    try {
+        const log = await git(["log", "--first-parent", "--merges", "--format=%H %P", `origin/${dest}`], input.cwd);
+        const head = input.sourceCommit.toLowerCase();
+        for (const line of log.split("\n")) {
+            const [merge, first, second] = line.trim().split(/\s+/);
+            if (merge && first && second && (second.toLowerCase().startsWith(head) || head.startsWith(second.toLowerCase()))) {
+                const range = `${first}..${merge}`;
+                const stat = (await git(["diff", "--no-color", "--no-ext-diff", "--stat", range], input.cwd)).trimEnd();
+                const raw = await git(["diff", "--no-color", "--no-ext-diff", range], input.cwd);
+                return { kind: "ok", range, stat, files: splitDiffByFile(raw), sourceRef: merge };
+            }
+        }
+        return { kind: "unavailable", reason: `no merge commit for ${input.sourceCommit.slice(0, 7)} on origin/${dest} (merged by squash or fast-forward?)` };
+    } catch (err) {
+        return { kind: "unavailable", reason: `reading the merge commit failed (${errorText(err)})` };
+    }
+}
+
 /** Best effort: a failure here only costs the "Your checkout" lines, never the review. */
 async function checkoutState(cwd: string, sourceRef: string): Promise<CheckoutState | undefined> {
     try {
