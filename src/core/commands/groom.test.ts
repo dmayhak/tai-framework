@@ -58,7 +58,7 @@ describe("findGroomingWork (TAI-395, ADR page 48463873)", () => {
         });
     });
 
-    it("(c) promotion candidates are Backlog tickets with at least one depends-on blocker and ALL of them Done or Canceled", async () => {
+    it("(c) a Story with open blockers is not a candidate; one with all blockers Done, or with no links at all, is", async () => {
         await withTracker(async (wt) => {
             const epic = await mk(wt, { issueType: "epic" });
             const doneBlocker = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key });
@@ -71,8 +71,9 @@ describe("findGroomingWork (TAI-395, ADR page 48463873)", () => {
             await wt.createLink(waiting.key, DependencyRelation.DependsOn, doneBlocker.key);
             await wt.createLink(waiting.key, DependencyRelation.DependsOn, openBlocker.key);
             const result = await findGroomingWork(deps(wt));
-            assert.deepEqual(keys(result.promotionCandidates), [ready.key]);
-            assert.ok(!keys(result.promotionCandidates).includes(noLinks.key));
+            const listed = keys(result.promotionCandidates.map((c) => c.issue));
+            assert.deepEqual(listed, keys([openBlocker, ready, noLinks]), "the open blocker has nothing blocking it, so it is a candidate too");
+            assert.ok(!listed.includes(waiting.key));
         });
     });
 
@@ -206,8 +207,7 @@ describe("findGroomingWork (TAI-395, ADR page 48463873)", () => {
             const result = await findGroomingWork(deps(slow));
             assert.ok(peak > 1, `reads should overlap (peak ${peak})`);
             assert.ok(peak <= 5, `concurrency stays bounded (peak ${peak})`);
-            assert.deepEqual(result.promotionCandidates, [], "the results do not change");
-            assert.equal(stories.length, 14);
+            assert.deepEqual(keys(result.promotionCandidates.map((c) => c.issue)), [...stories].sort(), "every unblocked Story is a candidate");
         });
     });
 
@@ -237,6 +237,81 @@ describe("staleBacklogDaysFromEnv (ADR decision 9)", () => {
         assert.equal(staleBacklogDaysFromEnv({}), 60);
         assert.equal(staleBacklogDaysFromEnv({ TAI_STALE_BACKLOG_DAYS: "soon" }), 60);
         assert.equal(staleBacklogDaysFromEnv({ TAI_STALE_BACKLOG_DAYS: "0" }), 60);
+    });
+});
+
+describe("promotion readiness (TAI-472)", () => {
+    const candidate = (result: Awaited<ReturnType<typeof findGroomingWork>>, key: string) =>
+        result.promotionCandidates.find((c) => c.issue.key === key);
+    const FULL = "Context.\n\nAC-1: it does the thing.\nAC-2: and the other.";
+
+    it("a Story with numbered criteria, a Dev subtask and a link has no warnings", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const story = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: FULL });
+            await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, persona: Persona.Developer });
+            const other = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key });
+            await wt.createLink(story.key, DependencyRelation.RelatesTo, other.key);
+            const result = await findGroomingWork(deps(wt));
+            assert.deepEqual(candidate(result, story.key)?.warnings, []);
+            assert.match(renderGroomingBriefing(result), new RegExp(`${story.key}\\*\\* \\[story\\][^\\n]*— ready`));
+        });
+    });
+
+    it("warns for each thing a Story is missing, and says so in the rendered row", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const story = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: "No criteria. NEEDS CLARIFICATION: which table?" });
+            const result = await findGroomingWork(deps(wt));
+            const warnings = candidate(result, story.key)?.warnings ?? [];
+            assert.deepEqual(warnings, [
+                "no numbered acceptance criteria (lines starting AC-1, AC-2, …)",
+                "1 NEEDS CLARIFICATION marker in the description",
+                "no Dev subtask",
+                "no issue link and no linked page",
+            ]);
+            assert.match(renderGroomingBriefing(result), /⚠ not ready: no numbered acceptance criteria[^\n]*; 1 NEEDS CLARIFICATION marker[^\n]*; no Dev subtask; no issue link/);
+        });
+    });
+
+    it("a Spike is not asked for a Dev subtask, and a Bug is", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const spike = await mk(wt, { issueType: StoryType.Spike, parentKey: epic.key, description: FULL });
+            const bug = await mk(wt, { issueType: StoryType.Bug, parentKey: epic.key, description: FULL });
+            const result = await findGroomingWork(deps(wt));
+            assert.ok(!candidate(result, spike.key)?.warnings.includes("no Dev subtask"));
+            assert.ok(candidate(result, bug.key)?.warnings.includes("no Dev subtask"));
+        });
+    });
+
+    it("accepts an AC line written as a list item or in bold, and rejects AC without a number", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const listed = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: "Criteria:\n* AC-1 the first" });
+            const bold = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: "**AC-1** the first" });
+            const bare = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: "AC criteria, see below" });
+            const result = await findGroomingWork(deps(wt));
+            const noAc = "no numbered acceptance criteria (lines starting AC-1, AC-2, …)";
+            assert.ok(!candidate(result, listed.key)?.warnings.includes(noAc));
+            assert.ok(!candidate(result, bold.key)?.warnings.includes(noAc));
+            assert.ok(candidate(result, bare.key)?.warnings.includes(noAc));
+        });
+    });
+
+    it("a subtask is a candidate only when its links show it was unblocked, and is not checked", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const story = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key });
+            const lone = await mk(wt, { issueType: SubtaskType.IntegrationTest, parentKey: story.key, persona: Persona.Tester });
+            const first = await mk(wt, { issueType: SubtaskType.ArchitectureDesign, parentKey: story.key, persona: Persona.Architect });
+            await wt.transition(first.key, Status.Done);
+            const next = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, persona: Persona.Developer });
+            await wt.createLink(next.key, DependencyRelation.DependsOn, first.key);
+            const result = await findGroomingWork(deps(wt));
+            assert.equal(candidate(result, lone.key), undefined);
+            assert.deepEqual(candidate(result, next.key)?.warnings, []);
+        });
     });
 });
 
@@ -272,7 +347,7 @@ describe("renderGroomingBriefing (TAI-395)", () => {
         const issue = { key: "TAI-5", issueType: "story", status: "Backlog", summary: "Do a thing", priority: "High", labels: [], comments: [] } as never;
         const out = renderGroomingBriefing({
             ...empty,
-            promotionCandidates: [issue],
+            promotionCandidates: [{ issue, warnings: [] }],
             backlogKickoffs: [{ issue, epic: { key: "TAI-1", status: "Backlog" } as never, openBlockers: ["TAI-3" as never], flagged: true }],
             stale: [{ issue, idleDays: 90 }],
             unreadable: [{ key: "TAIT-2", typeName: "Task" }],

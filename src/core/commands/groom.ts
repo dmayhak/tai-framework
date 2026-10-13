@@ -7,7 +7,7 @@
  * Cancel and assignment is something Perry PROPOSES and the human confirms (decision 3).
  *
  * Sections (decision 2, numbered 1-8 when rendered): (a) epics with nothing under them, (b) Backlog Kickoff
- * Stories awaiting sequencing, (c) Backlog tickets whose depends-on blockers are all done, (d) flagged tickets,
+ * Stories awaiting sequencing, (c) Backlog tickets with no open blocker (TAI-472: a Story, Bug or Spike with readiness warnings), (d) flagged tickets,
  * (e) approved epics with nothing scheduled, (f) Backlog tickets untouched past the stale threshold, (g) tickets
  * TAI cannot read (unmapped Jira type, decision 13), (h) tickets that need an assignee (decision 14). TAI-373's
  * unblocked-but-uncreated Kickoff subtasks shipped as a `/tai-ready` section instead ("Subtasks ready to create"),
@@ -17,11 +17,12 @@
  * so they read every open ticket once, exhaustively, and filter in memory (ADR Consequences).
  */
 
-import { DependencyRelation, Status, StoryType } from "../schema/story-schema.js";
+import { DependencyRelation, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
+import { findClarificationQuestions } from "../storage/review-gate.js";
 import { isFlagged, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue, takeUnreadableIssues, type UnreadableIssue } from "../storage/unreadable-issues.js";
 
-export type GroomingReader = Pick<WorkTracker, "search" | "getIssue" | "getLinkedIssues">;
+export type GroomingReader = Pick<WorkTracker, "search" | "getIssue" | "getLinkedIssues" | "getLinkedPages">;
 
 export interface GroomingDeps {
     readonly workTracker: GroomingReader;
@@ -42,11 +43,18 @@ export interface GroomingKickoffRow {
     readonly flagged: boolean;
 }
 
+/** TAI-472: a promotion candidate and what is missing from it. Warnings are advice for the conversation, never a block. */
+export interface PromotionCandidate {
+    readonly issue: Issue;
+    /** Empty when nothing is missing, and always empty for a subtask (the check is for story-level tickets). */
+    readonly warnings: readonly string[];
+}
+
 export interface GroomingResult {
     readonly scope: IssueKey | null;
     readonly childlessEpics: readonly Issue[];
     readonly backlogKickoffs: readonly GroomingKickoffRow[];
-    readonly promotionCandidates: readonly Issue[];
+    readonly promotionCandidates: readonly PromotionCandidate[];
     readonly flagged: readonly Issue[];
     readonly idleEpics: readonly Issue[];
     readonly stale: readonly { readonly issue: Issue; readonly idleDays: number }[];
@@ -55,6 +63,12 @@ export interface GroomingResult {
     readonly needsAssigneeOverflow: number;
     readonly staleThresholdDays: number;
 }
+
+/** An acceptance criterion is a description line that starts with `AC-<number>` (TAI-472), ignoring list or emphasis marks. */
+const ACCEPTANCE_CRITERION_LINE = /^[\s>*_\-•]*(?:\*\*|__)?AC-\d+\b/m;
+
+/** Story, Bug and Spike are the tickets the readiness check is for (TAI-472, human decision 2026-10-13). */
+const READINESS_TYPES: readonly string[] = [StoryType.Story, StoryType.Bug, StoryType.Spike];
 
 export const DEFAULT_STALE_BACKLOG_DAYS = 60;
 export const MAX_NEEDS_ASSIGNEE = 15;
@@ -166,7 +180,30 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         READ_CONCURRENCY,
         async (issue) => ({ issue, ...(await blockersOf(issue)) })
     );
-    const promotionCandidates = checked.filter((c) => c.all.length > 0 && c.open.length === 0).map((c) => c.issue);
+    // TAI-472: no open blocker is enough for a Story, Bug or Spike, with or without depends-on links; a subtask
+    // (a front-loaded chain sits in Backlog by design) is a candidate only when its links say it has been unblocked.
+    const unblocked = checked.filter((c) => c.open.length === 0 && (c.all.length > 0 || READINESS_TYPES.includes(c.issue.issueType)));
+
+    /** What a story-level candidate is missing. Reads its children and links; a subtask is not checked. */
+    const readinessOf = async (issue: Issue): Promise<string[]> => {
+        if (!READINESS_TYPES.includes(issue.issueType)) return [];
+        const warnings: string[] = [];
+        const description = issue.description ?? "";
+        if (!ACCEPTANCE_CRITERION_LINE.test(description)) warnings.push("no numbered acceptance criteria (lines starting AC-1, AC-2, …)");
+        const open = findClarificationQuestions(description).length;
+        if (open > 0) warnings.push(`${open} NEEDS CLARIFICATION marker${open === 1 ? "" : "s"} in the description`);
+        if (issue.issueType !== StoryType.Spike) {
+            const devs = await workTracker.search({ projectKey, parentKey: issue.key, issueTypes: [SubtaskType.Dev] });
+            if (devs.length === 0) warnings.push("no Dev subtask");
+        }
+        const issueLinks = await workTracker.getLinkedIssues(issue.key);
+        if (issueLinks.length === 0 && (await workTracker.getLinkedPages(issue.key)).length === 0) warnings.push("no issue link and no linked page");
+        return warnings;
+    };
+    const promotionCandidates: PromotionCandidate[] = await mapWithLimit(unblocked, READ_CONCURRENCY, async (c) => ({
+        issue: c.issue,
+        warnings: await readinessOf(c.issue),
+    }));
 
     // --- (d) flagged, every open status ---
     const flagged = [...open].filter(isFlagged).sort(byKey);
@@ -239,8 +276,10 @@ export function renderGroomingBriefing(result: GroomingResult): string {
     );
     section(
         3,
-        "Backlog tickets whose blockers are all done (promotion candidates — check the description is actionable first)",
-        result.promotionCandidates.map((i) => row(i))
+        "Backlog tickets with no open blocker (promotion candidates — check the description is actionable first)",
+        result.promotionCandidates.map((c) =>
+            row(c.issue, c.warnings.length > 0 ? `\n  ⚠ not ready: ${c.warnings.join("; ")}` : READINESS_TYPES.includes(c.issue.issueType) ? " — ready" : "")
+        )
     );
     section(4, "Flagged tickets (does the impediment still stand?)", result.flagged.map((i) => row(i)));
     section(5, "Epics approved to build with nothing scheduled", result.idleEpics.map((e) => row(e)));

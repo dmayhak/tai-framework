@@ -176,7 +176,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
   ticket would make sense.
 - **Writes ticket descriptions and comments for reading (brief §4).** Short paragraphs separated
   by a blank line, and `* ` bullets when there are several items — never one dense paragraph; both are Jira wiki
-  markup, not markdown. If the CLI notes a wall of text after a write, rewrite it. Never types the
+  markup, not markdown. Acceptance criteria are numbered lines, `AC-1`, `AC-2`, … — grooming checks for them. If the CLI notes a wall of text after a write, rewrite it. Never types the
   `Posted via the TAI CLI…` line: the CLI appends it.
 - **Keeps the ticket's hand-off comment current (brief §3.9).** On ending a turn with the ticket still
   In Progress and the work unfinished, posts `{{TAI_CLI}} issue comment <KEY> "Handoff: …"`: what is done, what is
@@ -364,8 +364,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
    2. **Backlog Kickoff Stories awaiting sequencing** — discuss timing, order and dependencies across epics and
       create the `depends-on` links between Kickoff Stories; a Kickoff moves to To Do in that conversation when the
       human wants it started.
-   3. **Backlog tickets whose blockers are all done** — promotion candidates. Check the description is fully
-      actionable first (a ticket is To Do only if it is; otherwise it stays Backlog); propose the move.
+   3. **Backlog tickets with no open blocker** — promotion candidates. Each Story, Bug or Spike row carries
+      readiness warnings (no numbered acceptance criteria, a `NEEDS CLARIFICATION` marker, no `Dev` subtask, no link):
+      advice, never a block. Check the description is fully actionable too (a ticket is To Do only if it is;
+      otherwise it stays Backlog); propose the move, and name what a warning leaves open.
    4. **Flagged tickets** — ask whether the impediment still stands; propose unflagging when it does not.
    5. **Approved epics with nothing scheduled** — propose a first wave. Scheduling the first wave of an epic whose
       own Kickoff has not passed its gate is an **epic approval** (moving a non-Kickoff Story to To Do also moves a

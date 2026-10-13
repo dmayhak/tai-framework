@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-13 (rev 98). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-13 (rev 99). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -616,7 +616,9 @@ These are settled. Change them deliberately and update this file if you do.
   things checked. Never one dense paragraph. On a comment, the stamp goes on its own last line and is added by
   the CLI, never typed. The CLI backs this with a note, not a refusal: after `issue create`, `issue update` or
   `issue comment` writes text with an unbroken paragraph of more than 500 characters, it says so and names the
-  command that rewrites it. Every persona doc carries a one-line pointer here.
+  command that rewrites it. Every persona doc carries a one-line pointer here. **Acceptance criteria** in a
+  Story, Bug or Spike description are numbered lines, `AC-1`, `AC-2`, …, so a reader and the grooming check can
+  find and refer to each one.
 - **Writing Confluence page content.** TAI converts a persona's markdown to Confluence
   storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
   (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and
@@ -845,7 +847,11 @@ not ready. `Backlog` items do not appear on Jira's Kanban board.
   28). "Ready" has no single crisp signal (spec-complete, unblocked and judged-ready are
   three different checks), unlike §5.5's assignment gate, which is enforced because "has a
   human assignee" is a plain yes or no. A human moves the ticket, or Perry proposes the move
-  in grooming and applies it after the human confirms (§3.8).
+  in grooming and applies it after the human confirms (§3.8). Grooming's promotion section lists every Backlog
+  ticket with no open blocker and, for a Story, Bug or Spike, **warns** of what is missing — no numbered
+  acceptance criteria (`AC-n` lines), a `NEEDS CLARIFICATION` marker in the description, no `Dev` subtask (not
+  asked of a Spike), no issue link and no linked page. The warnings are advice for the conversation; nothing
+  blocks the move (TAI-472).
 - It applies to **every issue type**: a subtask can be created ahead of its own readiness
   just as a story-level ticket can (`workflows/dependencies.md`, "Dynamic Subtask Insertion").
 
