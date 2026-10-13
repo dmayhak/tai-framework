@@ -1,9 +1,8 @@
 /**
  * TAI Framework — `/tai_ready [persona]` command core (TAI-61 ADR decision 4)
  *
- * Root `status.json` (`rollupStatus`, `workspace/status.ts`) is a **display index only**
- * (brief §7: "purely a rollup/index, never authoritative") — readiness itself is computed
- * live here, per brief §3.6's refresh-point rule, never read off the cached rollup:
+ * Readiness is computed live here, per brief §3.6's refresh-point rule, never read off a
+ * local cache (TAI-490: there is no local status file):
  *
  *   1. `search({ persona, statuses: OPEN_STATUSES })` — a coarse pre-filter (right persona,
  *      not yet closed). Story-level tickets (Kickoff/Story/Bug/Spike) have no precedence

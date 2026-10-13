@@ -180,7 +180,7 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
 
         const result = await findReadyWork({
             workTracker,
-            taiRoot: "/tmp/tai-110-unused", // rollupStatus reads this; irrelevant to readyToMerge
+            taiRoot: "/tmp/tai-110-unused", // only the stale living-doc check reads this; irrelevant to readyToMerge
             projectKey: PROJECT_KEY,
             gitHost,
             repos: [repo],
