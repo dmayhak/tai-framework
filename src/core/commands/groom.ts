@@ -174,7 +174,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         }
     );
 
-    // --- (c) Backlog tickets whose depends-on blockers are all done: promotion candidates ---
+    // --- (c) Backlog tickets with no open blocker: promotion candidates, with readiness warnings (TAI-472) ---
     const checked = await mapWithLimit(
         backlog.filter((i) => i.issueType !== StoryType.Kickoff && i.issueType !== "epic"),
         READ_CONCURRENCY,
