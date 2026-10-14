@@ -462,7 +462,7 @@ describe("findGroomingWork: ready to verify (TAI-550)", () => {
             await wt.transition((await mk(wt, { issueType: SubtaskType.Dev, parentKey: notStarted.key, assignee: ME })).key, Status.Done);
             const result = await findGroomingWork(deps(wt));
             assert.deepEqual(result.readyToVerify, []);
-            assert.equal((renderGroomingBriefing(result).match(/^None\.$/gm) ?? []).length >= 1, true);
+            assert.match(renderGroomingBriefing(result), /^## 9\. [^\n]*\n\nNone\.$/m);
         });
     });
 
