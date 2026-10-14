@@ -14,7 +14,7 @@ model: default          # inherits project default; overridable in persona confi
 # The brief originally had a single `Test` routing candidate (brief §5.2); the
 # three tiers here (`IntegrationTest`/`SystemTest`/`E2ETest`) and `Triage` elaborate on it.
 # `UAT` (human-gated, owned by Tester + a stakeholder) is brief §5.2's rev-10 addition and
-# is fully represented below (create/workOn/alwaysHumanGated + the `uat-plan` output).
+# is fully represented below (create/workOn + the `uat-plan` output).
 # Rationale and history for this persona: rationale/tester.md (not loaded at run time).
 permissions:
   create:
@@ -44,11 +44,6 @@ permissions:
                                    # paired with mergePullRequest (no self-merge for Tester).
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
-
-checkpoints:
-  humanSignOffDefault: true      # brief §3.4: a human signs off work
-  alwaysHumanGated:
-    - Subtask:UAT                # brief §3.3 — a human stakeholder signs off.
 
 confluenceOutputs:
   - type: test-plan

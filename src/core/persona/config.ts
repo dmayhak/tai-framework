@@ -1,9 +1,9 @@
 /**
  * TAI Framework — Persona Config loader/merge (TAI-51 ADR, resolving Epic TAI-6)
  *
- * Every `src/personas/*.md` file carries a `permissions`/`checkpoints`/`confluenceOutputs`
- * front-matter block that has, until now, said "not yet enforced in code." This module makes
- * that block executable: a project's *effective* `PersonaConfig` for a given persona id is a
+ * Every `src/personas/*.md` file carries a `permissions`/`confluenceOutputs` front-matter
+ * block (and, for some, `checkpoints`) that has, until now, said "not yet enforced in code."
+ * This module makes that block executable: a project's *effective* `PersonaConfig` for a given persona id is a
  * 3-layer merge (TAI-51 ADR decision 1):
  *
  *   1. Bundled default  — the built-in `.md` file (or `emptyPersonaShell` for a user-added
@@ -14,12 +14,11 @@
  *   3. Extension        — an optional per-persona Confluence page, merged ADDITIVELY ONLY
  *      (brief §3.1: "extensions add to, never override").
  *
- * Hard-rule carve-out (ADR decision 1): `permissions.cannotApprove` and
- * `checkpoints.humanSignOffDefault` are NEVER taken from layers 2/3 — always layer 1's value,
- * enforced uniformly by `mergePersonaConfig` regardless of whether layer 1 is a real built-in
- * or an `emptyPersonaShell`. This is what lets a brand-new user-added persona still inherit
- * the same safe hard-rule defaults (own-output self-approval barred, human sign-off required)
- * without a special "is this built-in" branch anywhere in the merge logic.
+ * Hard-rule carve-out (ADR decision 1): `permissions.cannotApprove` is NEVER taken from layers
+ * 2/3 — always layer 1's value, enforced uniformly by `mergePersonaConfig` regardless of
+ * whether layer 1 is a real built-in or an `emptyPersonaShell`. This is what lets a brand-new
+ * user-added persona still inherit the same safe hard-rule default (own-output
+ * self-approval barred) without a special "is this built-in" branch anywhere in the merge logic.
  *
  * Parsing is hand-rolled (`js-yaml` for the YAML fragments, not a markdown-front-matter
  * library) matching this project's existing style (`persona/roster.ts` hand-parses its own
@@ -113,10 +112,9 @@ export type GitHostAction = (typeof GIT_HOST_ACTIONS)[number];
 const GIT_HOST_ACTION_SET: ReadonlySet<string> = new Set(GIT_HOST_ACTIONS);
 
 export interface PersonaCheckpoints {
-    readonly humanSignOffDefault: boolean;
-    /** Persona-specific extras (`selfAuthoredReviewSeparation`, `alwaysHumanGated`,
-     *  `kickoffGateRequiresJointApproval`, ...) captured losslessly. Nothing in this Story
-     *  consumes them individually — the brief's own checkpoint taxonomy is still evolving
+    /** Persona-specific extras (`selfAuthoredReviewSeparation`, `kickoffGateRequiresJointApproval`, ...)
+     *  captured losslessly; a key an older file or override page still carries lands here and is
+     *  never read. Nothing in this Story consumes them individually — the brief's own checkpoint taxonomy is still evolving
      *  (§8.23), so modeling each one now would be building ahead of an observed need. */
     readonly extra: Readonly<Record<string, unknown>>;
 }
@@ -161,11 +159,7 @@ function buildPermissions(raw: unknown): PersonaPermissions {
 }
 
 function buildCheckpoints(raw: unknown): PersonaCheckpoints {
-    const c = isRecord(raw) ? raw : {};
-    const { humanSignOffDefault, ...extra } = c;
-    // Brief §3.4: "Human sign-off is the default" — missing/malformed reads as true, the
-    // safe direction, not false.
-    return { humanSignOffDefault: humanSignOffDefault !== false, extra };
+    return { extra: isRecord(raw) ? raw : {} };
 }
 
 function buildConfluenceOutputs(raw: unknown): string[] {
@@ -186,9 +180,8 @@ function buildConfluenceOutputs(raw: unknown): string[] {
 /**
  * The layer-1 default for a persona with no bundled `.md` file (a user-added persona, brief
  * §3.1). Carries the same safe hard-rule defaults every built-in has — barred from
- * self-approval, human sign-off required — so `mergePersonaConfig`'s carve-out needs no
- * separate "is this built-in" branch: it always takes `cannotApprove`/`humanSignOffDefault`
- * from layer 1, and layer 1 is always safe by construction.
+ * self-approval — so `mergePersonaConfig`'s carve-out needs no separate "is this built-in"
+ * branch: it always takes `cannotApprove` from layer 1, and layer 1 is always safe by construction.
  */
 export function emptyPersonaShell(id: string, displayName = id): PersonaConfig {
     return {
@@ -204,7 +197,7 @@ export function emptyPersonaShell(id: string, displayName = id): PersonaConfig {
             gitHost: [],
             cannotApprove: ["own-output"],
         },
-        checkpoints: { humanSignOffDefault: true, extra: {} },
+        checkpoints: { extra: {} },
         confluenceOutputs: [],
         prompt: "",
     };
@@ -379,8 +372,8 @@ function emptyGrants(): PersonaExtension["permissions"] {
  * `emptyPersonaShell` for a user-added persona), an optional layer 2 override, and an
  * optional layer 3 extension into the effective `PersonaConfig` (TAI-51 ADR decision 1).
  *
- * `cannotApprove`/`humanSignOffDefault` always come from `base`, regardless of what `override`
- * or `extension` carry — the hard-rule carve-out, enforced here rather than trusted to callers.
+ * `cannotApprove` always comes from `base`, regardless of what `override` or `extension` carry —
+ * the hard-rule carve-out, enforced here rather than trusted to callers.
  */
 export function mergePersonaConfig(
     base: PersonaConfig,
@@ -395,9 +388,7 @@ export function mergePersonaConfig(
               permissions: override.permissions
                   ? { ...override.permissions, cannotApprove: base.permissions.cannotApprove }
                   : base.permissions,
-              checkpoints: override.checkpoints
-                  ? { ...override.checkpoints, humanSignOffDefault: base.checkpoints.humanSignOffDefault }
-                  : base.checkpoints,
+              checkpoints: override.checkpoints ?? base.checkpoints,
               confluenceOutputs: override.confluenceOutputs ?? base.confluenceOutputs,
               prompt: base.prompt,
           }

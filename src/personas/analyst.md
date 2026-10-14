@@ -58,12 +58,6 @@ permissions:
   cannotApprove:
     - own-output                # hard rule, brief §3.4 / §4 — no self-certification
 
-checkpoints:
-  humanSignOffDefault: true      # brief §3.4: a human signs off work
-  alwaysHumanGated:
-    - Subtask:EpicReview          # TAI-354 — a human stakeholder signs off, by moving it
-                                   # to Done themselves (same mechanic as tester.md's UAT).
-
 confluenceOutputs:
   - type: requirements-spec
   - type: work-breakdown
