@@ -4,7 +4,10 @@
  * The CLI and the human share one Jira identity, so this cannot say WHO signed off. It reads what the CLI left:
  * a stamped `Approved:` comment, or the stamped `Sign-off:` companion comment (`stamp.ts`). A sign-off with
  * neither was made in the Jira UI. The stamp is text, so a person could type one; this is a visible signal, not
- * proof, and nothing is ever blocked on it (brief §4).
+ * proof, and nothing is ever blocked on it (brief §4). One known limit: a close is read from the LAST companion
+ * comment anywhere in the history, so a ticket closed through the CLI, reopened, then closed again in the Jira UI
+ * still reads "through the TAI CLI". Telling them apart needs the transition history (an extra read per ticket) or a
+ * marker left on reopen; neither is done.
  *
  * Pure: reads only the comments and status already on the `Issue`, so no view makes an extra call for it.
  * Covers the Kickoff `Approved:` comments (PM and UX Designer) and the closes of UAT, EpicReview, DesignReview
@@ -39,6 +42,7 @@ const KICKOFF_LABEL = "Kickoff approval";
 
 /** The reading for `issue`, or null when it is not a sign-off (or was canceled, so nothing was signed). */
 export function signOffProvenance(issue: Pick<Issue, "issueType" | "status" | "comments">): SignOffReading | null {
+    if (issue.status === Status.Canceled) return null;
     if (issue.issueType === StoryType.Kickoff) {
         const approvals = parseCommentMarkers(issue.comments)
             .filter((m) => m.kind === "Approved")
@@ -56,7 +60,7 @@ export function signOffProvenance(issue: Pick<Issue, "issueType" | "status" | "c
     }
 
     const label = signOffLabel(issue.issueType);
-    if (label === undefined || issue.status === Status.Canceled) return null;
+    if (label === undefined) return null;
     if (issue.status !== Status.Done) return { label, provenance: "not-signed-off", approvals: [] };
 
     const companion = issue.comments.filter((c) => isSignOffComment(c.body)).at(-1);

@@ -123,6 +123,19 @@ describe("signOffProvenance: UAT, EpicReview, DesignReview and Epic closes", () 
     }
 });
 
+describe("signOffProvenance: canceled and reopened", () => {
+    it("a canceled Kickoff is not a sign-off, with or without Approved: comments", () => {
+        assert.equal(signOffProvenance(issue(StoryType.Kickoff, Status.Canceled)), null);
+        assert.equal(signOffProvenance(issue(StoryType.Kickoff, Status.Canceled, [comment(stampComment("Approved: ok", perry))])), null);
+    });
+
+    it("documents the known limit: an old companion comment still reads as via the TAI CLI after a later direct close", () => {
+        const earlier = comment(signOffComment({ issueType: SubtaskType.Uat }, Status.Done, perry)!);
+        const r = signOffProvenance(issue(SubtaskType.Uat, Status.Done, [earlier, comment("Reopened: missed a case."), comment("Accepted now.")]));
+        assert.equal(r?.provenance, "via-cli");
+    });
+});
+
 describe("signOffProvenance: tickets that are not sign-offs", () => {
     it("is null for a Story, Bug, Dev subtask and the like (closing those is not a sign-off)", () => {
         for (const type of [StoryType.Story, StoryType.Bug, StoryType.Spike, SubtaskType.Dev, SubtaskType.Research]) {
