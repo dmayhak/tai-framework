@@ -28,6 +28,7 @@ import path from "node:path";
 
 import { Persona, Status, StoryType, SubtaskType, DependencyRelation } from "../schema/story-schema.js";
 import { gatherAssigneeEvidence } from "../personas/assignee-evidence.js";
+import { ensureFixturePage } from "./fixture-page.js";
 import {
     type StorageBackend,
     type Issue,
@@ -148,6 +149,7 @@ export function defineStorageConformance(
         let sharedParentKey: IssueKey;
         const cleanupIssues: IssueKey[] = [];
         const cleanupPages: PageId[] = [];
+        const restorePages: (() => Promise<void>)[] = [];
 
         before(async () => {
             h = await setup();
@@ -163,6 +165,7 @@ export function defineStorageConformance(
         after(async () => {
             for (const key of cleanupIssues) await h.disposeIssue(key).catch(() => {});
             for (const id of cleanupPages) await h.disposePage(id).catch(() => {});
+            for (const restore of restorePages) await restore().catch(() => {});
         });
 
         function track<T extends { key: IssueKey }>(issue: T): T {
@@ -1063,18 +1066,21 @@ export function defineStorageConformance(
                 // BOTH required reviewers (PM + UX Designer, story-schema.ts REVIEW_GATES) —
                 // a human may appear under multiple personas (brief §5.6), and it's the only
                 // identity either harness's fixed credentials can act as.
-                trackPage(
-                    await h.backend.docStore.createPage({
-                        spaceKey: h.spaceKey,
-                        title: "Persona Roster",
-                        content: [
-                            "| Persona | Authorized humans |",
-                            "| --- | --- |",
-                            `| PM | ${h.validAssignee.displayName} |`,
-                            `| UX Designer | ${h.validAssignee.displayName} |`,
-                        ].join("\n"),
-                    })
+                // TAI-497: the page may already exist (an earlier run, or made on purpose); reuse it and put its
+                // own content back afterwards rather than failing on the duplicate title.
+                const roster = await ensureFixturePage(
+                    h.backend.docStore,
+                    h.spaceKey,
+                    "Persona Roster",
+                    [
+                        "| Persona | Authorized humans |",
+                        "| --- | --- |",
+                        `| PM | ${h.validAssignee.displayName} |`,
+                        `| UX Designer | ${h.validAssignee.displayName} |`,
+                    ].join("\n")
                 );
+                if (roster.createdId) cleanupPages.push(roster.createdId);
+                restorePages.push(roster.restore);
 
                 const kickoff = track(
                     await h.backend.workTracker.createIssue({
