@@ -6,12 +6,13 @@
  * offers, like `findReadyWork`, and changes nothing; every Backlog -> To Do move, epic approval, flag/unflag,
  * Cancel and assignment is something Perry PROPOSES and the human confirms (decision 3).
  *
- * Sections (decision 2, numbered 1-8 when rendered): (a) epics with nothing under them, (b) Backlog Kickoff
+ * Sections (decision 2, numbered 1-9 when rendered): (a) epics with nothing under them, (b) Backlog Kickoff
  * Stories awaiting sequencing, (c) Backlog tickets with no open blocker (TAI-472: a Story, Bug or Spike with readiness warnings), (d) flagged tickets,
  * (e) approved epics with nothing scheduled, (f) Backlog tickets untouched past the stale threshold, (g) tickets
- * TAI cannot read (unmapped Jira type, decision 13), (h) tickets that need an assignee (decision 14). TAI-373's
+ * TAI cannot read (unmapped Jira type, decision 13), (h) tickets that need an assignee (decision 14), (i) Stories and Bugs
+ * ready to verify (TAI-550: the set `/tai-ready` lists, from the shared `findNotVerified`). TAI-373's
  * unblocked-but-uncreated Kickoff subtasks shipped as a `/tai-ready` section instead ("Subtasks ready to create"),
- * not a ninth section here.
+ * not a section here.
  *
  * Sections (d) and (f) have no search filter to lean on (no flagged filter; `updatedSince` only means "since"),
  * so they read every open ticket once, exhaustively, and filter in memory (ADR Consequences).
@@ -20,7 +21,7 @@
 import { DependencyRelation, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { findClarificationQuestions } from "../storage/review-gate.js";
 import { signOffRowNote } from "../storage/sign-off-provenance.js";
-import { ACCEPTANCE_CRITERION_LINE } from "../storage/verification.js";
+import { ACCEPTANCE_CRITERION_LINE, findNotVerified } from "../storage/verification.js";
 import { isFlagged, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue, takeUnreadableIssues, type UnreadableIssue } from "../storage/unreadable-issues.js";
 
@@ -63,6 +64,8 @@ export interface GroomingResult {
     readonly unreadable: readonly UnreadableIssue[];
     readonly needsAssignee: readonly { readonly issue: Issue; readonly list: string }[];
     readonly needsAssigneeOverflow: number;
+    /** TAI-550: In Progress Stories and Bugs whose Dev work is all Done and which have no Verified:/Not verified: comment. */
+    readonly readyToVerify: readonly Issue[];
     readonly staleThresholdDays: number;
 }
 
@@ -224,6 +227,11 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         }
     }
 
+    // --- (i) Stories and Bugs ready to verify: the same set /tai-ready lists (TAI-550) ---
+    const inFlight = open.filter((i) => i.status === Status.InProgress || i.status === Status.InReview).sort(byKey);
+    const notVerified = await findNotVerified(workTracker, projectKey, inFlight);
+    const readyToVerify = inFlight.filter((i) => notVerified.has(i.key));
+
     // --- (g) whatever the reads above skipped: drained last so every read had its chance to report ---
     const unreadable = takeUnreadableIssues();
 
@@ -238,6 +246,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         unreadable,
         needsAssignee,
         needsAssigneeOverflow: deps.needsAssigneeList ? Math.max(0, needs.length - MAX_NEEDS_ASSIGNEE) : 0,
+        readyToVerify,
         staleThresholdDays,
     };
 }
@@ -311,6 +320,11 @@ export function renderGroomingBriefing(result: GroomingResult): string {
         assignLines.push("", `…and ${result.needsAssigneeOverflow} older tickets without an assignee; run \`issue suggest <KEY>\` for any of them.`);
     }
     section(8, "Tickets that need an assignee", assignLines);
+    section(
+        9,
+        "Stories and Bugs ready to verify (Dev work is done, no Verified:/Not verified: comment; run /tai-verify <KEY>)",
+        result.readyToVerify.map((i) => row(i, ` — verify it with \`/tai-verify ${i.key}\``))
+    );
 
     out.push(
         "---",

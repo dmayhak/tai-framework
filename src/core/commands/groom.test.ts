@@ -327,12 +327,21 @@ describe("renderGroomingBriefing (TAI-395)", () => {
         unreadable: [],
         needsAssignee: [],
         needsAssigneeOverflow: 0,
+        readyToVerify: [],
         staleThresholdDays: 60,
     };
 
-    it("numbers the eight sections 1-8 and says None. for an empty one, so Perry knows each was checked", () => {
+    it("numbers the nine sections 1-9 and says None. for an empty one, so Perry knows each was checked", () => {
         const out = renderGroomingBriefing(empty);
-        for (let n = 1; n <= 8; n++) assert.match(out, new RegExp(`^## ${n}\\. `, "m"), `section ${n}`);
+        for (let n = 1; n <= 9; n++) assert.match(out, new RegExp(`^## ${n}\\. `, "m"), `section ${n}`);
+        assert.equal((out.match(/^None\.$/gm) ?? []).length, 9);
+    });
+
+    it("section 9 lists a Story ready to verify with the command that does it (TAI-550)", () => {
+        const story = { key: "TAI-5", issueType: "story", status: "In Progress", summary: "Done work", labels: [], comments: [] } as never;
+        const out = renderGroomingBriefing({ ...empty, readyToVerify: [story] });
+        assert.match(out, /^## 9\. Stories and Bugs ready to verify/m);
+        assert.match(out, /^- \*\*TAI-5\*\* \[story\] Done work \(In Progress\) — verify it with `\/tai-verify TAI-5`$/m);
         assert.equal((out.match(/^None\.$/gm) ?? []).length, 8);
     });
 
@@ -417,5 +426,54 @@ describe("mapWithLimit (TAI-395 review)", () => {
 
     it("propagates a failure instead of swallowing it", async () => {
         await assert.rejects(() => mapWithLimit([1, 2, 3], 2, async (n) => { if (n === 2) throw new Error("boom"); return n; }), /boom/);
+    });
+});
+
+describe("findGroomingWork: ready to verify (TAI-550)", () => {
+    // A Story that is really In Progress (the assignee gate refuses to start an unassigned one) with its Dev subtasks.
+    const inProgressStory = async (wt: WorkTracker, parentKey: string, devStatuses: readonly Status[]) => {
+        const story = await mk(wt, { issueType: StoryType.Story, parentKey, assignee: ME });
+        for (const status of devStatuses) {
+            const dev = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            if (status !== Status.Backlog && status !== Status.ToDo) assert.ok((await wt.transition(dev.key, status)).ok, `Dev to ${status}`);
+        }
+        assert.ok((await wt.transition(story.key, Status.InProgress)).ok, "Story to In Progress");
+        return story;
+    };
+
+    it("lists an In Progress Story whose Dev subtasks are all Done and which has no verification comment", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const ready = await inProgressStory(wt, epic.key, [Status.Done]);
+            const result = await findGroomingWork(deps(wt));
+            assert.deepEqual(keys(result.readyToVerify), [ready.key]);
+            assert.match(renderGroomingBriefing(result), new RegExp(`/tai-verify ${ready.key}`));
+        });
+    });
+
+    it("leaves out a verified Story, one with a Dev subtask still open, one with no Dev subtask, and one not In Progress", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const verified = await inProgressStory(wt, epic.key, [Status.Done]);
+            await wt.addComment(verified.key, "Verified: all 1 criteria met");
+            await inProgressStory(wt, epic.key, [Status.ToDo]);
+            await inProgressStory(wt, epic.key, []);
+            const notStarted = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, assignee: ME });
+            await wt.transition((await mk(wt, { issueType: SubtaskType.Dev, parentKey: notStarted.key, assignee: ME })).key, Status.Done);
+            const result = await findGroomingWork(deps(wt));
+            assert.deepEqual(result.readyToVerify, []);
+            assert.match(renderGroomingBriefing(result), /^## 9\. [^\n]*\n\nNone\.$/m);
+        });
+    });
+
+    it("with an epic key, lists only that epic's Stories (decision 10)", async () => {
+        await withTracker(async (wt) => {
+            const epicA = await mk(wt, { issueType: "epic" });
+            const epicB = await mk(wt, { issueType: "epic" });
+            const a = await inProgressStory(wt, epicA.key, [Status.Done]);
+            const b = await inProgressStory(wt, epicB.key, [Status.Done]);
+            assert.deepEqual(keys((await findGroomingWork(deps(wt, { epicKey: epicA.key }))).readyToVerify), [a.key]);
+            assert.deepEqual(keys((await findGroomingWork(deps(wt))).readyToVerify), keys([a, b]));
+        });
     });
 });

@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 103 (2026-10-14)
+
+**TAI-550: `/tai-groom` lists Stories and Bugs ready to verify.** Human decision, 2026-10-14: the grooming briefing is the board-wide view, so what waits for `/tai-verify` shows there too, not only in `/tai-ready`. A new section 9 after the existing eight (their numbering is unchanged) lists each In Progress Story or Bug whose Dev subtasks are all Done and which has no `Verified:` / `Not verified:` comment, with `/tai-verify <KEY>` as the next step; with an epic key it lists that epic's tickets only. Perry names the step and does not verify. The set comes from one function, `findNotVerified` (`storage/verification.ts`), now also used by `/tai-ready`, so the two lists cannot disagree. Not taken: placing it earlier in the list (renumbering section 8), and including Stories whose latest comment is `Not verified:`. `pm.md` item 9 and the `tai-groom` skill text updated; the global skills need reinstalling.
+
 ## rev 102 (2026-10-14)
 
 **TAI-548: `/tai-ready` offers "Ready to verify" as a numbered action.** Human decision, 2026-10-14, after picking the "not verified" Story's number ran `/tai-work` as the PM, who had nothing to do, and the human had to type `/tai-verify` by hand. A new numbered section "Ready to verify" lists each In Progress Story or Bug in the existing `notVerified` set, on the shared counter and absent when empty; its number means `/tai-verify <KEY>`, which loads Tessa. The Story still appears under In Progress, where the long warning shrinks to a "⚠️ not verified" marker. The `tai-ready` skill text maps the new section, and the global skills need reinstalling. No new reads; show-only. Brief §3.9, setup checklist.

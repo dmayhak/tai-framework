@@ -54,7 +54,7 @@ import {
 } from "../schema/story-schema.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
-import { hasVerification } from "../storage/verification.js";
+import { findNotVerified } from "../storage/verification.js";
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -825,15 +825,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         if (blockers.length > 0) blockedBy.set(issue.key, blockers);
     }
 
-    const notVerified = new Set<IssueKey>();
-    for (const { issue } of inProgress) {
-        if (issue.issueType !== StoryType.Story && issue.issueType !== StoryType.Bug) continue;
-        if (hasVerification(issue.comments)) continue;
-        const devs = (
-            await deps.workTracker.search({ projectKey: deps.projectKey, parentKey: issue.key, issueTypes: [SubtaskType.Dev], exhaustive: true })
-        ).filter((d) => d.status !== Status.Canceled);
-        if (devs.length > 0 && devs.every((d) => d.status === Status.Done)) notVerified.add(issue.key);
-    }
+    const notVerified = await findNotVerified(deps.workTracker, deps.projectKey, inProgress.map((c) => c.issue));
 
     const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
     const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);

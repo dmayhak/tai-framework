@@ -9,8 +9,8 @@
  * A later Dev commit does not invalidate an earlier comment (decided 2026-10-13): showing, never blocking.
  */
 
-import { StoryType } from "../schema/story-schema.js";
-import type { Comment, Issue } from "./interface.js";
+import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
+import type { Comment, Issue, IssueKey, WorkTracker } from "./interface.js";
 
 const VERIFICATION_MARKER = /^\s*(?:Not\s+verified|Verified)\s*:/i;
 
@@ -25,6 +25,28 @@ export function isVerification(body: string): boolean {
 /** True when any comment is a verification. */
 export function hasVerification(comments: readonly Comment[]): boolean {
     return comments.some((c) => isVerification(c.body));
+}
+
+/**
+ * The Stories and Bugs among `issues` that are ready to verify (TAI-546, TAI-548, TAI-550): a Dev subtask exists, every
+ * non-canceled one is Done, and there is no `Verified:` / `Not verified:` comment. One copy, used by `/tai-ready` and
+ * `/tai-groom`, so the two lists cannot disagree. One read of each candidate's Dev subtasks.
+ */
+export async function findNotVerified(
+    workTracker: Pick<WorkTracker, "search">,
+    projectKey: string,
+    issues: readonly Issue[]
+): Promise<Set<IssueKey>> {
+    const notVerified = new Set<IssueKey>();
+    for (const issue of issues) {
+        if (issue.issueType !== StoryType.Story && issue.issueType !== StoryType.Bug) continue;
+        if (hasVerification(issue.comments)) continue;
+        const devs = (await workTracker.search({ projectKey, parentKey: issue.key, issueTypes: [SubtaskType.Dev], exhaustive: true })).filter(
+            (d) => d.status !== Status.Canceled
+        );
+        if (devs.length > 0 && devs.every((d) => d.status === Status.Done)) notVerified.add(issue.key);
+    }
+    return notVerified;
 }
 
 /** The numbered acceptance-criterion lines of a description, in order, each trimmed. */

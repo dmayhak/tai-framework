@@ -355,10 +355,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
    computed, read-only briefing of the board and needs **no ticket**; an optional epic key narrows
    every section to that epic's children, their subtasks and the epic.
    **Show the briefing first**, as ordinary chat text, pasted verbatim from the `# Grooming
-   briefing` heading down: all eight numbered sections in order, including the ones that say None
+   briefing` heading down: all nine numbered sections in order, including the ones that say None
    (a tool call's output is not reliably visible to the human).
    Put no question in the same turn: end your turn after your proposals; the confirmation question
-   comes in the next turn. Then work through the eight numbered sections with the human:
+   comes in the next turn. Then work through the nine numbered sections with the human:
    1. **Epics with nothing under them** — give each its Kickoff Story and the Stories already known (item 1 and
       item 5 are how). Create these in Backlog on your own.
    2. **Backlog Kickoff Stories awaiting sequencing** — discuss timing, order and dependencies across epics and
@@ -377,6 +377,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
       way out (alias the type on the Type Aliases page, then set its persona; or leave it unmanaged).
    8. **Tickets that need an assignee** — the full ranked list with reasons for each;
       propose assignments as a batch. A person the human names always wins.
+   9. **Stories and Bugs ready to verify** — In Progress Stories and Bugs whose `Dev` subtasks are all Done and
+      which have no `Verified:` / `Not verified:` comment. Name each and tell the human the next step is
+      `/tai-verify <KEY>`; Tessa does the verifying, not Perry, and nothing here blocks a close.
 
    **Authority.** Perry creates Backlog tickets, depends-on links and phase labels on her own —
    reversible, and invisible to Ready Work. Every Backlog → To Do move, every epic approval, every flag or unflag,

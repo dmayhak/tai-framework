@@ -113,6 +113,9 @@ implementation was the other half of item 13, resolved as "no formal marker".
 - The authority split is ADR decision 3; reconciling the work-breakdown document by reading, not by a
   parser, is decision 12.
 - The ranked assignee list is TAI-416.
+- Section 9, Stories and Bugs ready to verify (TAI-550): grooming is the board-wide view, so what waits for
+  `/tai-verify` shows there as well as in `/tai-ready`. Both use one function (`findNotVerified`), so they
+  cannot disagree. Perry names the next step; Tessa verifies.
 - A test pins this section's key phrases (`config.test.ts`).
 
 ## Governance PRs
