@@ -328,6 +328,8 @@ describe("renderGroomingBriefing (TAI-395)", () => {
         needsAssignee: [],
         needsAssigneeOverflow: 0,
         readyToVerify: [],
+        parkedEpics: [],
+        misplacedIceboxLabels: [],
         staleThresholdDays: 60,
     };
 
@@ -475,5 +477,130 @@ describe("findGroomingWork: ready to verify (TAI-550)", () => {
             assert.deepEqual(keys((await findGroomingWork(deps(wt, { epicKey: epicA.key }))).readyToVerify), [a.key]);
             assert.deepEqual(keys((await findGroomingWork(deps(wt))).readyToVerify), keys([a, b]));
         });
+    });
+});
+
+describe("findGroomingWork: parked (icebox-labelled) epics (TAI-552)", () => {
+    const emptyForParked = {
+        scope: null,
+        childlessEpics: [],
+        backlogKickoffs: [],
+        promotionCandidates: [],
+        flagged: [],
+        idleEpics: [],
+        stale: [],
+        unreadable: [],
+        needsAssignee: [],
+        needsAssigneeOverflow: 0,
+        readyToVerify: [],
+        misplacedIceboxLabels: [],
+        staleThresholdDays: 60,
+    };
+    // A parked epic with a Story, that Story's Dev subtask and a Kickoff, plus a normal epic with one Story.
+    const board = async (wt: WorkTracker) => {
+        const parked = await mk(wt, { issueType: "epic", labels: ["icebox"] });
+        const story = await mk(wt, { issueType: StoryType.Story, parentKey: parked.key, labels: ["phase-2"] });
+        const dev = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key });
+        const kickoff = await mk(wt, { issueType: StoryType.Kickoff, parentKey: parked.key });
+        const live = await mk(wt, { issueType: "epic" });
+        const liveStory = await mk(wt, { issueType: StoryType.Story, parentKey: live.key });
+        return { parked, story, dev, kickoff, live, liveStory };
+    };
+    const everyKey = (r: Awaited<ReturnType<typeof findGroomingWork>>): string[] =>
+        [
+            ...r.childlessEpics,
+            ...r.backlogKickoffs.map((k) => k.issue),
+            ...r.promotionCandidates.map((c) => c.issue),
+            ...r.flagged,
+            ...r.idleEpics,
+            ...r.stale.map((s) => s.issue),
+            ...r.needsAssignee.map((n) => n.issue),
+            ...r.readyToVerify,
+        ].map((i) => i.key);
+
+    it("with no epic key, leaves the parked epic, its Stories (whatever their own labels) and their subtasks out of every section", async () => {
+        await withTracker(async (wt) => {
+            const b = await board(wt);
+            const result = await findGroomingWork(deps(wt, { staleBacklogDays: -1, needsAssigneeList: async () => "x" }));
+            const seen = everyKey(result);
+            for (const hidden of [b.parked, b.story, b.dev, b.kickoff]) assert.ok(!seen.includes(hidden.key), `${hidden.key} hidden`);
+            assert.ok(seen.includes(b.liveStory.key), "the other epic's Story is still listed");
+            assert.deepEqual(keys(result.parkedEpics), [b.parked.key]);
+        });
+    });
+
+    it("an epic key for the parked epic lists it and its children like any other epic", async () => {
+        await withTracker(async (wt) => {
+            const b = await board(wt);
+            const result = await findGroomingWork(deps(wt, { epicKey: b.parked.key }));
+            const seen = everyKey(result);
+            assert.ok(seen.includes(b.story.key) && seen.includes(b.kickoff.key));
+            assert.deepEqual(result.parkedEpics, []);
+        });
+    });
+
+    it("removing the label brings the epic and its children back, with the children unchanged", async () => {
+        await withTracker(async (wt) => {
+            const b = await board(wt);
+            await wt.updateIssue(b.parked.key, { labels: [] });
+            const result = await findGroomingWork(deps(wt));
+            const seen = everyKey(result);
+            assert.ok(seen.includes(b.story.key) && seen.includes(b.kickoff.key));
+            assert.deepEqual(result.parkedEpics, []);
+        });
+    });
+
+    it("the label counts on the epic only: a Story labelled icebox under a normal epic is not hidden, and the result names it", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const story = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, labels: ["Icebox"] });
+            const result = await findGroomingWork(deps(wt));
+            assert.ok(everyKey(result).includes(story.key));
+            assert.deepEqual(keys(result.misplacedIceboxLabels), [story.key]);
+        });
+    });
+
+    it("an epic labelled icebox is not a misplaced label, and the briefing warns about a ticket that is", () => {
+        const warned = renderGroomingBriefing({ ...emptyForParked, parkedEpics: [], misplacedIceboxLabels: [{ key: "TAI-7" } as never] });
+        assert.match(warned, /^⚠️ The `icebox` label only works on an epic; it does nothing on: TAI-7\. Move the label to the epic\.$/m);
+        assert.doesNotMatch(renderGroomingBriefing({ ...emptyForParked, parkedEpics: [] }), /only works on an epic/);
+    });
+
+    it("a ticket under a parked epic that has been scheduled (To Do or later) is still listed; only Backlog ones are hidden", async () => {
+        await withTracker(async (wt) => {
+            const b = await board(wt);
+            const started = await mk(wt, { issueType: StoryType.Story, parentKey: b.parked.key, assignee: ME });
+            assert.ok((await wt.transition(started.key, Status.InProgress)).ok);
+            const flaggedToDo = await mk(wt, { issueType: StoryType.Story, parentKey: b.parked.key });
+            await wt.transition(flaggedToDo.key, Status.ToDo);
+            await wt.updateIssue(flaggedToDo.key, { flagged: true });
+            const result = await findGroomingWork(deps(wt));
+            const seen = everyKey(result);
+            assert.ok(seen.includes(flaggedToDo.key), "the flagged To Do child is listed");
+            assert.ok(!seen.includes(b.story.key) && !seen.includes(b.kickoff.key), "the Backlog children stay hidden");
+            assert.ok(!seen.includes(b.parked.key), "the parked epic itself stays hidden");
+            assert.ok(result.readyToVerify.every((i) => i.key !== b.story.key));
+        });
+    });
+
+    it("the Backlog subtask of a scheduled child stays listed, and the one of a Backlog child stays hidden", async () => {
+        await withTracker(async (wt) => {
+            const b = await board(wt);
+            const scheduled = await mk(wt, { issueType: StoryType.Story, parentKey: b.parked.key });
+            await wt.transition(scheduled.key, Status.ToDo);
+            const chain = await mk(wt, { issueType: SubtaskType.Dev, parentKey: scheduled.key });
+            // an unassigned Backlog subtask surfaces in section 8, which needs the ranking callback to be filled
+            const seen = everyKey(await findGroomingWork(deps(wt, { needsAssigneeList: async () => "x" })));
+            assert.ok(seen.includes(chain.key), "the scheduled Story's Backlog subtask is listed");
+            assert.ok(!seen.includes(b.dev.key), "the Backlog Story's subtask stays hidden");
+        });
+    });
+
+    it("the briefing names what was left out and how to include it; says nothing when nothing was", () => {
+        const base = renderGroomingBriefing({ ...emptyForParked, parkedEpics: [] });
+        assert.doesNotMatch(base, /Left out/);
+        const parked = { key: "TAI-370", summary: "Icebox" } as never;
+        const out = renderGroomingBriefing({ ...emptyForParked, parkedEpics: [parked] });
+        assert.match(out, /^Left out: parked epics \(label `icebox`\) and the Backlog tickets under them: TAI-370 \(Icebox\)\. Run `groom <EPIC-KEY>` to groom one\.$/m);
     });
 });
