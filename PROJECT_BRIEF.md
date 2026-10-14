@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-14 (rev 103). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-14 (rev 104). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -394,6 +394,10 @@ pace choice); `personas/analyst.md`'s Kickoff discovery, decomposition and refin
   story-level tickets and runs grooming (`/tai-groom`): she sequences, creates and promotes
   tickets with the human. She does not start another persona's work; a human starts every
   piece of work, with `/tai-work` or `/tai-ready`.
+- **A parked epic stays out of grooming.** An epic carrying the label `icebox` (TAI-370 is the standing one; any epic
+  can be parked, with Stories already under it) is left out of `/tai-groom`, with everything under it, unless its
+  key is given: `/tai-groom <EPIC-KEY>` lists it like any epic. The label is on the epic only, so a new ticket under it
+  is hidden with no tag of its own. It is not Jira's Flag, which means waiting on an external impediment.
 
 **Concrete kickoff commands:** `/tai-work <KEY>` loads/refreshes that unit of
 work's briefing (§3.6) and invokes its owning persona directly. `/tai-ready [persona]`

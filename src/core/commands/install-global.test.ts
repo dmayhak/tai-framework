@@ -129,6 +129,13 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(ready.content, /git-pr review-prep/);
     });
 
+    test("tai-groom says a parked icebox epic is left out unless its key is given, on both hosts (TAI-552)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const groom = files.find((f) => f.relativePath === `${host}/skills/tai-groom/SKILL.md`)!;
+            assert.match(groom.content, /epic labelled `icebox`/);
+        }
+    });
+
     test("tai-ready maps a Ready to verify number to /tai-verify, on both hosts (TAI-548)", () => {
         for (const host of [".claude", ".gemini"]) {
             const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!;

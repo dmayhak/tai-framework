@@ -149,3 +149,7 @@ The Architect is never added to it, even when `ArchitectureDesign` was used duri
 - Writing for reading: TAI-475 and TAI-504.
 - The hand-off comment: TAI-489.
 - Unblocking human-gated work: TAI-389/TAI-395.
+
+## A parked epic stays out of grooming (TAI-552)
+
+The Icebox epic (TAI-370) holds real tickets that are deliberately unscheduled, and listing them in every briefing buried the candidates worth promoting. The label sits on the epic, not on each ticket: a ticket added later under it is hidden with nothing to remember, and any epic with Stories already under it can be parked the same way. Jira's Flag was not reused because it means waiting on an external impediment (section 4); an Icebox status would change the Jira workflow and the shared Status enum.

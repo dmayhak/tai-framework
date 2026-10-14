@@ -14,6 +14,8 @@
  * unblocked-but-uncreated Kickoff subtasks shipped as a `/tai-ready` section instead ("Subtasks ready to create"),
  * not a section here.
  *
+ * TAI-552: with no epic key, an epic labelled `icebox` and everything under it is left out of every section.
+ *
  * Sections (d) and (f) have no search filter to lean on (no flagged filter; `updatedSince` only means "since"),
  * so they read every open ticket once, exhaustively, and filter in memory (ADR Consequences).
  */
@@ -66,11 +68,18 @@ export interface GroomingResult {
     readonly needsAssigneeOverflow: number;
     /** TAI-550: In Progress Stories and Bugs whose Dev work is all Done and which have no Verified:/Not verified: comment. */
     readonly readyToVerify: readonly Issue[];
+    /** TAI-552: epics labelled `icebox` that were left out of this briefing (always empty when an epic key was given). */
+    readonly parkedEpics: readonly Issue[];
     readonly staleThresholdDays: number;
 }
 
 /** Story, Bug and Spike are the tickets the readiness check is for (TAI-472, human decision 2026-10-13). */
 const READINESS_TYPES: readonly string[] = [StoryType.Story, StoryType.Bug, StoryType.Spike];
+
+/** TAI-552: an epic carrying this label is parked; grooming leaves it and everything under it out unless asked for by key. */
+export const ICEBOX_LABEL = "icebox";
+export const isParkedEpic = (issue: Issue): boolean =>
+    issue.issueType === "epic" && issue.labels.some((l) => l.toLowerCase() === ICEBOX_LABEL);
 
 export const DEFAULT_STALE_BACKLOG_DAYS = 60;
 export const MAX_NEEDS_ASSIGNEE = 15;
@@ -118,6 +127,19 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         const childKeys = new Set(allOpen.filter((i) => i.parentKey === deps.epicKey).map((i) => i.key as string));
         open = allOpen.filter(
             (i) => i.key === deps.epicKey || i.parentKey === deps.epicKey || (i.parentKey !== undefined && childKeys.has(i.parentKey))
+        );
+    }
+
+    // --- TAI-552: with no epic key, a parked (icebox-labelled) epic, its children and their subtasks are left out ---
+    const parkedEpics: Issue[] = [];
+    if (!deps.epicKey) {
+        parkedEpics.push(...open.filter(isParkedEpic).sort(byKey));
+        const parkedKeys = new Set(parkedEpics.map((e) => e.key as string));
+        const parkedChildKeys = new Set(open.filter((i) => i.parentKey !== undefined && parkedKeys.has(i.parentKey)).map((i) => i.key as string));
+        open = open.filter(
+            (i) =>
+                !parkedKeys.has(i.key) &&
+                !(i.parentKey !== undefined && (parkedKeys.has(i.parentKey) || parkedChildKeys.has(i.parentKey)))
         );
     }
 
@@ -247,6 +269,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         needsAssignee,
         needsAssigneeOverflow: deps.needsAssigneeList ? Math.max(0, needs.length - MAX_NEEDS_ASSIGNEE) : 0,
         readyToVerify,
+        parkedEpics,
         staleThresholdDays,
     };
 }
@@ -265,6 +288,10 @@ export function renderGroomingBriefing(result: GroomingResult): string {
         result.scope ? `Scope: epic ${result.scope} — its children, their subtasks, and the epic itself.` : "Scope: the whole board.",
         "",
     ];
+    if (result.parkedEpics.length > 0) {
+        const named = result.parkedEpics.map((e) => `${e.key} (${e.summary})`).join(", ");
+        out.push(`Left out: parked epics (label \`${ICEBOX_LABEL}\`) and everything under them: ${named}. Run \`groom <EPIC-KEY>\` to groom one.`, "");
+    }
     const section = (n: number, title: string, lines: readonly string[]) => {
         out.push(`## ${n}. ${title}`, "", ...(lines.length > 0 ? lines : ["None."]), "");
     };
