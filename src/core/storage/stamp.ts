@@ -23,7 +23,7 @@ export interface ActingPersona {
     readonly displayName: string;
 }
 
-const STAMP_LINE = /^Posted via the TAI CLI(?: as [^\n]+)?\.$/;
+const STAMP_LINE = /^Posted via the TAI CLI(?: as ([^\n]+))?\.$/;
 
 export function stampLine(persona?: ActingPersona): string {
     if (!persona) return "Posted via the TAI CLI.";
@@ -31,9 +31,16 @@ export function stampLine(persona?: ActingPersona): string {
     return `Posted via the TAI CLI as ${name}.`;
 }
 
+const lastLineOf = (body: string): string => body.trimEnd().split("\n").at(-1)?.trim() ?? "";
+
 /** True if `body` already ends with a stamp line. */
 export function isStamped(body: string): boolean {
-    return STAMP_LINE.test(body.trimEnd().split("\n").at(-1)?.trim() ?? "");
+    return STAMP_LINE.test(lastLineOf(body));
+}
+
+/** The persona a stamped `body` names ("Perry (pm)"), or undefined when it is unstamped or the stamp names none. */
+export function stampedAs(body: string): string | undefined {
+    return STAMP_LINE.exec(lastLineOf(body))?.[1];
 }
 
 /** `body` with the stamp as its last line. A body that already ends with a stamp (a session that
@@ -62,6 +69,19 @@ export function signOffComment(issue: Pick<Issue, "issueType">, target: Status, 
     if (target !== Status.Done) return null;
     if (issue.issueType !== "epic" && !SIGN_OFF_SUBTASKS.has(issue.issueType)) return null;
     return stampComment(`Sign-off: ${SIGN_OFF_LABEL[issue.issueType] ?? issue.issueType} moved to "${Status.Done}" through the TAI CLI.`, persona);
+}
+
+const SIGN_OFF_FIRST_LINE = new RegExp(`^Sign-off: \\S+ moved to "${Status.Done}" through the TAI CLI\\.$`);
+
+/** True if `body` is a comment `signOffComment` left: its first line, and the stamp the CLI always ends it with. A
+ *  hand-typed copy of the wording has no stamp, so it does not count. */
+export function isSignOffComment(body: string): boolean {
+    return SIGN_OFF_FIRST_LINE.test(body.split("\n", 1)[0]?.trim() ?? "") && isStamped(body);
+}
+
+/** The sign-off's name for a ticket type (UAT, EpicReview, DesignReview, Epic); undefined for any other type. */
+export function signOffLabel(issueType: Issue["issueType"]): string | undefined {
+    return SIGN_OFF_LABEL[issueType];
 }
 
 /** The PR comment that accompanies an approve / request-changes decision made through the CLI. */

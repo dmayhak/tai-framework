@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-13 (rev 100). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-14 (rev 101). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -617,6 +617,12 @@ These are settled. Change them deliberately and update this file if you do.
   the command named no persona), and a sign-off made through the CLI leaves a stamped `Sign-off:`
   comment (`storage/stamp.ts`). A comment or sign-off with no stamp was made directly, in the Jira or Bitbucket
   UI. The stamp says only what the CLI knows: it cannot tell an AI session from a human typing the command.
+  The difference is shown, never enforced (`storage/sign-off-provenance.ts`): the `/tai-work` briefing says on a
+  Kickoff, UAT, EpicReview, DesignReview or Epic whether it was signed off through the TAI CLI, directly, or not
+  yet (a Kickoff lists each `Approved:` comment, and counts as direct unless every one is stamped); `/tai-ready`
+  and `/tai-groom` add it to an open row only once something is signed off. They list open work and read no
+  extra tickets, so a sign-off already closed to Done appears in the briefing of its own ticket, not in those
+  lists. PR approvals are not shown: that would be a git-host read per PR.
 - **Writing Jira descriptions and comments.** A ticket description and a comment body are
   both sent as Jira wiki markup, not markdown: a blank line makes a paragraph and `* item` a bullet. They are
   read by people, so write them for reading: a short opening paragraph that says what the ticket is for, a

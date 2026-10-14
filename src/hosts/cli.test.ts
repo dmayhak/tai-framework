@@ -208,6 +208,22 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         assert.doesNotMatch(renderReadyWork({ ...emptyResult, ready: [issue] }), /needs an assignee/);
     });
 
+    it("an In Progress Kickoff, a Ready one and a held one each say how their Approved: comments were made; others say nothing (TAI-500)", () => {
+        const approved = (body: string) => makeIssue({ issueType: StoryType.Kickoff, status: Status.InProgress, comments: [makeComment({ body })] });
+        const inProgress = approved("Approved: ok\n\nPosted via the TAI CLI as Perry (pm).");
+        const out = renderReadyWork({ ...emptyResult, inProgress: [{ issue: { ...inProgress, key: toIssueKey("TAI-2") } }] });
+        assert.match(out, /TAI-2\*\*.*— sign-off: Kickoff approval: .* through the TAI CLI as Perry \(pm\)/);
+
+        const ready = renderReadyWork({ ...emptyResult, ready: [{ ...approved("Approved: ok"), key: toIssueKey("TAI-3"), status: Status.ToDo }] });
+        assert.match(ready, /TAI-3\*\*.*— sign-off: Kickoff approval: .* directly/);
+
+        const held = renderReadyWork({ ...emptyResult, onHold: [{ ...approved("Approved: ok"), key: toIssueKey("TAI-4"), flagged: true }] });
+        assert.match(held, /TAI-4\*\*.*— sign-off: .* directly/);
+
+        const plain = renderReadyWork({ ...emptyResult, ready: [makeIssue({ issueType: SubtaskType.Uat }), makeIssue({ key: toIssueKey("TAI-6"), issueType: StoryType.Story })] });
+        assert.doesNotMatch(plain, /sign-off/);
+    });
+
     it("has no On hold section when nothing is held", () => {
         assert.ok(!renderReadyWork({ ...emptyResult, ready: [makeIssue()] }).includes("On hold"));
     });

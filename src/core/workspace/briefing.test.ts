@@ -100,6 +100,28 @@ describe("generateBriefing", () => {
         });
     });
 
+    it("shows how a sign-off was made on the ticket and its parent, whichever classification it is (TAI-500)", async () => {
+        await withTempDir(async (dir) => {
+            const stamped = { id: "c1", author: { id: "x", displayName: "del" }, body: "Approved: ok\n\nPosted via the TAI CLI as Perry (pm).", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" } as never;
+            const parent = issue({ key: toIssueKey("TAI-100"), issueType: StoryType.Kickoff, summary: "The Kickoff", comments: [stamped] });
+            const uat = issue({ issueType: SubtaskType.Uat, status: Status.ToDo, parentKey: toIssueKey("TAI-100") });
+            const tracker = new FakeWorkTracker(new Map([["TAI-1", uat], ["TAI-100", parent]]), new Map()) as unknown as WorkTracker;
+            const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            assert.match(markdown, /Sign-off: UAT not signed off yet/);
+            assert.match(markdown, /Sign-off: Kickoff approval: del through the TAI CLI as Perry \(pm\)/);
+        });
+    });
+
+    it("shows no sign-off line on a ticket that is not a sign-off (TAI-500)", async () => {
+        await withTempDir(async (dir) => {
+            const tracker = new FakeWorkTracker(new Map([["TAI-1", issue()]]), new Map()) as unknown as WorkTracker;
+            const docStore = new FakeDocStore(new Map()) as unknown as DocStore;
+            const { markdown } = await generateBriefing(tracker, docStore, dir, "TAI", toIssueKey("TAI-1"));
+            assert.doesNotMatch(markdown, /Sign-off:/);
+        });
+    });
+
     it("includes the immediate parent and pages linked to EITHER subtask or parent", async () => {
         await withTempDir(async (dir) => {
             const parent = issue({ key: toIssueKey("TAI-100"), issueType: StoryType.Story, summary: "The Story" });
