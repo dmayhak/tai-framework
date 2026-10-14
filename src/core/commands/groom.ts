@@ -140,7 +140,11 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
     if (!deps.epicKey) {
         parkedEpics.push(...open.filter(isParkedEpic).sort(byKey));
         const parkedKeys = new Set(parkedEpics.map((e) => e.key as string));
-        const parkedChildKeys = new Set(open.filter((i) => i.parentKey !== undefined && parkedKeys.has(i.parentKey)).map((i) => i.key as string));
+        // Only a child that is itself still Backlog passes the parking down to its subtasks: a scheduled Story's own
+        // Backlog subtasks (its front-loaded chain) stay listed with it.
+        const parkedChildKeys = new Set(
+            open.filter((i) => i.status === Status.Backlog && i.parentKey !== undefined && parkedKeys.has(i.parentKey)).map((i) => i.key as string)
+        );
         open = open.filter(
             (i) =>
                 !parkedKeys.has(i.key) &&

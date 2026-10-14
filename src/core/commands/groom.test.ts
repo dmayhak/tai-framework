@@ -583,6 +583,19 @@ describe("findGroomingWork: parked (icebox-labelled) epics (TAI-552)", () => {
         });
     });
 
+    it("the Backlog subtask of a scheduled child stays listed, and the one of a Backlog child stays hidden", async () => {
+        await withTracker(async (wt) => {
+            const b = await board(wt);
+            const scheduled = await mk(wt, { issueType: StoryType.Story, parentKey: b.parked.key });
+            await wt.transition(scheduled.key, Status.ToDo);
+            const chain = await mk(wt, { issueType: SubtaskType.Dev, parentKey: scheduled.key });
+            // an unassigned Backlog subtask surfaces in section 8, which needs the ranking callback to be filled
+            const seen = everyKey(await findGroomingWork(deps(wt, { needsAssigneeList: async () => "x" })));
+            assert.ok(seen.includes(chain.key), "the scheduled Story's Backlog subtask is listed");
+            assert.ok(!seen.includes(b.dev.key), "the Backlog Story's subtask stays hidden");
+        });
+    });
+
     it("the briefing names what was left out and how to include it; says nothing when nothing was", () => {
         const base = renderGroomingBriefing({ ...emptyForParked, parkedEpics: [] });
         assert.doesNotMatch(base, /Left out/);
