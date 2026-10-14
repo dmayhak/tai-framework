@@ -84,7 +84,20 @@ const NOT_FOUND = 404;
 // Jira and Confluence report errors in different shapes. Pull a human-readable reason out
 // of whichever we got, and fall back to the raw body rather than inventing a message —
 // this string is journaled verbatim and shown to a human (brief §3.3), so it must be true.
-async function extractReason(res: Response): Promise<string> {
+/** One error entry as readable text. Jira gives a string; Confluence gives an object such as
+ *  `{ message: { translation: "…", args: [] } }` (TAI-497: it printed as `[object Object]`). */
+function describeError(entry: unknown): string {
+    if (typeof entry === "string") return entry;
+    if (entry !== null && typeof entry === "object") {
+        const { message, translation } = entry as { message?: unknown; translation?: unknown };
+        if (typeof message === "string") return message;
+        if (typeof translation === "string") return translation;
+        if (message !== null && typeof message === "object") return describeError(message);
+    }
+    return JSON.stringify(entry);
+}
+
+export async function extractReason(res: Response): Promise<string> {
     let raw: string;
     try {
         raw = await res.text();
@@ -94,14 +107,22 @@ async function extractReason(res: Response): Promise<string> {
     try {
         const body = JSON.parse(raw) as {
             errorMessages?: string[];
-            errors?: Record<string, string>;
+            errors?: unknown;
+            data?: { errors?: unknown };
             message?: string;
         };
-        const parts = [
-            ...(body.errorMessages ?? []),
-            ...Object.entries(body.errors ?? {}).map(([field, msg]) => `${field}: ${msg}`),
-            ...(body.message ? [body.message] : []),
-        ];
+        // `errors` is a field -> message record for Jira, a list of entries for Confluence (also under `data`).
+        const listed = (errors: unknown): string[] =>
+            Array.isArray(errors)
+                ? errors.map(describeError)
+                : errors !== null && typeof errors === "object"
+                  ? Object.entries(errors).map(([field, msg]) => `${field}: ${describeError(msg)}`)
+                  : [];
+        const parts = [...(body.errorMessages ?? []), ...listed(body.errors), ...listed(body.data?.errors)];
+        // Confluence's error LIST is repeated, class-prefixed, in `message`; Jira's `message` can say something of its
+        // own next to its errors, so it is kept there (as before) and dropped only behind a Confluence list.
+        const confluenceList = [body.errors, body.data?.errors].some((e) => Array.isArray(e) && e.length > 0);
+        if (body.message && !confluenceList) parts.push(body.message);
         if (parts.length > 0) return parts.join("; ");
     } catch {
         // Not JSON — fall through and return the raw body.
