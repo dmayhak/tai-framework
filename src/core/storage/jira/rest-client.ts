@@ -119,8 +119,10 @@ export async function extractReason(res: Response): Promise<string> {
                   ? Object.entries(errors).map(([field, msg]) => `${field}: ${describeError(msg)}`)
                   : [];
         const parts = [...(body.errorMessages ?? []), ...listed(body.errors), ...listed(body.data?.errors)];
-        // Confluence repeats the first error in `message`; keep it only when nothing else said anything.
-        if (parts.length === 0 && body.message) parts.push(body.message);
+        // Confluence's error LIST is repeated, class-prefixed, in `message`; Jira's `message` can say something of its
+        // own next to its errors, so it is kept there (as before) and dropped only behind a Confluence list.
+        const confluenceList = [body.errors, body.data?.errors].some((e) => Array.isArray(e) && e.length > 0);
+        if (body.message && !confluenceList) parts.push(body.message);
         if (parts.length > 0) return parts.join("; ");
     } catch {
         // Not JSON — fall through and return the raw body.

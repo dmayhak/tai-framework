@@ -29,6 +29,14 @@ describe("extractReason (TAI-497)", () => {
         assert.doesNotMatch(reason, /object Object/);
     });
 
+    it("keeps a top-level message next to Jira's errors, and drops the one that only repeats a Confluence error list", async () => {
+        assert.equal(await reasonOf({ errorMessages: ["Issue does not exist"], message: "Not Found" }, 404), "Issue does not exist; Not Found");
+        assert.equal(
+            await reasonOf({ errors: [{ message: "A page with this title already exists" }], message: "BadRequestException: A page with this title already exists" }),
+            "A page with this title already exists"
+        );
+    });
+
     it("falls back to the message, then to the raw body", async () => {
         assert.equal(await reasonOf({ message: "Forbidden" }, 403), "Forbidden");
         assert.equal(await reasonOf("plain text body", 500), "plain text body");

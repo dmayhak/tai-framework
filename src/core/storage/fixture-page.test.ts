@@ -28,6 +28,16 @@ describe("ensureFixturePage (TAI-497)", () => {
         });
     });
 
+    it("leaves a page that already says what the case needs untouched: no write, so nothing to restore or to lose if the run dies", async () => {
+        await withDocStore(async (docStore) => {
+            const existing = await docStore.createPage({ spaceKey: "TAI", title: "Persona Roster", content: "same table" });
+            const fixture = await ensureFixturePage(docStore, "TAI", "Persona Roster", "same table\n");
+            assert.equal(fixture.page.id, existing.id);
+            assert.equal(fixture.createdId, null);
+            assert.equal((await docStore.getPage({ id: existing.id }))?.updatedAt, existing.updatedAt, "not written");
+        });
+    });
+
     it("reuses an existing page instead of creating a duplicate, and puts its own content back, run after run", async () => {
         await withDocStore(async (docStore) => {
             const existing = await docStore.createPage({ spaceKey: "TAI", title: "Persona Roster", content: "left from an earlier run" });
