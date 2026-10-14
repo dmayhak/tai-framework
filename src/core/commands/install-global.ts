@@ -142,8 +142,11 @@ function readySkillBody(taiHome: string): string {
         "at the required approval count AND CI-green. Land it with `git-pr merge <ISSUE-KEY> " +
         "<REPO>`, not `/tai-work` — but approval does not finish a PR (TAI-382): first run " +
         "`git-pr comments <REPO>` and read every comment, per `tai-pr`'s skill.\n\n" +
+        "- **Ready to verify** (TAI-548) — an In Progress Story or Bug whose `Dev` subtasks are all Done and " +
+        "which has no `Verified:`/`Not verified:` comment (the same ones marked \"⚠️ not verified\" under In " +
+        "Progress). Picking this line's number means `/tai-verify <KEY>`, not `/tai-work`.\n\n" +
         "Present this list to the human AS-IS — every actionable line above (In Progress, Ready " +
-        "Work, and all three PR sections) is already numbered with ONE shared counter (TAI-182), " +
+        "Work, Ready to verify, and all three PR sections) is already numbered with ONE shared counter (TAI-182), " +
         "so don't renumber or reformat it yourself.\n\n" +
         "**Presenting this list is the entire, complete output of a `tai-ready` invocation — " +
         "TAI-215 (found live, 2026-08-26, in `tai-pr`'s own equivalent listing step — same " +
@@ -159,8 +162,8 @@ function readySkillBody(taiHome: string): string {
         "position in this shared numbering) and take the ACTION that section describes — " +
         "`/tai-work <KEY>` for an In Progress OR a Ready Work line (same action either way — " +
         "resume vs. start is `/tai-work`'s own concern, not this list's), the real review flow " +
-        "above for a \"PRs ready for your review\" line, `git-pr merge` for a \"ready to merge\" " +
-        "line. A number with no corresponding line, or any ambiguity about which line it means, " +
+        "above for a \"PRs ready for your review\" line, `/tai-verify <KEY>` for a \"Ready to verify\" " +
+        "line, `git-pr merge` for a \"ready to merge\" line. A number with no corresponding line, or any ambiguity about which line it means, " +
         "is a re-ask, not a guess."
     );
 }

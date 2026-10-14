@@ -820,7 +820,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote})${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}${result.notVerified.has(c.issue.key) ? ` ⚠️ not verified -- run \`verify ${c.issue.key}\` before closing` : ""}${signOffRowNote(c.issue)}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote})${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}${result.notVerified.has(c.issue.key) ? " ⚠️ not verified" : ""}${signOffRowNote(c.issue)}`
             );
             actionableCount++;
         };
@@ -898,6 +898,16 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             actionableCount++;
         }
         lines.push("", "_Unflag with `issue update <KEY> flagged=false` once the impediment is gone; it returns to Ready Work._");
+    }
+    // TAI-548: a Story or Bug whose Dev work is done and which has no Verified:/Not verified: comment gets its own
+    // numbered action (like the PR sections below), so picking its number loads Tessa instead of the PM.
+    const toVerify = result.inProgress.map((c) => c.issue).filter((issue) => result.notVerified.has(issue.key));
+    if (toVerify.length > 0) {
+        lines.push("", "## Ready to verify", "");
+        for (const issue of toVerify) {
+            lines.push(`${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} — verify it with \`/tai-verify ${issue.key}\``);
+            actionableCount++;
+        }
     }
     if (result.readyToReview.length > 0) {
         lines.push("", "## PRs ready for your review", "");

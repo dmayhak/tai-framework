@@ -263,12 +263,42 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         assert.ok(!out.includes("On hold"));
     });
 
-    it("an In Progress Story that is not verified carries the warning and names the command; a verified one does not (TAI-546)", () => {
+    it("an In Progress Story that is not verified carries a short marker; a verified one does not (TAI-546, TAI-548)", () => {
         const story = makeIssue({ status: Status.InProgress, issueType: StoryType.Story });
         const flagged = renderReadyWork({ ...emptyResult, inProgress: [{ issue: story }], notVerified: new Set<IssueKey>([story.key]) });
-        assert.match(flagged, new RegExp(`not verified -- run \\\`verify ${story.key}\\\` before closing`));
+        assert.match(flagged, /\(persona: [^)]*\) ⚠️ not verified\s*$/m);
+        assert.doesNotMatch(flagged, /run `verify/);
         const plain = renderReadyWork({ ...emptyResult, inProgress: [{ issue: story }] });
         assert.ok(!plain.includes("not verified"));
+    });
+
+    it("lists a not-verified Story under a numbered Ready to verify section that names /tai-verify (TAI-548)", () => {
+        const story = makeIssue({ key: toIssueKey("TAI-7"), summary: "Finish the thing", status: Status.InProgress, issueType: StoryType.Story });
+        const out = renderReadyWork({ ...emptyResult, inProgress: [{ issue: story }], notVerified: new Set<IssueKey>([story.key]) });
+        assert.match(out, /^## Ready to verify$/m);
+        assert.match(out, /^2\. \*\*TAI-7\*\* \[story\] Finish the thing — verify it with `\/tai-verify TAI-7`$/m);
+    });
+
+    it("has no Ready to verify section when nothing is not verified, and counts only the not-verified ones (TAI-548)", () => {
+        const done = makeIssue({ key: toIssueKey("TAI-7"), status: Status.InProgress, issueType: StoryType.Story });
+        const other = makeIssue({ key: toIssueKey("TAI-8"), status: Status.InProgress, issueType: StoryType.Story });
+        assert.ok(!renderReadyWork({ ...emptyResult, inProgress: [{ issue: done }] }).includes("Ready to verify"));
+        const out = renderReadyWork({
+            ...emptyResult,
+            inProgress: [{ issue: done }, { issue: other }],
+            notVerified: new Set<IssueKey>([other.key]),
+        });
+        assert.match(out, /tai-verify TAI-8`/);
+        assert.doesNotMatch(out, /tai-verify TAI-7`/);
+    });
+
+    it("Ready to verify shares one counter with the other sections: it continues after Ready Work and before the PR sections (TAI-548)", () => {
+        const story = makeIssue({ key: toIssueKey("TAI-7"), status: Status.InProgress, issueType: StoryType.Story });
+        const ready = makeIssue({ key: toIssueKey("TAI-9"), status: Status.ToDo });
+        const out = renderReadyWork({ ...emptyResult, inProgress: [{ issue: story }], ready: [ready], notVerified: new Set<IssueKey>([story.key]) });
+        assert.match(out, /^1\. \*\*TAI-7\*\*.*not verified$/m);
+        assert.match(out, /^2\. \*\*TAI-9\*\*/m);
+        assert.match(out, /^3\. \*\*TAI-7\*\* .*tai-verify/m);
     });
 
     it("an In Progress line carries no local-history note (TAI-490: nothing wrote the file it came from)", () => {

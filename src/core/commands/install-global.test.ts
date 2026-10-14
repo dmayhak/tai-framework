@@ -129,6 +129,14 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(ready.content, /git-pr review-prep/);
     });
 
+    test("tai-ready maps a Ready to verify number to /tai-verify, on both hosts (TAI-548)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!;
+            assert.match(ready.content, /\*\*Ready to verify\*\*/);
+            assert.match(ready.content, /`\/tai-verify <KEY>` for a "Ready to verify" line/);
+        }
+    });
+
     test("skill descriptions are current: tai-pr no longer names the retired CodeReview subtask, tai-init no longer says 'eventually' (TAI-435)", () => {
         // The whole frontmatter shape, anchored: name, then exactly one description line, then the closing rule.
         // (A bare /^description: (.*)$/m can never see a newline, so it could not catch a broken description.)
