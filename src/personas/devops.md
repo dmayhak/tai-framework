@@ -33,9 +33,6 @@ permissions:
   cannotApprove:
     - own-output                    # hard rule, brief §3.4 / §4 — no self-certification
 
-checkpoints:
-  humanSignOffDefault: true       # brief §3.4: a human signs off work
-
 confluenceOutputs:
   - type: deploy-runbook
   - type: infra-notes

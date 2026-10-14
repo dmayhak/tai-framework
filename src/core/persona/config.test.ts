@@ -121,8 +121,6 @@ permissions:
     - Story.implementationNotes
   cannotApprove:
     - own-output
-checkpoints:
-  humanSignOffDefault: true
 confluenceOutputs:
   - type: implementation-notes
 ---
@@ -143,7 +141,7 @@ describe("parseBuiltinPersonaFile", () => {
             { kind: "subtask", subtaskType: SubtaskType.SpikeTask },
         ]);
         assert.deepEqual(config.permissions.cannotApprove, ["own-output"]);
-        assert.equal(config.checkpoints.humanSignOffDefault, true);
+        assert.deepEqual(config.checkpoints, { extra: {} });
         assert.deepEqual(config.confluenceOutputs, ["implementation-notes"]);
         assert.match(config.prompt, /Dario is the team's Developer\./);
     });
@@ -156,9 +154,21 @@ describe("parseBuiltinPersonaFile", () => {
         assert.throws(() => parseBuiltinPersonaFile("---\ndisplayName: X\n---\nbody"));
     });
 
-    it("defaults humanSignOffDefault to true (the brief §3.4 default) when absent", () => {
-        const config = parseBuiltinPersonaFile("---\nid: x\ncheckpoints: {}\n---\nbody");
-        assert.equal(config.checkpoints.humanSignOffDefault, true);
+    it("loads an older persona file that still carries the retired humanSignOffDefault and alwaysHumanGated keys, and the keys have no effect (TAI-531)", () => {
+        const old = parseBuiltinPersonaFile(
+            "---\nid: x\ncheckpoints:\n  humanSignOffDefault: false\n  alwaysHumanGated:\n    - Subtask:UAT\n---\nbody"
+        );
+        const bare = parseBuiltinPersonaFile("---\nid: x\n---\nbody");
+        assert.deepEqual(old.permissions, bare.permissions);
+        assert.deepEqual(old.confluenceOutputs, bare.confluenceOutputs);
+        assert.deepEqual(mergePersonaConfig(old).permissions.cannotApprove, bare.permissions.cannotApprove);
+    });
+
+    it("an override page row that still carries the retired key loads, and cannotApprove is still taken from the base (TAI-531)", () => {
+        const page = "### developer\n\n```yaml\ncheckpoints:\n  humanSignOffDefault: false\npermissions:\n  cannotApprove: []\n```";
+        const overrides = parsePersonasOverridePage(page);
+        const merged = mergePersonaConfig(parseBuiltinPersonaFile(FIXTURE_MD), overrides.get("developer"));
+        assert.deepEqual(merged.permissions.cannotApprove, ["own-output"]);
     });
 
     it("accepts confluenceOutputs written as a plain string list, not just {type: ...} objects", () => {
@@ -439,8 +449,6 @@ permissions:
   complete:
     - Subtask:Deploy
   update: []
-checkpoints:
-  humanSignOffDefault: true
 confluenceOutputs: []
 \`\`\`
 `;
@@ -569,13 +577,11 @@ describe("mergePersonaConfig", () => {
                 gitHost: [],
                 cannotApprove: [], // an override attempting to loosen the hard rule
             },
-            checkpoints: { humanSignOffDefault: false, extra: {} }, // attempting to loosen the other hard rule
         });
         // The override's own create grant DID apply...
         assert.deepEqual(merged.permissions.create, [{ kind: "subtask", subtaskType: SubtaskType.Database }]);
-        // ...but cannotApprove and humanSignOffDefault were NOT loosened — carried from base.
+        // ...but cannotApprove was NOT loosened — carried from base.
         assert.deepEqual(merged.permissions.cannotApprove, ["own-output"]);
-        assert.equal(merged.checkpoints.humanSignOffDefault, true);
     });
 
     it("an extension unions grants additively and never removes a base grant", () => {
@@ -601,19 +607,17 @@ describe("mergePersonaConfig", () => {
         assert.match(merged.prompt, /Team-specific note\./);
     });
 
-    it("an extension cannot loosen cannotApprove or humanSignOffDefault (no field to even carry them)", () => {
+    it("an extension cannot loosen cannotApprove (no field to even carry it)", () => {
         const merged = mergePersonaConfig(base, undefined, {
             permissions: { propose: [], create: [], workOn: [], complete: [], approve: [], gitHost: [] },
             prose: "",
         });
         assert.deepEqual(merged.permissions.cannotApprove, ["own-output"]);
-        assert.equal(merged.checkpoints.humanSignOffDefault, true);
     });
 
     it("a user-added persona (emptyPersonaShell base) still gets the safe hard-rule defaults", () => {
         const shell = emptyPersonaShell("release-manager", "Remy");
         assert.deepEqual(shell.permissions.cannotApprove, ["own-output"]);
-        assert.equal(shell.checkpoints.humanSignOffDefault, true);
         const merged = mergePersonaConfig(shell, {
             id: "release-manager",
             displayName: "Remy",
