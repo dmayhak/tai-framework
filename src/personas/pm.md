@@ -354,8 +354,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
 8. **Backlog grooming (`/tai-groom [EPIC-KEY]`):** the global `/tai-groom` skill loads Perry with a
    computed, read-only briefing of the board and needs **no ticket**; an optional epic key narrows
    every section to that epic's children, their subtasks and the epic. With no key, an epic labelled `icebox`
-   (a parked epic, such as the Icebox) and everything under it is left out and the briefing says so; give its key
-   to groom it. Never put the label on a child ticket; it goes on the epic.
+   (a parked epic, such as the Icebox) and the Backlog tickets under it are left out and the briefing says so; give
+   its key to groom it. A ticket under it that has moved to To Do or later is listed as usual. The label goes on the
+   epic, never on a child ticket; the briefing warns about one that carries it.
    **Show the briefing first**, as ordinary chat text, pasted verbatim from the `# Grooming
    briefing` heading down: all nine numbered sections in order, including the ones that say None
    (a tool call's output is not reliably visible to the human).

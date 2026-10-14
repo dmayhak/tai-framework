@@ -395,9 +395,10 @@ pace choice); `personas/analyst.md`'s Kickoff discovery, decomposition and refin
   tickets with the human. She does not start another persona's work; a human starts every
   piece of work, with `/tai-work` or `/tai-ready`.
 - **A parked epic stays out of grooming.** An epic carrying the label `icebox` (TAI-370 is the standing one; any epic
-  can be parked, with Stories already under it) is left out of `/tai-groom`, with everything under it, unless its
-  key is given: `/tai-groom <EPIC-KEY>` lists it like any epic. The label is on the epic only, so a new ticket under it
-  is hidden with no tag of its own. It is not Jira's Flag, which means waiting on an external impediment.
+  can be parked, with Stories already under it) is left out of `/tai-groom`, with the Backlog tickets under it, unless its
+  key is given: `/tai-groom <EPIC-KEY>` lists it like any epic. A ticket under it that has moved to To Do or later is
+  still listed, since someone scheduled it. The label is on the epic only, so a new ticket under it is hidden with no tag
+  of its own; the briefing warns about a non-epic ticket that carries the label, which does nothing. It is not Jira's Flag, which means waiting on an external impediment.
 
 **Concrete kickoff commands:** `/tai-work <KEY>` loads/refreshes that unit of
 work's briefing (§3.6) and invokes its owning persona directly. `/tai-ready [persona]`

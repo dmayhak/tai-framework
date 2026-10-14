@@ -553,7 +553,7 @@ function groomSkillBody(taiHome: string): string {
         "Run this and read its full output. It takes an optional epic key: if one was given for this invocation, pass " +
         "it as the one argument (it narrows every section to that epic's children, their subtasks and the epic itself); " +
         "otherwise run with no argument for the whole board. With no key, an epic labelled `icebox` (a parked epic) and " +
-        "everything under it is left out and the briefing says so; its own key grooms it:\n\n" +
+        "the Backlog tickets under it are left out and the briefing says so (a warning names any non-epic ticket carrying the label); its own key grooms it:\n\n" +
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts groom [EPIC-KEY]\n` +
         "```\n\n" +

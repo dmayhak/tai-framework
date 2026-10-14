@@ -329,6 +329,7 @@ describe("renderGroomingBriefing (TAI-395)", () => {
         needsAssigneeOverflow: 0,
         readyToVerify: [],
         parkedEpics: [],
+        misplacedIceboxLabels: [],
         staleThresholdDays: 60,
     };
 
@@ -492,6 +493,7 @@ describe("findGroomingWork: parked (icebox-labelled) epics (TAI-552)", () => {
         needsAssignee: [],
         needsAssigneeOverflow: 0,
         readyToVerify: [],
+        misplacedIceboxLabels: [],
         staleThresholdDays: 60,
     };
     // A parked epic with a Story, that Story's Dev subtask and a Kickoff, plus a normal epic with one Story.
@@ -548,11 +550,36 @@ describe("findGroomingWork: parked (icebox-labelled) epics (TAI-552)", () => {
         });
     });
 
-    it("the label counts on the epic only: a Story labelled icebox under a normal epic is not hidden", async () => {
+    it("the label counts on the epic only: a Story labelled icebox under a normal epic is not hidden, and the result names it", async () => {
         await withTracker(async (wt) => {
             const epic = await mk(wt, { issueType: "epic" });
-            const story = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, labels: ["icebox"] });
-            assert.ok(everyKey(await findGroomingWork(deps(wt))).includes(story.key));
+            const story = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, labels: ["Icebox"] });
+            const result = await findGroomingWork(deps(wt));
+            assert.ok(everyKey(result).includes(story.key));
+            assert.deepEqual(keys(result.misplacedIceboxLabels), [story.key]);
+        });
+    });
+
+    it("an epic labelled icebox is not a misplaced label, and the briefing warns about a ticket that is", () => {
+        const warned = renderGroomingBriefing({ ...emptyForParked, parkedEpics: [], misplacedIceboxLabels: [{ key: "TAI-7" } as never] });
+        assert.match(warned, /^⚠️ The `icebox` label only works on an epic; it does nothing on: TAI-7\. Move the label to the epic\.$/m);
+        assert.doesNotMatch(renderGroomingBriefing({ ...emptyForParked, parkedEpics: [] }), /only works on an epic/);
+    });
+
+    it("a ticket under a parked epic that has been scheduled (To Do or later) is still listed; only Backlog ones are hidden", async () => {
+        await withTracker(async (wt) => {
+            const b = await board(wt);
+            const started = await mk(wt, { issueType: StoryType.Story, parentKey: b.parked.key, assignee: ME });
+            assert.ok((await wt.transition(started.key, Status.InProgress)).ok);
+            const flaggedToDo = await mk(wt, { issueType: StoryType.Story, parentKey: b.parked.key });
+            await wt.transition(flaggedToDo.key, Status.ToDo);
+            await wt.updateIssue(flaggedToDo.key, { flagged: true });
+            const result = await findGroomingWork(deps(wt));
+            const seen = everyKey(result);
+            assert.ok(seen.includes(flaggedToDo.key), "the flagged To Do child is listed");
+            assert.ok(!seen.includes(b.story.key) && !seen.includes(b.kickoff.key), "the Backlog children stay hidden");
+            assert.ok(!seen.includes(b.parked.key), "the parked epic itself stays hidden");
+            assert.ok(result.readyToVerify.every((i) => i.key !== b.story.key));
         });
     });
 
@@ -561,6 +588,6 @@ describe("findGroomingWork: parked (icebox-labelled) epics (TAI-552)", () => {
         assert.doesNotMatch(base, /Left out/);
         const parked = { key: "TAI-370", summary: "Icebox" } as never;
         const out = renderGroomingBriefing({ ...emptyForParked, parkedEpics: [parked] });
-        assert.match(out, /^Left out: parked epics \(label `icebox`\) and everything under them: TAI-370 \(Icebox\)\. Run `groom <EPIC-KEY>` to groom one\.$/m);
+        assert.match(out, /^Left out: parked epics \(label `icebox`\) and the Backlog tickets under them: TAI-370 \(Icebox\)\. Run `groom <EPIC-KEY>` to groom one\.$/m);
     });
 });

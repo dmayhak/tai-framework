@@ -14,7 +14,7 @@
  * unblocked-but-uncreated Kickoff subtasks shipped as a `/tai-ready` section instead ("Subtasks ready to create"),
  * not a section here.
  *
- * TAI-552: with no epic key, an epic labelled `icebox` and everything under it is left out of every section.
+ * TAI-552: with no epic key, an epic labelled `icebox` and the Backlog tickets under it are left out of every section.
  *
  * Sections (d) and (f) have no search filter to lean on (no flagged filter; `updatedSince` only means "since"),
  * so they read every open ticket once, exhaustively, and filter in memory (ADR Consequences).
@@ -70,16 +70,18 @@ export interface GroomingResult {
     readonly readyToVerify: readonly Issue[];
     /** TAI-552: epics labelled `icebox` that were left out of this briefing (always empty when an epic key was given). */
     readonly parkedEpics: readonly Issue[];
+    /** TAI-552: open tickets that are not epics but carry the `icebox` label, which only means something on an epic. */
+    readonly misplacedIceboxLabels: readonly Issue[];
     readonly staleThresholdDays: number;
 }
 
 /** Story, Bug and Spike are the tickets the readiness check is for (TAI-472, human decision 2026-10-13). */
 const READINESS_TYPES: readonly string[] = [StoryType.Story, StoryType.Bug, StoryType.Spike];
 
-/** TAI-552: an epic carrying this label is parked; grooming leaves it and everything under it out unless asked for by key. */
+/** TAI-552: an epic carrying this label is parked; grooming leaves it and the Backlog tickets under it out unless asked for by key. */
 export const ICEBOX_LABEL = "icebox";
-export const isParkedEpic = (issue: Issue): boolean =>
-    issue.issueType === "epic" && issue.labels.some((l) => l.toLowerCase() === ICEBOX_LABEL);
+const hasIceboxLabel = (issue: Issue): boolean => issue.labels.some((l) => l.toLowerCase() === ICEBOX_LABEL);
+export const isParkedEpic = (issue: Issue): boolean => issue.issueType === "epic" && hasIceboxLabel(issue);
 
 export const DEFAULT_STALE_BACKLOG_DAYS = 60;
 export const MAX_NEEDS_ASSIGNEE = 15;
@@ -130,7 +132,10 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         );
     }
 
-    // --- TAI-552: with no epic key, a parked (icebox-labelled) epic, its children and their subtasks are left out ---
+    // --- TAI-552: with no epic key, a parked (icebox-labelled) epic is left out, and so are the Backlog tickets under it
+    // (children and their subtasks). Anything under it that has been scheduled (To Do or later) stays: someone moved it on
+    // purpose or by mistake, and hiding started work from the board view would be worse than a cluttered list. ---
+    const misplacedIceboxLabels = open.filter((i) => i.issueType !== "epic" && hasIceboxLabel(i)).sort(byKey);
     const parkedEpics: Issue[] = [];
     if (!deps.epicKey) {
         parkedEpics.push(...open.filter(isParkedEpic).sort(byKey));
@@ -139,7 +144,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         open = open.filter(
             (i) =>
                 !parkedKeys.has(i.key) &&
-                !(i.parentKey !== undefined && (parkedKeys.has(i.parentKey) || parkedChildKeys.has(i.parentKey)))
+                !(i.status === Status.Backlog && i.parentKey !== undefined && (parkedKeys.has(i.parentKey) || parkedChildKeys.has(i.parentKey)))
         );
     }
 
@@ -270,6 +275,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         needsAssigneeOverflow: deps.needsAssigneeList ? Math.max(0, needs.length - MAX_NEEDS_ASSIGNEE) : 0,
         readyToVerify,
         parkedEpics,
+        misplacedIceboxLabels,
         staleThresholdDays,
     };
 }
@@ -290,7 +296,11 @@ export function renderGroomingBriefing(result: GroomingResult): string {
     ];
     if (result.parkedEpics.length > 0) {
         const named = result.parkedEpics.map((e) => `${e.key} (${e.summary})`).join(", ");
-        out.push(`Left out: parked epics (label \`${ICEBOX_LABEL}\`) and everything under them: ${named}. Run \`groom <EPIC-KEY>\` to groom one.`, "");
+        out.push(`Left out: parked epics (label \`${ICEBOX_LABEL}\`) and the Backlog tickets under them: ${named}. Run \`groom <EPIC-KEY>\` to groom one.`, "");
+    }
+    if (result.misplacedIceboxLabels.length > 0) {
+        const named = result.misplacedIceboxLabels.map((i) => i.key).join(", ");
+        out.push(`⚠️ The \`${ICEBOX_LABEL}\` label only works on an epic; it does nothing on: ${named}. Move the label to the epic.`, "");
     }
     const section = (n: number, title: string, lines: readonly string[]) => {
         out.push(`## ${n}. ${title}`, "", ...(lines.length > 0 ? lines : ["None."]), "");
