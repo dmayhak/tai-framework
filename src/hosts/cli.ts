@@ -132,6 +132,7 @@ import {
     writeProjectContextTemplate,
     type ProjectContextStatus,
 } from "../core/workspace/project-context.js";
+import { signOffRowNote } from "../core/storage/sign-off-provenance.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
@@ -819,7 +820,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";
             lines.push(
                 `${counter.next()}. **${c.issue.key}** [${c.issue.issueType}] ${c.issue.summary} ` +
-                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote})${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}${result.notVerified.has(c.issue.key) ? ` ⚠️ not verified -- run \`verify ${c.issue.key}\` before closing` : ""}`
+                    `(persona: ${c.issue.persona ?? "none"}, priority: ${c.issue.priority ?? "none"}${parentNote})${rebaseFlag}${blockedFlag(c.issue.key)}${isFlagged(c.issue) ? ` ${FLAG_MARKER}` : ""}${result.notVerified.has(c.issue.key) ? ` ⚠️ not verified -- run \`verify ${c.issue.key}\` before closing` : ""}${signOffRowNote(c.issue)}`
             );
             actionableCount++;
         };
@@ -851,7 +852,8 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
                     `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote})${blockedFlag(issue.key)}` +
-                    assigneeSuggestionNote(issue.key)
+                    assigneeSuggestionNote(issue.key) +
+                    signOffRowNote(issue)
             );
             actionableCount++;
         };
@@ -890,7 +892,8 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} ` +
                     `(persona: ${issue.persona ?? "none"}, priority: ${issue.priority ?? "none"}${parentNote}) ${FLAG_MARKER}` +
-                    (reason ? ` — latest comment: ${reason}` : "")
+                    (reason ? ` — latest comment: ${reason}` : "") +
+                    signOffRowNote(issue)
             );
             actionableCount++;
         }

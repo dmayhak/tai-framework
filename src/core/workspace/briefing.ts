@@ -43,6 +43,7 @@ import { refreshPage } from "../cache/page-cache.js";
 import { snapshotLinkedKeys } from "../cache/links-snapshot.js";
 import { briefingPath } from "../cache/paths.js";
 import { latestHandoff } from "../storage/handoff.js";
+import { renderSignOffProvenance, signOffProvenance } from "../storage/sign-off-provenance.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -375,7 +376,8 @@ function stateLine(issue: Issue): string {
 
 /** The subtask or its parent: state, links, description, the latest hand-off, comments. */
 function renderWorkedIssue(issue: Issue, label: string, links: readonly RemoteLink[], maxComments: number): string {
-    const parts = [`## ${label}: ${issue.key} — ${oneLine(issue.summary)}\n${stateLine(issue)}`];
+    const signOff = signOffProvenance(issue);
+    const parts = [`## ${label}: ${issue.key} — ${oneLine(issue.summary)}\n${stateLine(issue)}${signOff ? `\nSign-off: ${renderSignOffProvenance(signOff)}` : ""}`];
     if (links.length > 0) {
         parts.push(["Links:", ...links.map((link) => `- ${oneLine(link.title)} — ${link.url}`)].join("\n"));
     }

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { parseCommentMarkers } from "./comment-markers.js";
 import type { Comment } from "./interface.js";
-import { isStamped, reviewDecisionComment, signOffComment, stampComment, stampLine } from "./stamp.js";
+import { isSignOffComment, isStamped, reviewDecisionComment, signOffComment, stampComment, stampedAs, stampLine } from "./stamp.js";
 
 const perry = { id: "pm", displayName: "Perry" };
 
@@ -76,5 +76,24 @@ describe("reviewDecisionComment", () => {
 
     it("records a decision that came with no note", () => {
         assert.equal(reviewDecisionComment("requestChanges", undefined), "Changes requested through the TAI CLI.\n\nPosted via the TAI CLI.");
+    });
+});
+
+describe("stampedAs and isSignOffComment (TAI-500)", () => {
+    it("stampedAs reads the persona off a stamp, and nothing off an unstamped or persona-less one", () => {
+        assert.equal(stampedAs(stampComment("x", perry)), "Perry (pm)");
+        assert.equal(stampedAs(stampComment("x")), undefined);
+        assert.equal(stampedAs("x"), undefined);
+    });
+
+    it("isSignOffComment is true for what signOffComment writes, with or without a persona", () => {
+        assert.equal(isSignOffComment(signOffComment({ issueType: "epic" }, Status.Done, perry)!), true);
+        assert.equal(isSignOffComment(signOffComment({ issueType: SubtaskType.Uat }, Status.Done)!), true);
+    });
+
+    it("isSignOffComment is false for the same wording typed by hand (no stamp) and for other comments", () => {
+        assert.equal(isSignOffComment('Sign-off: UAT moved to "Done" through the TAI CLI.'), false);
+        assert.equal(isSignOffComment(stampComment("Accepted.", perry)), false);
+        assert.equal(isSignOffComment(stampComment('Note: Sign-off: UAT moved to "Done" through the TAI CLI.', perry)), false);
     });
 });

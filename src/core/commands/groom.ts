@@ -19,6 +19,7 @@
 
 import { DependencyRelation, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { findClarificationQuestions } from "../storage/review-gate.js";
+import { signOffRowNote } from "../storage/sign-off-provenance.js";
 import { ACCEPTANCE_CRITERION_LINE } from "../storage/verification.js";
 import { isFlagged, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue, takeUnreadableIssues, type UnreadableIssue } from "../storage/unreadable-issues.js";
@@ -245,7 +246,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
 
 function row(issue: Issue, detail = "", flagged = isFlagged(issue)): string {
     const priority = issue.priority ? `, ${issue.priority}` : "";
-    return `- **${issue.key}** [${issue.issueType}] ${issue.summary} (${issue.status}${priority})${flagged ? " 🚩" : ""}${detail}`;
+    return `- **${issue.key}** [${issue.issueType}] ${issue.summary} (${issue.status}${priority})${flagged ? " 🚩" : ""}${detail}${signOffRowNote(issue)}`;
 }
 
 export function renderGroomingBriefing(result: GroomingResult): string {

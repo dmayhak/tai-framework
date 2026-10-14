@@ -343,6 +343,22 @@ describe("renderGroomingBriefing (TAI-395)", () => {
         assert.match(out, /propose.*batch.*confirm/is);
     });
 
+    it("a Kickoff row says how its Approved: comments were made, and a row with no sign-off says nothing (TAI-500)", () => {
+        const kickoff = (comments: unknown[]) =>
+            ({ key: "TAI-9", issueType: "kickoff", status: "In Progress", summary: "Kick", labels: [], comments }) as never;
+        const comment = (body: string) => ({ id: "1", author: { id: "x", displayName: "del" }, body, createdAt: "", updatedAt: "" });
+        const direct = renderGroomingBriefing({ ...empty, flagged: [kickoff([comment("Approved: fine")])] });
+        assert.match(direct, /TAI-9\*\*.*— sign-off: Kickoff approval: del directly/);
+        const viaCli = renderGroomingBriefing({
+            ...empty,
+            flagged: [kickoff([comment("Approved: fine\n\nPosted via the TAI CLI as Perry (pm).")])],
+        });
+        assert.match(viaCli, /— sign-off: Kickoff approval: del through the TAI CLI as Perry \(pm\)/);
+        assert.doesNotMatch(renderGroomingBriefing({ ...empty, flagged: [kickoff([])] }), /sign-off/);
+        const epic = { key: "TAI-1", issueType: "epic", status: "In Progress", summary: "E", labels: [], comments: [] } as never;
+        assert.doesNotMatch(renderGroomingBriefing({ ...empty, idleEpics: [epic] }), /sign-off/);
+    });
+
     it("renders a row per ticket with its key, type, status and the section-specific detail", () => {
         const issue = { key: "TAI-5", issueType: "story", status: "Backlog", summary: "Do a thing", priority: "High", labels: [], comments: [] } as never;
         const out = renderGroomingBriefing({
