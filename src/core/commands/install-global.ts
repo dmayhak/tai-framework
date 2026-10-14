@@ -557,14 +557,14 @@ function groomSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts groom [EPIC-KEY]\n` +
         "```\n\n" +
         "The output starts with a `# Persona: Perry (pm)` heading and Perry's own instructions, then a `---` separator, " +
-        "then the grooming briefing: eight numbered sections (epics with nothing under them, Backlog Kickoff Stories " +
+        "then the grooming briefing: nine numbered sections (epics with nothing under them, Backlog Kickoff Stories " +
         "awaiting sequencing, Backlog tickets with no open blocker (each Story, Bug or Spike with readiness warnings), flagged tickets, approved epics with nothing " +
-        "scheduled, stale Backlog tickets, tickets TAI cannot read, tickets that need an assignee). For the rest of this " +
+        "scheduled, stale Backlog tickets, tickets TAI cannot read, tickets that need an assignee, Stories and Bugs ready to verify — for which the next step is `/tai-verify <KEY>`). For the rest of this " +
         "turn, act as that persona and follow its grooming behavior against the briefing.\n\n" +
         "**Show the briefing first — before any question (TAI-423, found live in Gemini CLI, which asked a question " +
         "with no briefing on screen).** A tool call's own output is not reliably visible to the human as chat (TAI-258), " +
         "so running the command is not showing it. Your reply must contain the briefing as ordinary chat text: paste " +
-        "everything from the `# Grooming briefing` heading down to the end of the briefing, verbatim — all eight " +
+        "everything from the `# Grooming briefing` heading down to the end of the briefing, verbatim — all nine " +
         "numbered sections, in order, including the ones that say None; never trim, reorder or summarize it (the persona " +
         "instructions above that heading are for you, not for the human). Then give " +
         "your proposals as a short numbered list. Do NOT, in this same turn, ask a question with an interactive tool: end " +

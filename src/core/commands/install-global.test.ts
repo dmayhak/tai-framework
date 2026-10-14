@@ -76,7 +76,7 @@ describe("renderGlobalSkillFiles", () => {
         // TAI-423 (found live in Gemini CLI): the briefing is SHOWN before any question, and no question is asked in the same turn
         assert.match(groom.content, /Show the briefing first/i);
         assert.match(groom.content, /ordinary chat text/i);
-        assert.match(groom.content, /all eight numbered sections/i);
+        assert.match(groom.content, /all nine numbered sections/i);
         assert.match(groom.content, /including the ones that say None/i);
         // verbatim, from the heading down (the mechanical rule tai-pr uses), with no compaction loophole
         assert.match(groom.content, /# Grooming briefing/);
@@ -134,6 +134,16 @@ describe("renderGlobalSkillFiles", () => {
             const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!;
             assert.match(ready.content, /\*\*Ready to verify\*\*/);
             assert.match(ready.content, /`\/tai-verify <KEY>` for a "Ready to verify" line/);
+        }
+    });
+
+    test("tai-groom describes nine sections, the ninth being Stories ready to verify with /tai-verify, on both hosts (TAI-550)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const groom = files.find((f) => f.relativePath === `${host}/skills/tai-groom/SKILL.md`)!;
+            assert.match(groom.content, /nine numbered sections/);
+            assert.match(groom.content, /all nine numbered sections/);
+            assert.match(groom.content, /ready to verify[^.]*`\/tai-verify <KEY>`/);
+            assert.doesNotMatch(groom.content, /\beight numbered sections\b/);
         }
     });
 

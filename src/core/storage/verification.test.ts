@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { acceptanceCriteria, hasVerification, isVerification, latestVerification, unverifiedCloseNote } from "./verification.js";
+import { acceptanceCriteria, findNotVerified, hasVerification, isVerification, latestVerification, unverifiedCloseNote } from "./verification.js";
 import { StoryType, SubtaskType } from "../schema/story-schema.js";
 import type { Comment, HumanId } from "./interface.js";
 
@@ -74,5 +74,37 @@ describe("unverifiedCloseNote (TAI-546)", () => {
         for (const issueType of [StoryType.Kickoff, StoryType.Spike, "epic", SubtaskType.Dev] as const) {
             assert.equal(unverifiedCloseNote({ ...base, issueType }), null);
         }
+    });
+});
+
+describe("findNotVerified (TAI-550)", () => {
+    const issue = (key: string, issueType: string, comments: Comment[] = []): never =>
+        ({ key, issueType, status: "In Progress", summary: "s", labels: [], comments }) as never;
+    const dev = (status: string): never => ({ key: "TAI-9", issueType: SubtaskType.Dev, status }) as never;
+    const tracker = (devsByParent: Record<string, never[]>) => ({
+        search: async (q: { parentKey?: string }) => devsByParent[q.parentKey ?? ""] ?? [],
+    });
+
+    it("includes a Story or Bug whose Dev subtasks are all Done (canceled ones ignored) and which has no verification comment", async () => {
+        const got = await findNotVerified(
+            tracker({ "TAI-1": [dev("Done")], "TAI-2": [dev("Done"), dev("Canceled")] }),
+            "TAI",
+            [issue("TAI-1", StoryType.Story), issue("TAI-2", StoryType.Bug)]
+        );
+        assert.deepEqual([...got].sort(), ["TAI-1", "TAI-2"]);
+    });
+
+    it("leaves out a verified one, one with an open Dev subtask, one with no Dev subtask, and other ticket types", async () => {
+        const got = await findNotVerified(
+            tracker({ "TAI-1": [dev("Done")], "TAI-2": [dev("Done"), dev("In Progress")], "TAI-4": [dev("Done")] }),
+            "TAI",
+            [
+                issue("TAI-1", StoryType.Story, [comment("1", "Not verified: 1 of 2 criteria not met")]),
+                issue("TAI-2", StoryType.Story),
+                issue("TAI-3", StoryType.Story),
+                issue("TAI-4", StoryType.Kickoff),
+            ]
+        );
+        assert.deepEqual([...got], []);
     });
 });

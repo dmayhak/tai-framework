@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-14 (rev 102). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-14 (rev 103). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -488,7 +488,8 @@ comments (page-level and inline) — not just Jira; `Skipped:`, `Handoff:` and `
   or `Not verified: M of N criteria not met`, then one bullet per criterion with its verdict and evidence; a
   criterion she could not tell counts as not met. It is a record for a human to read, not a gate: `/tai-ready`
   marks an In Progress Story or Bug whose Dev subtasks are all Done and which has neither comment "not verified"
-  and lists it in its own numbered "Ready to verify" section, where its number means `/tai-verify <KEY>`,
+  and lists it in its own numbered "Ready to verify" section, where its number means `/tai-verify <KEY>` (the
+  grooming briefing's section 9 lists the same set, from one shared function),
   and moving a Story or Bug to Done without one prints a warning, but nothing blocks the merge or the close. A
   later Dev commit does not invalidate an earlier comment; run `verify` again to get a fresh one.
 
