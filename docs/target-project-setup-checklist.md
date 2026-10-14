@@ -263,8 +263,8 @@ Worth setting up now, while you're already thinking about how this project runs:
   as stale; set `TAI_STALE_BACKLOG_DAYS` in `.env` to change that.
 - **Before closing a Story or Bug**, run `/tai-verify <KEY>` (TAI-468): Tessa checks the finished work against the
   Story's numbered `AC-n` criteria and the Dev PR diffs and posts one `Verified:` / `Not verified:` comment.
-  `/tai-ready` marks a Story whose Dev work is done and which has none "not verified", and closing it without
-  one prints a warning; neither blocks anything.
+  `/tai-ready` marks a Story whose Dev work is done and which has none "not verified" and lists it under "Ready to
+  verify", where its number runs `/tai-verify`; closing it without one prints a warning. Neither blocks anything.
 - **A recurring standup**, if this team wants one — same reasoning, same "your calendar,
   not TAI's job" answer.
 
