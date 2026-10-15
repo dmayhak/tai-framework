@@ -15,7 +15,6 @@
  */
 
 import { Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
-import { acceptanceCriteria } from "../storage/verification.js";
 import type { HumanRef, Issue, IssueKey, WorkTracker } from "../storage/interface.js";
 
 export interface CreateSmallDeps {
@@ -53,6 +52,9 @@ export class CreateSmallPartialError extends Error {
     }
 }
 
+/** A line that itself starts with AC-1 (bullet, quote or bold markers allowed), not one that merely mentions it. */
+const AC_1_LINE = /^[\s>*_\-•]*(?:\*\*|__)?AC-1\b/;
+
 const TYPES: Readonly<Record<string, StoryType.Story | StoryType.Bug>> = { story: StoryType.Story, bug: StoryType.Bug };
 
 export async function createSmall(deps: CreateSmallDeps, input: CreateSmallInput): Promise<CreateSmallResult> {
@@ -61,11 +63,20 @@ export async function createSmall(deps: CreateSmallDeps, input: CreateSmallInput
     if (!storyType) {
         throw new Error(`issue create-small makes a story or bug with its Dev subtask, not "${input.type}". Use issue create for anything else.`);
     }
-    if (!acceptanceCriteria(input.description).some((line) => /AC-1\b/.test(line))) {
+    if (!(input.description ?? "").split("\n").some((line) => AC_1_LINE.test(line))) {
         throw new Error(
             "issue create-small needs a description with at least one numbered criterion on a line starting AC-1, " +
                 "so the work can be verified (for example: AC-1: the usage text names the epic key). Nothing was created."
         );
+    }
+
+    // A parent is moved to To Do with its child, which can cascade up: refuse anything that is not an epic before creating.
+    if (input.parentKey) {
+        const parentIssue = await workTracker.getIssue(input.parentKey);
+        if (!parentIssue) throw new Error(`parent=${input.parentKey}: no such issue. Nothing was created.`);
+        if (parentIssue.issueType !== "epic") {
+            throw new Error(`parent=${input.parentKey} is a ${parentIssue.issueType}, not an epic. Nothing was created.`);
+        }
     }
 
     const notes: string[] = [];

@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
-import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
+import { toHumanId, toIssueKey, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { toPullRequestId, toRepoId, type CommitSha, type GitHost, type PullRequestRef } from "../git/interface.js";
 import { checkMergeGate } from "../git/merge-gate.js";
 import { createSmall, CreateSmallPartialError, type CreateSmallDeps } from "./create-small.js";
@@ -60,6 +60,30 @@ describe("createSmall (TAI-473 light lane)", () => {
             await assert.rejects(createSmall(deps(wt), { projectKey: "TAI", type: "story", summary: "s", description: "no criteria here" }), /AC-1/);
             await assert.rejects(createSmall(deps(wt), { projectKey: "TAI", type: "story", summary: "s" }), /AC-1/);
             assert.equal((await wt.search({ projectKey: "TAI", exhaustive: true })).length, 0);
+        });
+    });
+
+    it("requires the AC-1 line itself, not a mention of AC-1 inside another criterion", async () => {
+        await withTracker(async (wt) => {
+            await assert.rejects(
+                createSmall(deps(wt), { projectKey: "TAI", type: "story", summary: "s", description: "AC-2: must also satisfy AC-1" }),
+                /AC-1/
+            );
+            const ok = await createSmall(deps(wt), { projectKey: "TAI", type: "story", summary: "s", description: "* AC-1: works\nAC-2: also works" });
+            assert.equal(ok.parent.issueType, StoryType.Story);
+        });
+    });
+
+    it("refuses a parent that is missing or is not an epic, and creates nothing", async () => {
+        await withTracker(async (wt) => {
+            const story = await wt.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "a story", persona: Persona.Pm });
+            const epic = await wt.createIssue({ projectKey: "TAI", issueType: "epic", summary: "an epic", persona: Persona.Pm });
+            const before = (await wt.search({ projectKey: "TAI", exhaustive: true })).length;
+            await assert.rejects(createSmall(deps(wt), { projectKey: "TAI", type: "story", summary: "s", description: DESC, parentKey: story.key }), /not an epic/);
+            await assert.rejects(createSmall(deps(wt), { projectKey: "TAI", type: "story", summary: "s", description: DESC, parentKey: toIssueKey("TAI-9999") }), /no such issue|not found/i);
+            assert.equal((await wt.search({ projectKey: "TAI", exhaustive: true })).length, before, "nothing was created");
+            const ok = await createSmall(deps(wt), { projectKey: "TAI", type: "story", summary: "s", description: DESC, parentKey: epic.key });
+            assert.equal(ok.parent.parentKey, epic.key);
         });
     });
 

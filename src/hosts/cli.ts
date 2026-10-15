@@ -2392,6 +2392,27 @@ async function main(): Promise<void> {
                 }
             );
             console.log(renderCreateSmall(small));
+            // What a normal `issue create` also prints: the ranked list for a ticket left unassigned under a persona
+            // (2+ candidates, nobody named; the ticket exists, "leave unassigned" is valid), and the note for a create
+            // outside the acting persona's grant.
+            for (const made of [small.parent, small.dev]) {
+                if (!made.assignee && made.persona) {
+                    try {
+                        const suggestion = await suggestAssignees(
+                            { workTracker: config.backend.workTracker, roster: await loadProjectRoster(config), areaWindowDays: areaWindowDaysFromEnv() },
+                            made,
+                            { pin: config.currentHuman }
+                        );
+                        console.log(`\n${suggestion.text}`);
+                    } catch {
+                        // A roster that cannot be read was already explained by the assignment note.
+                    }
+                }
+            }
+            for (const issueType of new Set([small.parent.issueType, small.dev.issueType])) {
+                const outsideGrantNote = await actingGrantNote(config, "create", issueType);
+                if (outsideGrantNote) console.log(`\n${outsideGrantNote}`);
+            }
             const smallNote = wallOfTextNote("description", fields["description"], `issue update ${small.parent.key} description=…`);
             if (smallNote) console.log(`\n${smallNote}`);
             return;
