@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-14 (rev 107). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-14 (rev 108). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -805,6 +805,14 @@ precedence graph — see `workflows/story.md` and `workflows/dependencies.md`.
 **Which subtask types belong under which story type** is `STORY_SUBTASK_MAP` (`story-schema.ts`). It is not
 enforced: `issue create` prints a note when a subtask's type is not listed for its parent's type, or when the
 subtask is created directly under an Epic or another subtask, and creates the ticket anyway.
+
+**The light lane.** `/tai-small` is the entry point: the human types it, and the skill drafts the summary and an `AC-1`
+line and runs `issue create-small <PROJECT-KEY> story|bug <SUMMARY> description=<TEXT> [parent=<EPIC-KEY>]`. That creates a
+Story or Bug together with its `Dev` subtask, assigned as a normal create assigns them, both in To Do, and prints both
+keys. The description must carry an `AC-1` line, so `/tai-verify` and grooming still have criteria. It makes no other
+subtask, adds no label and exempts nothing: review and the merge gate apply as to any Story. "Very small" (a change that can be described in two
+sentences) is a convention in the persona docs and the skill, not checked in code. A failure after the first ticket exists names what was
+created and how to finish or undo it; nothing is created when the type or the description is refused.
 
 Subtask-type-to-persona routing is configurable the same way persona permissions are
 (§3.1): a business can add types, change routing, or restrict which types a given persona

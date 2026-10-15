@@ -365,7 +365,7 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts install-global\n` +
         "```\n\n" +
-        "This (re)writes all nine skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-verify`) " +
+        "This (re)writes all ten skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-small`/`tai-verify`) " +
         "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
         "`tai-framework` itself has been updated at its fixed location. **Gemini CLI does not pick up " +
         "refreshed skill files in a running session — after an install/refresh, tell the human to " +
@@ -678,7 +678,34 @@ function retroSkillBody(taiHome: string): string {
     );
 }
 
-/** All 18 skill files (9 skills × 2 hosts) — identical content per skill across hosts, since
+function smallSkillBody(taiHome: string): string {
+    return (
+        "**What this is (TAI-473 light lane):** the entry point for a very small change: one you could describe in two " +
+        "sentences. It makes the Story (or Bug) and its `Dev` subtask in one command, both in To Do, so the work can start with " +
+        "`/tai-work`. The call to use it is the human's: they typed `/tai-small`. Review and the merge gate apply to the result " +
+        "exactly as to any other Story; only the ticket setup is shorter.\n\n" +
+        "**Steps.** From the human's request, decide whether it is a `story` or a `bug`, write a one-line summary, and write a " +
+        "description of a sentence or two followed by at least one acceptance criterion on a line starting `AC-1:` (more as " +
+        "`AC-2:` …), each one something that can be checked. Then run:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue create-small <PROJECT-KEY> story|bug '<SUMMARY>' 'description=<DESCRIPTION>' [parent=<EPIC-KEY>] [priority=<PRIORITY>]\n` +
+        "```\n\n" +
+        "`<PROJECT-KEY>` is this project's Jira key (ask the human if you do not know it). Pass `parent=` only when the human " +
+        "names an epic, and tell them that moving the Story to To Do can also move a Backlog epic to To Do.\n\n" +
+        "**Quote the text so the shell cannot misread it.** The summary and description are free text, so they can contain an " +
+        "apostrophe, a `$(...)` or a backtick. Wrap each argument in single quotes and write each apostrophe inside it as " +
+        "`'\\''`; never put the text inside double quotes. The description is Jira wiki markup: short paragraphs, `* ` bullets, " +
+        "not markdown.\n\n" +
+        "**When it does not fit.** If the request needs more than a `Dev` subtask (a design decision, a database change, a " +
+        "test tier or UI work), or you cannot state it in two sentences, do not stretch the lane: tell the human, and suggest " +
+        "`/tai-kickoff` or a normal `issue create` with the subtasks it needs. If the command refuses (no `AC-1` line, a wrong " +
+        "type), fix the text and run it again; nothing was created.\n\n" +
+        "**Show the result.** Paste the command's output in your reply as ordinary chat text (a tool call's output is not " +
+        "reliably visible), then stop. Do not start the work in the same turn: the human says when, with `/tai-work <DEV-KEY>`."
+    );
+}
+
+/** All 20 skill files (10 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
     const skills: readonly { readonly name: string; readonly description: string; readonly body: string }[] = [
@@ -726,6 +753,13 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
             body: retroSkillBody(taiHome),
         },
         {
+            name: "tai-small",
+            description:
+                "Light lane for a very small change -- creates the Story or Bug and its Dev subtask in one command, both in " +
+                "To Do; review and the merge gate still apply (TAI-473)",
+            body: smallSkillBody(taiHome),
+        },
+        {
             name: "tai-verify",
             description:
                 "Check a Story's or Bug's finished work against its numbered acceptance criteria -- loads Tessa (Tester) " +
@@ -766,7 +800,7 @@ export function defaultTaiHome(): string {
 }
 
 /**
- * Writes all 18 global skill files (9 skills x 2 hosts) under the user's home directory. Fails loudly if
+ * Writes all 20 global skill files (10 skills x 2 hosts) under the user's home directory. Fails loudly if
  * `taiHome` doesn't exist — this function never clones it (see file header); the caller
  * (the `tai-init` skill's own prose, or a human) is responsible for that first.
  */

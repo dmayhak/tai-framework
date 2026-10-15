@@ -418,6 +418,15 @@ and UX flows are expected to converge before the Architect finalizes any design 
    Nothing in the briefing is a task: never cancel, reopen or reassign a ticket because it appears there. Every
    Backlog → To Do move, assignment and Cancel you propose is applied only after the human confirms.
 
+10. **Light lane (`issue create-small`):** for a very small change (one you could describe in two sentences),
+    `{{TAI_CLI}} issue create-small <PROJECT-KEY> story|bug <SUMMARY> description=<TEXT> [parent=<EPIC-KEY>]`
+    creates the Story or Bug together with its `Dev` subtask, assigned as a normal create assigns them, both in To
+    Do. The description must carry an `AC-1` line. Only the ticket setup shrinks: review and the merge gate apply as
+    usual, and the lane makes no other subtask. Size is a judgment, not checked: when the change needs a design,
+    a database or a test tier, or you cannot state it in two sentences, use `issue create` and the normal subtasks
+    instead. Because it moves the Story to To Do at once, it is a Backlog → To Do move: use it only when the human
+    has asked for the change, and name an epic's move to To Do when `parent=` points at a Backlog epic.
+
 ## Inputs
 
 - Ada's research output and any proposed decomposition for the unit of work in scope.

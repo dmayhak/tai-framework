@@ -132,6 +132,16 @@ implementation was the other half of item 13, resolved as "no formal marker".
 - Lessons about TAI itself are filed apart from the project's action items, labelled `tai-lesson`, so they can be
   found and acted on in TAI.
 
+## Light lane (TAI-473, from the 2026-10-07 review)
+
+- A very small change cost a Story, a Dev subtask, their links, an assignment and a promotion by hand. The lane
+  shrinks that setup into one command and nothing else: review and the merge gate are untouched, and a test
+  checks that the lane adds no exemption.
+- The size limit is a convention, not code, because size is not mechanically checkable. The one thing code does
+  check is an `AC-1` line, so `/tai-verify` and grooming still have criteria to work with.
+- Only a Dev subtask is made. Other tiers are added with the normal subtask commands when the work needs them.
+- "No ticket type without subtasks": the lane never creates a lone Story or Bug.
+
 ## Governance PRs
 
 - TAI-112: `createPullRequest` for Perry and Aria, after borrowing a Dev subtask's key for permission

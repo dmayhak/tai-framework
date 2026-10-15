@@ -344,6 +344,19 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         assert.match(pm.prompt, /never cancel, reopen or reassign a ticket because it appears there/i);
     });
 
+    it("Perry's and Dario's docs describe the light lane, its two-sentence convention and that review still applies (TAI-473)", async () => {
+        const configs = await loadBuiltinPersonaConfigs();
+        const pm = configs.get("pm")!;
+        assert.match(pm.prompt, /issue create-small/);
+        assert.match(pm.prompt, /two sentences/);
+        assert.match(pm.prompt, /`AC-1` line/);
+        assert.match(pm.prompt, /review and the merge gate apply as\s+usual/);
+        const dev = configs.get("developer")!;
+        assert.match(dev.prompt, /issue create-small/);
+        assert.match(dev.prompt, /two sentences/);
+        assert.match(dev.prompt, /review and the merge gate/);
+    });
+
     it("Perry's doc carries the grooming behavior: the briefing sections, the authority split, the reconciliation (TAI-395)", async () => {
         const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
         assert.match(pm.prompt, /\/tai-groom/);
