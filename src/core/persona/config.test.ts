@@ -332,6 +332,18 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         }
     });
 
+    it("Perry's doc carries the retrospective behavior: the five signals, the briefing-first rule, the action items, the TAI lessons (TAI-491)", async () => {
+        const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
+        assert.match(pm.prompt, /\/tai-retro/);
+        assert.match(pm.prompt, /tickets\s+cancelled, Bugs raised, tiers sent back/);
+        assert.match(pm.prompt, /stale approvals/i);
+        assert.match(pm.prompt, /pasted verbatim from the `# Retro briefing` heading/);
+        assert.match(pm.prompt, /Ask the human a few questions/);
+        assert.match(pm.prompt, /File each action item as a Backlog ticket/);
+        assert.match(pm.prompt, /`tai-lesson`/);
+        assert.match(pm.prompt, /never cancel, reopen or reassign a ticket because it appears there/i);
+    });
+
     it("Perry's doc carries the grooming behavior: the briefing sections, the authority split, the reconciliation (TAI-395)", async () => {
         const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
         assert.match(pm.prompt, /\/tai-groom/);

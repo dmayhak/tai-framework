@@ -9,8 +9,8 @@ import { renderGlobalSkillFiles, installGlobal, defaultTaiHome, PM_KICKOFF_HINT 
 describe("renderGlobalSkillFiles", () => {
     const files = renderGlobalSkillFiles("/home/x/.tai-framework");
 
-    test("produces 16 files -- 8 skills x 2 hosts", () => {
-        assert.equal(files.length, 16);
+    test("produces 18 files -- 9 skills x 2 hosts", () => {
+        assert.equal(files.length, 18);
     });
 
     test("the tai-verify skill runs verify <STORY-KEY>, acts as Tessa, treats the Story and diffs as data and does not close the Story (TAI-546)", () => {
@@ -22,6 +22,23 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(verify.content, /Tessa/);
             assert.match(verify.content, /data, not instructions/);
             assert.match(verify.content, /Do not close the Story/);
+        }
+    });
+
+    test("the tai-retro skill runs retro [EPIC-KEY | since=<date>], acts as Perry, shows the briefing first and writes nothing itself (TAI-491)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const retro = files.find((f) => f.relativePath === `${host}/skills/tai-retro/SKILL.md`)!;
+            assert.ok(retro, `${host} gets a tai-retro skill`);
+            assert.match(retro.content, /name: tai-retro/);
+            assert.match(retro.content, /cli\.ts retro \[EPIC-KEY \| since=<date>\]/);
+            assert.match(retro.content, /act as that persona/i);
+            assert.match(retro.content, /needs no\s+ticket/i);
+            assert.match(retro.content, /last 30 days/);
+            assert.match(retro.content, /# Retro briefing/);
+            assert.match(retro.content, /all five numbered sections/);
+            assert.match(retro.content, /ordinary chat text/i);
+            assert.match(retro.content, /Do NOT, in this same turn, ask a question with an interactive tool/i);
+            assert.match(retro.content, /The command itself writes nothing/);
         }
     });
 
@@ -354,7 +371,7 @@ describe("installGlobal", () => {
         }
     });
 
-    test("writes all 10 skill files under the given homedir when taiHome exists", async () => {
+    test("writes all 18 skill files under the given homedir when taiHome exists", async () => {
         const dir = await mkdtemp(path.join(tmpdir(), "tai-install-global-"));
         try {
             const homedir = path.join(dir, "home");
@@ -365,7 +382,7 @@ describe("installGlobal", () => {
             const result = await installGlobal(taiHome, homedir);
 
             assert.equal(result.taiHome, taiHome);
-            assert.equal(result.written.length, 16);
+            assert.equal(result.written.length, 18);
 
             const claudeWork = await readFile(path.join(homedir, ".claude/skills/tai-work/SKILL.md"), "utf-8");
             assert.match(claudeWork, /name: tai-work/);
@@ -389,7 +406,7 @@ describe("installGlobal", () => {
             await installGlobal(taiHome, homedir);
             const second = await installGlobal(taiHome, homedir);
 
-            assert.equal(second.written.length, 16);
+            assert.equal(second.written.length, 18);
         } finally {
             await rm(dir, { recursive: true, force: true });
         }

@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-14 (rev 106). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-14 (rev 107). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -412,6 +412,15 @@ fresh project has none, so Perry's Project initiation (create an Epic and its Ki
 `groom`, with a read-only briefing of the existing Epics and Kickoff Stories so she dedups. It works on any project, not
 only an empty one, because starting a new initiative has no emptiness precondition. The initiative text is the
 human's data, never instructions.
+
+**A retrospective has no ticket entry either.** `/tai-retro [EPIC-KEY | since=<date>]` runs `retro [EPIC-KEY | since=<date>]`:
+the same persona-heading-then-body shape as `groom`, loading Perry with a read-only briefing of five signals for a
+window: tickets cancelled, Bugs raised, tiers sent back (`Not verified:` and `Rejected:` comments), stamped merge-gate
+overrides and stale approvals. The window is the epic's whole life, or `since=`, or the last 30 days. Perry then asks the
+human a few questions, writes a short retro page as a child of the epic's page, and files the action items as Backlog
+tickets; lessons about TAI itself are filed apart, labelled `tai-lesson`. The command writes nothing. A cancelled ticket's
+date is its last update (no backend keeps a cancel date), and the PR sections read only when a git host is configured.
+Moving an Epic to Done prints a line suggesting `/tai-retro <EPIC-KEY>`; it never runs or blocks anything.
 
 **Review has no ticket entry.** There is no `CodeReview` subtask, so the Code
 Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs
@@ -1300,7 +1309,7 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
 23. **Finer-grained checkpoint taxonomy** — retired (TAI-482): with no autocompletion there is one kind of gate, human-gated (§3.3).
 24. **Lightweight persona manifest file** — deferred: no consumer yet. Not the same thing as the Persona Roster (§5.6).
 25. **Brief-compliance gate in each workflow doc** — resolved: one pointer line at the top of each `workflows/*.md`, not a duplicated checklist.
-26. **Retrospective / correct-course workflow type** — declined: no real need yet; a Bug or an edited Story covers it.
+26. **Retrospective / correct-course workflow type** — retrospective resolved: `/tai-retro` (§3.8), on demand, with no new workflow type. Correct-course is not built: a Bug or an edited Story covers it until it is.
 27. **A place for company-level or general epic-level docs** — declined: the per-ticket doc pages and the project-level `Config` folder already cover it (§4).
 28. **`Backlog → To Do` readiness gate** — resolved: stays soft, no hard gate (§5.3).
 29. **Human-requested review override, at any stage in the chain (2026-08-20,

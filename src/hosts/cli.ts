@@ -13,7 +13,7 @@
  *
  * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
  * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
- * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-verify`/`tai-audit`), installed
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-verify`/`tai-audit`), installed
  * once via `install-global` (below) rather than generated per-project as
  * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
  * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
@@ -163,6 +163,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
+import { findRetroSummary, parseRetroArgs, renderRetroBriefing, retroEpicCloseHint } from "../core/commands/retro.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -2124,6 +2125,23 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-491 (TAI-461 decision): `/tai-retro [EPIC-KEY | since=<date>]` -- loads Perry with a read-only summary of what
+    // was cancelled, raised as Bugs, sent back, overridden or approved stale in a window. No ticket needed.
+    if (subcommand === "retro") {
+        const retroArgs = parseRetroArgs([arg, ...rest].filter((w): w is string => w !== undefined));
+        const pm = await loadPersonaConfig(config.backend.docStore, "pm", { spaceKey: config.spaceKey });
+        const gitDeps = await tryResolveReadyGitDeps(config);
+        const report = await findRetroSummary({
+            workTracker: config.backend.workTracker,
+            projectKey: config.projectKey,
+            ...(retroArgs.epicKey ? { epicKey: toIssueKey(retroArgs.epicKey) } : {}),
+            ...(retroArgs.since !== undefined ? { since: retroArgs.since } : {}),
+            ...(gitDeps ? { git: { gitHost: gitDeps.gitHost, repos: gitDeps.repos } } : {}),
+        });
+        console.log(withTurnNotes([await installWarning()]) + renderPersonaTurn(pm, renderRetroBriefing(report), await loadProjectContextSection()));
+        return;
+    }
+
     if (subcommand === "ready") {
         const persona = arg as Persona | undefined;
         const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
@@ -2438,9 +2456,12 @@ async function main(): Promise<void> {
             // the note says so. Show-only, nothing is blocked.
             const unverifiedNote = result.ok && status === Status.Done ? unverifiedCloseNote(result.issue) : null;
 
+            // TAI-491: an Epic that just moved to Done gets a one-line suggestion. Never blocks or runs anything.
+            const retroHint = result.ok ? retroEpicCloseHint(result.issue) : null;
+
             console.log(
                 result.ok
-                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "") + (unverifiedNote ? `\n\n${unverifiedNote}` : "")
+                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "") + (unverifiedNote ? `\n\n${unverifiedNote}` : "") + (retroHint ? `\n\n${retroHint}` : "")
                     : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")
@@ -2652,7 +2673,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md|gemini-md`
     );
