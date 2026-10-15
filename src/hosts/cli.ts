@@ -13,7 +13,7 @@
  *
  * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
  * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
- * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-small`/`tai-verify`/`tai-audit`), installed
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-audit`), installed
  * once via `install-global` (below) rather than generated per-project as
  * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
  * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
@@ -163,6 +163,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
+import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
 import { createSmall, renderCreateSmall } from "../core/commands/create-small.js";
 import { findRetroSummary, parseRetroArgs, renderRetroBriefing, retroEpicCloseHint } from "../core/commands/retro.js";
 
@@ -2156,6 +2157,24 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-559 (TAI-492, TAI-461 decision): `/tai-change [EPIC-KEY] [statement...]` -- loads Perry with a read-only view of the open
+    // board and its linked documents, and what the human says changed. No ticket needed. The statement is every remaining
+    // word, so an unquoted multi-word statement survives; the skill passes it as ONE single-quoted argument.
+    if (subcommand === "change") {
+        const pm = await loadPersonaConfig(config.backend.docStore, "pm", { spaceKey: config.spaceKey });
+        const changeArgs = parseChangeArgs([arg, ...rest].filter((w): w is string => w !== undefined));
+        const context = await findChangeContext({
+            workTracker: config.backend.workTracker,
+            docStore: config.backend.docStore,
+            projectKey: config.projectKey,
+            spaceKey: config.spaceKey,
+            ...(changeArgs.epicKey ? { epicKey: changeArgs.epicKey } : {}),
+            ...(changeArgs.statement ? { statement: changeArgs.statement } : {}),
+        });
+        console.log(withTurnNotes([await installWarning()]) + renderPersonaTurn(pm, renderChangeBriefing(context), await loadProjectContextSection()));
+        return;
+    }
+
     // TAI-491 (TAI-461 decision): `/tai-retro [EPIC-KEY | since=<date>]` -- loads Perry with a read-only summary of what
     // was cancelled, raised as Bugs, sent back, overridden or approved stale in a window. No ticket needed.
     if (subcommand === "retro") {
@@ -2759,7 +2778,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md|gemini-md`
     );

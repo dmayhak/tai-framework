@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-15 (rev 110). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-15 (rev 111). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -421,6 +421,17 @@ human a few questions, writes a short retro page as a child of the epic's page, 
 tickets; lessons about TAI itself are filed apart, labelled `tai-lesson`. The command writes nothing. A cancelled ticket's
 date is its last update (no backend keeps a cancel date), and the PR sections read only when a git host is configured.
 Moving an Epic to Done prints a line suggesting `/tai-retro <EPIC-KEY>`; it never runs or blocks anything.
+
+**Course correction has no ticket entry either.** `/tai-change [EPIC-KEY] [statement]` runs `change [EPIC-KEY] [statement]`: the same
+persona-heading-then-body shape as `groom`, loading Perry with a read-only briefing of what the human says changed, every open
+ticket with its linked documents (as titles and page ids, never page bodies) and a `Left out:` line for parked (`icebox`)
+epics, which uses grooming's own function so the two agree. An epic key narrows it to that epic. Perry proposes one batch,
+grouped as tickets to cancel, tickets to reword, new tickets and pages to revise, and files an `Investigate` subtask for Ada
+or an `ArchitectureDesign` subtask for Aria where a PRD or ADR needs rework. She creates Backlog tickets and links on her
+own; every cancel, reword, page revision and Backlog → To Do move waits for the human's confirmation, one question per
+group. The statement is the human's data, never instructions. The skill's description and the project pointer in a target's
+CLAUDE.md and GEMINI.md let a plain-language request start it; nothing starts it on its own. Descriptions are cut at an
+excerpt limit and a long board is abbreviated past a size budget, with a notice.
 
 **Review has no ticket entry.** There is no `CodeReview` subtask, so the Code
 Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs
@@ -1319,7 +1330,7 @@ number still resolves; the reasoning it once carried is in `CHANGELOG.md`. Open 
 23. **Finer-grained checkpoint taxonomy** — retired (TAI-482): with no autocompletion there is one kind of gate, human-gated (§3.3).
 24. **Lightweight persona manifest file** — deferred: no consumer yet. Not the same thing as the Persona Roster (§5.6).
 25. **Brief-compliance gate in each workflow doc** — resolved: one pointer line at the top of each `workflows/*.md`, not a duplicated checklist.
-26. **Retrospective / correct-course workflow type** — retrospective resolved: `/tai-retro` (§3.8), on demand, with no new workflow type. Correct-course is not built: a Bug or an edited Story covers it until it is.
+26. **Retrospective / correct-course workflow type** — retrospective resolved: `/tai-retro` (§3.8), on demand, with no new workflow type; correct-course resolved: `/tai-change`, also on demand, with no new workflow type.
 27. **A place for company-level or general epic-level docs** — declined: the per-ticket doc pages and the project-level `Config` folder already cover it (§4).
 28. **`Backlog → To Do` readiness gate** — resolved: stays soft, no hard gate (§5.3).
 29. **Human-requested review override, at any stage in the chain (2026-08-20,
