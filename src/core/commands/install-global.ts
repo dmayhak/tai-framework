@@ -143,7 +143,11 @@ function readySkillBody(taiHome: string): string {
         "- **Approved PRs ready to merge** — the same `Dev`-subtask/PR pairs as above, additionally " +
         "at the required approval count AND CI-green. Land it with `git-pr merge <ISSUE-KEY> " +
         "<REPO>`, not `/tai-work` — but approval does not finish a PR (TAI-382): first run " +
-        "`git-pr comments <REPO>` and read every comment, per `tai-pr`'s skill.\n\n" +
+        "`git-pr comments <REPO>` and read every comment, per `tai-pr`'s skill.\n" +
+        "- **Approved PRs waiting on something** — an open PR with at least one approval that the merge gate still " +
+        "holds, each line carrying the gate's own reasons (a stale approval, an open test tier, a standing request " +
+        "for changes, too few approvals). Show-only: nothing in it can be merged yet, and picking its number only " +
+        "shows the PR and what it waits on. A PR with no approval at all is in neither merge section.\n\n" +
         "- **Ready to verify** (TAI-548) — an In Progress Story or Bug whose `Dev` subtasks are all Done and " +
         "which has no `Verified:`/`Not verified:` comment (the same ones marked \"⚠️ not verified\" under In " +
         "Progress). Picking this line's number means `/tai-verify <KEY>`, not `/tai-work`.\n\n" +
@@ -165,7 +169,8 @@ function readySkillBody(taiHome: string): string {
         "`/tai-work <KEY>` for an In Progress OR a Ready Work line (same action either way — " +
         "resume vs. start is `/tai-work`'s own concern, not this list's), the real review flow " +
         "above for a \"PRs ready for your review\" line, `/tai-verify <KEY>` for a \"Ready to verify\" " +
-        "line, `git-pr merge` for a \"ready to merge\" line. A number with no corresponding line, or any ambiguity about which line it means, " +
+        "line, `git-pr merge` for a \"ready to merge\" line, and for an \"Approved PRs waiting on something\" line only " +
+        "telling the human what it waits on (never a merge, and never `force=true`). A number with no corresponding line, or any ambiguity about which line it means, " +
         "is a re-ask, not a guess."
     );
 }
@@ -179,8 +184,9 @@ function prSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts pr-ready\n` +
         "```\n\n" +
-        "Just the two PR sections `tai-ready` also shows (**PRs ready for your review**, which includes a **re-review** " +
-        "of a PR changed since the human decided, and **Approved PRs ready to merge**) — no In Progress section, no general Ready Work list, " +
+        "Just the PR sections `tai-ready` also shows (**PRs ready for your review**, which includes a **re-review** " +
+        "of a PR changed since the human decided, **Approved PRs ready to merge**, and **Approved PRs waiting on " +
+        "something**, a show-only list of approved PRs the merge gate still holds, with its reasons) — no In Progress section, no general Ready Work list, " +
         "no \"Open PRs ready to test,\" each numbered with its own shared counter the same way " +
         "`tai-ready`'s combined list is. Present it AS-IS, don't renumber it.\n\n" +
         "**Presenting this list is the entire, complete output of a bare `tai-pr` invocation — " +
@@ -199,7 +205,8 @@ function prSkillBody(taiHome: string): string {
         "`git-pr review-prep` and follow its output — never skip straight to `git-pr review`); for a \"ready to merge\" " +
         "line, picking that number IS the explicit instruction to merge, but approval does not finish " +
         "a PR: do the **comments-before-merge step below** (`git-pr comments`, then decide) BEFORE " +
-        "running `git-pr merge <ISSUE-KEY> <REPO>`. A number with no corresponding line, or " +
+        "running `git-pr merge <ISSUE-KEY> <REPO>`; for an \"Approved PRs waiting on something\" line, picking it means " +
+        "only telling the human what the merge gate still needs (never merge, never `force=true`). A number with no corresponding line, or " +
         "any ambiguity about which line it means, is a re-ask, not a guess.\n\n" +
         "Everything below this point is for an explicit `create`/`review`/`comment`/`merge` " +
         "invocation (typed directly, or reached via a number from `tai-ready`'s own combined " +

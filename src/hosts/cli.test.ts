@@ -191,7 +191,7 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         unblockedSubtaskHints: [],
         readyToReview: [],
         readyToTest: [],
-        readyToMerge: [],
+        readyToMerge: [], waitingToMerge: [],
         blockedBy: new Map(),
         staleLivingDocs: [], notVerified: new Set<IssueKey>(),
         assigneeSuggestions: new Map(),
@@ -809,7 +809,7 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
 
     it("renderReadyWork points the review line at git-pr review-prep", () => {
         const out = renderReadyWork({
-            ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [],
+            ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [], waitingToMerge: [],
             blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
         });
         assert.match(out, /git-pr review-prep ws\/repo 9/);
@@ -817,7 +817,7 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
     });
 
     it("renderPRReadyWork (pr-ready) does too", () => {
-        const out = renderPRReadyWork({ readyToReview: [candidate], readyToMerge: [] } as never);
+        const out = renderPRReadyWork({ readyToReview: [candidate], readyToMerge: [], waitingToMerge: [] } as never);
         assert.match(out, /git-pr review-prep ws\/repo 9/);
         assert.doesNotMatch(out, /git-pr review <REPO> approve/);
     });
@@ -827,9 +827,9 @@ describe("a re-review line says so, names both commits and the diff between them
     const pullRequest = { id: "9", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" };
     const mark = (reReview: unknown) => ({ pullRequest, reReview }) as never;
     const render = (c: never) => ({
-        pr: renderPRReadyWork({ readyToReview: [c], readyToMerge: [] } as never),
+        pr: renderPRReadyWork({ readyToReview: [c], readyToMerge: [], waitingToMerge: [] } as never),
         ready: renderReadyWork({
-            ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [c], readyToTest: [], readyToMerge: [],
+            ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [c], readyToTest: [], readyToMerge: [], waitingToMerge: [],
             blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
         }),
     });
@@ -867,6 +867,44 @@ describe("a re-review line says so, names both commits and the diff between them
     });
 });
 
+describe("the 'approved PRs waiting' section (TAI-564)", () => {
+    const waiting = {
+        issueKey: "TAI-9",
+        pullRequest: { id: "9", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" },
+        blockers: ["Needs 1 approval on the current commit (abc); has 0. del approved before the latest changes, which does not count.", "Test tier TAI-5 (integration-test) is To Do, not Done."],
+    };
+    const mergeReady = {
+        issueKey: "TAI-8",
+        pullRequest: { id: "8", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/8", sourceBranch: "b", destinationBranch: "master" },
+    };
+
+    it("both lists show it after 'ready to merge', numbered on the shared counter, with each blocker and no merge command", () => {
+        const prOut = renderPRReadyWork({ readyToReview: [], readyToMerge: [mergeReady], waitingToMerge: [waiting] } as never);
+        const readyOut = renderReadyWork({
+            ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [], readyToTest: [], readyToMerge: [mergeReady], waitingToMerge: [waiting],
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+        } as never);
+        for (const out of [prOut, readyOut]) {
+            assert.match(out, /## Approved PRs waiting on something/);
+            assert.match(out, /1\. \*\*TAI-8\*\*/, "the merge-ready line is first");
+            assert.match(out, /2\. \*\*TAI-9\*\*/, "the waiting line continues the counter");
+            assert.match(out, /Needs 1 approval on the current commit/);
+            assert.match(out, /Test tier TAI-5 \(integration-test\) is To Do, not Done\./);
+            const waitingLine = out.split("\n").find((l) => l.startsWith("2."))!;
+            assert.doesNotMatch(waitingLine, /git-pr merge/);
+        }
+    });
+
+    it("prints no waiting section when nothing is waiting, and a waiting PR alone is not 'nothing ready'", () => {
+        const none = renderPRReadyWork({ readyToReview: [], readyToMerge: [], waitingToMerge: [] } as never);
+        assert.doesNotMatch(none, /waiting on something/);
+        assert.match(none, /Nothing ready for you/);
+        const only = renderPRReadyWork({ readyToReview: [], readyToMerge: [], waitingToMerge: [waiting] } as never);
+        assert.match(only, /waiting on something/);
+        assert.doesNotMatch(only, /Nothing ready for you/);
+    });
+});
+
 describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
     const base = {
         ready: [],
@@ -875,7 +913,7 @@ describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
         unblockedSubtaskHints: [],
         readyToReview: [],
         readyToTest: [],
-        readyToMerge: [],
+        readyToMerge: [], waitingToMerge: [],
         blockedBy: new Map(),
         staleLivingDocs: [], notVerified: new Set<IssueKey>(),
         assigneeSuggestions: new Map(),

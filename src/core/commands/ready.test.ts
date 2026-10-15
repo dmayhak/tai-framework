@@ -953,6 +953,96 @@ describe("findReadyWork readyToTest / readyToMerge", () => {
     });
 });
 
+describe("findReadyWork waitingToMerge: an approved PR the merge gate still holds, with the gate's reasons (TAI-564)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+    const NEW = toCommitSha("new999");
+    const OLD = toCommitSha("old111");
+    const approvedBy = [{ human: REVIEWER_A, status: "approved" as const }];
+
+    async function run(opts: {
+        pr: PullRequestRef;
+        withOpenTier?: boolean;
+        activity?: readonly PullRequestActivity[] | null;
+        requiredApprovals?: number;
+        statuses?: readonly CommitStatus[];
+    }) {
+        let out: Awaited<ReturnType<typeof findReadyWork>> | undefined;
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            if (opts.withOpenTier) {
+                const story = (await backend.workTracker.getIssue(dev.key))!.parentKey!;
+                await backend.workTracker.createIssue({
+                    projectKey: "TAI",
+                    issueType: SubtaskType.IntegrationTest,
+                    summary: "Integration",
+                    persona: Persona.Tester,
+                    parentKey: story,
+                });
+            }
+            await backend.workTracker.createRemoteLink(dev.key, opts.pr.url, "PR");
+            const gitHost = new FakeGitHost(new Map([[repo, [opts.pr]]]), opts.statuses);
+            gitHost.activity = opts.activity ?? null;
+            out = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost,
+                repos: [repo],
+                ...(opts.requiredApprovals !== undefined ? { requiredApprovals: opts.requiredApprovals } : {}),
+            });
+        });
+        return out!;
+    }
+
+    test("an approval that fails the gate because a test tier is open is listed with the gate's sentence", async () => {
+        const result = await run({ pr: prFixture({ reviewers: approvedBy }), withOpenTier: true });
+        assert.deepEqual(result.readyToMerge, []);
+        assert.equal(result.waitingToMerge.length, 1);
+        assert.match(result.waitingToMerge[0]!.blockers.join(" "), /Test tier .* is To Do, not Done/);
+    });
+
+    test("a stale approval (cast before the latest commit) is listed, and the sentence says so", async () => {
+        const result = await run({
+            pr: prFixture({ sourceCommit: NEW, reviewers: approvedBy }),
+            activity: [
+                { kind: "update", at: "t1", sourceCommit: OLD },
+                { kind: "approval", at: "t2", human: REVIEWER_A },
+                { kind: "update", at: "t3", sourceCommit: NEW },
+            ],
+        });
+        assert.deepEqual(result.readyToMerge, []);
+        assert.equal(result.waitingToMerge.length, 1);
+        assert.match(result.waitingToMerge[0]!.blockers.join(" "), /approved before the latest changes/);
+    });
+
+    test("one approval where two are required is listed, with the count", async () => {
+        const result = await run({ pr: prFixture({ reviewers: approvedBy }), requiredApprovals: 2 });
+        assert.equal(result.waitingToMerge.length, 1);
+        assert.match(result.waitingToMerge[0]!.blockers.join(" "), /Needs 2 approvals/);
+    });
+
+    test("a PR that passes the gate and CI is ready to merge and not waiting", async () => {
+        const result = await run({ pr: prFixture({ reviewers: approvedBy }) });
+        assert.equal(result.readyToMerge.length, 1);
+        assert.deepEqual(result.waitingToMerge, []);
+    });
+
+    test("a PR with no approval on any commit is in neither list", async () => {
+        const result = await run({ pr: prFixture({ reviewers: [] }) });
+        assert.deepEqual(result.readyToMerge, []);
+        assert.deepEqual(result.waitingToMerge, []);
+    });
+
+    test("a PR that passes the gate but whose CI is red is in neither list: it already has its own state", async () => {
+        const result = await run({
+            pr: prFixture({ reviewers: approvedBy }),
+            statuses: [{ key: "build", name: "build", state: "failed" }],
+        });
+        assert.deepEqual(result.readyToMerge, []);
+        assert.deepEqual(result.waitingToMerge, []);
+    });
+});
+
 describe("findReadyWork readyToMerge — governance-content PRs (TAI-293)", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 
@@ -1840,10 +1930,10 @@ describe("findReadyWork priority sort/inheritance (TAI-195)", () => {
 describe("findReadyPRWork", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 
-    test("result only ever has readyToReview and readyToMerge — no ready/readyToTest/inFlight fields", async () => {
+    test("result only ever has readyToReview, readyToMerge and waitingToMerge — no ready/readyToTest/inFlight fields", async () => {
         await withBackend(async (backend) => {
             const result = await findReadyPRWork({ workTracker: backend.workTracker, projectKey: "TAI" });
-            assert.deepEqual(Object.keys(result).sort(), ["readyToMerge", "readyToReview"]);
+            assert.deepEqual(Object.keys(result).sort(), ["readyToMerge", "readyToReview", "waitingToMerge"]);
         });
     });
 

@@ -54,7 +54,7 @@ import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js"
 import { briefingBudgetFromEnv, type BriefingChangeNote } from "../core/workspace/briefing.js";
 import { cachePage } from "../core/cache/page-cache.js";
 import { CachingWorkTracker } from "../core/cache/caching-work-tracker.js";
-import { findReadyWork, findReadyPRWork, type ReadyToReviewCandidate } from "../core/commands/ready.js";
+import { findReadyWork, findReadyPRWork, type ReadyToReviewCandidate, type WaitingToMergeCandidate } from "../core/commands/ready.js";
 import {
     EPIC_CHILD_ISSUE_TYPES,
     EPIC_SUMMARY_LIVING_DOC_TYPES,
@@ -784,6 +784,13 @@ function subtaskTypeLabel(type: SubtaskType): string {
     return type.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
 }
 
+/** TAI-564: the line under "Approved PRs waiting on something". It carries the merge gate's own sentences and offers
+ *  no merge command: picking its number only shows the PR and what it waits on. */
+const WAITING_INTRO = ["_Show-only: nothing here can be merged yet. Picking one shows what the merge gate still needs._"];
+export function waitingLine(n: number, c: WaitingToMergeCandidate): string {
+    return `${n}. **${c.issueKey}** — ${c.pullRequest.url} — waiting on: ${c.blockers.join(" ")}`;
+}
+
 /** TAI-563: one "PRs ready for your review" line. A PR the human already decided on but that has new commits since says
  *  so, and gives both commits and the diff between them, so it is not mistaken for a first review. */
 export function reviewLine(c: ReadyToReviewCandidate): string {
@@ -949,6 +956,13 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             actionableCount++;
         }
     }
+    if (result.waitingToMerge.length > 0) {
+        lines.push("", "## Approved PRs waiting on something", "", ...WAITING_INTRO, "");
+        for (const c of result.waitingToMerge) {
+            lines.push(waitingLine(counter.next(), c));
+            actionableCount++;
+        }
+    }
     // TAI-302/319: informational, not numbered -- the action isn't "pick one," it's "go
     // refresh the doc" once, covering every Epic named below (same non-numbered treatment
     // as the blockedFlag annotation above, not a new pickable-line kind).
@@ -972,8 +986,8 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
     return lines.join("\n");
 }
 
-/** Lighter sibling to `renderReadyWork` (TAI-211/212) — just the two PR-review-mode
- *  sections, no general ready list, no in-flight section. Same "reply with a number"
+/** Lighter sibling to `renderReadyWork` (TAI-211/212) — just the PR-review-mode
+ *  sections (review, merge, waiting), no general ready list, no in-flight section. Same "reply with a number"
  *  numbered-line convention `tai-ready` already uses. */
 export function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>): string {
     const lines: string[] = ["# PRs ready for you", ""];
@@ -993,6 +1007,13 @@ export function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRW
             lines.push(
                 `${counter.next()}. **${c.issueKey}** — ${c.pullRequest.url} (\`git-pr merge <ISSUE-KEY> <REPO>\` to land it)`
             );
+            actionableCount++;
+        }
+    }
+    if (result.waitingToMerge.length > 0) {
+        lines.push("", "## Approved PRs waiting on something", "", ...WAITING_INTRO, "");
+        for (const c of result.waitingToMerge) {
+            lines.push(waitingLine(counter.next(), c));
             actionableCount++;
         }
     }

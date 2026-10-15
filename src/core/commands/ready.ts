@@ -140,6 +140,12 @@ export interface ReadyToMergeCandidate {
     readonly pullRequest: PullRequestRef;
 }
 
+/** TAI-564: an open PR with at least one approval that the merge gate still holds. `blockers` are the gate's own
+ *  sentences (`evaluateMergeGate`), so this list and `git-pr merge`'s refusal cannot disagree. Show-only. */
+export interface WaitingToMergeCandidate extends ReadyToMergeCandidate {
+    readonly blockers: readonly string[];
+}
+
 /** TAI-293: issue types a governance-content PR (no `Dev` subtask involved) can be
  *  directly remote-linked to — the same three story-level types plus Epic that
  *  `validatePrTitle`'s direct-invocation form (`git-pr.ts`) already allows a PM/Architect
@@ -194,6 +200,8 @@ export interface ReadyWorkResult {
     /** Same candidates as `readyToTest`, additionally CI-green (TAI-106/107/108's
      *  original check, unchanged). Empty whenever `gitHost`/`repos` aren't supplied. */
     readonly readyToMerge: readonly ReadyToMergeCandidate[];
+    /** TAI-564: approved PRs the merge gate still holds, with its reasons; show-only. Empty without a git host. */
+    readonly waitingToMerge: readonly WaitingToMergeCandidate[];
     /** TAI-266 (TAI-243 ADR): open real-Jira `DependsOn` blockers, keyed by issue key —
      *  covers both `ready` and `inProgress` entries (ADR decision #3), a separate map
      *  rather than a new field on `Issue`/`InProgressCandidate` themselves so this stays
@@ -599,6 +607,7 @@ interface PRSections {
     readonly readyToReview: readonly ReadyToReviewCandidate[];
     readonly readyToTest: readonly ReadyToTestCandidate[];
     readonly readyToMerge: readonly ReadyToMergeCandidate[];
+    readonly waitingToMerge: readonly WaitingToMergeCandidate[];
 }
 
 /** The `readyToReview`/`readyToTest`/`readyToMerge` computation, factored out so
@@ -609,6 +618,7 @@ interface PRSections {
 async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
     let readyToTest: readonly ReadyToTestCandidate[] = [];
     let readyToMerge: readonly ReadyToMergeCandidate[] = [];
+    let waitingToMerge: readonly WaitingToMergeCandidate[] = [];
     if (deps.gitHost && deps.repos && deps.repos.length > 0) {
         const requiredApprovals = deps.requiredApprovals ?? DEFAULT_REQUIRED_APPROVALS;
         // Fetched ONCE (PR #82 review) — findDevLinkedOpenPRs/findStoryLinkedOpenPRs both
@@ -640,17 +650,25 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         // TAI-462: the same merge gate `git-pr merge` applies (fresh approvals, no standing
         // request-changes, test tiers Done, UAT Done unless labeled uat-after-merge), then CI. A PR with no approval at all is skipped
         // before the gate's own reads -- it cannot pass, and most open PRs are in that state.
+        // TAI-564: a PR with an approval on ANY commit that the gate still holds is listed as waiting, with the gate's own
+        // sentences. One with no approval at all stays out of both lists (most open PRs are in that state).
         const gateDeps = { gitHost: deps.gitHost, workTracker: deps.workTracker, requiredApprovals };
         const merge: ReadyToMergeCandidate[] = [];
+        const waiting: WaitingToMergeCandidate[] = [];
         for (const c of mergeCandidates) {
-            if (approvalCount(c.pullRequest) < requiredApprovals) continue;
-            if (!(await checkMergeGate(gateDeps, c.pullRequest, c.issueKey)).ok) continue;
+            if (approvalCount(c.pullRequest) === 0) continue;
+            const verdict = await checkMergeGate(gateDeps, c.pullRequest, c.issueKey);
+            if (!verdict.ok) {
+                waiting.push({ ...c, blockers: verdict.blockers });
+                continue;
+            }
             const statuses = await deps.gitHost.getCommitStatuses(c.pullRequest.repo, c.pullRequest.sourceCommit);
             // TAI-534: with a check command configured, "no result at all" is not ready either.
             if (deps.checkRequired && statuses.length === 0) continue;
             if (isGreen(statuses)) merge.push(c);
         }
         readyToMerge = merge;
+        waitingToMerge = waiting;
     }
 
     let readyToReview: readonly ReadyToReviewCandidate[] = [];
@@ -673,7 +691,7 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         readyToReview = candidates;
     }
 
-    return { readyToReview, readyToTest, readyToMerge };
+    return { readyToReview, readyToTest, readyToMerge, waitingToMerge };
 }
 
 /**
@@ -857,7 +875,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
 
     const notVerified = await findNotVerified(deps.workTracker, deps.projectKey, inProgress.map((c) => c.issue));
 
-    const { readyToReview, readyToTest, readyToMerge } = await computePRSections(deps);
+    const { readyToReview, readyToTest, readyToMerge, waitingToMerge } = await computePRSections(deps);
     const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);
 
     const assigneeSuggestions = new Map<IssueKey, string>();
@@ -881,6 +899,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         readyToReview,
         readyToTest,
         readyToMerge,
+        waitingToMerge,
         blockedBy,
         staleLivingDocs,
         assigneeSuggestions,
@@ -932,6 +951,7 @@ export interface FindReadyPRWorkDeps {
 export interface ReadyPRWorkResult {
     readonly readyToReview: readonly ReadyToReviewCandidate[];
     readonly readyToMerge: readonly ReadyToMergeCandidate[];
+    readonly waitingToMerge: readonly WaitingToMergeCandidate[];
 }
 
 /**
@@ -954,6 +974,6 @@ export async function findReadyPRWork(deps: FindReadyPRWorkDeps): Promise<ReadyP
         // syncMergedIssues running here regardless of display scope.
         await syncTestTiersToToDo(deps.workTracker, deps.gitHost, deps.projectKey, deps.repos);
     }
-    const { readyToReview, readyToMerge } = await computePRSections(deps);
-    return { readyToReview, readyToMerge };
+    const { readyToReview, readyToMerge, waitingToMerge } = await computePRSections(deps);
+    return { readyToReview, readyToMerge, waitingToMerge };
 }
