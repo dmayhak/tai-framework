@@ -930,6 +930,92 @@ export function defineStorageConformance(
             });
         });
 
+        // TAI-561: what `issue create-small` (the light lane, TAI-473) relies on, on every backend. It creates a
+        // Story or Bug and a Dev subtask under it, assigns both, moves the SUBTASK to To Do (which schedules the
+        // Backlog parent) and then moves the PARENT to To Do again, which must be accepted, not refused as a no-op.
+        describe("WorkTracker: the create-then-schedule sequence the light lane uses (TAI-473/561)", () => {
+            const statusOf = async (key: IssueKey) => (await h.backend.workTracker.getIssue(key))?.status;
+
+            for (const [type, label] of [
+                [StoryType.Story, "Story"],
+                [StoryType.Bug, "Bug"],
+            ] as const) {
+                it(`a ${label} and its Dev subtask: created linked, assigned, both in To Do after the two moves`, async () => {
+                    const parent = track(
+                        await h.backend.workTracker.createIssue({
+                            projectKey: h.projectKey,
+                            issueType: type,
+                            summary: `Conformance: light lane ${label}`,
+                            description: "AC-1: the pair is created and scheduled.",
+                            persona: Persona.Pm,
+                        })
+                    );
+                    const dev = track(
+                        await h.backend.workTracker.createIssue({
+                            projectKey: h.projectKey,
+                            issueType: SubtaskType.Dev,
+                            summary: `Conformance: light lane ${label}`,
+                            persona: Persona.Developer,
+                            parentKey: parent.key,
+                        })
+                    );
+                    assert.equal(dev.parentKey, parent.key, "the subtask is linked to its parent");
+                    assert.equal(parent.status, Status.Backlog);
+                    assert.equal(dev.status, Status.Backlog);
+
+                    assert.equal((await h.backend.workTracker.assignIssue(parent.key, h.validAssignee)).ok, true);
+                    assert.equal((await h.backend.workTracker.assignIssue(dev.key, h.validAssignee)).ok, true);
+
+                    // The subtask first: it schedules its Backlog parent as part of the move.
+                    const devMove = await h.backend.workTracker.transition(dev.key, Status.ToDo);
+                    assert.equal(devMove.ok, true, devMove.ok ? "" : devMove.reason);
+                    assert.equal(await statusOf(parent.key), Status.ToDo, "moving the subtask scheduled the parent");
+
+                    // Then the parent again, as create-small does: already To Do, and the move must still be accepted.
+                    const parentMove = await h.backend.workTracker.transition(parent.key, Status.ToDo);
+                    assert.equal(parentMove.ok, true, parentMove.ok ? "" : parentMove.reason);
+
+                    const readParent = (await h.backend.workTracker.getIssue(parent.key))!;
+                    const readDev = (await h.backend.workTracker.getIssue(dev.key))!;
+                    assert.equal(readParent.status, Status.ToDo);
+                    assert.equal(readDev.status, Status.ToDo);
+                    assert.equal(readDev.parentKey, parent.key);
+                    assert.equal(readDev.issueType, SubtaskType.Dev);
+                    assert.equal(readParent.persona, Persona.Pm);
+                    assert.equal(readDev.persona, Persona.Developer);
+                    assert.equal(readParent.assignee?.id, h.validAssignee.id, "the parent's assignee reads back");
+                    assert.equal(readDev.assignee?.id, h.validAssignee.id, "the subtask's assignee reads back");
+                });
+            }
+
+            it("under a Backlog Epic the same two moves also schedule the Epic, and neither move is refused", async () => {
+                const epic = track(await h.backend.workTracker.createIssue({ projectKey: h.projectKey, issueType: "epic", summary: "Conformance: light lane epic" }));
+                const story = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: light lane epic story",
+                        persona: Persona.Pm,
+                        parentKey: epic.key,
+                    })
+                );
+                const dev = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        summary: "Conformance: light lane epic dev",
+                        persona: Persona.Developer,
+                        parentKey: story.key,
+                    })
+                );
+                assert.equal((await h.backend.workTracker.transition(dev.key, Status.ToDo)).ok, true);
+                assert.equal((await h.backend.workTracker.transition(story.key, Status.ToDo)).ok, true);
+                assert.equal(await statusOf(story.key), Status.ToDo);
+                assert.equal(await statusOf(dev.key), Status.ToDo);
+                assert.equal(await statusOf(epic.key), Status.ToDo, "the Backlog Epic is scheduled, which is what create-small's note warns about");
+            });
+        });
+
         describe("WorkTracker: transition() and the downward/terminal cascade gate (TAI-267, TAI-247 ADR)", () => {
             it("cascade-cancels an open child when the parent reaches Done", async () => {
                 const story = track(
