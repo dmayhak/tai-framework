@@ -678,7 +678,7 @@ function retroSkillBody(taiHome: string): string {
     );
 }
 
-/** All 16 skill files (8 skills × 2 hosts) — identical content per skill across hosts, since
+/** All 18 skill files (9 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
     const skills: readonly { readonly name: string; readonly description: string; readonly body: string }[] = [
