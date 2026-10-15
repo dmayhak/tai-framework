@@ -113,18 +113,24 @@ export async function findChangeContext(deps: ChangeDeps): Promise<ChangeContext
     });
 
     let cut = false;
+    let overflowed = false;
     let used = 0;
     const budget = deps.rowBudget ?? CHANGE_ROW_BUDGET;
     const tickets: ChangeTicket[] = sorted.map((issue, i) => {
         const pages = pagesByTicket[i]!;
         const description = (issue.description ?? "").replace(/\s+/g, " ").trim();
         let excerpt: string | null = description ? description : null;
-        if (excerpt && excerpt.length > DESCRIPTION_EXCERPT) {
-            excerpt = `${excerpt.slice(0, DESCRIPTION_EXCERPT)}…`;
+        // Cut on whole characters (code points), so an emoji at the boundary is never split into a lone surrogate.
+        const characters = excerpt ? Array.from(excerpt) : [];
+        if (excerpt && characters.length > DESCRIPTION_EXCERPT) {
+            excerpt = `${characters.slice(0, DESCRIPTION_EXCERPT).join("")}…`;
             cut = true;
         }
         const rowSize = issue.summary.length + (excerpt?.length ?? 0) + pages.reduce((n, p) => n + p.title.length + 16, 0) + 80;
-        if (used + rowSize > budget) {
+        // Once a row overflows the budget, every later row is abbreviated too: a short row slipping back in after an
+        // abbreviated one would leave the list uneven.
+        if (overflowed || used + rowSize > budget) {
+            overflowed = true;
             cut = true;
             return { issue, pages: [], excerpt: null, abbreviated: true };
         }

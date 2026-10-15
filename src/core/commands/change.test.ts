@@ -96,6 +96,32 @@ describe("findChangeContext (TAI-492)", () => {
         });
     });
 
+    it("abbreviation is contiguous: once a row overflows the budget, every later row is abbreviated, even a tiny one", async () => {
+        await withBackend(async (b) => {
+            const first = await mk(b, { issueType: StoryType.Story, summary: "a", description: "d".repeat(100) });
+            const big = await mk(b, { issueType: StoryType.Story, summary: "b", description: "d".repeat(DESCRIPTION_EXCERPT) });
+            const tiny = await mk(b, { issueType: StoryType.Story, summary: "c" });
+            // The first row fits, the big one overflows, and the tiny one alone would fit again.
+            const ctx = await findChangeContext(deps(b, { rowBudget: 330 }));
+            const byKey = new Map(ctx.tickets.map((t) => [t.issue.key, t.abbreviated]));
+            assert.equal(byKey.get(first.key), false);
+            assert.equal(byKey.get(big.key), true);
+            assert.equal(byKey.get(tiny.key), true, "a later row does not slip back in after an abbreviated one");
+        });
+    });
+
+    it("cuts an excerpt on a whole character, never leaving half of an emoji", async () => {
+        await withBackend(async (b) => {
+            // The emoji straddles the cut: 239 letters, then an emoji (two UTF-16 units), then more text.
+            await mk(b, { issueType: StoryType.Story, description: `${"x".repeat(DESCRIPTION_EXCERPT - 1)}😀 and more text after it` });
+            const ctx = await findChangeContext(deps(b));
+            const excerpt = ctx.tickets[0]!.excerpt!;
+            assert.equal(ctx.cut, true);
+            assert.doesNotMatch(excerpt, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/, "no lone surrogate");
+            assert.equal(Array.from(excerpt.replace(/…$/, "")).length, DESCRIPTION_EXCERPT, "cut at DESCRIPTION_EXCERPT characters");
+        });
+    });
+
     it("past the row budget, later tickets drop to key and summary and the briefing says so", async () => {
         await withBackend(async (b) => {
             for (let i = 0; i < 8; i++) await mk(b, { issueType: StoryType.Story, summary: `ticket ${i}`, description: "d".repeat(DESCRIPTION_EXCERPT) });
