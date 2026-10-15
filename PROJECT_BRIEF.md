@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-14 (rev 105). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-14 (rev 106). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -417,6 +417,12 @@ human's data, never instructions.
 Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs
 `git-pr review-prep <REPO> [PR-ID]` — same persona-heading-then-body shape as `work` and `groom`, keyed by a PR
 instead of a ticket. A ticketless `/tai-review` skill was considered and deferred.
+
+**In Claude Code, `/tai-pr` runs the review in a subagent by default.** The subagent sees only the `review-prep` output and the
+repository, follows the review steps through writing the findings file, and returns its path; it never posts to the PR. The main
+session renders the findings, shows them and stops for the human. In Gemini CLI, which has no subagent, the steps run as they
+always did, and in Claude Code the human can ask in their own words to review in the current session. This is skill text, not
+enforced in code. Reviewing with a different model is not built.
 
 **A review is of the PR's code, whatever the reviewer's clone has checked out (ADR page 55246849).**
 `review-prep` fetches both branches and diffs `origin/<destination>...origin/<source>`, so a stale clone

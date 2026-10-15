@@ -124,6 +124,30 @@ describe("renderGlobalSkillFiles", () => {
         assert.doesNotMatch(pr.content, /git diff\s+origin/);
     });
 
+    test("tai-pr runs the review in a fresh-context subagent in Claude Code, and the subagent never posts (TAI-469)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const pr = files.find((f) => f.relativePath === `${host}/skills/tai-pr/SKILL.md`)!.content;
+            // AC-1: subagent by default, Claude Code only
+            assert.match(pr, /\*\*Fresh context \(TAI-469\)/);
+            assert.match(pr, /In Claude Code, run the review in a subagent by default/);
+            // the opening instruction points ahead to the subagent rule, so it is not read as an inline review
+            assert.match(pr, /inside a subagent: see \*\*Fresh context\*\* below/);
+            // AC-2: the main session renders the findings verbatim and stops
+            assert.match(pr, /main session runs `git-pr render-findings`/);
+            assert.match(pr, /pastes its output verbatim/);
+            assert.match(pr, /stops for the human/);
+            // AC-3: Gemini CLI unchanged; inline only on the human's request
+            assert.match(pr, /In Gemini CLI there is no subagent: run the steps yourself as above/);
+            assert.match(pr, /only when the human asks in their own words/);
+            // AC-4: the subagent sees only review-prep's output and the repository
+            assert.match(pr, /only the `review-prep` output and the repository/);
+            assert.match(pr, /none of this session's context/);
+            assert.match(pr, /`coverage` block/);
+            // AC-5: the subagent never posts
+            assert.match(pr, /must not run `git-pr review`, `git-pr comment` or `git-pr comment-findings`/);
+        }
+    });
+
     test("tai-ready's review line points at review-prep, not a hand-run fetch/diff (TAI-425)", () => {
         const ready = files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!;
         assert.match(ready.content, /git-pr review-prep/);

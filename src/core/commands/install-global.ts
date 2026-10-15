@@ -317,7 +317,7 @@ function prSkillBody(taiHome: string): string {
         "reality before acting on them (they can be wrong). Never silently drop a comment.\n\n" +
         "**Doing an actual review (TAI-187, TAI-425):** when the human asks to review a PR — including " +
         "picking a numbered \"PRs ready for your review\" line from `/tai-ready`'s or this skill's own list — " +
-        "run EXACTLY this and read its full output:\n\n" +
+        "run EXACTLY this and read its full output (in Claude Code that means inside a subagent: see **Fresh context** below before you run it yourself):\n\n" +
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review-prep <REPO> [PR-ID]\n` +
         "```\n\n" +
@@ -335,6 +335,17 @@ function prSkillBody(taiHome: string): string {
         "This applies even when you already know the diff well (e.g. you wrote it earlier this session): the " +
         "human decides the outcome of every review, every time, in their own words. No condition ever " +
         "auto-approves (brief §3.4: human sign-off is the default).\n\n" +
+        "**Fresh context (TAI-469):** a review should not come from the session that wrote the code. In Claude Code, " +
+        "run the review in a subagent by default: start one with a prompt that gives it the `review-prep` command above " +
+        "with the real `<REPO>` and `[PR-ID]`, and tells it to use only the `review-prep` output and the repository, " +
+        "none of this session's context. It follows the review steps in that output through writing the findings JSON " +
+        "file, with the `coverage` block required and true, then stops and returns the path of that file. It must not run " +
+        "`git-pr review`, `git-pr comment` or `git-pr comment-findings`, and it cannot ask the human anything: " +
+        "posting and the decision stay in this session. When it returns, the main session runs `git-pr render-findings` " +
+        "on the file, pastes its output verbatim and stops for the human, exactly as the review-prep steps say. " +
+        "In Gemini CLI there is no subagent: run the steps yourself as above. In Claude Code too, review in the " +
+        "current session only when the human asks in their own words (\"review it here\"); that is a convention, " +
+        "not enforced in code.\n\n" +
         "If the command errors, report the error to the human rather than guessing or proceeding " +
         "anyway."
     );

@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 106 (2026-10-14)
+
+**TAI-557 (Story TAI-469): `/tai-pr` runs the review in a fresh-context subagent in Claude Code.** Human decision, 2026-10-14, scoping TAI-469 (from the 2026-10-07 review, Confluence page 53608449 section 6): a review should not come from the session that wrote the code. The subagent follows `review-prep` through the findings file and never posts; the main session renders the findings and stops for the human. Gemini CLI is unchanged, a human can still ask for an inline review, and a different-model setting is left out of scope.
+
 ## rev 105 (2026-10-14)
 
 **TAI-531: the `humanSignOffDefault` key and the persona files' `alwaysHumanGated` lists are removed.** Human decision, 2026-10-14, raised in the review of PR 186: autocompletion was retired in TAI-482, so the key was the switch for a mechanism that no longer exists, and the code reads the schema's own always-human-gated list, not the persona files'. Removed from every persona file, the config parser, `PersonaCheckpoints` and the `mergePersonaConfig` protection; `cannotApprove` stays protected exactly as before. A persona file, override or extension page that still carries either key loads without error and the key is never read. Not taken: keeping the protection as a guard against the key returning with a meaning (the guard would be unreachable code; a returning key can bring its own check). Persona files whose `checkpoints` block held only the key lost the block.
