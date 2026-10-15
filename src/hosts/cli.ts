@@ -986,8 +986,8 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
     return lines.join("\n");
 }
 
-/** Lighter sibling to `renderReadyWork` (TAI-211/212) — just the two PR-review-mode
- *  sections, no general ready list, no in-flight section. Same "reply with a number"
+/** Lighter sibling to `renderReadyWork` (TAI-211/212) — just the PR-review-mode
+ *  sections (review, merge, waiting), no general ready list, no in-flight section. Same "reply with a number"
  *  numbered-line convention `tai-ready` already uses. */
 export function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRWork>>): string {
     const lines: string[] = ["# PRs ready for you", ""];
