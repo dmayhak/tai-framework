@@ -131,7 +131,9 @@ function readySkillBody(taiHome: string): string {
         "up to three PR-related sections, all live signals read directly from Bitbucket rather " +
         "than any Jira subtask (rev 52, TAI-159 ADR — there is no CodeReview subtask anymore):\n\n" +
         "- **PRs ready for your review** — open PRs where the current human (`BITBUCKET_EMAIL`) is " +
-        "on the \"PR Reviewers\" roster and hasn't yet decided. Picking this line's number means " +
+        "on the \"PR Reviewers\" roster and has not decided yet, OR decided (approved, or requested changes) before the " +
+        "PR's latest commit: that line says **re-review** and names the new commit, because the host keeps an old " +
+        "decision across new commits. Picking this line's number means " +
         "doing a REAL review (TAI-187) — see `tai-pr`'s own skill for the full flow (it runs " +
         "`git-pr review-prep`, which loads Cole, the PR and its diff and carries the review steps — " +
         "present the findings, then ask separately whether to post and whether to approve) — never just " +
@@ -177,8 +179,8 @@ function prSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts pr-ready\n` +
         "```\n\n" +
-        "Just the two PR sections `tai-ready` also shows (**PRs ready for your review**, " +
-        "**Approved PRs ready to merge**) — no In Progress section, no general Ready Work list, " +
+        "Just the two PR sections `tai-ready` also shows (**PRs ready for your review**, which includes a **re-review** " +
+        "of a PR changed since the human decided, and **Approved PRs ready to merge**) — no In Progress section, no general Ready Work list, " +
         "no \"Open PRs ready to test,\" each numbered with its own shared counter the same way " +
         "`tai-ready`'s combined list is. Present it AS-IS, don't renumber it.\n\n" +
         "**Presenting this list is the entire, complete output of a bare `tai-pr` invocation — " +

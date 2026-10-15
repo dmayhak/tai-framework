@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-14 (rev 108). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-15 (rev 109). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -956,7 +956,9 @@ decision.**
   merged, so it waits on `Dev` being Done as well as on the test tiers and UAT.
 - **Readiness for review, testing and merging is computed live**, as three `/tai-ready` lists rather than from
   the static precedence graph: `readyToReview` (open PRs where the current human is on the "PR Reviewers"
-  roster), `readyToTest` (In-Progress `Dev` subtasks with an open PR; no approval needed, testing runs alongside
+  roster and has not decided yet, or approved or requested changes before the PR's latest commit: that line is marked
+  a re-review and names the new commit, because the host keeps an old decision across new commits; freshness is read
+  from the PR's history, as the merge gate reads it), `readyToTest` (In-Progress `Dev` subtasks with an open PR; no approval needed, testing runs alongside
   review) and `readyToMerge` (PRs that pass the merge gate and are CI-green).
 - **The merge gate.** `git-pr merge` refuses unless all of
   these hold, and `/tai-ready`'s `readyToMerge` applies the same rule (one function, `core/git/merge-gate.ts`):

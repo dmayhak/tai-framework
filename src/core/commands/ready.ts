@@ -25,7 +25,8 @@
  * Jira-side anchor for review/test readiness — `Dev` (still `In Progress`, since it stays
  * open until its PR merges) is, correlated against the PR's own live approval/CI state:
  *   - `readyToReview` — open PRs where the current human is an eligible reviewer (the new
- *     "PR Reviewers" roster, `git/pr-reviewers.ts`) and hasn't yet cast a decision.
+ *     "PR Reviewers" roster, `git/pr-reviewers.ts`) and hasn't yet cast a decision, or cast it
+ *     before the PR's latest commit (a re-review, TAI-563).
  *   - `readyToTest` — `Dev` subtasks with a linked, open PR — full stop, no approval-count
  *     check. Testing and review run IN PARALLEL against the PR's branch (human-confirmed
  *     2026-08-24, discussed live during TAI-160): review no longer gates testing the way
@@ -56,10 +57,10 @@ import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker }
 import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
 import { findNotVerified } from "../storage/verification.js";
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
-import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
+import type { CommitSha, GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
-import { checkMergeGate, DEFAULT_REQUIRED_APPROVALS } from "../git/merge-gate.js";
+import { checkMergeGate, DEFAULT_REQUIRED_APPROVALS, lastDecisionBy, sameCommit } from "../git/merge-gate.js";
 import { sameHuman } from "../personas/roster.js";
 import {
     EPIC_CHILD_ISSUE_TYPES,
@@ -106,6 +107,9 @@ export interface FindReadyWorkDeps {
 
 export interface ReadyToReviewCandidate {
     readonly pullRequest: PullRequestRef;
+    /** TAI-563: present when the human already decided on this PR but the PR has new commits since, so it needs a
+     *  fresh look. `commit` is the PR's current head. Absent for a first review. */
+    readonly reReview?: { readonly decision: "approved" | "changesRequested"; readonly commit: CommitSha };
 }
 
 /** A `Dev` subtask (rev 52: stays In Progress until its PR merges — see story-schema.ts's
@@ -318,11 +322,23 @@ function approvalCount(pr: PullRequestRef): number {
     return pr.reviewers.filter((r) => r.status === "approved").length;
 }
 
-/** Has `human` NOT yet cast a review decision on `pr`? True both when they're not on the
- *  PR's reviewer/participant list at all, and when they are but still `"pending"`. */
-function hasUndecidedReview(pr: PullRequestRef, human: HumanRef): boolean {
+/**
+ * Does `pr` need `human`'s review? (TAI-563) Yes when they have not decided on it (not on the reviewer list, or still
+ * `"pending"`), and also when they approved or requested changes on an EARLIER commit: the host keeps the decision
+ * across later commits, so its status alone would drop a PR that has changed since. Freshness is read from the PR's
+ * history, as the merge gate reads it; with no decision of theirs in it, freshness cannot be shown and the PR is listed.
+ * Returns `null` when no review is needed, `{}` for a first review, or the re-review mark.
+ */
+async function reviewNeeded(
+    gitHost: Pick<GitHost, "listPullRequestActivity">,
+    pr: PullRequestRef,
+    human: HumanRef
+): Promise<{ readonly reReview?: NonNullable<ReadyToReviewCandidate["reReview"]> } | null> {
     const existing = pr.reviewers.find((r) => sameHuman(r.human, human));
-    return !existing || existing.status === "pending";
+    if (!existing || existing.status === "pending") return {};
+    const last = lastDecisionBy(await gitHost.listPullRequestActivity(pr.repo, pr.id), human);
+    if (last?.head != null && sameCommit(last.head, pr.sourceCommit)) return null;
+    return { reReview: { decision: existing.status, commit: pr.sourceCommit } };
 }
 
 /** Fetches every configured repo's open PRs ONCE — shared by `findDevLinkedOpenPRs` and
@@ -637,7 +653,8 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         for (const repo of deps.repos) {
             const openPRs = await deps.gitHost.listPullRequests(repo, "open");
             for (const pr of openPRs) {
-                if (hasUndecidedReview(pr, deps.currentHuman)) candidates.push({ pullRequest: pr });
+                const needed = await reviewNeeded(deps.gitHost, pr, deps.currentHuman);
+                if (needed) candidates.push({ pullRequest: pr, ...needed });
             }
         }
         readyToReview = candidates;

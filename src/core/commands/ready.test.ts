@@ -1260,6 +1260,98 @@ describe("findReadyWork readyToReview", () => {
     });
 });
 
+describe("findReadyWork readyToReview: a decision made before the latest commit needs a re-review (TAI-563)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+    const NEW = toCommitSha("new999");
+    const OLD = toCommitSha("old111");
+
+    async function reviewList(pr: PullRequestRef, activity: readonly PullRequestActivity[] | null) {
+        let list: Awaited<ReturnType<typeof findReadyWork>>["readyToReview"] = [];
+        await withBackend(async (backend, taiRoot) => {
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            gitHost.activity = activity;
+            list = (
+                await findReadyWork({
+                    workTracker: backend.workTracker,
+                    taiRoot,
+                    projectKey: "TAI",
+                    gitHost,
+                    repos: [repo],
+                    currentHuman: REVIEWER_A,
+                    prReviewers: [REVIEWER_A],
+                })
+            ).readyToReview;
+        });
+        return list;
+    }
+
+    test("an approval cast on an earlier commit puts the PR back on the list, marked as a re-review of the new commit", async () => {
+        const pr = prFixture({ sourceCommit: NEW, reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+        const list = await reviewList(pr, [
+            { kind: "update", at: "t1", sourceCommit: OLD },
+            { kind: "approval", at: "t2", human: REVIEWER_A },
+            { kind: "update", at: "t3", sourceCommit: NEW },
+        ]);
+        assert.equal(list.length, 1);
+        assert.deepEqual(list[0]?.reReview, { decision: "approved", commit: NEW });
+    });
+
+    test("a request for changes made on an earlier commit also puts it back: the author has pushed since", async () => {
+        const pr = prFixture({ sourceCommit: NEW, reviewers: [{ human: REVIEWER_A, status: "changesRequested" }] });
+        const list = await reviewList(pr, [
+            { kind: "update", at: "t1", sourceCommit: OLD },
+            { kind: "changesRequested", at: "t2", human: REVIEWER_A },
+            { kind: "update", at: "t3", sourceCommit: NEW },
+        ]);
+        assert.equal(list.length, 1);
+        assert.deepEqual(list[0]?.reReview, { decision: "changesRequested", commit: NEW });
+    });
+
+    test("a decision on the current commit is not listed, whether an approval or a request for changes", async () => {
+        const approved = prFixture({ sourceCommit: NEW, reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+        assert.deepEqual(
+            await reviewList(approved, [
+                { kind: "update", at: "t1", sourceCommit: NEW },
+                { kind: "approval", at: "t2", human: REVIEWER_A },
+            ]),
+            []
+        );
+        const requested = prFixture({ sourceCommit: NEW, reviewers: [{ human: REVIEWER_A, status: "changesRequested" }] });
+        assert.deepEqual(
+            await reviewList(requested, [
+                { kind: "update", at: "t1", sourceCommit: NEW },
+                { kind: "changesRequested", at: "t2", human: REVIEWER_A },
+            ]),
+            []
+        );
+    });
+
+    test("the human's LATEST decision is the one that counts, and another reviewer's does not", async () => {
+        const pr = prFixture({ sourceCommit: NEW, reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+        // A approved on the old commit, then again on the new one; B approved in between.
+        const list = await reviewList(pr, [
+            { kind: "update", at: "t1", sourceCommit: OLD },
+            { kind: "approval", at: "t2", human: REVIEWER_A },
+            { kind: "update", at: "t3", sourceCommit: NEW },
+            { kind: "approval", at: "t4", human: REVIEWER_A },
+        ]);
+        assert.deepEqual(list, []);
+        const other = await reviewList(pr, [
+            { kind: "update", at: "t1", sourceCommit: OLD },
+            { kind: "approval", at: "t2", human: REVIEWER_B },
+            { kind: "update", at: "t3", sourceCommit: NEW },
+        ]);
+        assert.equal(other.length, 1, "B's approval says nothing about A's decision: freshness cannot be shown, as in the merge gate");
+    });
+
+    test("a first review carries no re-review mark", async () => {
+        const pr = prFixture({ sourceCommit: NEW, reviewers: [] });
+        const list = await reviewList(pr, []);
+        assert.equal(list.length, 1);
+        assert.equal(list[0]?.reReview, undefined);
+    });
+});
+
 describe("findReadyWork out-of-band merge sync (rev 52, TAI-159 ADR)", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 

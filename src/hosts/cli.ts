@@ -54,7 +54,7 @@ import { prepareWorkTurn, NoOwningPersonaError } from "../core/commands/work.js"
 import { briefingBudgetFromEnv, type BriefingChangeNote } from "../core/workspace/briefing.js";
 import { cachePage } from "../core/cache/page-cache.js";
 import { CachingWorkTracker } from "../core/cache/caching-work-tracker.js";
-import { findReadyWork, findReadyPRWork } from "../core/commands/ready.js";
+import { findReadyWork, findReadyPRWork, type ReadyToReviewCandidate } from "../core/commands/ready.js";
 import {
     EPIC_CHILD_ISSUE_TYPES,
     EPIC_SUMMARY_LIVING_DOC_TYPES,
@@ -784,6 +784,17 @@ function subtaskTypeLabel(type: SubtaskType): string {
     return type.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
 }
 
+
+/** TAI-563: one "PRs ready for your review" line. A PR the human already decided on but that has new commits since says
+ *  so, and names the new commit, so it is not mistaken for a first review. */
+export function reviewLine(c: ReadyToReviewCandidate): string {
+    const pr = c.pullRequest;
+    const mark = c.reReview
+        ? ` — **re-review**: you ${c.reReview.decision === "approved" ? "approved" : "requested changes"} before the latest commit (${c.reReview.commit})`
+        : "";
+    return `${pr.url} (${pr.sourceBranch} → ${pr.destinationBranch})${mark} — review it with \`git-pr review-prep ${pr.repo} ${pr.id}\``;
+}
+
 /** "A", "A and B", "A, B and C". */
 function joinSubtaskTypeLabels(types: readonly SubtaskType[]): string {
     const labels = types.map(subtaskTypeLabel);
@@ -914,10 +925,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
     if (result.readyToReview.length > 0) {
         lines.push("", "## PRs ready for your review", "");
         for (const c of result.readyToReview) {
-            lines.push(
-                `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
-                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep ${c.pullRequest.repo} ${c.pullRequest.id}\``
-            );
+            lines.push(`${counter.next()}. ${reviewLine(c)}`);
             actionableCount++;
         }
     }
@@ -971,10 +979,7 @@ export function renderPRReadyWork(result: Awaited<ReturnType<typeof findReadyPRW
     if (result.readyToReview.length > 0) {
         lines.push("## PRs ready for your review", "");
         for (const c of result.readyToReview) {
-            lines.push(
-                `${counter.next()}. ${c.pullRequest.url} (${c.pullRequest.sourceBranch} → ` +
-                    `${c.pullRequest.destinationBranch}) — review it with \`git-pr review-prep ${c.pullRequest.repo} ${c.pullRequest.id}\``
-            );
+            lines.push(`${counter.next()}. ${reviewLine(c)}`);
             actionableCount++;
         }
     }

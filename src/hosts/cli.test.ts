@@ -823,6 +823,41 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
     });
 });
 
+describe("a re-review line says so and names the new commit (TAI-563)", () => {
+    const reReview = {
+        pullRequest: { id: "9", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" },
+        reReview: { decision: "approved", commit: "new999" },
+    } as never;
+    const requested = {
+        pullRequest: { id: "9", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" },
+        reReview: { decision: "changesRequested", commit: "new999" },
+    } as never;
+    const first = {
+        pullRequest: { id: "9", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" },
+    } as never;
+
+    it("both lists mark an approval made before the new commit, and a request for changes", () => {
+        for (const [c, said] of [[reReview, /you approved/], [requested, /you requested changes/]] as const) {
+            const prOut = renderPRReadyWork({ readyToReview: [c], readyToMerge: [] } as never);
+            assert.match(prOut, /re-review/);
+            assert.match(prOut, said);
+            assert.match(prOut, /new999/);
+            assert.match(prOut, /git-pr review-prep ws\/repo 9/);
+            const readyOut = renderReadyWork({
+                ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [c], readyToTest: [], readyToMerge: [],
+                blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+            });
+            assert.match(readyOut, /re-review/);
+            assert.match(readyOut, /new999/);
+        }
+    });
+
+    it("a first review has no re-review mark", () => {
+        const out = renderPRReadyWork({ readyToReview: [first], readyToMerge: [] } as never);
+        assert.doesNotMatch(out, /re-review/);
+    });
+});
+
 describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
     const base = {
         ready: [],
