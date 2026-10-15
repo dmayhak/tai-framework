@@ -181,6 +181,17 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("tai-ready and tai-pr say the review list includes a re-review of a PR changed since the human decided (TAI-563)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!.content;
+            assert.match(ready, /decided \(approved, or requested changes\) before the PR's latest commit/);
+            assert.match(ready, /\*\*re-review\*\*/);
+            assert.doesNotMatch(ready, /and hasn't yet decided\./);
+            const pr = files.find((f) => f.relativePath === `${host}/skills/tai-pr/SKILL.md`)!.content;
+            assert.match(pr, /includes a \*\*re-review\*\*/);
+        }
+    });
+
     test("tai-ready's review line points at review-prep, not a hand-run fetch/diff (TAI-425)", () => {
         const ready = files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!;
         assert.match(ready.content, /git-pr review-prep/);

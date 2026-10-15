@@ -58,8 +58,26 @@ export interface MergeGateVerdict {
 
 /** Hosts hand out commit hashes at different lengths (Bitbucket's PR payloads use 12
  *  characters); one is the other's prefix when they name the same commit. */
-function sameCommit(a: CommitSha, b: CommitSha): boolean {
+export function sameCommit(a: CommitSha, b: CommitSha): boolean {
     return a.length > 0 && b.length > 0 && (a.startsWith(b) || b.startsWith(a));
+}
+
+/**
+ * TAI-563: one reviewer's latest decision on a PR and the head it was made on, from the PR's history (oldest first).
+ * `head` is null when no update entry came before it. Null overall when the history holds no decision by them,
+ * which for a reviewer the host still lists as decided means freshness cannot be shown (the merge gate's own rule).
+ */
+export function lastDecisionBy(
+    activity: readonly PullRequestActivity[],
+    human: HumanRef
+): { readonly decision: "approved" | "changesRequested"; readonly head: CommitSha | null } | null {
+    let head: CommitSha | null = null;
+    let last: { decision: "approved" | "changesRequested"; head: CommitSha | null } | null = null;
+    for (const entry of activity) {
+        if (entry.kind === "update") head = entry.sourceCommit;
+        else if (sameHuman(entry.human, human)) last = { decision: entry.kind === "approval" ? "approved" : "changesRequested", head };
+    }
+    return last;
 }
 
 const names = (humans: readonly HumanRef[]): string => humans.map((h) => h.displayName).join(", ");

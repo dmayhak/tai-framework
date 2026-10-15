@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 109 (2026-10-15)
+
+**TAI-565 (Bug TAI-563): `/tai-ready` and `/tai-pr` list a PR for re-review when the reviewer's decision predates its latest commit.** Found live, 2026-10-15: PR 204 had an approval, then two more commits, and `/tai-pr` answered "Nothing ready for you right now". The review list counted a reviewer as decided from the host's status alone, and Bitbucket keeps an approval and a request for changes across new commits. It now reads the PR's history, as the merge gate does: a decision made on an earlier commit puts the PR back on the list, marked as a re-review of the new commit; one with no decision of the reviewer's in the history counts as not shown fresh, the merge gate's own rule. A stale request for changes is included, because the author's fix commits do not clear it. The line gives the old and the new commit and the `git diff` between them, and a history that cannot be read lists the PR with a note instead of failing the whole section.
+
 ## rev 108 (2026-10-14)
 
 **TAI-560 (Story TAI-473): a light lane for very small changes, `issue create-small`.** Human decision, 2026-10-14 (from the 2026-10-07 review, Confluence page 53608449 section 6, where the quick lane was "a policy choice more than a build"). One command makes a Story or Bug with its `Dev` subtask, assigned and in To Do; only the ticket setup shrinks. It requires an `AC-1` line, makes no other subtask, and exempts nothing from review or the merge gate (a test checks that). Entry point: the `/tai-small` skill, typed by the human, so the call to use the lane is theirs (no pointer line telling any session to use it on its own). The size limit is a convention in the persona docs, not code. Not taken: a description-length cap (crude, and size is not mechanically checkable).

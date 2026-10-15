@@ -108,8 +108,11 @@ start; both are independent prerequisites of the merge, which the merge gate che
 ## When this persona is invoked
 
 **Any open PR on `/tai-ready`'s `readyToReview` list** — open PRs where the current human
-(resolved from `BITBUCKET_EMAIL`) is on the "PR Reviewers" roster and hasn't yet cast a
-decision.
+(resolved from `BITBUCKET_EMAIL`) is on the "PR Reviewers" roster and either has not decided
+yet or decided before the PR's latest commit. A line marked **re-review** is the second kind: it gives your old and the
+new commit and the `git diff <old>..<new>` between them, so start from the change since your decision, and decide
+afresh (the host keeps an old approval or request for changes across new commits, so the old decision does not stand
+for the new code). `review-prep` still writes the complete diff, which you read as usual.
 
 - **Entry point: `{{TAI_CLI}} git-pr review-prep <REPO> [PR-ID]`** — it writes nothing to the PR
   or the tracker (locally it fetches, and fast-forwards the default branch when that is clean). It refuses up front

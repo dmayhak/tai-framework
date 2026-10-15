@@ -823,6 +823,50 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
     });
 });
 
+describe("a re-review line says so, names both commits and the diff between them (TAI-563)", () => {
+    const pullRequest = { id: "9", repo: "ws/repo", url: "https://bitbucket.org/ws/repo/pull-requests/9", sourceBranch: "TAI-1-x", destinationBranch: "master" };
+    const mark = (reReview: unknown) => ({ pullRequest, reReview }) as never;
+    const render = (c: never) => ({
+        pr: renderPRReadyWork({ readyToReview: [c], readyToMerge: [] } as never),
+        ready: renderReadyWork({
+            ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [c], readyToTest: [], readyToMerge: [],
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+        }),
+    });
+
+    it("an approval or request for changes before the new commit: says which, and gives git diff old..new", () => {
+        for (const [decision, said] of [["approved", /you approved at old111/], ["changesRequested", /you requested changes at old111/]] as const) {
+            const out = render(mark({ decision, commit: "new999", since: "old111" }));
+            for (const text of [out.pr, out.ready]) {
+                assert.match(text, /re-review/);
+                assert.match(text, said);
+                assert.match(text, /now new999/);
+                assert.match(text, /git diff old111\.\.new999/);
+                assert.match(text, /git-pr review-prep ws\/repo 9/);
+            }
+        }
+    });
+
+    it("an unknown old commit names only the new one, and says so", () => {
+        const text = render(mark({ decision: "approved", commit: "new999", since: null })).pr;
+        assert.match(text, /re-review/);
+        assert.match(text, /new999/);
+        assert.doesNotMatch(text, /git diff/);
+    });
+
+    it("a history that could not be read says that instead of guessing", () => {
+        const text = render(mark({ decision: "approved", commit: "new999", since: null, unreadable: true })).pr;
+        assert.match(text, /re-review/);
+        assert.match(text, /could not be read/);
+        assert.doesNotMatch(text, /git diff/);
+    });
+
+    it("a first review has no re-review mark", () => {
+        const text = render({ pullRequest } as never).pr;
+        assert.doesNotMatch(text, /re-review/);
+    });
+});
+
 describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
     const base = {
         ready: [],
