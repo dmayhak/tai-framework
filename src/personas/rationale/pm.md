@@ -118,6 +118,20 @@ implementation was the other half of item 13, resolved as "no formal marker".
   cannot disagree. Perry names the next step; Tessa verifies.
 - A test pins this section's key phrases (`config.test.ts`).
 
+## Retrospective (TAI-491, from TAI-461)
+
+- It reverses the earlier decision to decline a retrospective workflow (brief §8 item 26): lessons were landing in a
+  private memory folder, and many brief revisions are course corrections found live. The human decided on 2026-10-08
+  to add an on-demand one; scope was settled on 2026-10-14.
+- On demand, never automatic: closing an Epic only prints a suggestion line.
+- The five signals are the ones the tracker and the git host already record. "Cancelled" is read from the last
+  update, because no backend keeps a cancel date. "Stale approvals" reuses the merge gate's own rule, so the two
+  cannot disagree.
+- The default window is the last 30 days. Using the date of the last retro page was considered and left out: there is
+  no way to search for a page by title.
+- Lessons about TAI itself are filed apart from the project's action items, labelled `tai-lesson`, so they can be
+  found and acted on in TAI.
+
 ## Governance PRs
 
 - TAI-112: `createPullRequest` for Perry and Aria, after borrowing a Dev subtask's key for permission

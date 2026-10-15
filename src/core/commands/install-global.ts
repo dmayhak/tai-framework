@@ -365,7 +365,7 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts install-global\n` +
         "```\n\n" +
-        "This (re)writes all eight skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-verify`) " +
+        "This (re)writes all nine skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-verify`) " +
         "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
         "`tai-framework` itself has been updated at its fixed location. **Gemini CLI does not pick up " +
         "refreshed skill files in a running session — after an install/refresh, tell the human to " +
@@ -651,6 +651,33 @@ function kickoffSkillBody(taiHome: string): string {
     );
 }
 
+function retroSkillBody(taiHome: string): string {
+    return (
+        "**What this is (TAI-491; the TAI-461 decision):** an on-demand retrospective led by Perry (PM). It needs no " +
+        "ticket: it reads what went wrong or was sent back in a window, and Perry then asks a few questions, writes a short " +
+        "retro page and files the action items as Backlog tickets. Lessons about TAI itself are filed separately.\n\n" +
+        "Run this and read its full output. It takes an optional epic key (the epic's whole life) or `since=<date>` " +
+        "(for example `since=2026-10-01`); with neither, the window is the last 30 days. Pass only what the human gave, " +
+        "and only in one of those two forms:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts retro [EPIC-KEY | since=<date>]\n` +
+        "```\n\n" +
+        "The output starts with a `# Persona: Perry (pm)` heading and Perry's own instructions, then a `---` separator, " +
+        "then the retro briefing: five numbered sections (tickets cancelled, Bugs raised, tiers sent back, stamped " +
+        "overrides, stale approvals) for the window it names. For the rest of this turn, act as that persona and follow " +
+        "her Retrospective behavior against it. The command itself writes nothing.\n\n" +
+        "**Show the briefing first — before any question (TAI-423).** A tool call's own output is not reliably visible " +
+        "to the human as chat (TAI-258), so running the command is not showing it. Your reply must contain the briefing as " +
+        "ordinary chat text: paste everything from the `# Retro briefing` heading to the end of the briefing, verbatim — " +
+        "all five numbered sections, in order, including the ones that say None or Not read; never trim or summarize it " +
+        "(the persona instructions above that heading are for you, not the human). Do NOT, in this same turn, ask a " +
+        "question with an interactive tool: end your turn there and wait for the human's own NEXT message.\n\n" +
+        "**Authority.** Perry may create Backlog tickets and write the retro page on her own once the human has answered " +
+        "her questions. Every Backlog → To Do move, assignment and Cancel she PROPOSES and applies only after the human " +
+        "confirms in their own message."
+    );
+}
+
 /** All 16 skill files (8 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
@@ -689,6 +716,14 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
                 "Start a project or a new initiative -- loads Perry (PM) with her Project initiation behavior and a " +
                 "briefing of the existing Epics and Kickoffs, to create the Epic + Kickoff Story; no ticket needed (TAI-348)",
             body: kickoffSkillBody(taiHome),
+        },
+        {
+            name: "tai-retro",
+            description:
+                "On-demand retrospective -- loads Perry (PM) with what was cancelled, raised as Bugs, sent back, overridden " +
+                "or approved stale in a window (an epic's life, since=<date>, or the last 30 days); she asks a few " +
+                "questions, writes the retro page and files action items (TAI-491)",
+            body: retroSkillBody(taiHome),
         },
         {
             name: "tai-verify",
@@ -731,7 +766,7 @@ export function defaultTaiHome(): string {
 }
 
 /**
- * Writes all 16 global skill files (8 skills x 2 hosts) under the user's home directory. Fails loudly if
+ * Writes all 18 global skill files (9 skills x 2 hosts) under the user's home directory. Fails loudly if
  * `taiHome` doesn't exist — this function never clones it (see file header); the caller
  * (the `tai-init` skill's own prose, or a human) is responsible for that first.
  */

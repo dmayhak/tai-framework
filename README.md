@@ -174,6 +174,7 @@ installed and a project is configured (or you're using the filesystem quickstart
 | `/tai-pr create\|review\|merge` | Open, review, or merge a real PR for a `Dev` subtask, using TAI's own structured-findings review flow. |
 | `/tai-audit` | Report-only sweep of the open backlog for staleness/drift (stale notes, missing links, decision drift, …). |
 | `/tai-kickoff [initiative]` | Start a project or a new initiative with Perry (PM): she checks what Epics and Kickoffs already exist, then creates the Epic + Kickoff Story. Needs no ticket, and works on a fresh project or one that already has Epics. |
+| `/tai-retro [epic \| since=<date>]` | On-demand retrospective with Perry (PM): a briefing of what was cancelled, raised as Bugs, sent back, overridden or approved stale in a window (an epic's life, `since=`, or the last 30 days); she asks a few questions, writes the retro page and files action items. Needs no ticket. |
 | `/tai-groom [epic]` | Backlog grooming with Perry (PM): a briefing of the whole board, or one epic — sequence Kickoffs, schedule a first wave, promote unblocked work, assign owners. Needs no ticket; every change is proposed and applied only after you confirm. |
 | `/tai-verify <STORY-KEY>` | Check a Story's or Bug's finished work against its numbered `AC-n` acceptance criteria: Tessa (Tester) reads the criteria and the Dev PR diffs and posts one `Verified:` / `Not verified:` comment. Show-only; nothing is blocked. |
 

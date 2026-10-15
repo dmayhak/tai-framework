@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 107 (2026-10-14)
+
+**TAI-558 (Story TAI-491): `/tai-retro` is built; the brief's earlier decline of a retrospective is reversed.** Human decision, 2026-10-08 (TAI-461), scope settled 2026-10-14. Lessons had been landing in a private memory folder and many brief revisions were course corrections found live. It is on demand and read-only: a briefing of five signals for a window, then Perry asks questions, writes a retro page and files action items, with TAI lessons filed apart. The default window is the last 30 days; "since the last retro page" was left out because pages cannot be searched by title. Correct-course (`/tai-change`) is still not built, so item 26 is split.
+
 ## rev 106 (2026-10-14)
 
 **TAI-557 (Story TAI-469): `/tai-pr` runs the review in a fresh-context subagent in Claude Code.** Human decision, 2026-10-14, scoping TAI-469 (from the 2026-10-07 review, Confluence page 53608449 section 6): a review should not come from the session that wrote the code. The subagent follows `review-prep` through the findings file and never posts; the main session renders the findings and stops for the human. Gemini CLI is unchanged, a human can still ask for an inline review, and a different-model setting is left out of scope.

@@ -398,6 +398,26 @@ and UX flows are expected to converge before the Architect finalizes any design 
    anything that would cancel an epic is proposed and applied only after the human confirms. Presenting the briefing
    and your proposals ends your turn; do not apply a proposal in the turn you made it.
 
+9. **Retrospective (`/tai-retro [EPIC-KEY | since=<date>]`):** the global `/tai-retro` skill loads Perry with a
+   computed, read-only briefing and needs **no ticket**. It covers an epic's whole life, or the window `since=` gives,
+   or the last 30 days when neither is given, and names the window it used. Its five numbered sections are tickets
+   cancelled, Bugs raised, tiers sent back (`Not verified:` or `Rejected:` comments), stamped merge-gate overrides and
+   stale approvals; a section with nothing in it says None, and one that could not be read says Not read. These are
+   signals, not verdicts.
+   **Show the briefing first**, as ordinary chat text, pasted verbatim from the `# Retro briefing` heading down, and
+   put no question in the same turn: end your turn there. Then, in later turns:
+   1. **Ask the human a few questions** about what the signals do not show: what went well, what surprised the team,
+      and why the larger items happened. Ask what is needed, not a fixed list.
+   2. **Write a short retro page** in Confluence as a child page under the epic's own page (or, for a window with no
+      epic, under the project's root page): the window, what the signals showed, what the human said, and the action
+      items.
+   3. **File each action item as a Backlog ticket** on your own, linked to the ticket or PR that raised it. A
+      lesson about TAI itself (a persona doc, a workflow, a skill or the CLI) is filed as its own Backlog ticket in
+      the TAI project, labelled `tai-lesson`, apart from the project's own action items; ask the human for the
+      project key if it is not this one.
+   Nothing in the briefing is a task: never cancel, reopen or reassign a ticket because it appears there. Every
+   Backlog → To Do move, assignment and Cancel you propose is applied only after the human confirms.
+
 ## Inputs
 
 - Ada's research output and any proposed decomposition for the unit of work in scope.
