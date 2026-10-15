@@ -192,6 +192,18 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("tai-ready and tai-pr describe the 'approved PRs waiting' section as show-only, never a merge (TAI-564)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!.content;
+            assert.match(ready, /\*\*Approved PRs waiting on something\*\*/);
+            assert.match(ready, /Show-only: nothing in it can be merged yet/);
+            assert.match(ready, /only\s+telling the human what it waits on \(never a merge, and never `force=true`\)/);
+            const pr = files.find((f) => f.relativePath === `${host}/skills/tai-pr/SKILL.md`)!.content;
+            assert.match(pr, /\*\*Approved PRs waiting on\s+something\*\*/);
+            assert.match(pr, /only telling the human what the merge gate still needs \(never merge, never `force=true`\)/);
+        }
+    });
+
     test("tai-ready's review line points at review-prep, not a hand-run fetch/diff (TAI-425)", () => {
         const ready = files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!;
         assert.match(ready.content, /git-pr review-prep/);

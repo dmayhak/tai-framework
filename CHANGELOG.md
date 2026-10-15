@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 110 (2026-10-15)
+
+**TAI-566 (Story TAI-564): `/tai-ready` and `/tai-pr` list approved PRs that are waiting, with what the merge gate still needs.** Found live with TAI-563, 2026-10-15: PR 204 was approved but absent from "ready to merge", and the answer was "the gate probably needs something". A new show-only section, "Approved PRs waiting on something", follows "ready to merge": an open PR with an approval on any commit that the gate holds, with the gate's own sentences (so the list and `git-pr merge`'s refusal cannot disagree). A PR with no approval is in neither section, and one that passes the gate but has red or missing CI stays out of this one, as before. Picking a waiting line shows what it waits on; it never merges.
+
 ## rev 109 (2026-10-15)
 
 **TAI-565 (Bug TAI-563): `/tai-ready` and `/tai-pr` list a PR for re-review when the reviewer's decision predates its latest commit.** Found live, 2026-10-15: PR 204 had an approval, then two more commits, and `/tai-pr` answered "Nothing ready for you right now". The review list counted a reviewer as decided from the host's status alone, and Bitbucket keeps an approval and a request for changes across new commits. It now reads the PR's history, as the merge gate does: a decision made on an earlier commit puts the PR back on the list, marked as a re-review of the new commit; one with no decision of the reviewer's in the history counts as not shown fresh, the merge gate's own rule. A stale request for changes is included, because the author's fix commits do not clear it. The line gives the old and the new commit and the `git diff` between them, and a history that cannot be read lists the PR with a note instead of failing the whole section.
