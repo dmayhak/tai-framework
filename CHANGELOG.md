@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 111 (2026-10-15)
+
+**TAI-559 (Story TAI-492): `/tai-change` is built; correct-course is no longer declined.** Human decision, 2026-10-08 (TAI-461), scope settled 2026-10-14. Adapted from BMAD's `correct-course`: the human says what changed and Perry works out which open tickets and pages it touches and proposes one batch (cancel, reword, new tickets, pages to revise), applied only after confirmation, except new Backlog tickets and links. The command is read-only. Linked pages appear as titles and page ids only; descriptions are cut and a long board abbreviated, with a notice. The icebox rule is now one function shared with `/tai-groom`. A plain-language request starts it through the skill description and the project pointer. Not taken: a pointer line telling any session to apply the batch without asking; page bodies in the briefing (too large a board). Item 26 of the brief's open list is fully resolved.
+
 ## rev 110 (2026-10-15)
 
 **TAI-566 (Story TAI-564): `/tai-ready` and `/tai-pr` list approved PRs that are waiting, with what the merge gate still needs.** Found live with TAI-563, 2026-10-15: PR 204 was approved but absent from "ready to merge", and the answer was "the gate probably needs something". A new show-only section, "Approved PRs waiting on something", follows "ready to merge": an open PR with an approval on any commit that the gate holds, with the gate's own sentences (so the list and `git-pr merge`'s refusal cannot disagree). A PR with no approval is in neither section, and one that passes the gate but has red or missing CI stays out of this one, as before. Picking a waiting line shows what it waits on; it never merges.

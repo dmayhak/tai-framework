@@ -733,6 +733,19 @@ describe("writeClaudeMdPointer", () => {
         });
     });
 
+    it("names tai-change and tells a session to use it when the human says scope or direction changed, in both pointer files (TAI-492)", async () => {
+        await withTempDir(async (dir) => {
+            const taiRoot = path.join(dir, ".tai");
+            await markStepDone(taiRoot, "env", "ok");
+            for (const write of [writeClaudeMdPointer, writeGeminiMdPointer]) {
+                const content = await readFile(await write(dir, taiRoot, "/home/x/.tai-framework"), "utf-8");
+                assert.match(content, /`tai-change`, `tai-small`/);
+                assert.match(content, /When the human says scope, requirements or direction changed/);
+                assert.match(content, /use `tai-change` rather than editing tickets one by one/);
+            }
+        });
+    });
+
     it("never embeds the current home directory in the committed file (TAI-359)", async () => {
         await withTempDir(async (dir) => {
             const taiRoot = path.join(dir, ".tai");

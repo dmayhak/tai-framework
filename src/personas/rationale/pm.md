@@ -142,6 +142,21 @@ implementation was the other half of item 13, resolved as "no formal marker".
 - Only a Dev subtask is made. Other tiers are added with the normal subtask commands when the work needs them.
 - "No ticket type without subtasks": the lane never creates a lone Story or Bug.
 
+## Course correction (TAI-492, from TAI-461)
+
+- It answers the brief's own history: many revisions are course corrections found live and done by hand, one ticket
+  at a time. The human decided on 2026-10-08 to add one command for it (adapted from BMAD's `correct-course`); scope was
+  settled on 2026-10-14. It reverses the old decline of a correct-course workflow type (brief §8 item 26).
+- A skill and a command, not a workflow type: the board already has the tickets, and a statement plus a read-only view is
+  all Perry needs. It writes nothing itself.
+- Linked documents are shown as titles and page ids only. A page body is read when the statement touches it, so the
+  briefing stays small on a large board; descriptions are cut and a long board is abbreviated, with a notice.
+- The icebox rule is `/tai-groom`'s own function, so the two cannot disagree about what a parked epic hides.
+- The authority split is grooming's (ADR decision 3): new Backlog tickets and links on her own, everything that changes
+  or removes existing work only after the human confirms, because a wrong cancel or reword is the costly mistake here.
+- The statement is quoted line by line as data, as in `/tai-kickoff`.
+- The skill's description and the project pointer let a plain-language request start it; nothing starts it on its own.
+
 ## Governance PRs
 
 - TAI-112: `createPullRequest` for Perry and Aria, after borrowing a Dev subtask's key for permission

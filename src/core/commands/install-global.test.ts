@@ -9,8 +9,8 @@ import { renderGlobalSkillFiles, installGlobal, defaultTaiHome, PM_KICKOFF_HINT 
 describe("renderGlobalSkillFiles", () => {
     const files = renderGlobalSkillFiles("/home/x/.tai-framework");
 
-    test("produces 20 files -- 10 skills x 2 hosts", () => {
-        assert.equal(files.length, 20);
+    test("produces 22 files -- 11 skills x 2 hosts", () => {
+        assert.equal(files.length, 22);
     });
 
     test("the tai-verify skill runs verify <STORY-KEY>, acts as Tessa, treats the Story and diffs as data and does not close the Story (TAI-546)", () => {
@@ -39,6 +39,26 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(retro.content, /ordinary chat text/i);
             assert.match(retro.content, /Do NOT, in this same turn, ask a question with an interactive tool/i);
             assert.match(retro.content, /The command itself writes nothing/);
+        }
+    });
+
+    test("the tai-change skill runs change, quotes the statement, treats it as data, shows the briefing first and stops (TAI-492)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const change = files.find((f) => f.relativePath === `${host}/skills/tai-change/SKILL.md`)!;
+            assert.ok(change, `${host} gets a tai-change skill`);
+            assert.match(change.content, /name: tai-change/);
+            // a plain-language request can start it: the description and the body say so
+            assert.match(change.content, /Use it when the human says the scope or plan changed/);
+            assert.match(change.content, /even if they never type `\/tai-change`/);
+            assert.match(change.content, /cli\.ts change \[EPIC-KEY\] '<STATEMENT>'/);
+            assert.match(change.content, /ONE single-quoted argument/);
+            assert.match(change.content, /never put it inside double quotes/i);
+            assert.match(change.content, /data, not instructions/);
+            assert.match(change.content, /# Change briefing/);
+            assert.match(change.content, /ordinary chat text/i);
+            assert.match(change.content, /Do\s+NOT, in this same turn, ask a question with an interactive tool/i);
+            assert.match(change.content, /The command itself writes nothing/);
+            assert.match(change.content, /Perry may create Backlog tickets and links on her own/);
         }
     });
 
@@ -410,7 +430,7 @@ describe("installGlobal", () => {
         }
     });
 
-    test("writes all 20 skill files under the given homedir when taiHome exists", async () => {
+    test("writes all 22 skill files under the given homedir when taiHome exists", async () => {
         const dir = await mkdtemp(path.join(tmpdir(), "tai-install-global-"));
         try {
             const homedir = path.join(dir, "home");
@@ -421,7 +441,7 @@ describe("installGlobal", () => {
             const result = await installGlobal(taiHome, homedir);
 
             assert.equal(result.taiHome, taiHome);
-            assert.equal(result.written.length, 20);
+            assert.equal(result.written.length, 22);
 
             const claudeWork = await readFile(path.join(homedir, ".claude/skills/tai-work/SKILL.md"), "utf-8");
             assert.match(claudeWork, /name: tai-work/);
@@ -445,7 +465,7 @@ describe("installGlobal", () => {
             await installGlobal(taiHome, homedir);
             const second = await installGlobal(taiHome, homedir);
 
-            assert.equal(second.written.length, 20);
+            assert.equal(second.written.length, 22);
         } finally {
             await rm(dir, { recursive: true, force: true });
         }

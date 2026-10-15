@@ -344,6 +344,20 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
         assert.match(pm.prompt, /never cancel, reopen or reassign a ticket because it appears there/i);
     });
 
+    it("Perry's doc carries the course-correction behavior: the briefing, the batch groups, the authority split, the specialists (TAI-492)", async () => {
+        const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
+        assert.match(pm.prompt, /\/tai-change/);
+        assert.match(pm.prompt, /pasted verbatim from the `# Change briefing` heading/);
+        assert.match(pm.prompt, /titles and page\s+ids only/);
+        assert.match(pm.prompt, /Tickets to cancel/);
+        assert.match(pm.prompt, /Pages to revise/);
+        assert.match(pm.prompt, /`Investigate` subtask for Ada/);
+        assert.match(pm.prompt, /`ArchitectureDesign` subtask for Aria/);
+        assert.match(pm.prompt, /Perry creates Backlog tickets and links on her own/);
+        assert.match(pm.prompt, /applies \*\*only after the human confirms\*\*/);
+        assert.match(pm.prompt, /ask what changed before proposing/);
+    });
+
     it("Perry's and Dario's docs describe the light lane, its two-sentence convention and that review still applies (TAI-473)", async () => {
         const configs = await loadBuiltinPersonaConfigs();
         const pm = configs.get("pm")!;

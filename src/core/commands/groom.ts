@@ -116,6 +116,30 @@ export async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn:
 const keyNumber = (key: string): number => Number(/-(\d+)$/.exec(key)?.[1] ?? 0);
 const byKey = (a: Issue, b: Issue): number => keyNumber(a.key) - keyNumber(b.key);
 
+/**
+ * TAI-552: leaves a parked (icebox-labelled) epic out of `open`, and with it the Backlog tickets under it (children and
+ * their subtasks). Anything under it that has been scheduled (To Do or later) stays: someone moved it on purpose or by
+ * mistake, and hiding started work from the board view would be worse than a cluttered list. Shared by `/tai-groom`
+ * and `/tai-change` so the two cannot disagree about what a parked epic hides.
+ */
+export function excludeParkedEpics(open: readonly Issue[]): { readonly open: readonly Issue[]; readonly parkedEpics: readonly Issue[] } {
+    const parkedEpics = open.filter(isParkedEpic).sort(byKey);
+    const parkedKeys = new Set(parkedEpics.map((e) => e.key as string));
+    // Only a child that is itself still Backlog passes the parking down to its subtasks: a scheduled Story's own
+    // Backlog subtasks (its front-loaded chain) stay listed with it.
+    const parkedChildKeys = new Set(
+        open.filter((i) => i.status === Status.Backlog && i.parentKey !== undefined && parkedKeys.has(i.parentKey)).map((i) => i.key as string)
+    );
+    return {
+        parkedEpics,
+        open: open.filter(
+            (i) =>
+                !parkedKeys.has(i.key) &&
+                !(i.status === Status.Backlog && i.parentKey !== undefined && (parkedKeys.has(i.parentKey) || parkedChildKeys.has(i.parentKey)))
+        ),
+    };
+}
+
 export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResult> {
     const { workTracker, projectKey } = deps;
     const now = deps.now ?? new Date();
@@ -132,24 +156,13 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         );
     }
 
-    // --- TAI-552: with no epic key, a parked (icebox-labelled) epic is left out, and so are the Backlog tickets under it
-    // (children and their subtasks). Anything under it that has been scheduled (To Do or later) stays: someone moved it on
-    // purpose or by mistake, and hiding started work from the board view would be worse than a cluttered list. ---
+    // --- TAI-552: with no epic key, a parked (icebox-labelled) epic is left out, and so are the Backlog tickets under it ---
     const misplacedIceboxLabels = open.filter((i) => i.issueType !== "epic" && hasIceboxLabel(i)).sort(byKey);
     const parkedEpics: Issue[] = [];
     if (!deps.epicKey) {
-        parkedEpics.push(...open.filter(isParkedEpic).sort(byKey));
-        const parkedKeys = new Set(parkedEpics.map((e) => e.key as string));
-        // Only a child that is itself still Backlog passes the parking down to its subtasks: a scheduled Story's own
-        // Backlog subtasks (its front-loaded chain) stay listed with it.
-        const parkedChildKeys = new Set(
-            open.filter((i) => i.status === Status.Backlog && i.parentKey !== undefined && parkedKeys.has(i.parentKey)).map((i) => i.key as string)
-        );
-        open = open.filter(
-            (i) =>
-                !parkedKeys.has(i.key) &&
-                !(i.status === Status.Backlog && i.parentKey !== undefined && (parkedKeys.has(i.parentKey) || parkedChildKeys.has(i.parentKey)))
-        );
+        const split = excludeParkedEpics(open);
+        open = split.open;
+        parkedEpics.push(...split.parkedEpics);
     }
 
     const issueMemo = new Map<string, Promise<Issue | null>>();
