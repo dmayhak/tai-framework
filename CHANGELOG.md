@@ -4,7 +4,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 ## rev 108 (2026-10-14)
 
-**TAI-560 (Story TAI-473): a light lane for very small changes, `issue create-small`.** Human decision, 2026-10-14 (from the 2026-10-07 review, Confluence page 53608449 section 6, where the quick lane was "a policy choice more than a build"). One command makes a Story or Bug with its `Dev` subtask, assigned and in To Do; only the ticket setup shrinks. It requires an `AC-1` line, makes no other subtask, and exempts nothing from review or the merge gate (a test checks that). The size limit is a convention in the persona docs, not code. Not taken: a description-length cap (crude, and size is not mechanically checkable).
+**TAI-560 (Story TAI-473): a light lane for very small changes, `issue create-small`.** Human decision, 2026-10-14 (from the 2026-10-07 review, Confluence page 53608449 section 6, where the quick lane was "a policy choice more than a build"). One command makes a Story or Bug with its `Dev` subtask, assigned and in To Do; only the ticket setup shrinks. It requires an `AC-1` line, makes no other subtask, and exempts nothing from review or the merge gate (a test checks that). Entry point: the `/tai-small` skill, typed by the human, so the call to use the lane is theirs (no pointer line telling any session to use it on its own). The size limit is a convention in the persona docs, not code. Not taken: a description-length cap (crude, and size is not mechanically checkable).
 
 ## rev 107 (2026-10-14)
 

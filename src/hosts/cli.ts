@@ -13,7 +13,7 @@
  *
  * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
  * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
- * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-verify`/`tai-audit`), installed
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-small`/`tai-verify`/`tai-audit`), installed
  * once via `install-global` (below) rather than generated per-project as
  * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
  * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
