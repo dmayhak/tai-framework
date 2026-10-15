@@ -589,8 +589,11 @@ class FakeGitHost implements Pick<GitHost, "listPullRequests" | "getCommitStatus
     openCallCount = 0;
     /** TAI-462: set to script a PR's history; by default every approval is on the current commit. */
     activity: readonly PullRequestActivity[] | null = null;
+    /** TAI-563: set to make every history read fail, as a rate limit or one unreadable PR would. */
+    activityError: Error | null = null;
 
     async listPullRequestActivity(repo: RepoId, id: PullRequestId): Promise<readonly PullRequestActivity[]> {
+        if (this.activityError) throw this.activityError;
         if (this.activity) return this.activity;
         const pr = (this.prsByRepo.get(repo) ?? []).find((p) => p.id === id);
         if (!pr) return [];
@@ -1293,7 +1296,7 @@ describe("findReadyWork readyToReview: a decision made before the latest commit 
             { kind: "update", at: "t3", sourceCommit: NEW },
         ]);
         assert.equal(list.length, 1);
-        assert.deepEqual(list[0]?.reReview, { decision: "approved", commit: NEW });
+        assert.deepEqual(list[0]?.reReview, { decision: "approved", commit: NEW, since: OLD });
     });
 
     test("a request for changes made on an earlier commit also puts it back: the author has pushed since", async () => {
@@ -1304,7 +1307,7 @@ describe("findReadyWork readyToReview: a decision made before the latest commit 
             { kind: "update", at: "t3", sourceCommit: NEW },
         ]);
         assert.equal(list.length, 1);
-        assert.deepEqual(list[0]?.reReview, { decision: "changesRequested", commit: NEW });
+        assert.deepEqual(list[0]?.reReview, { decision: "changesRequested", commit: NEW, since: OLD });
     });
 
     test("a decision on the current commit is not listed, whether an approval or a request for changes", async () => {
@@ -1342,6 +1345,36 @@ describe("findReadyWork readyToReview: a decision made before the latest commit 
             { kind: "update", at: "t3", sourceCommit: NEW },
         ]);
         assert.equal(other.length, 1, "B's approval says nothing about A's decision: freshness cannot be shown, as in the merge gate");
+    });
+
+    test("when the history has no decision of theirs, the old commit is unknown and the PR is still listed", async () => {
+        const pr = prFixture({ sourceCommit: NEW, reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+        const list = await reviewList(pr, [{ kind: "update", at: "t1", sourceCommit: NEW }]);
+        assert.deepEqual(list[0]?.reReview, { decision: "approved", commit: NEW, since: null });
+    });
+
+    test("a history that cannot be read lists the PR as a re-review marked unreadable, and the rest of the list survives", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const broken = prFixture({ id: toPullRequestId("11"), sourceCommit: NEW, reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            const fine = prFixture({ id: toPullRequestId("12"), sourceCommit: NEW, reviewers: [] });
+            const gitHost = new FakeGitHost(new Map([[repo, [broken, fine]]]));
+            gitHost.activityError = new Error("rate limited");
+            const list = (
+                await findReadyWork({
+                    workTracker: backend.workTracker,
+                    taiRoot,
+                    projectKey: "TAI",
+                    gitHost,
+                    repos: [repo],
+                    currentHuman: REVIEWER_A,
+                    prReviewers: [REVIEWER_A],
+                })
+            ).readyToReview;
+            assert.deepEqual(list.map((c) => c.pullRequest.id).sort(), ["11", "12"]);
+            const mark = list.find((c) => c.pullRequest.id === "11")!.reReview;
+            assert.deepEqual(mark, { decision: "approved", commit: NEW, since: null, unreadable: true });
+            assert.equal(list.find((c) => c.pullRequest.id === "12")!.reReview, undefined);
+        });
     });
 
     test("a first review carries no re-review mark", async () => {

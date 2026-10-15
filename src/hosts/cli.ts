@@ -784,14 +784,18 @@ function subtaskTypeLabel(type: SubtaskType): string {
     return type.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
 }
 
-
 /** TAI-563: one "PRs ready for your review" line. A PR the human already decided on but that has new commits since says
- *  so, and names the new commit, so it is not mistaken for a first review. */
+ *  so, and gives both commits and the diff between them, so it is not mistaken for a first review. */
 export function reviewLine(c: ReadyToReviewCandidate): string {
     const pr = c.pullRequest;
-    const mark = c.reReview
-        ? ` — **re-review**: you ${c.reReview.decision === "approved" ? "approved" : "requested changes"} before the latest commit (${c.reReview.commit})`
-        : "";
+    let mark = "";
+    if (c.reReview) {
+        const { decision, commit, since, unreadable } = c.reReview;
+        const did = decision === "approved" ? "approved" : "requested changes";
+        if (unreadable) mark = ` — **re-review**: you ${did} earlier, and the PR's history could not be read to tell what changed since (now ${commit})`;
+        else if (since) mark = ` — **re-review**: you ${did} at ${since}, now ${commit} (\`git diff ${since}..${commit}\`)`;
+        else mark = ` — **re-review**: you ${did} before the latest commit (${commit}); the history does not show which commit that was`;
+    }
     return `${pr.url} (${pr.sourceBranch} → ${pr.destinationBranch})${mark} — review it with \`git-pr review-prep ${pr.repo} ${pr.id}\``;
 }
 

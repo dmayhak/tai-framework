@@ -108,8 +108,15 @@ export interface FindReadyWorkDeps {
 export interface ReadyToReviewCandidate {
     readonly pullRequest: PullRequestRef;
     /** TAI-563: present when the human already decided on this PR but the PR has new commits since, so it needs a
-     *  fresh look. `commit` is the PR's current head. Absent for a first review. */
-    readonly reReview?: { readonly decision: "approved" | "changesRequested"; readonly commit: CommitSha };
+     *  fresh look. `commit` is the PR's current head and `since` the head their decision was made on (null when the
+     *  history does not show it). `unreadable` is set when the PR's history could not be read at all. Absent for a
+     *  first review. */
+    readonly reReview?: {
+        readonly decision: "approved" | "changesRequested";
+        readonly commit: CommitSha;
+        readonly since: CommitSha | null;
+        readonly unreadable?: true;
+    };
 }
 
 /** A `Dev` subtask (rev 52: stays In Progress until its PR merges — see story-schema.ts's
@@ -336,9 +343,15 @@ async function reviewNeeded(
 ): Promise<{ readonly reReview?: NonNullable<ReadyToReviewCandidate["reReview"]> } | null> {
     const existing = pr.reviewers.find((r) => sameHuman(r.human, human));
     if (!existing || existing.status === "pending") return {};
-    const last = lastDecisionBy(await gitHost.listPullRequestActivity(pr.repo, pr.id), human);
+    let last: ReturnType<typeof lastDecisionBy>;
+    try {
+        last = lastDecisionBy(await gitHost.listPullRequestActivity(pr.repo, pr.id), human);
+    } catch {
+        // One unreadable history (a rate limit, one bad PR) must not take the whole list down: list the PR, say why.
+        return { reReview: { decision: existing.status, commit: pr.sourceCommit, since: null, unreadable: true } };
+    }
     if (last?.head != null && sameCommit(last.head, pr.sourceCommit)) return null;
-    return { reReview: { decision: existing.status, commit: pr.sourceCommit } };
+    return { reReview: { decision: existing.status, commit: pr.sourceCommit, since: last?.head ?? null } };
 }
 
 /** Fetches every configured repo's open PRs ONCE — shared by `findDevLinkedOpenPRs` and
