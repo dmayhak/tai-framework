@@ -163,7 +163,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
-import { findRetroSummary, renderRetroBriefing, retroEpicCloseHint } from "../core/commands/retro.js";
+import { findRetroSummary, parseRetroArgs, renderRetroBriefing, retroEpicCloseHint } from "../core/commands/retro.js";
 
 interface ResolvedConfig {
     readonly backend: StorageBackend;
@@ -2128,19 +2128,14 @@ async function main(): Promise<void> {
     // TAI-491 (TAI-461 decision): `/tai-retro [EPIC-KEY | since=<date>]` -- loads Perry with a read-only summary of what
     // was cancelled, raised as Bugs, sent back, overridden or approved stale in a window. No ticket needed.
     if (subcommand === "retro") {
-        const words = [arg, ...rest].filter((w): w is string => w !== undefined);
-        const sinceWord = words.find((w) => w.startsWith("since="));
-        const epicWord = words.find((w) => !w.startsWith("since="));
-        if (words.length > 2 || (epicWord !== undefined && words.filter((w) => !w.startsWith("since=")).length > 1)) {
-            throw new Error("Usage: retro [EPIC-KEY | since=<date>] (an epic key and since=<date> may be given together).");
-        }
+        const retroArgs = parseRetroArgs([arg, ...rest].filter((w): w is string => w !== undefined));
         const pm = await loadPersonaConfig(config.backend.docStore, "pm", { spaceKey: config.spaceKey });
         const gitDeps = await tryResolveReadyGitDeps(config);
         const report = await findRetroSummary({
             workTracker: config.backend.workTracker,
             projectKey: config.projectKey,
-            ...(epicWord ? { epicKey: toIssueKey(epicWord) } : {}),
-            ...(sinceWord ? { since: sinceWord.slice("since=".length) } : {}),
+            ...(retroArgs.epicKey ? { epicKey: toIssueKey(retroArgs.epicKey) } : {}),
+            ...(retroArgs.since !== undefined ? { since: retroArgs.since } : {}),
             ...(gitDeps ? { git: { gitHost: gitDeps.gitHost, repos: gitDeps.repos } } : {}),
         });
         console.log(withTurnNotes([await installWarning()]) + renderPersonaTurn(pm, renderRetroBriefing(report), await loadProjectContextSection()));

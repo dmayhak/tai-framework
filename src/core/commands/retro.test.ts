@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Status, StoryType } from "../schema/story-schema.js";
 import { toHumanId, toIssueKey, type Comment, type HumanRef, type Issue } from "../storage/interface.js";
 import { toPullRequestId, toRepoId, type CommitSha, type PullRequestActivity, type PullRequestRef } from "../git/interface.js";
-import { computeRetro, parseRetroSince, renderRetroBriefing, retroEpicCloseHint, retroWindow, type RetroPullRequest } from "./retro.js";
+import { computeRetro, parseRetroArgs, parseRetroSince, renderRetroBriefing, retroEpicCloseHint, retroWindow, type RetroPullRequest } from "./retro.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "Ann", email: "a@b.c" };
 const BOB: HumanRef = { id: toHumanId("b@b.c"), displayName: "Bob", email: "b@b.c" };
@@ -162,5 +162,19 @@ describe("retro epic-close hint (TAI-491)", () => {
         assert.match(retroEpicCloseHint(issue("TAI-452", { issueType: "epic", status: Status.Done }))!, /\/tai-retro TAI-452/);
         assert.equal(retroEpicCloseHint(issue("TAI-452", { issueType: "epic", status: Status.InProgress })), null);
         assert.equal(retroEpicCloseHint(issue("TAI-9", { status: Status.Done })), null);
+    });
+});
+
+describe("retro arguments (TAI-491)", () => {
+    it("takes an epic key, since=<date>, both in either order, or nothing", () => {
+        assert.deepEqual(parseRetroArgs([]), {});
+        assert.deepEqual(parseRetroArgs(["TAI-452"]), { epicKey: "TAI-452" });
+        assert.deepEqual(parseRetroArgs(["since=2026-10-01"]), { since: "2026-10-01" });
+        assert.deepEqual(parseRetroArgs(["since=2026-10-01", "TAI-452"]), { epicKey: "TAI-452", since: "2026-10-01" });
+    });
+    it("rejects a repeated since=, a second key and a word that is neither, with the usage text", () => {
+        for (const words of [["since=2026-10-01", "since=2026-09-01"], ["TAI-1", "TAI-2"], ["since", "2026-10-01"], ["last week"], ["tai-452"]]) {
+            assert.throws(() => parseRetroArgs(words), /Usage: retro \[EPIC-KEY \| since=<date>\]/, words.join(" "));
+        }
     });
 });

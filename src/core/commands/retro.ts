@@ -97,6 +97,28 @@ export function computeRetro(input: RetroInput): RetroSummary {
     return { cancelled, bugs, sentBack, overrides, staleApprovals };
 }
 
+// ---------- the arguments ----------
+
+const RETRO_USAGE = "Usage: retro [EPIC-KEY | since=<date>] (an epic key and since=<date> may be given together, each once).";
+
+/** The words after `retro`: an epic key and/or `since=<date>`, each at most once. Anything else is the usage text. */
+export function parseRetroArgs(words: readonly string[]): { readonly epicKey?: string; readonly since?: string } {
+    let epicKey: string | undefined;
+    let since: string | undefined;
+    for (const word of words) {
+        if (word.startsWith("since=")) {
+            if (since !== undefined) throw new Error(`${RETRO_USAGE} since= was given twice.`);
+            since = word.slice("since=".length);
+        } else if (/^[A-Z][A-Z0-9]*-\d+$/.test(word)) {
+            if (epicKey !== undefined) throw new Error(`${RETRO_USAGE} Only one epic key.`);
+            epicKey = word;
+        } else {
+            throw new Error(`${RETRO_USAGE} "${word}" is neither an epic key nor since=<date> (write since=2026-10-01, with no space).`);
+        }
+    }
+    return { ...(epicKey !== undefined ? { epicKey } : {}), ...(since !== undefined ? { since } : {}) };
+}
+
 // ---------- the window ----------
 
 export interface RetroWindow {
