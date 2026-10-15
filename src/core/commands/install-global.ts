@@ -317,7 +317,7 @@ function prSkillBody(taiHome: string): string {
         "reality before acting on them (they can be wrong). Never silently drop a comment.\n\n" +
         "**Doing an actual review (TAI-187, TAI-425):** when the human asks to review a PR — including " +
         "picking a numbered \"PRs ready for your review\" line from `/tai-ready`'s or this skill's own list — " +
-        "run EXACTLY this and read its full output:\n\n" +
+        "run EXACTLY this and read its full output (in Claude Code that means inside a subagent: see **Fresh context** below before you run it yourself):\n\n" +
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts git-pr review-prep <REPO> [PR-ID]\n` +
         "```\n\n" +

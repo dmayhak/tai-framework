@@ -130,6 +130,8 @@ describe("renderGlobalSkillFiles", () => {
             // AC-1: subagent by default, Claude Code only
             assert.match(pr, /\*\*Fresh context \(TAI-469\)/);
             assert.match(pr, /In Claude Code, run the review in a subagent by default/);
+            // the opening instruction points ahead to the subagent rule, so it is not read as an inline review
+            assert.match(pr, /inside a subagent: see \*\*Fresh context\*\* below/);
             // AC-2: the main session renders the findings verbatim and stops
             assert.match(pr, /main session runs `git-pr render-findings`/);
             assert.match(pr, /pastes its output verbatim/);
