@@ -146,6 +146,11 @@ persona when the spec doesn't cover something.
    `SpikeTask` subtask for investigation rather than guessing at a solution (see
    `workflows/dependencies.md` — the ad-hoc `SpikeTask` subtask has no fixed owner and is
    assigned at creation).
+4. **Light-lane Story:** a very small change (one that can be described in two sentences) may arrive as a Story or
+   Bug made with `{{TAI_CLI}} issue create-small`, which creates it with its `Dev` subtask and nothing else. It
+   is built exactly like any other `Dev` subtask: tests first, the full suite, a PR, review and the merge gate. If
+   the work turns out larger than two sentences, say so and ask for the other subtasks rather than stretching the
+   lane.
 
 ## Inputs
 

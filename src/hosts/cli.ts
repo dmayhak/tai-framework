@@ -163,6 +163,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
+import { createSmall, renderCreateSmall } from "../core/commands/create-small.js";
 import { findRetroSummary, parseRetroArgs, renderRetroBriefing, retroEpicCloseHint } from "../core/commands/retro.js";
 
 interface ResolvedConfig {
@@ -2362,6 +2363,40 @@ async function main(): Promise<void> {
             return;
         }
 
+        // TAI-560 (light lane, TAI-473): a Story or Bug and its Dev subtask in one call, both in To Do. Review and the
+        // merge gate apply unchanged; only the ticket setup shrinks. "Very small" is a convention, not checked.
+        if (action === "create-small") {
+            const [projectKey, issueType, summary, ...kv] = issueArgs;
+            if (!projectKey || !issueType || !summary) {
+                throw new Error(
+                    "Usage: issue create-small <PROJECT-KEY> <story|bug> <SUMMARY> description=<TEXT> [parent=<EPIC-KEY>] [priority=<PRIORITY>]\n" +
+                        "  The light lane for a very small change (one you could describe in two sentences): creates the Story or Bug and its Dev " +
+                        "subtask, assigned as a normal create would assign them, both in To Do. Review and the merge gate still apply.\n" +
+                        "  description= must contain a line starting AC-1 (a numbered acceptance criterion), so the work can be verified.\n" +
+                        "  Any other type, or anything that needs more than a Dev subtask, goes through issue create."
+                );
+            }
+            const fields = parseKeyValueArgs(kv);
+            const small = await createSmall(
+                {
+                    workTracker: config.backend.workTracker,
+                    resolveAssignee: (persona) => tryResolveCreateAssignee(() => resolveIssueAssignment(config, persona, { atCreate: true })),
+                },
+                {
+                    projectKey,
+                    type: issueType,
+                    summary,
+                    ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+                    ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
+                    ...(fields["priority"] !== undefined ? { priority: fields["priority"] } : {}),
+                }
+            );
+            console.log(renderCreateSmall(small));
+            const smallNote = wallOfTextNote("description", fields["description"], `issue update ${small.parent.key} description=…`);
+            if (smallNote) console.log(`\n${smallNote}`);
+            return;
+        }
+
         if (action === "update") {
             const [issueKey, ...kv] = issueArgs;
             if (!issueKey || kv.length === 0) {
@@ -2569,7 +2604,7 @@ async function main(): Promise<void> {
         }
 
         throw new Error(
-            `Unknown issue action "${action}" -- expected "create", "update", "transition", "assign", "suggest", "comment", ` +
+            `Unknown issue action "${action}" -- expected "create", "create-small", "update", "transition", "assign", "suggest", "comment", ` +
                 `"link", "search", or "get".`
         );
     }

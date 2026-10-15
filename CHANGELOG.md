@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 108 (2026-10-14)
+
+**TAI-560 (Story TAI-473): a light lane for very small changes, `issue create-small`.** Human decision, 2026-10-14 (from the 2026-10-07 review, Confluence page 53608449 section 6, where the quick lane was "a policy choice more than a build"). One command makes a Story or Bug with its `Dev` subtask, assigned and in To Do; only the ticket setup shrinks. It requires an `AC-1` line, makes no other subtask, and exempts nothing from review or the merge gate (a test checks that). The size limit is a convention in the persona docs, not code. Not taken: a description-length cap (crude, and size is not mechanically checkable).
+
 ## rev 107 (2026-10-14)
 
 **TAI-558 (Story TAI-491): `/tai-retro` is built; the brief's earlier decline of a retrospective is reversed.** Human decision, 2026-10-08 (TAI-461), scope settled 2026-10-14. Lessons had been landing in a private memory folder and many brief revisions were course corrections found live. It is on demand and read-only: a briefing of five signals for a window, then Perry asks questions, writes a retro page and files action items, with TAI lessons filed apart. The default window is the last 30 days; "since the last retro page" was left out because pages cannot be searched by title. Correct-course (`/tai-change`) is still not built, so item 26 is split.
