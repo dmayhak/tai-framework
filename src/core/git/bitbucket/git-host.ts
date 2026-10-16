@@ -13,6 +13,7 @@ import type {
     RepoRef,
     PullRequestId,
     PullRequestState,
+    ListPullRequestsOptions,
     PullRequestRef,
     PullRequestActivity,
     PullRequestComment,
@@ -135,7 +136,8 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
 
         async listPullRequests(
             repo: RepoId,
-            state?: PullRequestState
+            state?: PullRequestState,
+            options?: ListPullRequestsOptions
         ): Promise<readonly PullRequestRef[]> {
             const { workspace, slug } = splitRepoId(repo);
             // TAI-213/214 (found live, 2026-08-26): Bitbucket's list-PRs endpoint omits
@@ -149,10 +151,17 @@ export function createBitbucketGitHost(client: RestClient): GitHost {
             // in a query string means space, not the character Bitbucket's syntax needs).
             const params = new URLSearchParams({ fields: "+values.participants" });
             if (state) params.set("state", BB_PR_STATE[state]);
+            // TAI-562: with updatedSince, read newest-updated first and stop at the first page that reaches a PR older than it:
+            // no later page can hold a newer one, so the cost does not grow with the repo's age.
+            const since = options?.updatedSince ? new Date(options.updatedSince).getTime() : null;
+            if (since !== null) params.set("sort", "-updated_on");
+            const isOlder = (pr: BitbucketPullRequestJson): boolean => since !== null && new Date(pr.updated_on).getTime() < since;
             const prs = await client.paginate<BitbucketPullRequestJson>(
-                `/repositories/${workspace}/${slug}/pullrequests?${params}`
+                `/repositories/${workspace}/${slug}/pullrequests?${params}`,
+                undefined,
+                since !== null ? (page) => page.some(isOlder) : undefined
             );
-            return prs.map((pr) => toPullRequestRef(pr, repo));
+            return prs.filter((pr) => !isOlder(pr)).map((pr) => toPullRequestRef(pr, repo));
         },
 
         async reviewPullRequest(

@@ -63,8 +63,12 @@ class RecordingGitHost implements GitHost {
         return null;
     }
 
-    async listPullRequests(_repo: RepoId, _state?: PullRequestState): Promise<readonly PullRequestRef[]> {
+    /** TAI-562: the options the last `listPullRequests` call received, to check the scoped host passes them on. */
+    lastListOptions: unknown = undefined;
+
+    async listPullRequests(_repo: RepoId, _state?: PullRequestState, options?: unknown): Promise<readonly PullRequestRef[]> {
         this.calls.push("listPullRequests");
+        this.lastListOptions = options;
         return [];
     }
 
@@ -211,6 +215,15 @@ describe("PersonaScopedGitHost.mergePullRequest", () => {
         const result = await scoped.mergePullRequest(repo, pr);
         assert.equal(result.ok, true);
         assert.deepEqual(inner.calls, ["mergePullRequest"]);
+    });
+});
+
+describe("PersonaScopedGitHost listPullRequests options (TAI-562)", () => {
+    it("passes updatedSince on to the inner host", async () => {
+        const inner = new RecordingGitHost();
+        const scoped = new PersonaScopedGitHost(inner, devopsConfig());
+        await scoped.listPullRequests(repo, "merged", { updatedSince: "2026-10-01T00:00:00Z" });
+        assert.deepEqual(inner.lastListOptions, { updatedSince: "2026-10-01T00:00:00Z" });
     });
 });
 

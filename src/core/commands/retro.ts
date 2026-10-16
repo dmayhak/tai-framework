@@ -202,7 +202,7 @@ export async function findRetroSummary(deps: RetroDeps): Promise<RetroReport> {
         const { gitHost, repos } = deps.git;
         const inScope = new Set<string>(issues.map((i) => i.key));
         const listed = (
-            await Promise.all(repos.flatMap((repo) => (["open", "merged"] as const).map((state) => gitHost.listPullRequests(repo, state))))
+            await Promise.all(repos.flatMap((repo) => (["open", "merged"] as const).map((state) => gitHost.listPullRequests(repo, state, { updatedSince: window.from.toISOString() }))))
         ).flat();
         const wanted = listed.filter((pr) => atOrAfter(pr.updatedAt, window.from) && (!epic || inScope.has(titleKey(pr.title) ?? "")));
         pullRequests = await mapWithLimit(wanted, PR_FETCH_LIMIT, async (pr) => ({

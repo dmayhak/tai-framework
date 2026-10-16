@@ -206,6 +206,48 @@ describe("listPullRequests", () => {
     });
 });
 
+describe("listPullRequests updatedSince (TAI-562)", () => {
+    const at = (id: number, updated: string) => ({ ...PR_JSON, id, updated_on: updated, links: { html: { href: `https://bitbucket.org/dmayhak/tai-framework/pull-requests/${id}` } } });
+
+    it("asks for the newest-updated first, and without updatedSince the query is unchanged", async () => {
+        const urls: string[] = [];
+        const host = hostWith(stubFetch((_m, url) => { urls.push(url); return json({ values: [at(1, "2026-10-10T00:00:00Z")] }); }));
+        await host.listPullRequests(REPO, "merged", { updatedSince: "2026-10-01T00:00:00Z" });
+        await host.listPullRequests(REPO, "merged");
+        assert.match(urls[0]!, /state=MERGED&sort=-updated_on$/);
+        assert.match(urls[1]!, /\?fields=%2Bvalues\.participants&state=MERGED$/, "no option, same query as before");
+    });
+
+    it("stops paging once a page reaches a PR older than updatedSince, and returns only the newer ones", async () => {
+        const requested: string[] = [];
+        const host = hostWith(
+            stubFetch((_m, url) => {
+                requested.push(url);
+                if (url.includes("page=2")) assert.fail("page 2 must not be requested: page 1 already reached an older PR");
+                return json({ values: [at(3, "2026-10-12T00:00:00Z"), at(2, "2026-10-09T00:00:00Z"), at(1, "2026-09-01T00:00:00Z")], next: "https://api.bitbucket.org/2.0/x?page=2" });
+            })
+        );
+        const prs = await host.listPullRequests(REPO, "merged", { updatedSince: "2026-10-01T00:00:00Z" });
+        assert.deepEqual(prs.map((p) => p.id), ["3", "2"]);
+        assert.equal(requested.length, 1, "one page read, not the whole history");
+    });
+
+    it("keeps paging while every PR on the page is still inside the window", async () => {
+        const requested: string[] = [];
+        const host = hostWith(
+            stubFetch((_m, url) => {
+                requested.push(url);
+                return url.includes("page=2")
+                    ? json({ values: [at(1, "2026-10-02T00:00:00Z")] })
+                    : json({ values: [at(2, "2026-10-12T00:00:00Z")], next: "https://api.bitbucket.org/2.0/x?page=2" });
+            })
+        );
+        const prs = await host.listPullRequests(REPO, "merged", { updatedSince: "2026-10-01T00:00:00Z" });
+        assert.deepEqual(prs.map((p) => p.id), ["2", "1"]);
+        assert.equal(requested.length, 2);
+    });
+});
+
 describe("reviewPullRequest", () => {
     it("approve hits the /approve endpoint with no comment call when comment is omitted", async () => {
         const calls: string[] = [];

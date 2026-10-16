@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Status, StoryType } from "../schema/story-schema.js";
 import { toHumanId, toIssueKey, type Comment, type HumanRef, type Issue } from "../storage/interface.js";
 import { toPullRequestId, toRepoId, type CommitSha, type PullRequestActivity, type PullRequestRef } from "../git/interface.js";
-import { computeRetro, parseRetroArgs, parseRetroSince, renderRetroBriefing, retroEpicCloseHint, retroWindow, type RetroPullRequest } from "./retro.js";
+import { computeRetro, findRetroSummary, parseRetroArgs, parseRetroSince, renderRetroBriefing, retroEpicCloseHint, retroWindow, type RetroPullRequest } from "./retro.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "Ann", email: "a@b.c" };
 const BOB: HumanRef = { id: toHumanId("b@b.c"), displayName: "Bob", email: "b@b.c" };
@@ -176,5 +176,29 @@ describe("retro arguments (TAI-491)", () => {
         for (const words of [["since=2026-10-01", "since=2026-09-01"], ["TAI-1", "TAI-2"], ["since", "2026-10-01"], ["last week"], ["tai-452"]]) {
             assert.throws(() => parseRetroArgs(words), /Usage: retro \[EPIC-KEY \| since=<date>\]/, words.join(" "));
         }
+    });
+});
+
+describe("findRetroSummary reads only what the window needs (TAI-562)", () => {
+    it("asks the git host for PRs updated since the window starts, for both open and merged", async () => {
+        const calls: { state: string | undefined; updatedSince: string | undefined }[] = [];
+        const gitHost = {
+            listPullRequests: async (_repo: unknown, state?: string, options?: { updatedSince?: string }) => {
+                calls.push({ state, updatedSince: options?.updatedSince });
+                return [];
+            },
+            listPullRequestComments: async () => [],
+            listPullRequestActivity: async () => [],
+        };
+        const issues = { search: async () => [], getIssue: async () => null };
+        await findRetroSummary({
+            workTracker: issues as never,
+            projectKey: "TAI",
+            since: "2026-10-05",
+            now: new Date("2026-10-14T12:00:00Z"),
+            git: { gitHost: gitHost as never, repos: [toRepoId("w/r")] },
+        });
+        assert.deepEqual(calls.map((c) => c.state).sort(), ["merged", "open"]);
+        for (const c of calls) assert.equal(c.updatedSince, "2026-10-05T00:00:00.000Z");
     });
 });

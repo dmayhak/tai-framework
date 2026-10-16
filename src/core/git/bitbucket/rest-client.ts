@@ -145,14 +145,16 @@ export class RestClient {
     /**
      * Bitbucket paginates list endpoints via `{ values: T[], next?: string }`, with `next`
      * being a FULL absolute URL (not a token/cursor) — walk it directly rather than
-     * re-deriving query params. Stops once `limit` items are collected or `next` is absent.
+     * re-deriving query params. Stops once `limit` items are collected, `next` is absent, or `stopAfterPage` says a page was enough.
      */
-    async paginate<T>(path: string, limit?: number): Promise<T[]> {
+    async paginate<T>(path: string, limit?: number, stopAfterPage?: (page: readonly T[]) => boolean): Promise<T[]> {
         const results: T[] = [];
         let next: string | undefined = path;
         while (next && (limit === undefined || results.length < limit)) {
             const page: { values: T[]; next?: string } = await this.request("GET", next);
             results.push(...page.values);
+            // TAI-562: a caller reading a list sorted newest-first can say a page already reached what it needs.
+            if (stopAfterPage?.(page.values)) break;
             next = page.next;
         }
         return limit === undefined ? results : results.slice(0, limit);
