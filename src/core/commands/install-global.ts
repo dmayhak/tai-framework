@@ -97,7 +97,7 @@ function readySkillBody(taiHome: string): string {
         "The output has two Jira-sourced sections, both live (TAI-196/200, 2026-08-26 — replaces " +
         "the old, purely-local \"Already in flight\" section, which couldn't show work paused on " +
         "a different machine/session):\n\n" +
-        "- **In Progress — resume this** — issues already at `Status.InProgress`/`InReview`, no " +
+        "- **In Progress** — issues already at `Status.InProgress`/`InReview`, no " +
         "precedence re-check (already started once; precedence gates OFFERING new work, not " +
         "resuming it). Full detail surfaces via " +
         "`/tai-work`'s own briefing once picked, not inline here. A `Dev` subtask carrying a \"⚠️ needs rebase " +

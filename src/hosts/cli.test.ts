@@ -253,6 +253,12 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         assert.ok(!out.includes("latest comment"));
     });
 
+    it("the In Progress heading is exactly 'In Progress', with no 'resume this' (TAI-567)", () => {
+        const out = renderReadyWork({ ...emptyResult, inProgress: [{ issue: makeIssue({ status: Status.InProgress }) }] });
+        assert.match(out, /^## In Progress$/m);
+        assert.doesNotMatch(out, /resume this/);
+    });
+
     it("a flagged In Progress item stays under In Progress with the marker", () => {
         const out = renderReadyWork({
             ...emptyResult,

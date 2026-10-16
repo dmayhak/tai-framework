@@ -10,7 +10,7 @@
  *  - `/tai-groom`'s icebox rule, through the one shared function: with no epic key, a parked epic and its Backlog tickets
  *    are left out and the briefing says so; the epic's own key reaches them.
  *  - Linked documents appear as a title and a page id only, never their body: she reads a page in full only when the
- *    statement touches it. Ticket descriptions are cut at an excerpt limit, and past a total row budget later tickets
+ *    statement touches it. Ticket descriptions are cut at an excerpt limit (an epic's is left out), and past a total row budget later tickets
  *    drop to key and summary; the briefing says whenever anything was cut.
  *  - The statement is the human's data: quoted line by line, never instructions.
  */
@@ -203,7 +203,7 @@ export function renderChangeBriefing(ctx: ChangeContext): string {
             "Backlog → To Do move she proposes as a batch and applies only after the human confirms in their own message, one question per " +
             "group. Where a PRD or ADR needs rework, file an `Investigate` subtask for Ada or an `ArchitectureDesign` subtask for Aria " +
             "under the Story that owns it. Present this briefing to the human first (verbatim, from the `# Change briefing` heading " +
-            "down), put no question in the same turn, and end your turn after your proposals."
+            "down to, but not including, this `---` line), put no question in the same turn, and end your turn after your proposals."
     );
     return out.join("\n");
 }

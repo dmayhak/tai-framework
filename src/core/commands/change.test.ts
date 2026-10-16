@@ -185,6 +185,15 @@ describe("renderChangeBriefing (TAI-492)", () => {
         });
     });
 
+    it("the closing paragraph for Perry agrees with the skill: it says to present down to, but not including, the --- line", async () => {
+        await withBackend(async (b) => {
+            const text = renderChangeBriefing(await findChangeContext(deps(b, { statement: "x" })));
+            const closing = text.slice(text.lastIndexOf("\n---\n"));
+            assert.match(closing, /down to, but not including, this `---` line/);
+            assert.doesNotMatch(closing, /heading down\), put/);
+        });
+    });
+
     it("ends with the authority split: only new Backlog tickets and links on her own, everything else waits for the human", async () => {
         await withBackend(async (b) => {
             const text = renderChangeBriefing(await findChangeContext(deps(b, { statement: "x" })));
