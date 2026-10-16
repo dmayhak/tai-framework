@@ -225,6 +225,17 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("tai-ready describes the 'Ready to close' section: the Verified: comment is shown, then the ticket is closed (TAI-569)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!.content;
+            assert.match(ready, /\*\*Ready to close\*\*/);
+            assert.match(ready, /show the human that `Verified:` comment in full, then close the ticket/);
+            assert.match(ready, /`issue transition <KEY> Done` \(the pick is the instruction to close\)/);
+            assert.match(ready, /Epics, Kickoff Stories and\s+Spikes are never listed/);
+            assert.match(ready, /Ready to close, and all three PR sections/);
+        }
+    });
+
     test("tai-ready's In Progress section is named 'In Progress', not 'resume this' (TAI-567)", () => {
         for (const host of [".claude", ".gemini"]) {
             const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!.content;

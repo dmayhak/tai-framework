@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { acceptanceCriteria, findNotVerified, hasVerification, isVerification, latestVerification, unverifiedCloseNote } from "./verification.js";
+import { acceptanceCriteria, findNotVerified, findReadyToClose, hasVerification, isVerification, latestVerification, unverifiedCloseNote } from "./verification.js";
 import { StoryType, SubtaskType } from "../schema/story-schema.js";
 import type { Comment, HumanId } from "./interface.js";
 
@@ -105,6 +105,59 @@ describe("findNotVerified (TAI-550)", () => {
                 issue("TAI-4", StoryType.Kickoff),
             ]
         );
+        assert.deepEqual([...got], []);
+    });
+});
+
+describe("findReadyToClose (TAI-569)", () => {
+    const issue = (key: string, issueType: string, comments: Comment[] = []): never =>
+        ({ key, issueType, status: "In Progress", summary: "s", labels: [], comments }) as never;
+    const sub = (status: string, type: string = SubtaskType.Dev): never => ({ key: "TAI-9", issueType: type, status }) as never;
+    const tracker = (byParent: Record<string, never[]>) => ({
+        search: async (q: { parentKey?: string }) => byParent[q.parentKey ?? ""] ?? [],
+    });
+    const verified = [comment("1", "Verified: all 3 criteria met")];
+
+    it("includes a Story or Bug whose latest verification is Verified: and whose subtasks are all Done or Canceled", async () => {
+        const got = await findReadyToClose(
+            tracker({ "TAI-1": [sub("Done"), sub("Done", SubtaskType.IntegrationTest)], "TAI-2": [sub("Done"), sub("Canceled")] }),
+            "TAI",
+            [issue("TAI-1", StoryType.Story, verified), issue("TAI-2", StoryType.Bug, verified)]
+        );
+        assert.deepEqual([...got].sort(), ["TAI-1", "TAI-2"]);
+    });
+
+    it("the LATEST verification decides: a later Not verified: keeps it out, a later Verified: puts it in", async () => {
+        const got = await findReadyToClose(tracker({ "TAI-1": [sub("Done")], "TAI-2": [sub("Done")] }), "TAI", [
+            issue("TAI-1", StoryType.Story, [comment("1", "Verified: all 1 criteria met"), comment("2", "Not verified: 1 of 1 criteria not met")]),
+            issue("TAI-2", StoryType.Story, [comment("1", "Not verified: 1 of 1 criteria not met"), comment("2", "Verified: all 1 criteria met")]),
+        ]);
+        assert.deepEqual([...got], ["TAI-2"]);
+    });
+
+    it("keeps it out with any open subtask (every status but Done and Canceled), or with no verification at all", async () => {
+        for (const open of ["Backlog", "To Do", "In Progress", "In Review"]) {
+            const got = await findReadyToClose(tracker({ "TAI-1": [sub("Done"), sub(open, SubtaskType.Uat)] }), "TAI", [issue("TAI-1", StoryType.Story, verified)]);
+            assert.deepEqual([...got], [], `a ${open} subtask blocks it`);
+        }
+        assert.deepEqual([...(await findReadyToClose(tracker({ "TAI-1": [sub("Done")] }), "TAI", [issue("TAI-1", StoryType.Story)]))], []);
+        assert.deepEqual([...(await findReadyToClose(tracker({ "TAI-1": [sub("Done")] }), "TAI", [issue("TAI-1", StoryType.Story, [comment("1", "Handoff: next")])]))], []);
+    });
+
+    it("needs at least one subtask: a Story with none and a stray Verified: is not offered for closing", async () => {
+        const got = await findReadyToClose(tracker({ "TAI-2": [sub("Done")] }), "TAI", [
+            issue("TAI-1", StoryType.Story, verified),
+            issue("TAI-2", StoryType.Story, verified),
+        ]);
+        assert.deepEqual([...got], ["TAI-2"], "TAI-1 has no subtask");
+    });
+
+    it("never lists an epic, a Kickoff or a Spike, however verified", async () => {
+        const got = await findReadyToClose(tracker({}), "TAI", [
+            issue("TAI-1", "epic", verified),
+            issue("TAI-2", StoryType.Kickoff, verified),
+            issue("TAI-3", StoryType.Spike, verified),
+        ]);
         assert.deepEqual([...got], []);
     });
 });
