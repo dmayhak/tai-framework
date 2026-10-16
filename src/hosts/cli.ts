@@ -99,6 +99,9 @@ import {
 import {
     parseReviewFindings,
     reviewDecisionRefusal,
+    hashFindings,
+    unrenderedFindingsRefusal,
+    unrenderedDecisionRefusal,
     renderReviewFindings,
     renderFindingsPreview,
     partitionInlineFindings,
@@ -140,7 +143,7 @@ import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from ".
 import { toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
-import { gatherDiff, gatherMergedDiff, readFileAtRef, readReviewManifest, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
+import { gatherDiff, gatherMergedDiff, readFileAtRef, readRenderedFindings, readReviewManifest, recordRenderedFindings, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
 import { renderPersonaTurn } from "../core/persona/turn.js";
 import {
     defaultPersonaFor,
@@ -1658,6 +1661,8 @@ async function main(): Promise<void> {
             // The preview shows a moved head too, so the human learns it BEFORE choosing to post or approve.
             // Best effort: when the head cannot be looked up the preview is still rendered, and says it could not check.
             const liveCommit = await previewLiveCommit(config, findings.reviewOf).catch(() => null);
+            // TAI-575: record what was rendered, so comment-findings and review can check that this step happened.
+            await recordRenderedFindings(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr, hashFindings(findings));
             console.log(renderFindingsPreview(findings, manifest, liveCommit));
             return;
         }
@@ -1743,6 +1748,13 @@ async function main(): Promise<void> {
                 const refusal = live ? reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), live.sourceCommit) : null;
                 if (refusal) throw new Error(refusal);
             }
+            // TAI-575: once review-prep has run for this PR here, the findings must have been rendered before a decision.
+            const unrenderedDecision = unrenderedDecisionRefusal(
+                decision,
+                await readReviewManifest(config.taiRoot, repoArg, String(prId)),
+                await readRenderedFindings(config.taiRoot, repoArg, String(prId))
+            );
+            if (unrenderedDecision) throw new Error(unrenderedDecision);
             // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
             await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
             console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
@@ -1836,6 +1848,9 @@ async function main(): Promise<void> {
             // TAI-527: a review is of one PR. Refuse to post findings written for another.
             const wrongPr = reviewOfMismatch(findings.reviewOf, repoArg, String(prId));
             if (wrongPr) throw new Error(wrongPr);
+            // TAI-575: what is posted must be what render-findings rendered for this PR. Refused before anything is posted.
+            const unrendered = unrenderedFindingsRefusal(findings, await readRenderedFindings(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr));
+            if (unrendered) throw new Error(unrendered);
             const manifest = await readReviewManifest(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr);
             // The PR's head now: the only thing that can show a push made after the review was prepared.
             const liveCommit = (await gitHost.getPullRequest(repo, prId))?.sourceCommit;

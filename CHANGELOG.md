@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 117 (2026-10-16)
+
+**TAI-576 (Story TAI-575): `git-pr comment-findings` and `review` refuse findings that were never rendered.** Found live, 2026-10-14: a reviewer session ended with "reply with a number" without showing the findings list, and the findings went on to be posted. Human decision, 2026-10-16: `render-findings` records a hash of what it rendered for the PR (kept with the review manifest in this clone); `comment-findings` refuses unless the findings it is asked to post hash the same; `git-pr review` refuses once `review-prep` has run for the PR here until findings were rendered, and does not block a human who never ran `review-prep` and only decides; a new `review-prep` run clears the record. `review-prep` and `render-findings` each end with a one-line reminder to show the list as chat text and stop. The guard cannot tell whether the list was actually shown; the reminder is for that. Not taken: refusing a decision with no manifest at all (it would block a review done outside TAI), and any bypass flag.
+
 ## rev 116 (2026-10-16)
 
 **TAI-574 (Bug TAI-556): `/tai-groom`'s `NEEDS CLARIFICATION` warning says how to clear a mere mention.** Found grooming TAI-447, 2026-10-14: its description said "real gaps as NEEDS CLARIFICATION" in two checklist items, and the readiness warning counted them as open questions. Human decision, 2026-10-16: keep the shared matcher, which the Kickoff review gate also uses (a code span is already ignored, so a ticket that only describes the convention wraps the phrase in backticks), and change only the groom warning to say so, plus Perry's grooming text and the brief. Not taken: counting a marker only at the start of a line, which would stop a real mid-line marker such as `PRD §4: NEEDS CLARIFICATION: ...` from blocking the Kickoff gate, and a missed real marker is worse than a false warning.

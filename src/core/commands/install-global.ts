@@ -262,7 +262,9 @@ function prSkillBody(taiHome: string): string {
         "`<ISSUE-KEY>`; roster-gated like `review`, but refuses up front.\n" +
         "- `review` — records a real approve/request-changes decision on the PR itself. This is " +
         "the roster-gated review action `readyToReview` surfaces (no Jira subtask involved at " +
-        "all) — nothing else to transition afterward.\n" +
+        "all) — nothing else to transition afterward. **Once `review-prep` has run for the PR in this clone, it refuses " +
+        "(TAI-575) until `render-findings` has been run since** (for an approval and a request for changes alike); a " +
+        "human who never ran `review-prep` here, and just decides, is not blocked.\n" +
         "- `comment` — posts a real general PR comment (not tied to an approve/request-changes " +
         "decision, and not structured review findings — see `render-findings`/`comment-findings` " +
         "below for those).\n" +
@@ -275,7 +277,8 @@ function prSkillBody(taiHome: string): string {
         "tally instead (e.g. \"🔴 — posted as inline comments\"), same as what `comment-findings` " +
         "will actually do. Its output ENDS with a numbered \"what would you like to do?\" list " +
         "(TAI-411) — part of the same stdout, never something you write; `comment-findings` does " +
-        "not post it.\n" +
+        "not post it. **It also records that these findings were rendered for this PR (TAI-575)**, and ends with a " +
+        "line telling you to show the list to the human as chat text and stop.\n" +
         "- `comment-findings` — same rendering as `render-findings`, but posts the result as the " +
         "PR's summary comment (via the same general-comment path `comment` uses). TAI-207: before " +
         "posting the summary, also posts one real inline PR comment (anchored to that exact file " +
@@ -284,7 +287,9 @@ function prSkillBody(taiHome: string): string {
         "them). A finding whose inline post itself fails (e.g. its `line` isn't actually part of " +
         "the diff) falls back into the summary instead of being silently dropped, and the failure " +
         "is reported alongside the summary comment's own output. This is how review findings " +
-        "actually get posted — see the review-flow section below.\n" +
+        "actually get posted — see the review-flow section below. **It refuses (TAI-575), and posts nothing, unless " +
+        "`render-findings` was run on these exact findings for this PR in this clone** (a re-run of `review-prep` " +
+        "clears that): run `render-findings`, show the human its output as chat text, wait for their reply, then post.\n" +
         "- `check` (TAI-534) — `git-pr check <REPO> [PR-ID]`: runs the project's check command (`TAI_CHECK_COMMAND`) " +
         "on the PR's head commit and records the result on that commit. It refuses unless the working tree is clean " +
         "and at the PR's head, and records nothing if the command changed tracked files or the head moved while it ran. " +
@@ -343,7 +348,8 @@ function prSkillBody(taiHome: string): string {
         "heading, like `/tai-work`), the PR's details, a \"Your checkout\" section saying where to read files beyond " +
         "the diff and whether the files on disk are the PR's code, the CI result for the commit under review, the review " +
         "steps for THIS PR with its exact commands, where the complete diff is (a file to read in full, not printed), and " +
-        "last the author's description, as claims to verify. **Follow its output exactly, as that persona** — including its " +
+        "last the author's description, as claims to verify, then a one-line reminder from TAI (not the PR's author) about " +
+        "`render-findings`. **Follow its output exactly, as that persona** — including its " +
         "findings format, whose `coverage` block (what you read, ran, verified and did not check) is required and must be true, and its " +
         "stop-and-wait rule. Do NOT fetch or diff the PR by hand, do NOT read the persona file yourself, and " +
         "do NOT run `render-findings`, `comment-findings`, `review` or `comment` until the output's own steps " +

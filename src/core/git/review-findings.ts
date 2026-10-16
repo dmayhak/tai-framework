@@ -17,6 +17,7 @@
  * approve/requestChanges/neither a human always makes, not a bot's auto-approve gate.
  */
 
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 export type FindingSeverity = "critical" | "suggestion" | "nitpick" | "good";
@@ -465,9 +466,17 @@ export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
     return ["---", "Nothing has been posted yet. What would you like to do? Reply with a number or plain words:", ...lines].join("\n");
 }
 
+/**
+ * TAI-575: the last line of `render-findings`' output and of `review-prep`'s. The guard below can prove the findings were
+ * rendered, never that the list was shown to the human; this line is for that, since a session once ended with "reply with
+ * a number" and no list on screen.
+ */
+export const SHOW_THE_HUMAN_REMINDER =
+    "(Show this list to the human as chat text, then stop and wait for their reply: nothing is posted until they answer.)";
+
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
 export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string | null): string {
-    return `${renderReviewFindings(findings, undefined, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning)}`;
+    return `${renderReviewFindings(findings, undefined, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`;
 }
 
 /**
@@ -487,4 +496,53 @@ export function approvalOfUnpreparedCommit(manifest: ReviewManifest | null, live
 /** The same rule keyed by the decision: only an approval is gated. A request for changes always goes through. */
 export function reviewDecisionRefusal(decision: "approve" | "requestChanges", manifest: ReviewManifest | null, liveCommit: string): string | null {
     return decision === "approve" ? approvalOfUnpreparedCommit(manifest, liveCommit) : null;
+}
+
+// ---------- TAI-575: findings must have been rendered before they are posted or a decision is cast ----------
+
+/** A stable hash of what `render-findings` rendered: the findings by content, whatever the whitespace of the file they came in. */
+export function hashFindings(findings: ReviewFindings): string {
+    return createHash("sha256").update(JSON.stringify(findings)).digest("hex");
+}
+
+/** What `render-findings` recorded for a PR in this clone. */
+export interface RenderedFindingsRecord {
+    readonly hash: string;
+}
+
+/**
+ * Why `comment-findings` may not post these findings, or `null`. They must be the ones `render-findings` rendered for this
+ * PR, so what reaches the PR is what the human was shown (or was meant to be). It cannot tell the list was actually shown.
+ */
+export function unrenderedFindingsRefusal(findings: ReviewFindings, rendered: RenderedFindingsRecord | null): string | null {
+    if (!rendered) {
+        return (
+            "Not posted: `render-findings` has not been run on these findings for this PR here. Run it on the same findings file, " +
+            "show its output to the human as chat text, and wait for their reply; then post. Nothing was posted."
+        );
+    }
+    if (rendered.hash !== hashFindings(findings)) {
+        return (
+            "Not posted: these findings differ from the findings that were rendered for this PR. Run `render-findings` again on " +
+            "this file, show the human the result, and wait for their reply; then post. Nothing was posted."
+        );
+    }
+    return null;
+}
+
+/**
+ * Why a review decision (approve or request changes) may not be recorded, or `null`. Once `review-prep` has run for the PR here,
+ * the findings must have been rendered before the human decides. With no manifest there is nothing to compare: a human who
+ * reviewed elsewhere and only approves is not blocked.
+ */
+export function unrenderedDecisionRefusal(
+    _decision: "approve" | "requestChanges",
+    manifest: ReviewManifest | null,
+    rendered: RenderedFindingsRecord | null
+): string | null {
+    if (!manifest || rendered) return null;
+    return (
+        "Not recorded: `review-prep` ran here for this PR but no findings have been rendered since. Run `render-findings` on your " +
+        "findings, show the list to the human as chat text, and wait for their reply; then decide. Nothing was recorded."
+    );
 }

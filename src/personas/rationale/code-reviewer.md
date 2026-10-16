@@ -101,6 +101,21 @@ Findings are JSON rendered by code so the write-up is deterministic. Inline comm
 findings with a line are TAI-207; the threshold is hard-coded for v1 (ADR decision 4) with no config
 surface yet.
 
+## The findings are shown before anything is posted or decided (TAI-575)
+
+- A reviewer session ended with "reply with a number" and no list on screen, and the findings went on to be posted.
+  `render-findings` is what puts the list in front of the human, but nothing checked that it ran.
+- So `render-findings` records a hash of what it rendered, `comment-findings` refuses findings that do not match it, and
+  `git-pr review` refuses once `review-prep` has run for the PR here until something was rendered. A human who never ran
+  `review-prep` here and only decides is not blocked, because they may have reviewed outside TAI.
+- The decision check is deliberately weaker than the posting check: it proves a render happened for the PR, not which
+  findings, since the findings a decision rests on can be the human's own judgment. A stale approval is separately caught
+  by the commit check (`review-prep` must have run for the PR's current commit).
+- The guard proves the render happened, never that the list was shown. The one-line reminders that close `review-prep`'s and
+  `render-findings`' output are for that case, and the prompt says to paste the output as chat text and stop.
+- Not taken: refusing a decision when there is no manifest at all (it would block a review done outside TAI), and any
+  bypass flag.
+
 ## The shared bullets
 
 - Real links, not prose references: see `workflows/dependencies.md`'s Decided section.
