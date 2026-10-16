@@ -65,7 +65,7 @@ and so on, so the whole team can see, review and gate what the AI does.
   what they read and ran, and verification is against numbered acceptance criteria, with a
   same-session check labelled as not independent.
 - **Context stays small and relevant.** The ticket, its parent Story and the pages linked
-  to them are what get loaded (a few thousand tokens for a typical task), not the whole
+  to them are what get loaded, typically a small slice of the project, not the whole
   repository or board; everything else is fetched on demand. That only works because the
   links between tickets and pages are kept up.
 - **Status, decisions and designs have one home.** There's no second project-status
@@ -159,9 +159,10 @@ writes global skill files for **both** Claude Code and Gemini CLI that point at 
 clone as TAI's fixed home; it doesn't copy files anywhere.
 
 This is a manual, one-time bootstrap by necessity: the `/tai-*` slash commands (listed under
-[Usage](#usage)) don't exist in your AI CLI until `install-global` has written them, so there's nothing to run *before* this step. Once it's
-done, those commands exist in every future session, in every project, on this machine —
-no re-bootstrap needed, and no separate install per project.
+[Usage](#usage)) don't exist in your AI CLI until `install-global` has written them, so
+there's nothing to run *before* this step. Once it's done, those commands exist in every
+future session, in every project, on this machine — no re-bootstrap needed, and no
+separate install per project.
 
 ## Updating TAI
 
