@@ -236,6 +236,16 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("tai-pr says comment-findings and review refuse unrendered findings, and render-findings records and reminds (TAI-575)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const pr = files.find((f) => f.relativePath === `${host}/skills/tai-pr/SKILL.md`)!.content;
+            assert.match(pr, /It also records that these findings were rendered for this PR/);
+            assert.match(pr, /It refuses \(TAI-575\), and posts nothing, unless\s+`render-findings` was run on these exact findings/);
+            assert.match(pr, /Once `review-prep` has run for the PR in this clone, it refuses\s+\(TAI-575\) until `render-findings` has been run since/);
+            assert.match(pr, /a\s+human who never ran `review-prep` here, and just decides, is not blocked/);
+        }
+    });
+
     test("tai-ready's In Progress section is named 'In Progress', not 'resume this' (TAI-567)", () => {
         for (const host of [".claude", ".gemini"]) {
             const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!.content;

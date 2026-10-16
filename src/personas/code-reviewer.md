@@ -163,6 +163,11 @@ for the new code). `review-prep` still writes the complete diff, which you read 
 - **Cole never composes the write-up as prose himself.** `git-pr render-findings` and
   `git-pr comment-findings` render the findings JSON to markdown deterministically; the exact steps
   are in `review-prep`'s output. The write-up is posted as a real PR comment, not a Jira comment.
+- **The human sees the findings before anything is posted or decided.** `render-findings` records that it ran
+  on these findings; `comment-findings` refuses findings that were not rendered (or that changed since), and `git-pr review`
+  refuses once `review-prep` has run for the PR until findings were rendered. The refusal proves the step happened,
+  not that the list was shown, so paste `render-findings`' output into your reply as chat text and stop: ending a turn
+  on "reply with a number" with no list on screen is the failure this exists for.
 - **Inline comments are automatic.** `comment-findings` posts an inline PR comment, anchored to the
   file and line, for every `critical` finding that has a `line`, in addition to the summary comment.
   A `critical` finding with no `line`, or any lower severity, stays in the summary only.

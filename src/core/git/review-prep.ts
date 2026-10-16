@@ -15,7 +15,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -568,7 +568,26 @@ export async function writeReviewFiles(taiRoot: string, repo: string, prId: stri
     const manifest: ReviewManifest = { repo, pr: prId, commit, files: diff.files.map((f) => f.path), diffLines };
     await writeFile(diffPath, text);
     await writeFile(path.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    // TAI-575: a new review starts from nothing rendered.
+    await rm(path.join(dir, "rendered.json"), { force: true });
     return { diffPath, diffLines, manifest };
+}
+
+/** TAI-575: records what `render-findings` rendered for this PR, so `comment-findings` and `review` can check it ran. */
+export async function recordRenderedFindings(taiRoot: string, repo: string, prId: string, hash: string): Promise<void> {
+    const dir = reviewDir(taiRoot, repo, prId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, "rendered.json"), JSON.stringify({ hash, at: new Date().toISOString() }, null, 2) + "\n");
+}
+
+/** The record `render-findings` left for this PR in this clone, or `null` when it has not run since the last review-prep. */
+export async function readRenderedFindings(taiRoot: string, repo: string, prId: string): Promise<{ readonly hash: string } | null> {
+    try {
+        const parsed = JSON.parse(await readFile(path.join(reviewDir(taiRoot, repo, prId), "rendered.json"), "utf8")) as { hash?: unknown };
+        return typeof parsed.hash === "string" ? { hash: parsed.hash } : null;
+    } catch {
+        return null;
+    }
 }
 
 /** The manifest review-prep saved for this PR in this clone, or `null` when it has not run here. */
@@ -598,6 +617,15 @@ export function renderChangesFromFile(diff: Extract<DiffResult, { kind: "ok" }>,
             "It is not shown here, because tool output this long gets cut. Every changed file you read goes under `filesRead`; one you skip is named by the CLI next to your review.",
     ].join("\n");
 }
+
+
+/**
+ * TAI-575: the last line of `review-prep`'s output, after a rule so it is not mistaken for the PR author's text above it.
+ * `comment-findings` and `review` refuse until the findings have been rendered; this says what to do and that the human sees the list.
+ */
+export const REVIEW_PREP_REMINDER =
+    "From TAI (not the PR's author): when your findings are ready, run `git-pr render-findings` on them, show its output to the human as chat text, and stop " +
+    "and wait for their reply. `git-pr comment-findings` and `git-pr review` refuse until the findings have been rendered.";
 
 /** The whole `git-pr review-prep` output (ADR decisions 3, 4, 6, 9). */
 export function renderReviewPrep(input: ReviewPrepInput): string {
@@ -640,9 +668,10 @@ export function renderReviewPrep(input: ReviewPrepInput): string {
 
     const prefix = renderPersonaTurn(input.persona, before, input.projectContext);
     // TAI-527 ADR decisions 3 and 4: the code first (as a file when it could be written), the author's account last.
+    // TAI-575: room for the reminder that closes the output. The diff is cut by whole files, so the margin is generous.
     const changes =
         input.diff.kind === "ok" && input.reviewFiles
             ? renderChangesFromFile(input.diff, input.reviewFiles)
-            : renderChanges(input.diff, Math.max(DIFF_FLOOR, OUTPUT_BUDGET - prefix.length));
-    return `${prefix}${changes}\n\n${renderAuthorDescription(pr)}\n`;
+            : renderChanges(input.diff, Math.max(DIFF_FLOOR, OUTPUT_BUDGET - prefix.length - REVIEW_PREP_REMINDER.length - 600));
+    return `${prefix}${changes}\n\n${renderAuthorDescription(pr)}\n\n---\n${REVIEW_PREP_REMINDER}\n`;
 }

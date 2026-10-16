@@ -21,6 +21,10 @@ import {
     approvalOfUnpreparedCommit,
     reviewDecisionRefusal,
     sameCommitHash,
+    hashFindings,
+    unrenderedFindingsRefusal,
+    unrenderedDecisionRefusal,
+    SHOW_THE_HUMAN_REMINDER,
     type ReviewFindings,
     type ReviewManifest,
 } from "./review-findings.js";
@@ -238,7 +242,7 @@ describe("render-findings next-step options (TAI-411)", () => {
     it("the preview is the rendered findings followed by the options", () => {
         const preview = renderFindingsPreview(validFindings);
         assert.ok(preview.startsWith(renderReviewFindings(validFindings)));
-        assert.ok(preview.endsWith(renderFindingsNextSteps(validFindings.leaning)));
+        assert.ok(preview.endsWith(`${renderFindingsNextSteps(validFindings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`), "the options, then the reminder (TAI-575)");
     });
 
     it("the options NEVER appear in renderReviewFindings -- that is the text comment-findings posts to the PR", () => {
@@ -493,5 +497,50 @@ describe("a review that searched nothing, and a claim with no how (TAI-541)", ()
     it("adds no claims note when every claim gives a how, or there are none", () => {
         assert.doesNotMatch(coverageNotes(validFindings, manifest()).join("\n"), /do not say how/);
         assert.doesNotMatch(coverageNotes(withCoverage(["git grep -n a origin/x"], []), manifest()).join("\n"), /do not say how/);
+    });
+});
+
+describe("render-findings must have run before findings are posted or a decision is cast (TAI-575)", () => {
+    const manifest: ReviewManifest = { repo: "acme/widgets", pr: "7", commit: "abc123def456", files: ["src/db.ts"], diffLines: 10 };
+
+    it("hashes findings by content: the same findings hash the same, a changed one does not", () => {
+        assert.equal(hashFindings(validFindings), hashFindings(JSON.parse(JSON.stringify(validFindings))));
+        assert.notEqual(hashFindings(validFindings), hashFindings({ ...validFindings, overview: "A different overview." }));
+        assert.match(hashFindings(validFindings), /^[0-9a-f]{64}$/);
+    });
+
+    it("comment-findings: refuses findings that were never rendered, or that differ from the rendered ones, naming the fix", () => {
+        const none = unrenderedFindingsRefusal(validFindings, null);
+        assert.match(none!, /render-findings/);
+        assert.match(none!, /show .*human/i);
+        assert.match(none!, /Nothing was posted/);
+        const different = unrenderedFindingsRefusal({ ...validFindings, overview: "Edited after rendering." }, { hash: hashFindings(validFindings) });
+        assert.match(different!, /differ from the findings that were rendered/);
+    });
+
+    it("comment-findings: goes ahead when these exact findings were rendered", () => {
+        assert.equal(unrenderedFindingsRefusal(validFindings, { hash: hashFindings(validFindings) }), null);
+    });
+
+    it("review: refuses when review-prep ran for the PR here and nothing was rendered, for approve and for request changes", () => {
+        for (const decision of ["approve", "requestChanges"] as const) {
+            const refusal = unrenderedDecisionRefusal(decision, manifest, null);
+            assert.match(refusal!, /`review-prep` ran here/);
+            assert.match(refusal!, /render-findings/);
+            assert.match(refusal!, /Nothing was recorded/);
+        }
+    });
+
+    it("review: goes ahead after a render, and for a human who never ran review-prep here (reviewed elsewhere)", () => {
+        assert.equal(unrenderedDecisionRefusal("approve", manifest, { hash: "x" }), null);
+        assert.equal(unrenderedDecisionRefusal("approve", null, null), null);
+        assert.equal(unrenderedDecisionRefusal("requestChanges", null, null), null);
+    });
+
+    it("render-findings' output ends with the reminder to show the list as chat text and stop", () => {
+        const out = renderFindingsPreview(validFindings);
+        assert.ok(out.trimEnd().endsWith(SHOW_THE_HUMAN_REMINDER));
+        assert.match(SHOW_THE_HUMAN_REMINDER, /chat text/);
+        assert.match(SHOW_THE_HUMAN_REMINDER, /stop/);
     });
 });
