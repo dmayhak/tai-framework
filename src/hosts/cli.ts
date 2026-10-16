@@ -839,7 +839,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
     // rebase-conflict flag can ever apply — unlike the TAI-266 blocked flag just above,
     // which applies to both this section and Ready Work below (ADR decision #3).
     if (result.inProgress.length > 0) {
-        lines.push("## In Progress — resume this", "");
+        lines.push("## In Progress", "");
         const renderInProgressLine = (c: (typeof result.inProgress)[number]) => {
             const rebaseFlag = hasUnresolvedRebaseMarker(c.issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
             const parentNote = c.issue.parentKey ? `, parent: ${c.issue.parentKey}` : "";

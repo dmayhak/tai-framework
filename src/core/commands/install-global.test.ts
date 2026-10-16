@@ -224,6 +224,14 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("tai-ready's In Progress section is named 'In Progress', not 'resume this' (TAI-567)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const ready = files.find((f) => f.relativePath === `${host}/skills/tai-ready/SKILL.md`)!.content;
+            assert.match(ready, /\*\*In Progress\*\* — issues already at/);
+            assert.doesNotMatch(ready, /resume this/);
+        }
+    });
+
     test("tai-ready's review line points at review-prep, not a hand-run fetch/diff (TAI-425)", () => {
         const ready = files.find((f) => f.relativePath === ".claude/skills/tai-ready/SKILL.md")!;
         assert.match(ready.content, /git-pr review-prep/);
