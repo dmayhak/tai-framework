@@ -175,7 +175,8 @@ function readySkillBody(taiHome: string): string {
         "`/tai-work <KEY>` for an In Progress OR a Ready Work line (same action either way — " +
         "resume vs. start is `/tai-work`'s own concern, not this list's), the real review flow " +
         "above for a \"PRs ready for your review\" line, `/tai-verify <KEY>` for a \"Ready to verify\" " +
-        "line, show the `Verified:` comment and then `issue transition <KEY> Done` for a \"Ready to close\" line, `git-pr merge` for a \"ready to merge\" line, and for an \"Approved PRs waiting on something\" line only " +
+        "line, show the `Verified:` comment and then `issue transition <KEY> Done` for a \"Ready to close\" line, " +
+        "`git-pr merge` for a \"ready to merge\" line, and for an \"Approved PRs waiting on something\" line only " +
         "telling the human what it waits on (never a merge, and never `force=true`). A number with no corresponding line, or any ambiguity about which line it means, " +
         "is a re-ask, not a guess."
     );

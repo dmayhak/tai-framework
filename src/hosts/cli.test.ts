@@ -900,6 +900,19 @@ describe("the 'Ready to close' section (TAI-569)", () => {
         assert.match(line, /close it with `issue transition TAI-7 Done`/);
     });
 
+    it("keeps the markers an In Progress line carries: a flagged or blocked ticket does not read as a plain close-it line", () => {
+        const flagged = makeIssue({ key: toIssueKey("TAI-7"), issueType: StoryType.Story, summary: "A finished story", status: Status.InProgress, flagged: true, comments: [verifiedComment] as never });
+        const out = renderReadyWork({
+            ...base,
+            inProgress: [{ issue: flagged }],
+            readyToClose: new Set<IssueKey>([flagged.key]),
+            blockedBy: new Map([[flagged.key, [toIssueKey("TAI-99")]]]),
+        });
+        const line = out.split("\n").find((l) => l.includes("**TAI-7**"))!;
+        assert.ok(line.includes(FLAG_MARKER), "the flagged marker is kept");
+        assert.match(line, /TAI-99/, "the blocker is named");
+    });
+
     it("numbers it on the shared counter, and prints no section when nothing is ready to close", () => {
         const out = renderReadyWork(withClose);
         assert.match(out, /1\. \*\*TAI-8\*\*/);

@@ -942,9 +942,10 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
         lines.push("", "## Ready to close", "");
         for (const issue of toClose) {
             const verdict = latestVerification(issue.comments)?.body.split("\n", 1)[0]?.trim() ?? "";
+            // The markers an In Progress line carries stay: a flagged, blocked or sign-off-noted ticket is not a plain close-it line.
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} — ${verdict} — ` +
-                    `close it with \`issue transition ${issue.key} Done\``
+                    `close it with \`issue transition ${issue.key} Done\`${blockedFlag(issue.key)}${isFlagged(issue) ? ` ${FLAG_MARKER}` : ""}${signOffRowNote(issue)}`
             );
             actionableCount++;
         }

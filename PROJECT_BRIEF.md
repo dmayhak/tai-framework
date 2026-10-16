@@ -524,7 +524,7 @@ comments (page-level and inline) — not just Jira; `Skipped:`, `Handoff:` and `
   grooming briefing's section 9 lists the same set, from one shared function),
   and moving a Story or Bug to Done without one prints a warning, but nothing blocks the merge or the close. A
   later Dev commit does not invalidate an earlier comment; run `verify` again to get a fresh one. Once the
-  latest comment is `Verified:` and every subtask is Done or Canceled, `/tai-ready` moves the Story or Bug out of
+  latest comment is `Verified:` and the ticket has at least one subtask, all of them Done or Canceled, `/tai-ready` moves the Story or Bug out of
   In Progress into a numbered "Ready to close" section (one shared function, `findReadyToClose`): the line shows the
   first line of the `Verified:` comment, and its number means show that comment, then `issue transition <KEY> Done`.
   A later `Not verified:` takes it back out; an epic, a Kickoff Story or a Spike is never listed, and the bare `/tai-pr` list
