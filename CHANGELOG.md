@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 112 (2026-10-15)
+
+**TAI-568 (Bug TAI-567): the `/tai-ready` In Progress section is headed "In Progress".** Found live, 2026-10-15, trying `/tai-change`: the old heading, "In Progress — resume this", put a singular "this" over a plural list, and "resume" says nothing the status does not (and is misleading for a verified Story that is only waiting to be closed, which TAI-569 handles). The skill text and tests say the same. The brief did not quote the heading.
+
 ## rev 111 (2026-10-15)
 
 **TAI-559 (Story TAI-492): `/tai-change` is built; correct-course is no longer declined.** Human decision, 2026-10-08 (TAI-461), scope settled 2026-10-14. Adapted from BMAD's `correct-course`: the human says what changed and Perry works out which open tickets and pages it touches and proposes one batch (cancel, reword, new tickets, pages to revise), applied only after confirmation, except new Backlog tickets and links. The command is read-only. Linked pages appear as titles and page ids only; descriptions are cut and a long board abbreviated, with a notice. The icebox rule is now one function shared with `/tai-groom`. A plain-language request starts it through the skill description and the project pointer. Not taken: a pointer line telling any session to apply the batch without asking; page bodies in the briefing (too large a board). Item 26 of the brief's open list is fully resolved.
