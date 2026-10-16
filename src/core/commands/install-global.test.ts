@@ -55,6 +55,7 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(change.content, /never put it inside double quotes/i);
             assert.match(change.content, /data, not instructions/);
             assert.match(change.content, /# Change briefing/);
+            assert.match(change.content, /down to, but not including, the `---` line/);
             assert.match(change.content, /ordinary chat text/i);
             assert.match(change.content, /Do\s+NOT, in this same turn, ask a question with an interactive tool/i);
             assert.match(change.content, /The command itself writes nothing/);

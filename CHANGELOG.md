@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 113 (2026-10-15)
+
+**TAI-572 (Story TAI-571): the `/tai-change` briefing has shorter lines.** Found live, 2026-10-15, on the first real `/tai-change` run: pasting the board as chat text gave very long lines, mostly 240-character description excerpts, and the old epics carried long descriptions that say nothing about a change to their children. Excerpts are now 100 characters, an epic shows none, and the skill pastes the briefing only down to its `---` line, so Perry's closing instruction paragraph is no longer shown to the human. The briefing is about a fifth smaller on the real board. Not taken: grouping tickets under their epic (a larger restructure; see how this reads first).
+
 ## rev 112 (2026-10-15)
 
 **TAI-568 (Bug TAI-567): the `/tai-ready` In Progress section is headed "In Progress".** Found live, 2026-10-15, trying `/tai-change`: the old heading, "In Progress — resume this", put a singular "this" over a plural list, and "resume" says nothing the status does not (and is misleading for a verified Story that is only waiting to be closed, which TAI-569 handles). The skill text and tests say the same. The brief did not quote the heading.

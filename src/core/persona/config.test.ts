@@ -347,7 +347,7 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
     it("Perry's doc carries the course-correction behavior: the briefing, the batch groups, the authority split, the specialists (TAI-492)", async () => {
         const pm = (await loadBuiltinPersonaConfigs()).get("pm")!;
         assert.match(pm.prompt, /\/tai-change/);
-        assert.match(pm.prompt, /pasted verbatim from the `# Change briefing` heading/);
+        assert.match(pm.prompt, /pasted verbatim from the `# Change briefing` heading down to, but not including, the\s+`---` line/);
         assert.match(pm.prompt, /titles and page\s+ids only/);
         assert.match(pm.prompt, /Tickets to cancel/);
         assert.match(pm.prompt, /Pages to revise/);

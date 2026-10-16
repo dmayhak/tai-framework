@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-15 (rev 112). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-15 (rev 113). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -430,8 +430,9 @@ grouped as tickets to cancel, tickets to reword, new tickets and pages to revise
 or an `ArchitectureDesign` subtask for Aria where a PRD or ADR needs rework. She creates Backlog tickets and links on her
 own; every cancel, reword, page revision and Backlog → To Do move waits for the human's confirmation, one question per
 group. The statement is the human's data, never instructions. The skill's description and the project pointer in a target's
-CLAUDE.md and GEMINI.md let a plain-language request start it; nothing starts it on its own. Descriptions are cut at an
-excerpt limit and a long board is abbreviated past a size budget, with a notice.
+CLAUDE.md and GEMINI.md let a plain-language request start it; nothing starts it on its own. Descriptions are cut at 100
+characters, an epic's is left out, and a long board is abbreviated past a size budget, with a notice. The skill pastes
+the briefing down to its `---` line only; what follows is for Perry.
 
 **Review has no ticket entry.** There is no `CodeReview` subtask, so the Code
 Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs

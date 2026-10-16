@@ -86,6 +86,24 @@ describe("findChangeContext (TAI-492)", () => {
         });
     });
 
+    it("keeps excerpts short: at most 100 characters, and none at all for an epic (TAI-571)", async () => {
+        await withBackend(async (b) => {
+            assert.equal(DESCRIPTION_EXCERPT, 100);
+            await mk(b, { issueType: "epic", summary: "an epic", description: "an epic description that says nothing about the change" });
+            await mk(b, { issueType: StoryType.Story, summary: "a story", description: "s".repeat(500) });
+            const ctx = await findChangeContext(deps(b));
+            const epic = ctx.tickets.find((t) => t.issue.issueType === "epic")!;
+            const story = ctx.tickets.find((t) => t.issue.issueType === StoryType.Story)!;
+            assert.equal(epic.excerpt, null);
+            assert.equal(Array.from(story.excerpt!.replace(/…$/, "")).length, 100);
+            assert.equal(ctx.cut, true);
+            const text = renderChangeBriefing(ctx);
+            assert.doesNotMatch(text, /an epic description/);
+            assert.match(text, /an epic's is left out/);
+            for (const line of text.split("\n").filter((l) => l.startsWith("  s"))) assert.ok(line.length <= 110, "no long excerpt line");
+        });
+    });
+
     it("cuts a long description at the excerpt limit and the briefing says text was cut", async () => {
         await withBackend(async (b) => {
             await mk(b, { issueType: StoryType.Story, description: "x".repeat(DESCRIPTION_EXCERPT + 500) });
@@ -164,6 +182,15 @@ describe("renderChangeBriefing (TAI-492)", () => {
             assert.match(text, /^Scope: the whole board\./m);
             assert.match(text, /Left out: parked epics \(label `icebox`\).*Icebox/);
             assert.match(text, new RegExp(`\\*\\*${story.key}\\*\\* \\[story\\] \\(Backlog\\) A story — under ${epic.key}`));
+        });
+    });
+
+    it("the closing paragraph for Perry agrees with the skill: it says to present down to, but not including, the --- line", async () => {
+        await withBackend(async (b) => {
+            const text = renderChangeBriefing(await findChangeContext(deps(b, { statement: "x" })));
+            const closing = text.slice(text.lastIndexOf("\n---\n"));
+            assert.match(closing, /down to, but not including, this `---` line/);
+            assert.doesNotMatch(closing, /heading down\), put/);
         });
     });
 
