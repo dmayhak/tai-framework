@@ -348,7 +348,8 @@ function prSkillBody(taiHome: string): string {
         "heading, like `/tai-work`), the PR's details, a \"Your checkout\" section saying where to read files beyond " +
         "the diff and whether the files on disk are the PR's code, the CI result for the commit under review, the review " +
         "steps for THIS PR with its exact commands, where the complete diff is (a file to read in full, not printed), and " +
-        "last the author's description, as claims to verify. **Follow its output exactly, as that persona** — including its " +
+        "last the author's description, as claims to verify, then a one-line reminder from TAI (not the PR's author) about " +
+        "`render-findings`. **Follow its output exactly, as that persona** — including its " +
         "findings format, whose `coverage` block (what you read, ran, verified and did not check) is required and must be true, and its " +
         "stop-and-wait rule. Do NOT fetch or diff the PR by hand, do NOT read the persona file yourself, and " +
         "do NOT run `render-findings`, `comment-findings`, `review` or `comment` until the output's own steps " +

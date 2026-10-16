@@ -618,7 +618,6 @@ export function renderChangesFromFile(diff: Extract<DiffResult, { kind: "ok" }>,
     ].join("\n");
 }
 
-
 /**
  * TAI-575: the last line of `review-prep`'s output, after a rule so it is not mistaken for the PR author's text above it.
  * `comment-findings` and `review` refuse until the findings have been rendered; this says what to do and that the human sees the list.
