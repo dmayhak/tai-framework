@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 114 (2026-10-16)
+
+**TAI-570 (Story TAI-569): `/tai-ready` lists a "Ready to close" section for verified Stories and Bugs.** Found live, 2026-10-15, trying `/tai-change`: TAI-469, TAI-473, TAI-491, TAI-492, TAI-563 and TAI-564 sat under In Progress only because nobody had closed them, so the section mixed work in flight with tickets waiting for a human. A Story or Bug whose latest verification comment is `Verified:` and whose subtasks are all Done or Canceled now has its own numbered section after "Ready to verify", with the first line of that comment on its line; picking it shows the comment in full, then closes the ticket (the pick is the instruction). A later `Not verified:` takes it back out. One shared function (`findReadyToClose`). Epics, Kickoff Stories and Spikes are never listed, and the bare `/tai-pr` list does not have it. Not taken: closing automatically (a human closes, as before).
+
 ## rev 113 (2026-10-15)
 
 **TAI-572 (Story TAI-571): the `/tai-change` briefing has shorter lines.** Found live, 2026-10-15, on the first real `/tai-change` run: pasting the board as chat text gave very long lines, mostly 240-character description excerpts, and the old epics carried long descriptions that say nothing about a change to their children. Excerpts are now 100 characters, an epic shows none, and the skill pastes the briefing only down to its `---` line, so Perry's closing instruction paragraph is no longer shown to the human. The briefing is about a fifth smaller on the real board. Not taken: grouping tickets under their epic (a larger restructure; see how this reads first).

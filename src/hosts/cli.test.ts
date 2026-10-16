@@ -193,7 +193,7 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         readyToTest: [],
         readyToMerge: [], waitingToMerge: [],
         blockedBy: new Map(),
-        staleLivingDocs: [], notVerified: new Set<IssueKey>(),
+        staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(),
         assigneeSuggestions: new Map(),
     };
 
@@ -816,7 +816,7 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
     it("renderReadyWork points the review line at git-pr review-prep", () => {
         const out = renderReadyWork({
             ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [], waitingToMerge: [],
-            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
         });
         assert.match(out, /git-pr review-prep ws\/repo 9/);
         assert.doesNotMatch(out, /git-pr review <REPO> approve/);
@@ -836,7 +836,7 @@ describe("a re-review line says so, names both commits and the diff between them
         pr: renderPRReadyWork({ readyToReview: [c], readyToMerge: [], waitingToMerge: [] } as never),
         ready: renderReadyWork({
             ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [c], readyToTest: [], readyToMerge: [], waitingToMerge: [],
-            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
         }),
     });
 
@@ -873,6 +873,47 @@ describe("a re-review line says so, names both commits and the diff between them
     });
 });
 
+describe("the 'Ready to close' section (TAI-569)", () => {
+    const base = {
+        ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [], readyToTest: [], readyToMerge: [], waitingToMerge: [],
+        blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+    };
+    const verifiedComment = { id: "1", author: { id: "u", displayName: "U" }, body: "Verified: all 5 criteria met\n\n* AC-1 met", createdAt: "x", updatedAt: "x" };
+    const done = makeIssue({ key: toIssueKey("TAI-7"), issueType: StoryType.Story, summary: "A finished story", status: Status.InProgress, comments: [verifiedComment] as never });
+    const working = makeIssue({ key: toIssueKey("TAI-8"), issueType: StoryType.Story, summary: "Still being built", status: Status.InProgress });
+    const withClose = { ...base, inProgress: [{ issue: done }, { issue: working }], readyToClose: new Set<IssueKey>([done.key]) };
+
+    it("moves a verified, finished Story out of In Progress into its own numbered section after 'Ready to verify'", () => {
+        const out = renderReadyWork({ ...withClose, notVerified: new Set<IssueKey>([working.key]) });
+        const inProgress = out.slice(out.indexOf("## In Progress"), out.indexOf("## Ready to close"));
+        assert.match(inProgress, /\*\*TAI-8\*\*/, "real in-flight work stays");
+        assert.doesNotMatch(inProgress, /TAI-7/, "the finished Story is no longer under In Progress");
+        const closeSection = out.slice(out.indexOf("## Ready to close"));
+        assert.ok(out.indexOf("## Ready to verify") < out.indexOf("## Ready to close"), "after Ready to verify");
+        assert.match(closeSection, /\*\*TAI-7\*\* \[story\] A finished story/);
+    });
+
+    it("shows the first line of the Verified: comment and tells how picking it closes the ticket", () => {
+        const out = renderReadyWork(withClose);
+        const line = out.split("\n").find((l) => l.includes("**TAI-7**") && l.includes("Verified: all 5 criteria met"))!;
+        assert.ok(line, "the line carries the Verified: comment's first line");
+        assert.match(line, /close it with `issue transition TAI-7 Done`/);
+    });
+
+    it("numbers it on the shared counter, and prints no section when nothing is ready to close", () => {
+        const out = renderReadyWork(withClose);
+        assert.match(out, /1\. \*\*TAI-8\*\*/);
+        assert.match(out, /2\. \*\*TAI-7\*\*/);
+        const none = renderReadyWork({ ...base, inProgress: [{ issue: working }] });
+        assert.doesNotMatch(none, /Ready to close/);
+    });
+
+    it("is not part of the bare /tai-pr list", () => {
+        const out = renderPRReadyWork({ readyToReview: [], readyToMerge: [], waitingToMerge: [] } as never);
+        assert.doesNotMatch(out, /Ready to close/);
+    });
+});
+
 describe("the 'approved PRs waiting' section (TAI-564)", () => {
     const waiting = {
         issueKey: "TAI-9",
@@ -888,7 +929,7 @@ describe("the 'approved PRs waiting' section (TAI-564)", () => {
         const prOut = renderPRReadyWork({ readyToReview: [], readyToMerge: [mergeReady], waitingToMerge: [waiting] } as never);
         const readyOut = renderReadyWork({
             ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [], readyToTest: [], readyToMerge: [mergeReady], waitingToMerge: [waiting],
-            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
         } as never);
         for (const out of [prOut, readyOut]) {
             assert.match(out, /## Approved PRs waiting on something/);
@@ -921,7 +962,7 @@ describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
         readyToTest: [],
         readyToMerge: [], waitingToMerge: [],
         blockedBy: new Map(),
-        staleLivingDocs: [], notVerified: new Set<IssueKey>(),
+        staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(),
         assigneeSuggestions: new Map(),
     };
     const kickoff = makeIssue({ key: toIssueKey("EXA-2"), persona: "pm" as never, status: Status.InProgress });

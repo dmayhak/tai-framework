@@ -2533,6 +2533,28 @@ describe("findReadyWork: Stories whose finished work is not verified (TAI-546)",
         });
     });
 
+    test("TAI-569: a Verified: Story with every subtask Done is ready to close, and is no longer 'not verified'", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const story = await inProgressStory(backend, StoryType.Story, [Status.Done]);
+            await backend.workTracker.addComment(story.key, "Verified: all 1 criteria met");
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            assert.ok(result.readyToClose.has(story.key));
+            assert.ok(!result.notVerified.has(story.key));
+        });
+    });
+
+    test("TAI-569: Not verified:, an open subtask or no verification keeps it out of ready to close", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const notVerified = await inProgressStory(backend, StoryType.Story, [Status.Done]);
+            await backend.workTracker.addComment(notVerified.key, "Not verified: 1 of 1 criteria not met");
+            const openSub = await inProgressStory(backend, StoryType.Story, [Status.Done, Status.InProgress]);
+            await backend.workTracker.addComment(openSub.key, "Verified: all 1 criteria met");
+            const unverified = await inProgressStory(backend, StoryType.Story, [Status.Done]);
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" });
+            for (const story of [notVerified, openSub, unverified]) assert.ok(!result.readyToClose.has(story.key), story.key);
+        });
+    });
+
     test("a Story that is not In Progress is not listed", async () => {
         await withBackend(async (backend, taiRoot) => {
             const story = await inProgressStory(backend, StoryType.Story, [Status.Done]);

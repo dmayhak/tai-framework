@@ -55,7 +55,7 @@ import {
 } from "../schema/story-schema.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
-import { findNotVerified } from "../storage/verification.js";
+import { findNotVerified, findReadyToClose } from "../storage/verification.js";
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { CommitSha, GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -226,6 +226,9 @@ export interface ReadyWorkResult {
     /** TAI-468/546: In Progress Stories and Bugs whose Dev subtasks are all Done but that carry no `Verified:` /
      *  `Not verified:` comment (`verify <KEY>` posts one). Show-only: it never excludes or blocks anything. */
     readonly notVerified: ReadonlySet<IssueKey>;
+    /** TAI-569: In Progress Stories and Bugs whose latest verification is `Verified:` and whose subtasks are all Done or
+     *  Canceled: waiting only for a human to close them, so `/tai-ready` lists them apart from real in-flight work. */
+    readonly readyToClose: ReadonlySet<IssueKey>;
 }
 
 interface ParentPrecedenceContext {
@@ -874,6 +877,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     }
 
     const notVerified = await findNotVerified(deps.workTracker, deps.projectKey, inProgress.map((c) => c.issue));
+    const readyToClose = await findReadyToClose(deps.workTracker, deps.projectKey, inProgress.map((c) => c.issue));
 
     const { readyToReview, readyToTest, readyToMerge, waitingToMerge } = await computePRSections(deps);
     const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);
@@ -904,6 +908,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         staleLivingDocs,
         assigneeSuggestions,
         notVerified,
+        readyToClose,
     };
 }
 

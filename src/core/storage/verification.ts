@@ -49,6 +49,28 @@ export async function findNotVerified(
     return notVerified;
 }
 
+/**
+ * The Stories and Bugs among `issues` that are ready to CLOSE (TAI-569): their latest verification comment is `Verified:`
+ * (a later `Not verified:` takes it back out) and none of their subtasks is still open (every one Done or Canceled; a
+ * Story with no subtask at all counts). An epic, a Kickoff Story or a Spike is never listed: each has its own close.
+ * One copy, used by `/tai-ready` to move such a ticket out of In Progress; one read of each candidate's subtasks.
+ */
+export async function findReadyToClose(
+    workTracker: Pick<WorkTracker, "search">,
+    projectKey: string,
+    issues: readonly Issue[]
+): Promise<Set<IssueKey>> {
+    const readyToClose = new Set<IssueKey>();
+    for (const issue of issues) {
+        if (issue.issueType !== StoryType.Story && issue.issueType !== StoryType.Bug) continue;
+        const latest = latestVerification(issue.comments);
+        if (!latest || !/^\s*Verified\s*:/i.test(latest.body.split("\n", 1)[0] ?? "")) continue;
+        const subtasks = await workTracker.search({ projectKey, parentKey: issue.key, exhaustive: true });
+        if (subtasks.every((s) => s.status === Status.Done || s.status === Status.Canceled)) readyToClose.add(issue.key);
+    }
+    return readyToClose;
+}
+
 /** The numbered acceptance-criterion lines of a description, in order, each trimmed. */
 export function acceptanceCriteria(description: string | undefined): string[] {
     if (!description) return [];

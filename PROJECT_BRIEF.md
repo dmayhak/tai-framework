@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-15 (rev 113). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-16 (rev 114). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -523,7 +523,12 @@ comments (page-level and inline) — not just Jira; `Skipped:`, `Handoff:` and `
   and lists it in its own numbered "Ready to verify" section, where its number means `/tai-verify <KEY>` (the
   grooming briefing's section 9 lists the same set, from one shared function),
   and moving a Story or Bug to Done without one prints a warning, but nothing blocks the merge or the close. A
-  later Dev commit does not invalidate an earlier comment; run `verify` again to get a fresh one.
+  later Dev commit does not invalidate an earlier comment; run `verify` again to get a fresh one. Once the
+  latest comment is `Verified:` and every subtask is Done or Canceled, `/tai-ready` moves the Story or Bug out of
+  In Progress into a numbered "Ready to close" section (one shared function, `findReadyToClose`): the line shows the
+  first line of the `Verified:` comment, and its number means show that comment, then `issue transition <KEY> Done`.
+  A later `Not verified:` takes it back out; an epic, a Kickoff Story or a Spike is never listed, and the bare `/tai-pr` list
+  has no such section.
 
 **Why not Confluence's native inline-comment resolve checkmark:** considered and
 rejected as the signal for any of the above, for two concrete reasons — (1) the

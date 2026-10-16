@@ -153,7 +153,7 @@ import {
     Persona,
     StoryType,
 } from "../core/schema/story-schema.js";
-import { unverifiedCloseNote } from "../core/storage/verification.js";
+import { latestVerification, unverifiedCloseNote } from "../core/storage/verification.js";
 import { findVerifyPullRequests, renderVerifyTurn } from "../core/commands/verify.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
@@ -838,7 +838,10 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
     // stays open until the PR merges), so this is the only place the TAI-217/219
     // rebase-conflict flag can ever apply — unlike the TAI-266 blocked flag just above,
     // which applies to both this section and Ready Work below (ADR decision #3).
-    if (result.inProgress.length > 0) {
+    // TAI-569: a verified Story or Bug with nothing open is waiting only for a human to close it, so it is listed in its own
+    // section below, not under In Progress with work that is still being done.
+    const stillInProgress = result.inProgress.filter((c) => !result.readyToClose.has(c.issue.key));
+    if (stillInProgress.length > 0) {
         lines.push("## In Progress", "");
         const renderInProgressLine = (c: (typeof result.inProgress)[number]) => {
             const rebaseFlag = hasUnresolvedRebaseMarker(c.issue) ? " ⚠️ needs rebase (merge conflicts)" : "";
@@ -850,7 +853,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             actionableCount++;
         };
         const { tasks: inProgressTasks, stories: inProgressStories } = splitTasksAndStories(
-            result.inProgress,
+            stillInProgress,
             (c) => c.issue.issueType
         );
         if (inProgressTasks.length > 0) {
@@ -931,6 +934,18 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
         lines.push("", "## Ready to verify", "");
         for (const issue of toVerify) {
             lines.push(`${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} — verify it with \`/tai-verify ${issue.key}\``);
+            actionableCount++;
+        }
+    }
+    const toClose = result.inProgress.map((c) => c.issue).filter((issue) => result.readyToClose.has(issue.key));
+    if (toClose.length > 0) {
+        lines.push("", "## Ready to close", "");
+        for (const issue of toClose) {
+            const verdict = latestVerification(issue.comments)?.body.split("\n", 1)[0]?.trim() ?? "";
+            lines.push(
+                `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} — ${verdict} — ` +
+                    `close it with \`issue transition ${issue.key} Done\``
+            );
             actionableCount++;
         }
     }
