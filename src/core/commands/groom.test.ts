@@ -266,11 +266,25 @@ describe("promotion readiness (TAI-472)", () => {
             const warnings = candidate(result, story.key)?.warnings ?? [];
             assert.deepEqual(warnings, [
                 "no numbered acceptance criteria (lines starting AC-1, AC-2, …)",
-                "1 NEEDS CLARIFICATION marker in the description",
+                "1 NEEDS CLARIFICATION marker in the description (if it only mentions the phrase, wrap it in backticks)",
                 "no Dev subtask",
                 "no issue link and no linked page",
             ]);
             assert.match(renderGroomingBriefing(result), /⚠ not ready: no numbered acceptance criteria[^\n]*; 1 NEEDS CLARIFICATION marker[^\n]*; no Dev subtask; no issue link/);
+        });
+    });
+
+    it("TAI-556: a real marker is counted and the warning says how to clear a mere mention; a backticked mention is not counted", async () => {
+        await withTracker(async (wt) => {
+            const epic = await mk(wt, { issueType: "epic" });
+            const real = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: `${FULL}\nNEEDS CLARIFICATION: which table?` });
+            const mention = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: `${FULL}\nGaps are marked with \`NEEDS CLARIFICATION\` in the PRD.` });
+            const bare = await mk(wt, { issueType: StoryType.Story, parentKey: epic.key, description: `${FULL}\nreal gaps as NEEDS CLARIFICATION, not conflated.` });
+            const result = await findGroomingWork(deps(wt));
+            const warningFor = (key: string) => (candidate(result, key)?.warnings ?? []).find((w) => /NEEDS CLARIFICATION/.test(w));
+            assert.match(warningFor(real.key)!, /^1 NEEDS CLARIFICATION marker in the description \(if it only mentions the phrase, wrap it in backticks\)$/);
+            assert.equal(warningFor(mention.key), undefined, "a backticked mention is not an open question");
+            assert.match(warningFor(bare.key)!, /wrap it in backticks/, "a bare mention is still counted, and the warning says how to clear it");
         });
     });
 

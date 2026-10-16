@@ -368,8 +368,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
       human wants it started.
    3. **Backlog tickets with no open blocker** — promotion candidates. Each Story, Bug or Spike row carries
       readiness warnings (no numbered acceptance criteria, a `NEEDS CLARIFICATION` marker, no `Dev` subtask, no link):
-      advice, never a block. Check the description is fully actionable too (a ticket is To Do only if it is;
-      otherwise it stays Backlog); propose the move, and name what a warning leaves open.
+      advice, never a block. A `NEEDS CLARIFICATION` warning counts any bare mention of the phrase, so check whether it
+      is a real open question or only the phrase in prose (a ticket describing the convention): for the latter, the
+      description needs the phrase in backticks, which clears it. Check the description is fully actionable too (a
+      ticket is To Do only if it is; otherwise it stays Backlog); propose the move, and name what a warning leaves open.
    4. **Flagged tickets** — ask whether the impediment still stands; propose unflagging when it does not.
    5. **Approved epics with nothing scheduled** — propose a first wave. Scheduling the first wave of an epic whose
       own Kickoff has not passed its gate is an **epic approval** (moving a non-Kickoff Story to To Do also moves a

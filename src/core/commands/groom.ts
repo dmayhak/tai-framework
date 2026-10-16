@@ -237,7 +237,7 @@ export async function findGroomingWork(deps: GroomingDeps): Promise<GroomingResu
         const description = issue.description ?? "";
         if (!ACCEPTANCE_CRITERION_LINE.test(description)) warnings.push("no numbered acceptance criteria (lines starting AC-1, AC-2, …)");
         const open = findClarificationQuestions(description).length;
-        if (open > 0) warnings.push(`${open} NEEDS CLARIFICATION marker${open === 1 ? "" : "s"} in the description`);
+        if (open > 0) warnings.push(`${open} NEEDS CLARIFICATION marker${open === 1 ? "" : "s"} in the description (if it only mentions the phrase, wrap it in backticks)`);
         if (issue.issueType !== StoryType.Spike) {
             const devs = await workTracker.search({ projectKey, parentKey: issue.key, issueTypes: [SubtaskType.Dev] });
             if (devs.length === 0) warnings.push("no Dev subtask");
