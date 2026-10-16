@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 115 (2026-10-16)
+
+**TAI-573 (Bug TAI-562): `/tai-retro` no longer reads a repo's whole merged-PR history.** Found in the review of PR 203: `retro` listed every merged PR and filtered by date afterwards, so the cost grew with the repo's age even for the default 30-day window. `GitHost.listPullRequests` now takes an optional `{ updatedSince }`; the Bitbucket host then asks for `sort=-updated_on` and stops paging at the first page that reaches a PR older than that, returning only the newer ones. Without the option nothing changes (same query, same results). On the real repo the last three days cost 2 requests for 16 PRs, where listing all 208 merged PRs costs 21. `retro` passes its window's start for open and merged lists. Not taken: the same bound for `/tai-ready`'s own open-PR reads (it needs every open PR).
+
 ## rev 114 (2026-10-16)
 
 **TAI-570 (Story TAI-569): `/tai-ready` lists a "Ready to close" section for verified Stories and Bugs.** Found live, 2026-10-15, trying `/tai-change`: TAI-469, TAI-473, TAI-491, TAI-492, TAI-563 and TAI-564 sat under In Progress only because nobody had closed them, so the section mixed work in flight with tickets waiting for a human. A Story or Bug whose latest verification comment is `Verified:` and which has at least one subtask, all of them Done or Canceled, now has its own numbered section after "Ready to verify", with the first line of that comment on its line; picking it shows the comment in full, then closes the ticket (the pick is the instruction). A later `Not verified:` takes it back out. One shared function (`findReadyToClose`). Epics, Kickoff Stories and Spikes are never listed, and the bare `/tai-pr` list does not have it. Not taken: closing automatically (a human closes, as before).

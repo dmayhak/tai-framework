@@ -88,6 +88,12 @@ export interface PullRequestRef {
     readonly updatedAt: string;
 }
 
+/** TAI-562: bounds `GitHost.listPullRequests` to what a caller's window needs. */
+export interface ListPullRequestsOptions {
+    /** ISO 8601 instant: only PRs updated at or after it are returned. */
+    readonly updatedSince?: string;
+}
+
 export interface CreatePullRequestInput {
     readonly repo: RepoId;
     readonly title: string;
@@ -200,7 +206,12 @@ export interface GitHost {
 
     createPullRequest(input: CreatePullRequestInput): Promise<PullRequestRef>;
     getPullRequest(repo: RepoId, id: PullRequestId): Promise<PullRequestRef | null>;
-    listPullRequests(repo: RepoId, state?: PullRequestState): Promise<readonly PullRequestRef[]>;
+    /**
+     * TAI-562: with `updatedSince` (an ISO 8601 instant), only PRs updated at or after it, read newest-updated first and
+     * stopping as soon as the history is older than that, so the cost does not grow with the repo's age. Without it,
+     * every PR in `state`, exactly as before.
+     */
+    listPullRequests(repo: RepoId, state?: PullRequestState, options?: ListPullRequestsOptions): Promise<readonly PullRequestRef[]>;
 
     reviewPullRequest(
         repo: RepoId,

@@ -32,6 +32,7 @@ import type {
     PullRequestId,
     PullRequestRef,
     PullRequestState,
+    ListPullRequestsOptions,
     RepoId,
     RepoRef,
 } from "../git/interface.js";
@@ -73,8 +74,8 @@ export class PersonaScopedGitHost implements GitHost {
         return this.inner.getPullRequest(repo, id);
     }
 
-    listPullRequests(repo: RepoId, state?: PullRequestState): Promise<readonly PullRequestRef[]> {
-        return this.inner.listPullRequests(repo, state);
+    listPullRequests(repo: RepoId, state?: PullRequestState, options?: ListPullRequestsOptions): Promise<readonly PullRequestRef[]> {
+        return this.inner.listPullRequests(repo, state, options);
     }
 
     async reviewPullRequest(
