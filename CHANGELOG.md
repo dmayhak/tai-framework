@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 113 (2026-10-15)
+
+**TAI-572 (Story TAI-571): the `/tai-change` briefing has shorter lines.** Found live, 2026-10-15, on the first real `/tai-change` run: pasting the board as chat text gave very long lines, mostly 240-character description excerpts, and the old epics carried long descriptions that say nothing about a change to their children. Excerpts are now 100 characters, an epic shows none, and the skill pastes the briefing only down to its `---` line, so Perry's closing instruction paragraph is no longer shown to the human. The briefing is about a fifth smaller on the real board. Not taken: grouping tickets under their epic (a larger restructure; see how this reads first).
+
 ## rev 111 (2026-10-15)
 
 **TAI-559 (Story TAI-492): `/tai-change` is built; correct-course is no longer declined.** Human decision, 2026-10-08 (TAI-461), scope settled 2026-10-14. Adapted from BMAD's `correct-course`: the human says what changed and Perry works out which open tickets and pages it touches and proposes one batch (cancel, reword, new tickets, pages to revise), applied only after confirmation, except new Backlog tickets and links. The command is read-only. Linked pages appear as titles and page ids only; descriptions are cut and a long board abbreviated, with a notice. The icebox rule is now one function shared with `/tai-groom`. A plain-language request starts it through the skill description and the project pointer. Not taken: a pointer line telling any session to apply the batch without asking; page bodies in the briefing (too large a board). Item 26 of the brief's open list is fully resolved.

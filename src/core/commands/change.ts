@@ -21,8 +21,8 @@ import { excludeParkedEpics, ICEBOX_LABEL, mapWithLimit } from "./groom.js";
 
 export type ChangeReader = Pick<WorkTracker, "search" | "getIssue" | "getLinkedPages">;
 
-/** Longest ticket-description excerpt shown per ticket, in characters. */
-export const DESCRIPTION_EXCERPT = 240;
+/** Longest ticket-description excerpt shown per ticket, in characters (none at all for an epic). */
+export const DESCRIPTION_EXCERPT = 100;
 /** Rough total size of the ticket rows before later rows drop to key and summary. */
 export const CHANGE_ROW_BUDGET = 40_000;
 const OPEN: readonly Status[] = [Status.Backlog, Status.ToDo, Status.InProgress, Status.InReview];
@@ -120,6 +120,11 @@ export async function findChangeContext(deps: ChangeDeps): Promise<ChangeContext
         const pages = pagesByTicket[i]!;
         const description = (issue.description ?? "").replace(/\s+/g, " ").trim();
         let excerpt: string | null = description ? description : null;
+        // An epic's description is long and says nothing about a change to its children: leave it out, say so.
+        if (excerpt && issue.issueType === "epic") {
+            excerpt = null;
+            cut = true;
+        }
         // Cut on whole characters (code points), so an emoji at the boundary is never split into a lone surrogate.
         const characters = excerpt ? Array.from(excerpt) : [];
         if (excerpt && characters.length > DESCRIPTION_EXCERPT) {
@@ -166,7 +171,7 @@ export function renderChangeBriefing(ctx: ChangeContext): string {
     }
     if (ctx.cut) {
         out.push(
-            `Text was cut at ${DESCRIPTION_EXCERPT} characters per description, and a long board is abbreviated to key and summary past a size budget (marked below). ` +
+            `Descriptions are cut at ${DESCRIPTION_EXCERPT} characters and an epic's is left out, and a long board is abbreviated to key and summary past a size budget (marked below). ` +
                 "Read a ticket or page in full (`issue get <KEY>`, `page get id=<ID>`) when the statement touches it.",
             ""
         );

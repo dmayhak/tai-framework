@@ -736,8 +736,9 @@ function changeSkillBody(taiHome: string): string {
         "the human what changed before proposing anything.\n\n" +
         "**Show the briefing first — before any question (TAI-423).** A tool call's own output is not reliably visible to the human " +
         "as chat (TAI-258), so running the command is not showing it. Your reply must contain the briefing as ordinary chat text: " +
-        "paste everything from the `# Change briefing` heading to the end of the briefing, verbatim, never trimmed or summarized " +
-        "(the persona instructions above that heading are for you, not the human). Then give your proposals as a short list. Do " +
+        "paste everything from the `# Change briefing` heading down to, but not including, the `---` line, verbatim, never " +
+        "trimmed or summarized (the persona instructions above that heading, and the lines after the `---`, are for you, not " +
+        "the human). Then give your proposals as a short list. Do " +
         "NOT, in this same turn, ask a question with an interactive tool: end your turn there and wait for the human's own NEXT message.\n\n" +
         "**Authority.** Perry may create Backlog tickets and links on her own. Every cancel, reword, page revision and Backlog → To " +
         "Do move she PROPOSES as a batch and applies only after the human confirms in their own message, one question per group."
