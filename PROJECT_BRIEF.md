@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-16 (rev 115). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-16 (rev 116). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -910,7 +910,8 @@ not ready. `Backlog` items do not appear on Jira's Kanban board.
   human assignee" is a plain yes or no. A human moves the ticket, or Perry proposes the move
   in grooming and applies it after the human confirms (§3.8). Grooming's promotion section lists every Backlog
   ticket with no open blocker and, for a Story, Bug or Spike, **warns** of what is missing — no numbered
-  acceptance criteria (`AC-n` lines), a `NEEDS CLARIFICATION` marker in the description, no `Dev` subtask (not
+  acceptance criteria (`AC-n` lines), a `NEEDS CLARIFICATION` marker in the description (any bare mention of the phrase counts, as in the Kickoff review gate; a ticket that only
+  describes the convention wraps it in backticks, which the matcher ignores, and the warning says so), no `Dev` subtask (not
   asked of a Spike), no issue link and no linked page. The warnings are advice for the conversation; nothing
   blocks the move (TAI-472).
 - It applies to **every issue type**: a subtask can be created ahead of its own readiness

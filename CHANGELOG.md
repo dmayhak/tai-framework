@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 116 (2026-10-16)
+
+**TAI-574 (Bug TAI-556): `/tai-groom`'s `NEEDS CLARIFICATION` warning says how to clear a mere mention.** Found grooming TAI-447, 2026-10-14: its description said "real gaps as NEEDS CLARIFICATION" in two checklist items, and the readiness warning counted them as open questions. Human decision, 2026-10-16: keep the shared matcher, which the Kickoff review gate also uses (a code span is already ignored, so a ticket that only describes the convention wraps the phrase in backticks), and change only the groom warning to say so, plus Perry's grooming text and the brief. Not taken: counting a marker only at the start of a line, which would stop a real mid-line marker such as `PRD §4: NEEDS CLARIFICATION: ...` from blocking the Kickoff gate, and a missed real marker is worse than a false warning.
+
 ## rev 115 (2026-10-16)
 
 **TAI-573 (Bug TAI-562): `/tai-retro` no longer reads a repo's whole merged-PR history.** Found in the review of PR 203: `retro` listed every merged PR and filtered by date afterwards, so the cost grew with the repo's age even for the default 30-day window. `GitHost.listPullRequests` now takes an optional `{ updatedSince }`; the Bitbucket host then asks for `sort=-updated_on` and stops paging at the first page that reaches a PR older than that, returning only the newer ones. Without the option nothing changes (same query, same results). On the real repo the last three days cost 2 requests for 16 PRs, where listing all 208 merged PRs costs 21. `retro` passes its window's start for open and merged lists. Not taken: the same bound for `/tai-ready`'s own open-PR reads (it needs every open PR).
