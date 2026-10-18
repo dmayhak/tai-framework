@@ -39,6 +39,7 @@ import {
     writeEnvValues,
     type BitbucketVerifyInput,
     type BitbucketVerifyResult,
+    type GitHubVerifyInput,
     type ConfluenceSetupInput,
     type ConfluenceSetupResult,
     type InitStep,
@@ -55,6 +56,9 @@ import {
     type DiscoveredSpace,
     type Listing,
 } from "./discovery.js";
+import { GIT_HOST_SECRET_KEYS, parseGitHostKind, type GitHostKind } from "../git/host-factory.js";
+
+const GIT_HOST_LABEL: Record<GitHostKind, string> = { bitbucket: "Bitbucket", github: "GitHub" };
 
 // ---------- Pure helpers ----------
 
@@ -161,10 +165,12 @@ export interface InitRunIO {
 export interface InitRunServices {
     listProjects(siteUrl: string, email: string, apiToken: string): Promise<Listing<DiscoveredProject>>;
     listSpaces(siteUrl: string, email: string, apiToken: string): Promise<Listing<DiscoveredSpace>>;
-    detectBitbucketRepo(cwd: string): Promise<string | null>;
+    /** `origin`'s git host and repo (TAI-583), or null. */
+    detectGitRemote(cwd: string): Promise<{ readonly kind: GitHostKind; readonly repo: string } | null>;
     verifyJira(input: JiraVerifyInput): Promise<JiraVerifyResult>;
     setupConfluence(input: ConfluenceSetupInput): Promise<ConfluenceSetupResult>;
     verifyBitbucket(input: BitbucketVerifyInput): Promise<BitbucketVerifyResult>;
+    verifyGitHub(input: GitHubVerifyInput): Promise<BitbucketVerifyResult>;
     gitStatusPorcelain(cwd: string): Promise<string | null>;
 }
 
@@ -302,8 +308,13 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         return stop(2, stoppedAt);
     };
 
-    const detectedRepo = await services.detectBitbucketRepo(cwd);
+    const detected = await services.detectGitRemote(cwd);
     let env = mergedEnv(deps.env, await readEnvFile(envPath));
+    // TAI-583: the host is TAI_GIT_HOST when set, else origin's, else Bitbucket. A remote on the
+    // other host is not offered as this host's repository.
+    const gitHost: GitHostKind = parseGitHostKind(env["TAI_GIT_HOST"] ?? "") ?? detected?.kind ?? "bitbucket";
+    const hostLabel = GIT_HOST_LABEL[gitHost];
+    const detectedRepo = detected !== null && detected.kind === gitHost ? detected.repo : null;
 
     // `init run` sets up the Jira backend. A different TAI_BACKEND the user already chose is
     // never overridden (fill-if-empty), but it would silently win at runtime, so say so.
@@ -328,18 +339,18 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         siteUrl = chosen;
     }
 
-    // ----- 2. Is Bitbucket (git-pr) in scope? -----
-    const bitbucketConfigured = Boolean(env["BITBUCKET_EMAIL"] || env["BITBUCKET_API_TOKEN"] || env["TAI_GIT_REPOS"]);
-    let includeBitbucket = bitbucketConfigured;
-    if (!bitbucketConfigured && detectedRepo !== null) {
+    // ----- 2. Is the git host (git-pr) in scope? -----
+    const gitHostConfigured = Boolean(GIT_HOST_SECRET_KEYS[gitHost].some((key) => env[key]) || env["TAI_GIT_REPOS"]);
+    let includeGitHost = gitHostConfigured;
+    if (!gitHostConfigured && detectedRepo !== null) {
         if (deps.interactive) {
             const answer = await io.ask(
-                `This clone's remote is on Bitbucket (${detectedRepo}). Set up git-pr support too? [Y/n]`
+                `This clone's remote is on ${hostLabel} (${detectedRepo}). Set up git-pr support too? [Y/n]`
             );
-            includeBitbucket = !/^n/i.test(answer.trim());
+            includeGitHost = !/^n/i.test(answer.trim());
         } else {
             io.say(
-                `Note: this clone's remote is on Bitbucket (${detectedRepo}) but no Bitbucket credentials are configured, ` +
+                `Note: this clone's remote is on ${hostLabel} (${detectedRepo}) but no ${hostLabel} credentials are configured, ` +
                     `so git-pr setup is skipped. Run \`init run\` in a terminal to add them.`
             );
         }
@@ -350,7 +361,8 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         siteUrl,
         ...(env["TAI_PROJECT_KEY"] ? { projectKey: env["TAI_PROJECT_KEY"] } : {}),
         ...(env["TAI_SPACE_KEY"] ? { spaceKey: env["TAI_SPACE_KEY"] } : {}),
-        includeBitbucket,
+        includeGitHost,
+        gitHost,
     });
     // A typed site URL that differs from a non-empty one already in the file is a deliberate
     // change; the skeleton's fill-if-empty mode would (rightly) never make it.
@@ -362,7 +374,7 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         env = mergedEnv(deps.env, await readEnvFile(envPath));
         return [
             ...(normalizeSiteUrl(env["TAI_JIRA_SITE_URL"] ?? "") ? [] : ["TAI_JIRA_SITE_URL"]),
-            ...requiredEnvSecretKeys(includeBitbucket).filter((k) => (env[k] ?? "").trim() === ""),
+            ...requiredEnvSecretKeys(includeGitHost, gitHost).filter((k) => (env[k] ?? "").trim() === ""),
         ];
     };
 
@@ -397,7 +409,7 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     // empty -- a new terminal without the export would have no credentials. Never copied in
     // (init run writes no secrets), so say so.
     const fileOnly = parseEnvContent(await readEnvFile(envPath));
-    for (const key of requiredEnvSecretKeys(includeBitbucket)) {
+    for (const key of requiredEnvSecretKeys(includeGitHost, gitHost)) {
         if ((fileOnly[key] ?? "").trim() === "" && (env[key] ?? "").trim() !== "") {
             io.say(`Note: ${key} is set in your shell but empty in ${envPath}, so a new terminal without that export won't have it. Fill it in the file to make it permanent.`);
         }
@@ -485,9 +497,9 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
 
     // Bitbucket repository
     let repos = (env["TAI_GIT_REPOS"] ?? "").trim();
-    if (includeBitbucket && repos === "") {
+    if (includeGitHost && repos === "") {
         if (deps.interactive) {
-            const answer = await io.ask("Bitbucket repository (workspace/repo)", detectedRepo ?? undefined);
+            const answer = await io.ask(`${hostLabel} repository (${gitHost === "github" ? "owner/repo" : "workspace/repo"})`, detectedRepo ?? undefined);
             repos = (answer === "" ? (detectedRepo ?? "") : answer).trim();
         } else {
             repos = detectedRepo ?? "";
@@ -499,7 +511,9 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     const toWrite: Record<string, string> = {};
     if (onDisk["TAI_PROJECT_KEY"] !== projectKey) toWrite["TAI_PROJECT_KEY"] = projectKey;
     if (onDisk["TAI_SPACE_KEY"] !== spaceKey) toWrite["TAI_SPACE_KEY"] = spaceKey;
-    if (includeBitbucket && repos !== "" && onDisk["TAI_GIT_REPOS"] !== repos) toWrite["TAI_GIT_REPOS"] = repos;
+    if (includeGitHost && repos !== "" && onDisk["TAI_GIT_REPOS"] !== repos) toWrite["TAI_GIT_REPOS"] = repos;
+    // TAI-583 ADR decision 2: written explicitly, so the host never depends on origin at run time.
+    if (includeGitHost && onDisk["TAI_GIT_HOST"] !== gitHost) toWrite["TAI_GIT_HOST"] = gitHost;
     if (Object.keys(toWrite).length > 0) await writeEnvValues(cwd, toWrite);
 
     // ----- 5. Verify every step live, in order; stop at the first failure -----
@@ -564,8 +578,12 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
 
     const bitbucketEmail = (env["BITBUCKET_EMAIL"] ?? "").trim();
     const bitbucketToken = (env["BITBUCKET_API_TOKEN"] ?? "").trim();
+    const githubToken = (env["GITHUB_TOKEN"] ?? "").trim();
+    const hasCredentials = gitHost === "github" ? githubToken !== "" : bitbucketEmail !== "" && bitbucketToken !== "";
     const repo = repos.split(",")[0]?.trim() ?? "";
-    if (includeBitbucket && repo !== "" && bitbucketEmail !== "" && bitbucketToken !== "") {
+    // The `bitbucket` step records the git host's check, whichever host it is: renaming it would
+    // orphan the step already recorded in existing projects' init state.
+    if (includeGitHost && repo !== "" && hasCredentials) {
         // The repo is hand-typed (or saved by an earlier run), so a failure here is most often a
         // typo -- and because the value is already in .env, a plain re-run would skip the prompt
         // and fail identically. So in a terminal, offer the correction right here (TAI-367 review).
@@ -573,14 +591,16 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
         let currentRepo = repo;
         for (let tries = 1; ; tries++) {
             const bitbucket = await attempt(() =>
-                services.verifyBitbucket({ email: bitbucketEmail, apiToken: bitbucketToken, repo: currentRepo })
+                gitHost === "github"
+                    ? services.verifyGitHub({ token: githubToken, repo: currentRepo })
+                    : services.verifyBitbucket({ email: bitbucketEmail, apiToken: bitbucketToken, repo: currentRepo })
             );
             if (bitbucket.ok) {
                 await record("bitbucket", true, bitbucket.detail);
                 break;
             }
             await record("bitbucket", false, bitbucket.detail);
-            const hint = `Check TAI_GIT_REPOS, BITBUCKET_EMAIL and BITBUCKET_API_TOKEN in ${envPath}.`;
+            const hint = `Check TAI_GIT_REPOS, ${GIT_HOST_SECRET_KEYS[gitHost].join(" and ")} in ${envPath}.`;
             if (!deps.interactive || tries >= MAX_REPO_TRIES) {
                 io.say(hint);
                 return stop(1, "bitbucket");
@@ -591,7 +611,7 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
             let typed: string[] = [];
             for (let ask = 0; ask < MAX_LOOPS && typed.length === 0; ask++) {
                 const answer = await io.ask(
-                    `Bitbucket repository (workspace/repo) to use instead of ${currentRepo}, or q to stop`,
+                    `${hostLabel} repository (${gitHost === "github" ? "owner/repo" : "workspace/repo"}) to use instead of ${currentRepo}, or q to stop`,
                     detectedRepo ?? currentRepo
                 );
                 if (/^q/i.test(answer.trim())) return stop(1, "bitbucket");
@@ -611,11 +631,11 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     } else {
         // TAI-350: a project that never uses git-pr must still be able to reach "fully
         // initialized", without isInitComplete having to know whether Bitbucket was needed.
-        const why = !includeBitbucket
+        const why = !includeGitHost
             ? detectedRepo !== null && !deps.interactive
-                ? `no Bitbucket credentials configured (this clone's remote is ${detectedRepo})`
+                ? `no ${hostLabel} credentials configured (this clone's remote is ${detectedRepo})`
                 : "git-pr support not set up for this project"
-            : "no Bitbucket repository or credentials configured";
+            : `no ${hostLabel} repository or credentials configured`;
         await record("bitbucket", true, `N/A -- ${why}`);
     }
 

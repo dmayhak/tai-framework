@@ -1,0 +1,33 @@
+# Typecheck, lint and the offline test suite on every pull request (TAI-583 ADR).
+#
+# GitHub Actions is free for a public repository, which removes the build-minute limit that
+# made the Bitbucket pipeline manual-only (TAI-534 ADR). The result arrives as a check run,
+# which the merge gate reads as CI.
+#
+# Offline only: no TAI_TEST_JIRA_* secrets are configured, so the live half of the
+# conformance suite skips itself. Add them as repository secrets if live coverage is wanted.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, lint & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test

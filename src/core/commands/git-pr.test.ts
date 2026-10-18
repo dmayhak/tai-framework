@@ -221,6 +221,11 @@ describe("isMergeConflict (TAI-217/219)", () => {
         assert.equal(isMergeConflict("MERGE CONFLICT detected"), true);
     });
 
+    it("true for GitHub's refusal of a conflicting PR (TAI-583)", () => {
+        assert.equal(isMergeConflict("Pull Request is not mergeable"), true);
+        assert.equal(isMergeConflict("At least 1 approving review is required by reviewers with write access."), false);
+    });
+
     it("false for other denial reasons — insufficient approvals, branch restrictions, CI", () => {
         assert.equal(isMergeConflict("Not enough approvals to merge this pull request."), false);
         assert.equal(isMergeConflict("This branch is protected and requires a passing build."), false);

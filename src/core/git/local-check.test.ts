@@ -138,8 +138,8 @@ describe("readWorkingTree (TAI-534)", () => {
 
 describe("the check command's environment (TAI-534)", () => {
     it("drops TAI's own settings and keeps everything else", () => {
-        const env = checkEnvironment({ PATH: "/bin", HOME: "/h", TAI_JIRA_API_TOKEN: "t", TAI_TEST_JIRA_SITE_URL: "u", BITBUCKET_API_TOKEN: "b", TAILSCALE: "x", MY_BITBUCKET_X: "y" });
-        assert.deepEqual(env, { PATH: "/bin", HOME: "/h", TAILSCALE: "x", MY_BITBUCKET_X: "y" });
+        const env = checkEnvironment({ PATH: "/bin", HOME: "/h", TAI_JIRA_API_TOKEN: "t", TAI_TEST_JIRA_SITE_URL: "u", BITBUCKET_API_TOKEN: "b", GITHUB_TOKEN: "g", GH_TOKEN: "g", GITHUB_ACTIONS: "true", TAILSCALE: "x", MY_BITBUCKET_X: "y" });
+        assert.deepEqual(env, { PATH: "/bin", HOME: "/h", GITHUB_ACTIONS: "true", TAILSCALE: "x", MY_BITBUCKET_X: "y" });
     });
 
     it("the command really runs without them", async () => {

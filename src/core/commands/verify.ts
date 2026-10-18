@@ -18,9 +18,10 @@ import { Status, SubtaskType } from "../schema/story-schema.js";
 import type { Issue, IssueKey, WorkTracker } from "../storage/interface.js";
 import { acceptanceCriteria, latestVerification } from "../storage/verification.js";
 
-/** `https://bitbucket.org/<workspace>/<repo>/pull-requests/<id>` -> the repo as `workspace/repo`, and the id. */
+/** A pull request URL -> the repo as `workspace/repo` (or `owner/repo`), and the id: Bitbucket's
+ *  `/<workspace>/<repo>/pull-requests/<id>` or GitHub's `/<owner>/<repo>/pull/<id>` (TAI-583). */
 export function parsePullRequestUrl(url: string): { readonly repo: string; readonly id: string } | null {
-    const match = /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull-requests\/(\d+)(?:[/?#]|$)/.exec(url);
+    const match = /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/(?:pull-requests|pull)\/(\d+)(?:[/?#]|$)/.exec(url);
     return match ? { repo: match[1]!, id: match[2]! } : null;
 }
 

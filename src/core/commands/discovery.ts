@@ -171,16 +171,45 @@ export function parseBitbucketRemote(url: string): string | null {
     return m ? `${m[1]}/${m[2]}` : null;
 }
 
-/** The clone's own Bitbucket `workspace/repo`, read from `origin`'s configured URL, or
- *  `null` (not a repo, no origin, not Bitbucket). Uses `git config` for the RAW value, not
+// ---------- GitHub remote (TAI-583 ADR) ----------
+
+const GITHUB_SCP_REMOTE = /^(?:[\w.-]+@)?github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/;
+const GITHUB_URL_REMOTE = /^(?:https?|ssh|git):\/\/(?:[^@/\s]+@)?github\.com(?::\d+)?\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/;
+
+/** `owner/repo` from a git remote URL on github.com, or `null` for any other host. */
+export function parseGitHubRemote(url: string): string | null {
+    const trimmed = url.trim();
+    const m = GITHUB_SCP_REMOTE.exec(trimmed) ?? GITHUB_URL_REMOTE.exec(trimmed);
+    return m ? `${m[1]}/${m[2]}` : null;
+}
+
+/** Which git host a remote URL is on, and its `owner/repo` there; `null` for any other host. */
+export function parseGitRemote(url: string): { readonly kind: "bitbucket" | "github"; readonly repo: string } | null {
+    const bitbucket = parseBitbucketRemote(url);
+    if (bitbucket) return { kind: "bitbucket", repo: bitbucket };
+    const github = parseGitHubRemote(url);
+    return github ? { kind: "github", repo: github } : null;
+}
+
+/** The clone's own git host and repo, read from `origin`'s configured URL, or `null` (not a
+ *  repo, no origin, an unknown host). Uses `git config` for the RAW value, not
  *  `git remote get-url`, which would apply the user's own `url.<base>.insteadOf` rewrites. */
-export async function detectBitbucketRepo(cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+export async function detectGitRemote(
+    cwd: string,
+    env: NodeJS.ProcessEnv = process.env
+): Promise<{ readonly kind: "bitbucket" | "github"; readonly repo: string } | null> {
     try {
         const { stdout } = await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd, env });
-        return parseBitbucketRemote(stdout);
+        return parseGitRemote(stdout);
     } catch {
         return null;
     }
+}
+
+/** The clone's own Bitbucket `workspace/repo`, or `null` (not a repo, no origin, not Bitbucket). */
+export async function detectBitbucketRepo(cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+    const remote = await detectGitRemote(cwd, env);
+    return remote?.kind === "bitbucket" ? remote.repo : null;
 }
 
 // ---------- Picker (pure) ----------

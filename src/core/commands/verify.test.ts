@@ -53,6 +53,12 @@ describe("parsePullRequestUrl", () => {
         assert.deepEqual(parsePullRequestUrl("https://bitbucket.org/acme/widgets/pull-requests/7/diff"), { repo: "acme/widgets", id: "7" });
     });
 
+    it("reads the repo and id out of a GitHub pull request URL (TAI-583)", () => {
+        assert.deepEqual(parsePullRequestUrl("https://github.com/octo/widgets/pull/12"), { repo: "octo/widgets", id: "12" });
+        assert.deepEqual(parsePullRequestUrl("https://github.com/octo/widgets/pull/12/files"), { repo: "octo/widgets", id: "12" });
+        assert.equal(parsePullRequestUrl("https://github.com/octo/widgets/pulls"), null);
+    });
+
     it("returns null for a link that is not a pull request", () => {
         assert.equal(parsePullRequestUrl("https://bitbucket.org/acme/widgets/src/master"), null);
         assert.equal(parsePullRequestUrl("https://example.com/wiki/page"), null);

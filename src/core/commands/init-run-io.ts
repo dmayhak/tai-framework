@@ -12,9 +12,9 @@ import { createInterface } from "node:readline/promises";
 import { promisify } from "node:util";
 
 import { RestClient, apiTokenAuth } from "../storage/jira/rest-client.js";
-import { detectBitbucketRepo, listConfluenceSpaces, listJiraProjects } from "./discovery.js";
+import { detectGitRemote, listConfluenceSpaces, listJiraProjects } from "./discovery.js";
 import { buildEditorCommand, chooseEditor, type InitRunIO, type InitRunServices } from "./init-run.js";
-import { setupConfluence, verifyBitbucketSetup, verifyJiraSetup } from "./target-init.js";
+import { setupConfluence, verifyBitbucketSetup, verifyGitHubSetup, verifyJiraSetup } from "./target-init.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -61,10 +61,11 @@ export function createRealServices(): InitRunServices {
     return {
         listProjects: (siteUrl, email, apiToken) => listJiraProjects(client(siteUrl, email, apiToken)),
         listSpaces: (siteUrl, email, apiToken) => listConfluenceSpaces(client(siteUrl, email, apiToken)),
-        detectBitbucketRepo: (cwd) => detectBitbucketRepo(cwd),
+        detectGitRemote: (cwd) => detectGitRemote(cwd),
         verifyJira: verifyJiraSetup,
         setupConfluence,
         verifyBitbucket: verifyBitbucketSetup,
+        verifyGitHub: verifyGitHubSetup,
         gitStatusPorcelain: (cwd) => gitStatusPorcelain(cwd),
     };
 }

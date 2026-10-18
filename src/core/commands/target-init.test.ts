@@ -576,7 +576,7 @@ describe("renderEnvSkeleton (TAI-363)", () => {
     });
 
     it("includes the Bitbucket secret lines, also empty and commented, when requested", () => {
-        const out = renderEnvSkeleton({ siteUrl: "https://x.atlassian.net", includeBitbucket: true });
+        const out = renderEnvSkeleton({ siteUrl: "https://x.atlassian.net", includeGitHost: true });
         assert.match(out, /# [^\n]*\nBITBUCKET_EMAIL=\n/);
         assert.match(out, /# [^\n]*\nBITBUCKET_API_TOKEN=\n/);
     });
@@ -632,7 +632,7 @@ describe("writeEnvSkeleton / writeEnvValues (TAI-363)", () => {
                 "utf-8"
             );
             await chmod(envPath, 0o644);
-            await writeEnvSkeleton(dir, { siteUrl: "https://x.atlassian.net", includeBitbucket: true });
+            await writeEnvSkeleton(dir, { siteUrl: "https://x.atlassian.net", includeGitHost: true });
             const content = await readFile(envPath, "utf-8");
             assert.match(content, /^DATABASE_URL=postgres:\/\/x$/m);
             assert.match(content, /^TAI_JIRA_EMAIL=me@x\.com$/m);

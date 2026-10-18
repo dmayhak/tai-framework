@@ -4,14 +4,14 @@
 
 **Run software delivery — Kickoff, Story, Bug, and Spike work — through a fixed roster of
 AI personas, each with their own permissions, human checkpoints, and Confluence outputs,
-driven against your real Jira, Confluence, and Bitbucket.**
+driven against your real Jira, Confluence, and Bitbucket or GitHub.**
 
 TAI isn't a chatbot wrapper. It's a process: nine named personas (Analyst, PM, Architect,
 UX Designer, Developer, DBA, Code Reviewer, Tester, DevOps) each own a slice of the
 software-delivery lifecycle, hand off to each other through real Jira tickets, and stop
 for a human sign-off at the points that matter (`brief §3.4` — human sign-off is the
-default everywhere, not an opt-in safety net). It works against a real Jira/Confluence/
-Bitbucket setup, or fully locally with no external services at all.
+default everywhere, not an opt-in safety net). It works against a real Jira/Confluence setup
+with Bitbucket or GitHub, or fully locally with no external services at all.
 
 `PROJECT_BRIEF.md` is the single source of truth for TAI's design, decisions, and open
 questions — this file only covers getting it installed, configured, and used. If anything
@@ -26,7 +26,7 @@ here and the brief ever disagree, the brief wins.
 - [Updating TAI](#updating-tai)
 - [Configuration](#configuration)
   - [Quickstart: try it locally, no external services](#quickstart-try-it-locally-no-external-services)
-  - [Real setup: Jira + Confluence + Bitbucket](#real-setup-jira--confluence--bitbucket)
+  - [Real setup: Jira + Confluence + Bitbucket or GitHub](#real-setup-jira--confluence--bitbucket-or-github)
 - [Usage](#usage)
 - [The personas](#the-personas)
 - [Workflow types](#workflow-types)
@@ -44,7 +44,7 @@ folder, nobody else can see what was decided or why, and "a human reviewed it" o
 means "a human clicked approve."
 
 TAI puts AI work inside the system of record your team already uses (Jira for work,
-Confluence for designs, Bitbucket for code), with a human accountable at every step. A
+Confluence for designs, Bitbucket or GitHub for code), with a human accountable at every step. A
 human architect oversees the AI Architect, a human developer oversees the AI Developer,
 and so on, so the whole team can see, review and gate what the AI does.
 
@@ -97,7 +97,7 @@ finished Story open, or let an approval go stale. Each became a check.
 
 ### Who it's for, and who it isn't
 
-For teams of two or more already on Jira, Confluence and Bitbucket who want AI help without
+For teams of two or more already on Jira and Confluence, with code on Bitbucket or GitHub, who want AI help without
 giving up review, ownership and audit. Everyone on the team benefits from the visibility,
 and leads and managers will likely drive the adoption. It isn't for solo speed-running, and
 it isn't an autonomous agent that works unattended: parallel and unattended runs are
@@ -111,8 +111,8 @@ deliberately out of scope.
   wrong place.
 - A reviewer that is the same model as the author is still the same model; a fresh context
   helps but isn't independence.
-- The real backend is Atlassian-specific today. A local filesystem backend exists for trying
-  it out and for solo work.
+- Work and documents need Jira and Confluence today; code can be on Bitbucket or GitHub. A
+  local filesystem backend exists for trying it out and for solo work.
 - It has run on itself and on one real project. Expect rough edges.
 
 ## How it works
@@ -139,7 +139,7 @@ deliberately out of scope.
 - **Node.js 24+** (this repo relies on `import.meta.main` and the native `process.loadEnvFile`).
 - **[Claude Code](https://claude.com/claude-code) or [Gemini CLI](https://github.com/google-gemini/gemini-cli)** — TAI's commands are slash-command skills for either.
 - For the real backend: a **Jira** site (Cloud), a **Confluence** space on the same site,
-  and (optionally, for PR-driven work) a **Bitbucket** repo — each with API-token access.
+  and (optionally, for PR-driven work) a **Bitbucket** or **GitHub** repo — each with API-token access.
   The filesystem backend needs none of this.
 
 ## Installation
@@ -213,7 +213,7 @@ by files instead of the Jira REST API, so everything in [Usage](#usage) below wo
 same way. This is also the right mode for a genuinely solo project that will never need
 Jira at all.
 
-### Real setup: Jira + Confluence + Bitbucket
+### Real setup: Jira + Confluence + Bitbucket or GitHub
 
 For a real target project, run `/tai-init` from inside that project's own repo. It checks
 `init status`, and if the project isn't fully initialized it hands you one command to run in a
@@ -231,12 +231,13 @@ project you've cloned into a new folder or onto a new PC** (a fresh clone has no
 
 1. asks for your **Atlassian site URL**;
 2. writes a `.env` skeleton and opens your `$VISUAL`/`$EDITOR` so you fill in the secrets
-   (Jira email + API token; for `git-pr`, a Bitbucket email + token with repo read/write and
-   pull-request scopes) — secrets are only ever typed there, never into chat;
-3. **discovers** the Jira project, Confluence space and Bitbucket repo live and lets you pick,
-   keeping any `.env` value the live lists confirm;
-4. **verifies** Jira, Confluence and Bitbucket against the real APIs, stopping at the first
-   failure with a concrete to-do list (Bitbucket is skipped as N/A when you don't use
+   (Jira email + API token; for `git-pr`, a Bitbucket email + token, or a GitHub token, with
+   repository and pull-request access) — secrets are only ever typed there, never into chat;
+3. **discovers** the Jira project, Confluence space and git repo live and lets you pick,
+   keeping any `.env` value the live lists confirm; the git host (`TAI_GIT_HOST`) is taken from
+   your clone's `origin` remote;
+4. **verifies** Jira, Confluence and the git host against the real APIs, stopping at the first
+   failure with a concrete to-do list (the git host is skipped as N/A when you don't use
    `git-pr`);
 5. writes the `CLAUDE.md` and `GEMINI.md` pointers (Claude Code and Gemini CLI each read their own)
    and reminds you to commit and push them.
@@ -249,7 +250,7 @@ says what's missing, and the checklist below has the click-paths. Run
 see progress.
 
 The full manual admin steps (exact Jira/Confluence click-paths, the complete `.env` var
-reference, the Bitbucket-token scopes) live in
+reference, the Bitbucket and GitHub token scopes) live in
 [`docs/target-project-setup-checklist.md`](docs/target-project-setup-checklist.md) and
 [`.env.example`](.env.example) — read those before running `/tai-init` on a brand-new project,
 since the Jira/Confluence provisioning steps need you to do things in the UI first.
@@ -265,9 +266,12 @@ commented list):
 | `TAI_HUMAN_ID`/`TAI_HUMAN_NAME`/`TAI_HUMAN_EMAIL` | Who's acting | `filesystem` backend |
 | `TAI_SPACE_KEY` | Confluence space key (never assumed to equal `TAI_PROJECT_KEY`) | `jira` backend |
 | `TAI_JIRA_SITE_URL`/`TAI_JIRA_EMAIL`/`TAI_JIRA_API_TOKEN` | Real Jira/Confluence auth | `jira` backend |
-| `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` | Real PR create/review/merge | `git-pr`/`/tai-pr` |
+| `TAI_GIT_HOST` | `bitbucket` or `github`; written by `init run` from `origin` | Optional, read from `origin` when unset |
+| `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN` | Real PR create/review/merge on Bitbucket | `git-pr`/`/tai-pr` on Bitbucket |
+| `GITHUB_TOKEN` | Real PR create/review/merge on GitHub | `git-pr`/`/tai-pr` on GitHub |
 | `TAI_GIT_REPOS` or `TAI_GIT_WORKSPACE` | Which repo(s) `/tai-ready` checks for open PRs | `git-pr`/`/tai-pr` |
 | `TAI_PR_REQUIRED_APPROVALS` | Approvals a PR needs on its current commit before it can merge | Optional, defaults to `1` |
+| `TAI_PR_SELF_REVIEW` | On GitHub, lets a PR's author record a self-review that counts as one approval (GitHub refuses an author's own approval) | Optional, for a one-person GitHub project |
 | `TAI_CHECK_COMMAND` | The command `git-pr check` runs on a PR's head (for example typecheck, lint and tests) | Optional |
 | `TAI_STALE_BACKLOG_DAYS` | Days before an untouched Backlog ticket shows up in grooming | Optional, defaults to `60` |
 
@@ -292,7 +296,7 @@ installed and a project is configured (or you're using the filesystem quickstart
 
 `/tai-ready` shows live state, in one numbered list: what's **In Progress**; what's **Ready Work**;
 Stories and Bugs **ready to verify** and **ready to close** (verified, with nothing open); and,
-when Bitbucket is configured, **PRs ready for your review** (including a re-review when new
+when a git host is configured, **PRs ready for your review** (including a re-review when new
 commits landed after your decision), **PRs ready to merge**, and approved PRs **waiting on
 something** with the merge gate's reasons. Picking a number does what that section says.
 

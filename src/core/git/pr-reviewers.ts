@@ -24,9 +24,26 @@
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { sameHuman, tableCells, parseHumanCell } from "../personas/roster.js";
-import type { DocStore, HumanRef, PageRef } from "../storage/interface.js";
+import { toHumanId, type DocStore, type HumanRef, type PageRef } from "../storage/interface.js";
 
 export const PR_REVIEWERS_TITLE = "PR Reviewers";
+
+/**
+ * A reviewer from the page. `githubLogin` comes from an optional `GitHub` column (TAI-583 ADR
+ * decision 3): GitHub has no shared account id with Jira and no reliable email lookup, so the
+ * page names each human's login. It is matched to the humans in the same row by position.
+ */
+export interface PrReviewer extends HumanRef {
+    readonly githubLogin?: string;
+}
+
+/** `@octocat`, `octocat` or a markdown link to the profile -> `octocat`; null when empty. */
+export function parseGitHubLogin(cell: string): string | null {
+    const text = cell.trim().replace(/^\[([^\]]*)\]\([^)]*\)$/, "$1").trim();
+    const fromUrl = /github\.com\/([A-Za-z0-9-]+)/.exec(cell)?.[1];
+    const login = (fromUrl ?? text).replace(/^@/, "").trim();
+    return /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(login) ? login : null;
+}
 
 /**
  * Parses the PR Reviewers markdown into a flat, de-duplicated human list. Finds the
@@ -35,7 +52,7 @@ export const PR_REVIEWERS_TITLE = "PR Reviewers";
  * `roster.ts`'s `parseRoster`. A single-column table skips the name-matching step
  * (nothing else it could be).
  */
-export function parsePrReviewers(markdown: string): readonly HumanRef[] {
+export function parsePrReviewers(markdown: string): readonly PrReviewer[] {
     const lines = markdown.split("\n");
 
     let start = -1;
@@ -68,21 +85,40 @@ export function parsePrReviewers(markdown: string): readonly HumanRef[] {
         }
     }
 
-    const humans: HumanRef[] = [];
+    const githubCol = header.findIndex((h, i) => i !== reviewerCol && /github/i.test(h));
+    const humans: PrReviewer[] = [];
     for (let i = start + 2; i < lines.length; i++) {
         const cells = tableCells(lines[i]!);
         if (!cells) break; // table ended
-        for (const human of parseHumanCell(cells[reviewerCol] ?? "")) {
-            if (!humans.some((h) => sameHuman(h, human))) humans.push(human);
-        }
+        const logins = githubCol === -1 ? [] : (cells[githubCol] ?? "").split(/[,;]/).map(parseGitHubLogin);
+        parseHumanCell(cells[reviewerCol] ?? "").forEach((human, n) => {
+            if (humans.some((h) => sameHuman(h, human))) return;
+            const login = logins[n];
+            humans.push(login ? { ...human, githubLogin: login } : human);
+        });
     }
     return humans;
 }
 
+/**
+ * The reviewers to request on a GitHub PR (TAI-583 ADR decision 3): each listed human with a
+ * GitHub login, as a `HumanRef` whose id is the login, and the names of those without one.
+ */
+export function githubReviewers(roster: readonly PrReviewer[]): { readonly reviewers: readonly HumanRef[]; readonly dropped: readonly string[] } {
+    const reviewers: HumanRef[] = [];
+    const dropped: string[] = [];
+    for (const r of roster) {
+        if (r.githubLogin) reviewers.push({ id: toHumanId(r.githubLogin), displayName: r.displayName, ...(r.email ? { email: r.email } : {}) });
+        else dropped.push(r.email ?? r.displayName);
+    }
+    return { reviewers, dropped };
+}
+
 /** Does `human` appear on the PR Reviewers list? The check `readyToReview` and
  *  `git-pr create`'s roster-derived reviewer assignment both rely on. */
-export function isEligibleReviewer(reviewers: readonly HumanRef[], human: Pick<HumanRef, "id"> & Partial<HumanRef>): boolean {
-    return reviewers.some((h) => sameHuman(h, human));
+export function isEligibleReviewer(reviewers: readonly PrReviewer[], human: Pick<HumanRef, "id"> & Partial<HumanRef>): boolean {
+    // On GitHub the human's id is their login, which the page's GitHub column names (TAI-583).
+    return reviewers.some((h) => sameHuman(h, human) || (h.githubLogin !== undefined && h.githubLogin.toLowerCase() === String(human.id).toLowerCase()));
 }
 
 // ---------- loading + caching ----------
@@ -104,7 +140,7 @@ function cachePath(cacheRoot: string, projectKey: string): string {
  * to `.tai/cache/<project>/pr-reviewers.json` (same brief §7 pattern as `loadRoster`).
  * Works on any backend.
  */
-export async function loadPrReviewers(docStore: DocStore, opts: LoadPrReviewersOptions): Promise<readonly HumanRef[]> {
+export async function loadPrReviewers(docStore: DocStore, opts: LoadPrReviewersOptions): Promise<readonly PrReviewer[]> {
     const ref: PageRef = { spaceKey: opts.spaceKey, title: opts.title ?? PR_REVIEWERS_TITLE };
     const page = await docStore.getPage(ref);
     if (!page) {
@@ -126,10 +162,10 @@ export async function loadPrReviewers(docStore: DocStore, opts: LoadPrReviewersO
 
 /** Read a previously-cached PR Reviewers list (brief §3.6 offline / degrade-to-cache).
  *  Null if absent. */
-export async function loadCachedPrReviewers(cacheRoot: string, projectKey: string): Promise<readonly HumanRef[] | null> {
+export async function loadCachedPrReviewers(cacheRoot: string, projectKey: string): Promise<readonly PrReviewer[] | null> {
     try {
         const raw = await readFile(cachePath(cacheRoot, projectKey), "utf8");
-        return JSON.parse(raw) as HumanRef[];
+        return JSON.parse(raw) as PrReviewer[];
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
         throw err;

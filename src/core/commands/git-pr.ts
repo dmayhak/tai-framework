@@ -75,7 +75,10 @@ export function isGreen(statuses: readonly CommitStatus[]): boolean {
  * own state check, rather than parsing a structured error code Bitbucket doesn't expose here.
  */
 export function isMergeConflict(reason: string): boolean {
-    return reason.toLowerCase().includes("conflict");
+    // GitHub refuses a conflicting PR with "Pull Request is not mergeable" (TAI-583); its
+    // protection and review refusals are worded differently.
+    const r = reason.toLowerCase();
+    return r.includes("conflict") || r.includes("not mergeable");
 }
 
 // ---------- PR <-> Dev subtask correlation (rev 52, TAI-159 ADR §4) ----------

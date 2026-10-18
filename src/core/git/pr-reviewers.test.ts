@@ -8,6 +8,8 @@ import { toHumanId, type HumanRef } from "../storage/interface.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import {
     parsePrReviewers,
+    parseGitHubLogin,
+    githubReviewers,
     isEligibleReviewer,
     loadPrReviewers,
     loadCachedPrReviewers,
@@ -62,6 +64,54 @@ describe("parsePrReviewers", () => {
 
     it("throws rather than returning an empty list when there is no table", () => {
         assert.throws(() => parsePrReviewers("Just prose, no table here."), /no recognisable table/);
+    });
+
+    it("reads a GitHub login per human from a GitHub column (TAI-583 ADR decision 3)", () => {
+        const md = [
+            "| Reviewer | GitHub |",
+            "| --- | --- |",
+            "| del ([del@mayhak.com](mailto:del@mayhak.com)) | @dmayhak |",
+            "| a@b.co, c@d.co | alice, [carol](https://github.com/carol-c) |",
+            "| Sam Rivera | |",
+        ].join("\n");
+        const reviewers = parsePrReviewers(md);
+        assert.deepEqual(
+            reviewers.map((r) => [r.email ?? r.displayName, r.githubLogin]),
+            [
+                ["del@mayhak.com", "dmayhak"],
+                ["a@b.co", "alice"],
+                ["c@d.co", "carol-c"],
+                ["Sam Rivera", undefined],
+            ]
+        );
+    });
+});
+
+describe("githubReviewers and login matching (TAI-583)", () => {
+    const roster = parsePrReviewers("| Reviewer | GitHub |\n| --- | --- |\n| a@b.co | alice |\n| Sam Rivera | |");
+
+    it("requests listed humans by login and names those without one", () => {
+        const { reviewers, dropped } = githubReviewers(roster);
+        assert.deepEqual(
+            reviewers.map((r) => r.id),
+            ["alice"]
+        );
+        assert.deepEqual(dropped, ["Sam Rivera"]);
+    });
+
+    it("a GitHub identity is eligible by its login", () => {
+        assert.equal(isEligibleReviewer(roster, { id: toHumanId("Alice"), displayName: "Alice A." }), true);
+        assert.equal(isEligibleReviewer(roster, { id: toHumanId("mallory"), displayName: "Mallory" }), false);
+    });
+});
+
+describe("parseGitHubLogin", () => {
+    it("accepts @login, a bare login and a profile link, and nothing else", () => {
+        assert.equal(parseGitHubLogin("@octo-cat"), "octo-cat");
+        assert.equal(parseGitHubLogin(" octocat "), "octocat");
+        assert.equal(parseGitHubLogin("[Octo](https://github.com/octocat)"), "octocat");
+        assert.equal(parseGitHubLogin(""), null);
+        assert.equal(parseGitHubLogin("not a login!"), null);
     });
 });
 

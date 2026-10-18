@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-16 (rev 117). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-17 (rev 118). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -576,7 +576,8 @@ These are settled. Change them deliberately and update this file if you do.
   org-level enforcement.) **The rule is about the same human, not the persona role** (§8
   item 3): workflow routing already sends a persona's output to a different persona role
   for review, so self-approval can only happen when one human fills both roles (the
-  solo-dev case named above). **What review separation means in practice:** the reviewer is a human — one on the "PR Reviewers" roster for a
+  solo-dev case named above; on GitHub, which refuses an author's own approval, that case is
+  the opt-in recorded self-review in §6). **What review separation means in practice:** the reviewer is a human — one on the "PR Reviewers" roster for a
   PR, the human closing a `DesignReview` for a design. The AI prepares the findings or
   review notes and the human decides. A fresh context is preferred for preparing them, not
   the session that wrote the work under review.
@@ -1002,7 +1003,7 @@ decision.**
      commit, or it refuses — and records the outcome on the commit as a status naming who ran it and where
      (`git/local-check.ts`, ADR page 55672833). The tree is read again after the command: if it changed
      tracked files or the head moved, nothing is recorded. The command runs without TAI's own settings (no
-     `TAI_*` or `BITBUCKET_*` variable reaches it), so the PR's code does not see TAI's credentials. No status
+     `TAI_*` or `BITBUCKET_*` variable, nor `GITHUB_TOKEN` or `GH_TOKEN`, reaches it), so the PR's code does not see TAI's credentials. No status
      at all on the commit refuses the merge. It is how a
      project with no CI on pull requests gets its suite run before a merge; the result is self-attested. A
      project that sets no check command skips this rule.
@@ -1179,7 +1180,20 @@ comment's content.
   `MutationResult`/`StorageConnectivityError`, an open `kind` discriminator) without
   reusing its interface. Scoped to PR CRUD, approve/request-changes, merge, and commit
   status — not the full breadth of either host's API. It lives at
-  `src/core/git/interface.ts`, with a Bitbucket backend at `src/core/git/bitbucket/`.
+  `src/core/git/interface.ts`, with a Bitbucket backend at `src/core/git/bitbucket/` and a GitHub
+  backend at `src/core/git/github/` (TAI-583 ADR, page 58753025).
+- **One git host per project, named by `TAI_GIT_HOST`** (`bitbucket` or `github`), which `init run`
+  writes from `origin`'s remote. Unset, TAI reads `origin` at run time and falls back to Bitbucket.
+  `core/git/host-factory.ts` builds the backend from it for every command. Bitbucket uses
+  `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`; GitHub uses `GITHUB_TOKEN`, and the current human's email for
+  the "PR Reviewers" page comes from `TAI_JIRA_EMAIL`, since a GitHub token carries none. On GitHub,
+  reviewers are named by the login in the page's GitHub column; every GitHub review carries the commit it
+  was cast on, so the merge gate's fresh-approval rule reads the same; commit statuses and check runs
+  (GitHub Actions) both count as CI.
+- **A solo developer on GitHub.** GitHub refuses an approval from a PR's own author, which Bitbucket
+  allows. With `TAI_PR_SELF_REVIEW=true`, the author's `git-pr review approve` posts a stamped
+  `Self-review: approved` COMMENT review on the head commit, and the merge gate counts it as one approval;
+  it is visible on the PR. Off by default.
 - **Review and merge act on a real git PR (TAI-159 ADR).** See §5.4. The git
   host's own approval state is the source of truth for review, queried live; there is no `CodeReview`
   subtask. A human reviewing or merging directly on the git host is treated as authoritative, not fought —
