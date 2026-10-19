@@ -41,6 +41,7 @@ import {
     extractActingPersona,
     actingPersonaOf,
     renderMergeRefused,
+    actingHumanLabel,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 import type { InitState } from "../core/commands/target-init.js";
@@ -1126,5 +1127,13 @@ describe("reviewOfMismatch (TAI-527): findings are posted only on the PR they re
         const reason = reviewOfMismatch({ repo: "acme/widgets", pr: "12" }, "acme/widgets", "13")!;
         assert.match(reason, /review acme\/widgets PR 12, not acme\/widgets PR 13\. Nothing was posted\./);
         assert.ok(reviewOfMismatch({ repo: "acme/other", pr: "12" }, "acme/widgets", "12"));
+    });
+});
+
+describe("actingHumanLabel (TAI-585)", () => {
+    it("names the account, then the email that matched the PR Reviewers page", () => {
+        assert.equal(actingHumanLabel({ displayName: "delmayhak-coder", email: "del@mayhak.com" }), "delmayhak-coder (del@mayhak.com)");
+        assert.equal(actingHumanLabel({ displayName: "del@mayhak.com", email: "del@mayhak.com" }), "del@mayhak.com");
+        assert.equal(actingHumanLabel({ displayName: "Del" }), "Del");
     });
 });

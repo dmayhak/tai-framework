@@ -99,6 +99,9 @@ export interface FindReadyWorkDeps {
     /** rev 52: the "PR Reviewers" roster (`git/pr-reviewers.ts`) readyToReview checks
      *  eligibility against. readyToReview is empty without this. */
     readonly prReviewers?: readonly HumanRef[];
+    /** TAI-585: false when the git host refuses an approval from a PR's author (GitHub without
+     *  TAI_PR_SELF_REVIEW), so the human's own PRs are not offered to them for review. Default true. */
+    readonly authorMayReview?: boolean;
     /** TAI-419: one line ("Ann (worked on this Story (TAI-1))") naming the best assignee for a ticket that needs
      *  one, or null. Only asked for ready tickets that have a persona and no assignee; a failure skips that ticket.
      *  Omitted = /tai-ready makes no suggestions (and reads no roster). */
@@ -603,7 +606,7 @@ async function syncTestTiersToToDo(
  *  (TAI-211/212), neither of which needs `taiRoot` for this part. */
 type PRSectionDeps = Pick<
     FindReadyWorkDeps,
-    "workTracker" | "projectKey" | "gitHost" | "repos" | "requiredApprovals" | "checkRequired" | "currentHuman" | "prReviewers"
+    "workTracker" | "projectKey" | "gitHost" | "repos" | "requiredApprovals" | "checkRequired" | "currentHuman" | "prReviewers" | "authorMayReview"
 >;
 
 interface PRSections {
@@ -687,6 +690,8 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         for (const repo of deps.repos) {
             const openPRs = await deps.gitHost.listPullRequests(repo, "open");
             for (const pr of openPRs) {
+                // TAI-585: on a host that refuses the author's own approval, there is nothing for them to do here.
+                if (deps.authorMayReview === false && sameHuman(pr.author, deps.currentHuman)) continue;
                 const needed = await reviewNeeded(deps.gitHost, pr, deps.currentHuman);
                 if (needed) candidates.push({ pullRequest: pr, ...needed });
             }
@@ -951,6 +956,7 @@ export interface FindReadyPRWorkDeps {
     readonly checkRequired?: boolean;
     readonly currentHuman?: HumanRef;
     readonly prReviewers?: readonly HumanRef[];
+    readonly authorMayReview?: boolean;
 }
 
 export interface ReadyPRWorkResult {

@@ -586,7 +586,7 @@ export function renderEnvSkeleton(input: EnvSkeletonInput): string {
         lines.push(
             "",
             "# A GitHub token for git-pr support: a fine-grained token on this project's repositories with Pull requests,",
-            "# Contents and Commit statuses read/write, and Checks and Metadata read. https://github.com/settings/personal-access-tokens",
+            "# Contents and Commit statuses read/write, and Actions and Metadata read. https://github.com/settings/personal-access-tokens",
             "GITHUB_TOKEN="
         );
     } else if (input.includeGitHost) {

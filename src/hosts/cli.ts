@@ -140,7 +140,7 @@ import { signOffRowNote } from "../core/storage/sign-off-provenance.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
-import { createGitHostSession, hasGitHostCredentials, resolveGitHostKind, type GitHostSession } from "../core/git/host-factory.js";
+import { createGitHostSession, hasGitHostCredentials, resolveGitHostKind, selfReviewAllowed, type GitHostSession } from "../core/git/host-factory.js";
 import { detectGitRemote } from "../core/commands/discovery.js";
 import { toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
 import { loadPrReviewers, isEligibleReviewer, githubReviewers } from "../core/git/pr-reviewers.js";
@@ -256,6 +256,16 @@ function loadDotEnv(): void {
 async function resolveCurrentHuman(gitHost: Pick<GitHost, "getCurrentUser">, email: string | undefined): Promise<HumanRef> {
     const real = await gitHost.getCurrentUser();
     return email ? { ...real, email } : real;
+}
+
+/**
+ * Who a git-host action was taken as: the account's own name, then the email that matched the PR
+ * Reviewers page. On GitHub that email is the session's own (a GitHub token carries none), so the
+ * name is what tells two accounts apart (found live, TAI-585).
+ */
+export function actingHumanLabel(human: Pick<HumanRef, "displayName" | "email">): string {
+    if (!human.email) return human.displayName;
+    return human.displayName.toLowerCase() === human.email.toLowerCase() ? human.email : `${human.displayName} (${human.email})`;
 }
 
 /** TAI-583 ADR: which git host this project uses, from `TAI_GIT_HOST` or else `origin`'s remote. */
@@ -520,6 +530,7 @@ async function tryResolveReadyGitDeps(
           readonly checkRequired?: boolean;
           readonly currentHuman?: HumanRef;
           readonly prReviewers?: readonly HumanRef[];
+          readonly authorMayReview?: boolean;
       }
     | undefined
 > {
@@ -574,6 +585,8 @@ async function tryResolveReadyGitDeps(
         checkRequired: checkCommandFromEnv() !== null,
         currentHuman,
         ...(prReviewers ? { prReviewers } : {}),
+        // TAI-585: GitHub refuses an author's own approval unless TAI_PR_SELF_REVIEW records it as a self-review.
+        authorMayReview: kind !== "github" || selfReviewAllowed(process.env),
     };
 }
 
@@ -1776,7 +1789,7 @@ async function main(): Promise<void> {
             if (unrenderedDecision) throw new Error(unrenderedDecision);
             // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
             await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
-            console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
+            console.log(`# Review posted (as ${actingHumanLabel(currentHuman)})\n\n${decision} on PR ${prId}.`);
             return;
         }
 
@@ -1836,7 +1849,7 @@ async function main(): Promise<void> {
             const { prIdArg, body } = parseCommentArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             const comment = await gitHost.addPullRequestComment(repo, prId, stampComment(body, actingPersonaOf(config)));
-            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
+            console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}`);
             return;
         }
 
@@ -1900,7 +1913,7 @@ async function main(): Promise<void> {
             const failureNote = inlineFailures.length > 0
                 ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
                 : "";
-            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}${failureNote}`);
+            console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}${failureNote}`);
             return;
         }
 
@@ -1916,7 +1929,7 @@ async function main(): Promise<void> {
 
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             await gitHost.unapprovePullRequest(repo, prId);
-            console.log(`# Approval withdrawn (as ${currentHuman.email ?? currentHuman.displayName})\n\nPR ${prId} is no longer approved by ${currentHuman.email ?? currentHuman.displayName}.`);
+            console.log(`# Approval withdrawn (as ${actingHumanLabel(currentHuman)})\n\nPR ${prId} is no longer approved by ${actingHumanLabel(currentHuman)}.`);
             return;
         }
 
@@ -2048,7 +2061,8 @@ async function main(): Promise<void> {
                 return;
             }
 
-            const result = await gitHost.mergePullRequest(repo, prId, strategy);
+            // TAI-585: the merge only goes through on the commit the gate was checked against.
+            const result = await gitHost.mergePullRequest(repo, prId, strategy, { expectedHead: pr.sourceCommit });
             if (result.ok && blockers.length > 0) {
                 // Past the gate on purpose: say so on the PR, stamped, after the merge went through.
                 await gitHost.addPullRequestComment(repo, prId, stampComment(mergeOverrideComment(blockers), actingPersonaOf(config)));

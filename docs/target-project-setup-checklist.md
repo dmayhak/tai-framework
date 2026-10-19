@@ -196,8 +196,10 @@ npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init bitbucket <workspace/
 ```
 
 **GitHub:** set `TAI_GIT_HOST=github` and create a fine-grained personal access token on the
-project's repositories with Pull requests, Contents and Commit statuses read/write, and Checks
-and Metadata read, as `GITHUB_TOKEN`.
+project's repositories with Pull requests, Contents and Commit statuses read/write, and Actions
+and Metadata read, as `GITHUB_TOKEN`. A fine-grained token cannot read check runs, so TAI reads
+CI results from the commit's GitHub Actions runs instead; a check app other than GitHub Actions
+is only seen with a classic token (scope `repo`).
 
 ```bash
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init github <owner/repo>

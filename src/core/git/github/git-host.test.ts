@@ -440,6 +440,36 @@ describe("mergePullRequest", () => {
         }
     });
 
+    it("with an expected head, refuses when the branch has moved, without merging (TAI-585)", async () => {
+        const calls: Call[] = [];
+        const host = hostWith(
+            stubFetch((method, url) => {
+                if (path(url) === "/repos/octo/widgets/git/ref/heads/TAI-1-thing") return json({ object: { sha: "newer" } });
+                if (method === "GET") return json(PR_JSON);
+                return json({ merged: true });
+            }, calls)
+        );
+        const result = await host.mergePullRequest(REPO, PR_ID, undefined, { expectedHead: toCommitSha("head2") });
+        assert.equal(result.ok, false);
+        assert.match(result.ok ? "" : result.reason, /branch has moved to newer since head2/);
+        assert.equal(calls.some((c) => c.method === "PUT"), false);
+    });
+
+    it("with an expected head the branch still has, merges and asks GitHub to hold it to that commit", async () => {
+        const calls: Call[] = [];
+        const host = hostWith(
+            stubFetch((method, url) => {
+                if (path(url) === "/repos/octo/widgets/git/ref/heads/TAI-1-thing") return json({ object: { sha: "head2" } });
+                if (method === "PUT") return json({ merged: true });
+                if (method === "DELETE") return json(undefined, 204);
+                return json(PR_JSON);
+            }, calls)
+        );
+        const result = await host.mergePullRequest(REPO, PR_ID, undefined, { expectedHead: toCommitSha("head2") });
+        assert.equal(result.ok, true);
+        assert.deepEqual(calls.find((c) => c.method === "PUT")!.body, { merge_method: "merge", sha: "head2" });
+    });
+
     it("returns GitHub's reason when the merge is refused", async () => {
         const host = hostWith(stubFetch(() => json({ message: "Pull Request is not mergeable" }, 405)));
         assert.deepEqual(await host.mergePullRequest(REPO, PR_ID), { ok: false, reason: "Pull Request is not mergeable" });
@@ -474,6 +504,26 @@ describe("commit statuses", () => {
                 ["test", "failed"],
             ]
         );
+    });
+
+    it("reads the Actions workflow runs when the token cannot read check runs (TAI-585)", async () => {
+        const host = hostWith(
+            stubFetch((_m, url) => {
+                if (path(url).endsWith("/status")) return json({ statuses: [] });
+                if (path(url).endsWith("/check-runs")) return json({ message: "Resource not accessible by personal access token" }, 403);
+                assert.equal(path(url), "/repos/octo/widgets/actions/runs");
+                assert.ok(url.includes("head_sha=abc"));
+                return json({ total_count: 1, workflow_runs: [{ name: "CI", status: "completed", conclusion: "failure", html_url: "https://x" }] });
+            })
+        );
+        assert.deepEqual(await host.getCommitStatuses(REPO, toCommitSha("abc")), [{ key: "CI", name: "CI", state: "failed", url: "https://x" }]);
+    });
+
+    it("names the Actions permission when neither can be read, rather than skipping CI", async () => {
+        const host = hostWith(
+            stubFetch((_m, url) => (path(url).endsWith("/status") ? json({ statuses: [] }) : json({ message: "Resource not accessible by personal access token" }, 403)))
+        );
+        await assert.rejects(host.getCommitStatuses(REPO, toCommitSha("abc")), /Actions: read/);
     });
 
     it("posts a status with the key as its context", async () => {

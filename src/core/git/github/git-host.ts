@@ -24,6 +24,7 @@ import type {
     InlineCommentInput,
     CreateCommitStatusInput,
     MergeStrategy,
+    MergeOptions,
 } from "../interface.js";
 import { RestClient, GitHubRejection } from "./rest-client.js";
 import {
@@ -267,9 +268,25 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
             return toPullRequestActivity(await reviews(repo, id), pr.user, allowSelfReview);
         },
 
-        async mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy): Promise<GitMutationResult> {
+        async mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy, options?: MergeOptions): Promise<GitMutationResult> {
+            const expected = options?.expectedHead;
+            if (expected) {
+                // Found live (TAI-585): GitHub reports a PR's new head a few seconds after a push, so the
+                // PR read the gate was checked on can be behind the branch. The branch itself is current.
+                const pr = await requirePullRequest(repo, id);
+                if (pr.head.repo?.full_name === (repo as string)) {
+                    const ref = await client.getOrNull<{ object: { sha: string } }>(`${base(repo)}/git/ref/heads/${encodeURIComponent(pr.head.ref).replace(/%2F/g, "/")}`);
+                    if (ref && !ref.object.sha.startsWith(expected as string) && !(expected as string).startsWith(ref.object.sha)) {
+                        return { ok: false, reason: `The branch has moved to ${ref.object.sha.slice(0, 12)} since ${(expected as string).slice(0, 12)} was checked. Check the PR again before merging.` };
+                    }
+                }
+            }
             try {
-                await client.request("PUT", `${base(repo)}/pulls/${id}/merge`, { merge_method: GH_MERGE_METHOD[strategy ?? "mergeCommit"] });
+                // `sha`: GitHub itself refuses the merge when the head is no longer the commit that was checked.
+                await client.request("PUT", `${base(repo)}/pulls/${id}/merge`, {
+                    merge_method: GH_MERGE_METHOD[strategy ?? "mergeCommit"],
+                    ...(expected ? { sha: expected } : {}),
+                });
             } catch (err) {
                 // Not mergeable, a conflict, the head moved, branch protection: a rejection with
                 // GitHub's reason. A connectivity fault propagates, per the interface's contract.
@@ -289,11 +306,27 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
             return { ok: true, pullRequest: toPullRequestRef(pr, repo, null, allowSelfReview) };
         },
 
-        // Both commit statuses (what `git-pr check` posts) and check runs (what GitHub Actions reports).
+        // Commit statuses (what `git-pr check` posts) and check runs (what GitHub Actions reports). A
+        // fine-grained token cannot read check runs at all (found live, TAI-585), so then the commit's
+        // GitHub Actions workflow runs are read instead (human decision, 2026-10-19). Never skipped:
+        // unread CI results could hide a failure from the merge gate.
         async getCommitStatuses(repo: RepoId, commit: CommitSha): Promise<readonly CommitStatus[]> {
             const [combined, runs] = await Promise.all([
                 client.request<{ statuses?: GitHubStatusJson[] }>("GET", `${base(repo)}/commits/${commit}/status`),
-                client.paginate<GitHubCheckRunJson>(`${base(repo)}/commits/${commit}/check-runs`, { itemsKey: "check_runs" }),
+                client.paginate<GitHubCheckRunJson>(`${base(repo)}/commits/${commit}/check-runs`, { itemsKey: "check_runs" }).catch(async (err: unknown) => {
+                    if (!(err instanceof GitHubRejection) || err.status !== 403) throw err;
+                    try {
+                        return await client.paginate<GitHubCheckRunJson>(`${base(repo)}/actions/runs?head_sha=${commit}`, { itemsKey: "workflow_runs" });
+                    } catch (fallback) {
+                        if (fallback instanceof GitHubRejection && fallback.status === 403) {
+                            throw new GitHubRejection(
+                                `${fallback.reason}. The GitHub token cannot read CI results: a fine-grained token needs the Actions: read permission.`,
+                                403
+                            );
+                        }
+                        throw fallback;
+                    }
+                }),
             ]);
             return [...(combined?.statuses ?? []).map(toCommitStatus), ...runs.map(checkRunToCommitStatus)];
         },

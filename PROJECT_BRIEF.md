@@ -1189,11 +1189,16 @@ comment's content.
   the "PR Reviewers" page comes from `TAI_JIRA_EMAIL`, since a GitHub token carries none. On GitHub,
   reviewers are named by the login in the page's GitHub column; every GitHub review carries the commit it
   was cast on, so the merge gate's fresh-approval rule reads the same; commit statuses and check runs
-  (GitHub Actions) both count as CI.
+  (GitHub Actions) both count as CI. A fine-grained token cannot read check runs, so with one the
+  commit's GitHub Actions workflow runs are read instead (permission Actions: read); CI that cannot be
+  read at all is an error, never skipped. `git-pr merge` passes the commit the gate checked, and the
+  merge is refused if the branch has moved since: GitHub reports a PR's new head a few seconds after a
+  push, so the PR read can lag the branch.
 - **A solo developer on GitHub.** GitHub refuses an approval from a PR's own author, which Bitbucket
   allows. With `TAI_PR_SELF_REVIEW=true`, the author's `git-pr review approve` posts a stamped
   `Self-review: approved` COMMENT review on the head commit, and the merge gate counts it as one approval;
-  it is visible on the PR. Off by default.
+  it is visible on the PR. Off by default, and while it is off `/tai-ready` does not offer a human their
+  own PRs for review on GitHub (on Bitbucket it does, since an author may approve there).
 - **Review and merge act on a real git PR (TAI-159 ADR).** See §5.4. The git
   host's own approval state is the source of truth for review, queried live; there is no `CodeReview`
   subtask. A human reviewing or merging directly on the git host is treated as authoritative, not fought —

@@ -234,7 +234,8 @@ export function toCommitStatus(status: GitHubStatusJson): CommitStatus {
     };
 }
 
-/** A check run (how GitHub Actions reports) as a commit status (TAI-583 ADR). */
+/** A check run (how GitHub Actions reports), or a GitHub Actions workflow run, which has the same
+ *  name, status and conclusion fields, as a commit status (TAI-583 ADR). */
 export function checkRunToCommitStatus(run: GitHubCheckRunJson): CommitStatus {
     let state: CommitStatusState;
     if (run.status !== "completed") state = "inProgress";
