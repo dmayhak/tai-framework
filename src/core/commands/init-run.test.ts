@@ -368,6 +368,7 @@ describe("runInit — non-interactive (no TTY)", () => {
             assert.deepEqual(h.bitbucketInput(), { token: "gtok", repo: "octo/widgets" });
             assert.ok(!h.calls.includes("verifyBitbucket"));
             assert.match((await readInitState(h.deps.taiRoot)).steps.bitbucket?.detail ?? "", /GitHub repository "octo\/widgets" reachable/);
+            assert.match(h.all(), /\[ok\] github: GitHub repository/);
         });
     });
 

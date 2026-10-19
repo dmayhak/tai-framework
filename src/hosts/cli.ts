@@ -1553,7 +1553,7 @@ async function main(): Promise<void> {
             if (!repo) throw new Error("Usage: init github <OWNER/REPO>");
             const result = await verifyGitHubSetup({ token: requireEnv("GITHUB_TOKEN"), repo });
             if (result.ok) await markStepDone(taiRoot, "bitbucket", result.detail);
-            console.log(renderInitStepResult("bitbucket", result.ok, result.detail));
+            console.log(renderInitStepResult("bitbucket", result.ok, result.detail, false, "github"));
             return;
         }
 

@@ -520,7 +520,8 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     const record = async (step: InitStep, ok: boolean, detail: string): Promise<void> => {
         if (ok) await markStepDone(taiRoot, step, detail);
         else await clearStep(taiRoot, step);
-        io.say(renderStepResult(step, ok, detail));
+        // The git-host step is recorded as `bitbucket` for either host; it is shown under the host's own name.
+        io.say(renderStepResult(step, ok, detail, false, step === "bitbucket" ? gitHost : undefined));
     };
     const attempt = async <T extends { ok: boolean; detail: string }>(run: () => Promise<T>): Promise<{ ok: boolean; detail: string }> => {
         try {
