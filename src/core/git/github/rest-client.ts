@@ -66,6 +66,12 @@ async function extractReason(res: Response): Promise<string> {
     return raw.trim() || res.statusText || `HTTP ${res.status}`;
 }
 
+/** True for GitHub's rate-limit responses: 429, or a 403 with no requests left or a Retry-After. */
+export function isRateLimited(res: Pick<Response, "status" | "headers">): boolean {
+    if (res.status === 429) return true;
+    return res.status === 403 && (res.headers.get("x-ratelimit-remaining") === "0" || res.headers.get("retry-after") !== null);
+}
+
 /** The `rel="next"` URL of a `Link` header, if any. */
 export function nextLink(link: string | null): string | undefined {
     if (!link) return undefined;
@@ -131,6 +137,11 @@ export class RestClient {
         // 5xx is GitHub being unavailable, not GitHub saying no — same split as the Bitbucket client.
         if (res.status >= 500) {
             throw new StorageConnectivityError(`GitHub returned ${res.status} ${res.statusText} for ${method} ${path}`);
+        }
+        // A rate limit is temporary, not a refusal (PR 215 review): GitHub sends 429, or 403 with no
+        // requests left. Kept apart so a 403 for permissions is never mistaken for one, or the reverse.
+        if (isRateLimited(res)) {
+            throw new StorageConnectivityError(`GitHub rate limit reached for ${method} ${path}; try again later.`);
         }
         if (!res.ok) throw new GitHubRejection(await extractReason(res), res.status);
 

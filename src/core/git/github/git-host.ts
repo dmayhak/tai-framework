@@ -68,6 +68,11 @@ function splitRepoId(repo: RepoId): { owner: string; name: string } {
     return { owner, name };
 }
 
+/** Repository names are case-insensitive on GitHub, and a `RepoId` is often hand-typed (PR 215 review). */
+function sameRepo(fullName: string | undefined, repo: RepoId): boolean {
+    return fullName !== undefined && fullName.toLowerCase() === (repo as string).toLowerCase();
+}
+
 const GH_MERGE_METHOD: Record<MergeStrategy, string> = {
     mergeCommit: "merge",
     squash: "squash",
@@ -143,7 +148,9 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
                 base: input.destinationBranch,
                 ...(input.description !== undefined ? { body: input.description } : {}),
             });
-            const logins = (input.reviewers ?? []).map((h) => h.id as string).filter((l) => l !== pr.user.login);
+            // Logins are case-insensitive and the PR Reviewers page is hand-typed; requesting the author
+            // makes GitHub refuse the whole request (PR 215 review).
+            const logins = (input.reviewers ?? []).map((h) => h.id as string).filter((l) => l.toLowerCase() !== pr.user.login.toLowerCase());
             if (logins.length > 0) {
                 try {
                     pr = await client.request<GitHubPullRequestJson>("POST", `${base(input.repo)}/pulls/${pr.number}/requested_reviewers`, {
@@ -274,7 +281,7 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
                 // Found live (TAI-585): GitHub reports a PR's new head a few seconds after a push, so the
                 // PR read the gate was checked on can be behind the branch. The branch itself is current.
                 const pr = await requirePullRequest(repo, id);
-                if (pr.head.repo?.full_name === (repo as string)) {
+                if (sameRepo(pr.head.repo?.full_name, repo)) {
                     const ref = await client.getOrNull<{ object: { sha: string } }>(`${base(repo)}/git/ref/heads/${encodeURIComponent(pr.head.ref).replace(/%2F/g, "/")}`);
                     if (ref && !ref.object.sha.startsWith(expected as string) && !(expected as string).startsWith(ref.object.sha)) {
                         return { ok: false, reason: `The branch has moved to ${ref.object.sha.slice(0, 12)} since ${(expected as string).slice(0, 12)} was checked. Check the PR again before merging.` };
@@ -296,7 +303,7 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
             const pr = await requirePullRequest(repo, id);
             // Matches Bitbucket's close_source_branch: a branch is used for one unit of work (brief §6).
             // Only a branch in this same repository, and a failure to delete it does not undo the merge.
-            if (pr.head.repo?.full_name === (repo as string)) {
+            if (sameRepo(pr.head.repo?.full_name, repo)) {
                 try {
                     await client.request("DELETE", `${base(repo)}/git/refs/heads/${encodeURIComponent(pr.head.ref).replace(/%2F/g, "/")}`);
                 } catch (err) {
@@ -312,7 +319,8 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
         // unread CI results could hide a failure from the merge gate.
         async getCommitStatuses(repo: RepoId, commit: CommitSha): Promise<readonly CommitStatus[]> {
             const [combined, runs] = await Promise.all([
-                client.request<{ statuses?: GitHubStatusJson[] }>("GET", `${base(repo)}/commits/${commit}/status`),
+                // The combined status is paged too (PR 215 review): a failing context on a later page must still count.
+                client.paginate<GitHubStatusJson>(`${base(repo)}/commits/${commit}/status`, { itemsKey: "statuses" }),
                 client.paginate<GitHubCheckRunJson>(`${base(repo)}/commits/${commit}/check-runs`, { itemsKey: "check_runs" }).catch(async (err: unknown) => {
                     if (!(err instanceof GitHubRejection) || err.status !== 403) throw err;
                     try {
@@ -328,7 +336,7 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
                     }
                 }),
             ]);
-            return [...(combined?.statuses ?? []).map(toCommitStatus), ...runs.map(checkRunToCommitStatus)];
+            return [...combined.map(toCommitStatus), ...runs.map(checkRunToCommitStatus)];
         },
 
         async createCommitStatus(repo: RepoId, commit: CommitSha, input: CreateCommitStatusInput): Promise<CommitStatus> {

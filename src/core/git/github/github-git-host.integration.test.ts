@@ -79,7 +79,9 @@ describe("github GitHost: tai-test (live)", { skip }, () => {
             const refused = await author.mergePullRequest(repo, pr.id, "squash", { expectedHead: checked });
             assert.equal(refused.ok, false);
 
-            const merged = await author.mergePullRequest(repo, pr.id, "squash", { expectedHead: pushed });
+            // GitHub refuses a merge held to a commit its PR record has not caught up with yet ("Head branch
+            // was modified"), so wait for the new head first, as `git-pr merge` reads it from the PR.
+            const merged = await author.mergePullRequest(repo, pr.id, "squash", { expectedHead: (await waitForHead(pr.id, pushed)).sourceCommit });
             assert.equal(merged.ok, true, merged.ok ? "" : merged.reason);
             assert.equal(merged.ok && merged.pullRequest.state, "merged");
             assert.ok(!(await author.listBranches(repo)).includes(branch), "the source branch is deleted on merge");

@@ -84,6 +84,15 @@ describe("rest client", () => {
         await assert.rejects(hostWith(offline).getCurrentUser(), StorageConnectivityError);
     });
 
+    it("treats 429 and a 403 with no requests left as a temporary failure, and a plain 403 as a refusal", async () => {
+        await assert.rejects(hostWith(stubFetch(() => json({ message: "slow down" }, 429))).getCurrentUser(), StorageConnectivityError);
+        await assert.rejects(
+            hostWith(stubFetch(() => json({ message: "API rate limit exceeded" }, 403, { "x-ratelimit-remaining": "0" }))).getCurrentUser(),
+            StorageConnectivityError
+        );
+        await assert.rejects(hostWith(stubFetch(() => json({ message: "Must have admin rights" }, 403))).getCurrentUser(), GitHubRejection);
+    });
+
     it("reads the next page from the Link header", () => {
         assert.equal(
             nextLink('<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=5>; rel="last"'),
@@ -172,6 +181,22 @@ describe("createPullRequest", () => {
             pr.reviewers.map((r) => [r.human.id, r.status]),
             [["bob", "pending"]]
         );
+    });
+
+    it("leaves out the author whatever the case of the login on the page (PR 215 review)", async () => {
+        const calls: Call[] = [];
+        const host = hostWith(stubFetch((_m, url) => (path(url).endsWith("/requested_reviewers") ? json(PR_JSON, 201) : json(PR_JSON, 201)), calls));
+        await host.createPullRequest({
+            repo: REPO,
+            title: "t",
+            sourceBranch: "x",
+            destinationBranch: "main",
+            reviewers: [
+                { id: toHumanId("bob"), displayName: "Bob" },
+                { id: toHumanId("AUTHOR"), displayName: "Author" },
+            ],
+        });
+        assert.deepEqual(calls[1]!.body, { reviewers: ["bob"] });
     });
 
     it("keeps the PR when the reviewer request is refused", async () => {
@@ -427,6 +452,20 @@ describe("mergePullRequest", () => {
         assert.equal(path(calls.find((c) => c.method === "DELETE")!.url), "/repos/octo/widgets/git/refs/heads/TAI-1-thing");
     });
 
+    it("checks the head and deletes the branch when the repo id is typed in another case (PR 215 review)", async () => {
+        const calls: Call[] = [];
+        const host = hostWith(
+            stubFetch((method, url) => {
+                if (url.includes("/git/ref/heads/")) return json({ object: { sha: "newer" } });
+                if (method === "GET") return json(PR_JSON);
+                return json({ merged: true });
+            }, calls)
+        );
+        const result = await host.mergePullRequest(toRepoId("Octo/Widgets"), PR_ID, undefined, { expectedHead: toCommitSha("head2") });
+        assert.equal(result.ok, false, "the guard ran");
+        assert.equal(calls.some((c) => c.method === "PUT"), false);
+    });
+
     it("maps squash and fastForward onto GitHub's merge methods", async () => {
         for (const [strategy, method] of [
             ["squash", "squash"],
@@ -504,6 +543,32 @@ describe("commit statuses", () => {
                 ["test", "failed"],
             ]
         );
+    });
+
+    it("reads every page of the combined status, so a later failing context still counts (PR 215 review)", async () => {
+        const host = hostWith(
+            stubFetch((_m, url) => {
+                if (path(url).endsWith("/check-runs")) return json({ total_count: 0, check_runs: [] });
+                if (url.includes("page=2")) return json({ statuses: [{ context: "late", state: "failure" }] });
+                return json({ statuses: [{ context: "early", state: "success" }] }, 200, { link: `<${API}/repos/octo/widgets/commits/abc/status?per_page=100&page=2>; rel="next"` });
+            })
+        );
+        assert.deepEqual(
+            (await host.getCommitStatuses(REPO, toCommitSha("abc"))).map((s) => [s.key, s.state]),
+            [
+                ["early", "successful"],
+                ["late", "failed"],
+            ]
+        );
+    });
+
+    it("a rate-limited check-runs read is a connectivity failure, not the permission fallback (PR 215 review)", async () => {
+        const calls: Call[] = [];
+        const host = hostWith(
+            stubFetch((_m, url) => (path(url).endsWith("/status") ? json({ statuses: [] }) : json({ message: "API rate limit exceeded" }, 403, { "x-ratelimit-remaining": "0" })), calls)
+        );
+        await assert.rejects(host.getCommitStatuses(REPO, toCommitSha("abc")), StorageConnectivityError);
+        assert.equal(calls.some((c) => c.url.includes("/actions/runs")), false);
     });
 
     it("reads the Actions workflow runs when the token cannot read check runs (TAI-585)", async () => {
