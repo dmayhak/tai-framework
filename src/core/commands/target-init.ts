@@ -52,6 +52,8 @@ import { JIRA_ISSUE_TYPE, toJiraIssueType, EMPTY_TYPE_ALIAS_MAP, type IssueType 
 import { createConfluenceDocStore } from "../storage/jira/doc-store.js";
 import { loadTypeAliasMap } from "../storage/jira/type-alias-config.js";
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../git/bitbucket/bitbucket-backend.js";
+import { createGitHubBackend, tokenAuth as githubTokenAuth } from "../git/github/github-backend.js";
+import { GIT_HOST_SECRET_KEYS, type GitHostKind } from "../git/host-factory.js";
 import { toRepoId } from "../git/interface.js";
 import { PERSONA_ROLE_LABEL } from "../schema/story-schema.js";
 
@@ -348,6 +350,25 @@ export async function verifyBitbucketSetup(input: BitbucketVerifyInput): Promise
         : { ok: false, detail: `Repository "${input.repo}" not found (or these credentials can't see it).` };
 }
 
+// ---------- Step: GitHub verify (TAI-583) ----------
+
+export interface GitHubVerifyInput {
+    readonly token: string;
+    /** `owner/repo`, e.g. `dmayhak/tai-framework`. */
+    readonly repo: string;
+    readonly fetchImpl?: typeof fetch;
+}
+
+/** The GitHub counterpart of `verifyBitbucketSetup`: the token works and can see the repository. */
+export async function verifyGitHubSetup(input: GitHubVerifyInput): Promise<BitbucketVerifyResult> {
+    const backend = createGitHubBackend({ auth: githubTokenAuth(input.token), ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}) });
+    const user = await backend.gitHost.getCurrentUser();
+    const repo = await backend.gitHost.getRepository(toRepoId(input.repo));
+    return repo
+        ? { ok: true, detail: `GitHub repository "${input.repo}" reachable as ${user.id}.` }
+        : { ok: false, detail: `GitHub repository "${input.repo}" not found (or this token can't see it).` };
+}
+
 // ---------- Step: .env generation ----------
 
 export interface EnvInput {
@@ -358,6 +379,8 @@ export interface EnvInput {
     readonly apiToken: string;
     readonly bitbucketEmail?: string;
     readonly bitbucketApiToken?: string;
+    /** TAI-583: a GitHub project's token, written with `TAI_GIT_HOST=github`. */
+    readonly githubToken?: string;
     readonly gitRepos?: string;
 }
 
@@ -373,7 +396,10 @@ export function renderEnvFile(input: EnvInput): string {
         `TAI_JIRA_EMAIL=${input.email}`,
         `TAI_JIRA_API_TOKEN=${input.apiToken}`,
     ];
-    if (input.bitbucketEmail && input.bitbucketApiToken) {
+    if (input.githubToken) {
+        lines.push("", "TAI_GIT_HOST=github", `GITHUB_TOKEN=${input.githubToken}`);
+        if (input.gitRepos) lines.push(`TAI_GIT_REPOS=${input.gitRepos}`);
+    } else if (input.bitbucketEmail && input.bitbucketApiToken) {
         lines.push("", `BITBUCKET_EMAIL=${input.bitbucketEmail}`, `BITBUCKET_API_TOKEN=${input.bitbucketApiToken}`);
         if (input.gitRepos) lines.push(`TAI_GIT_REPOS=${input.gitRepos}`);
     }
@@ -470,7 +496,8 @@ export function mergeEnvContent(existing: string, generated: string, mode: EnvMe
  *  comment for why this matters. */
 export async function writeEnvFile(cwd: string, taiRoot: string, input: EnvInput): Promise<string> {
     const state = await readInitState(taiRoot);
-    const needsBitbucket = Boolean(input.bitbucketEmail && input.bitbucketApiToken);
+    // The `bitbucket` step records the git host's check, whichever host it is (TAI-583).
+    const needsBitbucket = Boolean(input.githubToken || (input.bitbucketEmail && input.bitbucketApiToken));
     const missing = (["jira", "confluence", ...(needsBitbucket ? (["bitbucket"] as const) : [])] as const).filter(
         (s) => state.steps[s] === undefined
     );
@@ -497,11 +524,9 @@ export async function writeEnvFile(cwd: string, taiRoot: string, input: EnvInput
 // ---------- .env primitives for the guided `init run` flow (TAI-363) ----------
 
 const JIRA_SECRET_KEYS = ["TAI_JIRA_EMAIL", "TAI_JIRA_API_TOKEN"] as const;
-const BITBUCKET_SECRET_KEYS = ["BITBUCKET_EMAIL", "BITBUCKET_API_TOKEN"] as const;
-
-/** The secret keys a user must fill in by hand; Bitbucket's only when git-pr support is wanted. */
-export function requiredEnvSecretKeys(includeBitbucket: boolean): string[] {
-    return [...JIRA_SECRET_KEYS, ...(includeBitbucket ? BITBUCKET_SECRET_KEYS : [])];
+/** The secret keys a user must fill in by hand; the git host's only when git-pr support is wanted. */
+export function requiredEnvSecretKeys(includeGitHost: boolean, gitHost: GitHostKind = "bitbucket"): string[] {
+    return [...JIRA_SECRET_KEYS, ...(includeGitHost ? GIT_HOST_SECRET_KEYS[gitHost] : [])];
 }
 
 /** `.env` content as a plain `KEY -> value` map (quotes stripped; the last occurrence of a
@@ -517,13 +542,13 @@ export function parseEnvContent(content: string): Record<string, string> {
 
 /** Which required secret keys are absent or empty in `.env` content. A commented-out line
  *  never counts as set (`ENV_KEY_LINE` only matches real `KEY=` lines). */
-export function missingEnvSecrets(content: string, includeBitbucket: boolean): string[] {
+export function missingEnvSecrets(content: string, includeGitHost: boolean, gitHost: GitHostKind = "bitbucket"): string[] {
     const values = new Map<string, string>();
     for (const line of content.split("\n")) {
         const m = ENV_KEY_LINE.exec(line);
         if (m) values.set(m[1] as string, envLineValue(line));
     }
-    return requiredEnvSecretKeys(includeBitbucket).filter((key) => (values.get(key) ?? "") === "");
+    return requiredEnvSecretKeys(includeGitHost, gitHost).filter((key) => (values.get(key) ?? "") === "");
 }
 
 export interface EnvSkeletonInput {
@@ -531,7 +556,9 @@ export interface EnvSkeletonInput {
     /** Only written when already known (existing `.env`, or chosen via discovery). */
     readonly projectKey?: string;
     readonly spaceKey?: string;
-    readonly includeBitbucket?: boolean;
+    readonly includeGitHost?: boolean;
+    /** Which host's credential lines to leave for the human; Bitbucket unless said (TAI-583). */
+    readonly gitHost?: GitHostKind;
 }
 
 /** Pure: the `.env` a user finishes by hand. Non-secret values are filled in; every secret
@@ -555,7 +582,14 @@ export function renderEnvSkeleton(input: EnvSkeletonInput): string {
         "# An Atlassian API token: create one at https://id.atlassian.com/manage-profile/security/api-tokens",
         "TAI_JIRA_API_TOKEN="
     );
-    if (input.includeBitbucket) {
+    if (input.includeGitHost && input.gitHost === "github") {
+        lines.push(
+            "",
+            "# A GitHub token for git-pr support: a fine-grained token on this project's repositories with Pull requests,",
+            "# Contents and Commit statuses read/write, and Actions and Metadata read. https://github.com/settings/personal-access-tokens",
+            "GITHUB_TOKEN="
+        );
+    } else if (input.includeGitHost) {
         lines.push(
             "",
             "# Your Bitbucket account email (only needed for git-pr support).",

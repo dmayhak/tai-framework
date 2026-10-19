@@ -87,15 +87,17 @@ export interface CheckRun {
 
 /** Variables TAI itself is configured with. They hold its credentials and point its own tests at live systems. */
 const TAI_OWN_ENV = /^(TAI_|BITBUCKET_)/;
+/** The GitHub tokens TAI may be started with (TAI-583): the standard names, so matched exactly, not by prefix. */
+const GITHUB_TOKEN_ENV = new Set(["GITHUB_TOKEN", "GH_TOKEN"]);
 
 /**
  * The environment the check command runs in: the session's, without TAI's own settings. The command
- * runs the PR's code, which has no business reading the Jira and Bitbucket tokens TAI was started
+ * runs the PR's code, which has no business reading the Jira, Bitbucket and GitHub tokens TAI was started
  * with, and a project's test suite must not be switched to live systems by variables that happen to
  * be in TAI's `.env`.
  */
 export function checkEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-    return Object.fromEntries(Object.entries(env).filter(([name]) => !TAI_OWN_ENV.test(name)));
+    return Object.fromEntries(Object.entries(env).filter(([name]) => !TAI_OWN_ENV.test(name) && !GITHUB_TOKEN_ENV.has(name)));
 }
 
 /** Runs `command` through the shell in `cwd` and reports how it ended. `env` defaults to `checkEnvironment()`. */

@@ -74,6 +74,7 @@ import {
     verifyJiraSetup,
     setupConfluence,
     verifyBitbucketSetup,
+    verifyGitHubSetup,
     writeEnvFile,
     writeClaudeMdPointer,
     writeGeminiMdPointer,
@@ -139,9 +140,10 @@ import { signOffRowNote } from "../core/storage/sign-off-provenance.js";
 import { reviewDecisionComment, signOffComment, stampComment, type ActingPersona } from "../core/storage/stamp.js";
 import { PersonaPermissionError } from "../core/persona/scoped-work-tracker.js";
 import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
-import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../core/git/bitbucket/bitbucket-backend.js";
+import { createGitHostSession, hasGitHostCredentials, resolveGitHostKind, selfReviewAllowed, type GitHostSession } from "../core/git/host-factory.js";
+import { detectGitRemote } from "../core/commands/discovery.js";
 import { toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
-import { loadPrReviewers, isEligibleReviewer } from "../core/git/pr-reviewers.js";
+import { loadPrReviewers, isEligibleReviewer, githubReviewers, reviewersNotRequested } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
 import { gatherDiff, gatherMergedDiff, readFileAtRef, readRenderedFindings, readReviewManifest, recordRenderedFindings, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
 import { renderPersonaTurn } from "../core/persona/turn.js";
@@ -251,9 +253,29 @@ function loadDotEnv(): void {
  * needed for roster/eligibility matching against Confluence-sourced `HumanRef`s, which the
  * git host's own identity doesn't carry (Bitbucket users have no email, for privacy).
  */
-async function resolveCurrentHuman(gitHost: Pick<GitHost, "getCurrentUser">, email: string): Promise<HumanRef> {
+async function resolveCurrentHuman(gitHost: Pick<GitHost, "getCurrentUser">, email: string | undefined): Promise<HumanRef> {
     const real = await gitHost.getCurrentUser();
-    return { ...real, email };
+    return email ? { ...real, email } : real;
+}
+
+/**
+ * Who a git-host action was taken as: the account's own name, then the email that matched the PR
+ * Reviewers page. On GitHub that email is the session's own (a GitHub token carries none), so the
+ * name is what tells two accounts apart (found live, TAI-585).
+ */
+export function actingHumanLabel(human: Pick<HumanRef, "displayName" | "email">): string {
+    if (!human.email) return human.displayName;
+    return human.displayName.toLowerCase() === human.email.toLowerCase() ? human.email : `${human.displayName} (${human.email})`;
+}
+
+/** TAI-583 ADR: which git host this project uses, from `TAI_GIT_HOST` or else `origin`'s remote. */
+async function currentGitHostKind() {
+    return resolveGitHostKind(process.env, async () => (await detectGitRemote(process.cwd()))?.kind ?? null);
+}
+
+/** The project's git-host backend (TAI-583 ADR). Throws, naming the variable, when a credential is missing. */
+async function gitHostSession(config: Pick<ResolvedConfig, "currentHuman"> | null): Promise<GitHostSession> {
+    return createGitHostSession(await currentGitHostKind(), process.env, config?.currentHuman?.email);
 }
 
 /**
@@ -437,9 +459,7 @@ async function resolveGitHost(
         spaceKey: config.spaceKey,
     });
 
-    const backend = createBitbucketBackend({
-        auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")),
-    });
+    const { backend } = await gitHostSession(config);
 
     return { gitHost: new PersonaScopedGitHost(backend.gitHost, personaConfig), personaId: personaConfig.id, issue };
 }
@@ -457,16 +477,13 @@ async function resolveGitHost(
 async function resolveReviewerGitHost(
     config: ResolvedConfig
 ): Promise<{ readonly gitHost: GitHost; readonly currentHuman: HumanRef }> {
-    const email = requireEnv("BITBUCKET_EMAIL");
-    const token = requireEnv("BITBUCKET_API_TOKEN");
-
-    const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
+    const { backend, email } = await gitHostSession(config);
     const currentHuman = await resolveCurrentHuman(backend.gitHost, email);
 
     const reviewers = await loadPrReviewers(config.backend.docStore, { spaceKey: config.spaceKey, projectKey: config.projectKey });
     if (!isEligibleReviewer(reviewers, currentHuman)) {
         throw new Error(
-            `${email} is not on the "PR Reviewers" roster — only listed humans may run git-pr review (rev 52, TAI-159 ADR). ` +
+            `${email ?? currentHuman.displayName} is not on the "PR Reviewers" roster — only listed humans may run git-pr review (rev 52, TAI-159 ADR). ` +
                 `Add them to the roster page, or have an already-eligible reviewer perform this review instead.`
         );
     }
@@ -513,14 +530,15 @@ async function tryResolveReadyGitDeps(
           readonly checkRequired?: boolean;
           readonly currentHuman?: HumanRef;
           readonly prReviewers?: readonly HumanRef[];
+          readonly authorMayReview?: boolean;
       }
     | undefined
 > {
-    const email = process.env["BITBUCKET_EMAIL"];
-    const token = process.env["BITBUCKET_API_TOKEN"];
     const reposEnv = process.env["TAI_GIT_REPOS"];
     const workspaceEnv = process.env["TAI_GIT_WORKSPACE"];
-    if (!email || !token || (!reposEnv && !workspaceEnv)) return undefined;
+    if (!reposEnv && !workspaceEnv) return undefined;
+    const kind = await currentGitHostKind();
+    if (!hasGitHostCredentials(kind, process.env)) return undefined;
 
     const explicitRepos = reposEnv
         ? reposEnv
@@ -530,7 +548,7 @@ async function tryResolveReadyGitDeps(
               .map(toRepoId)
         : undefined;
 
-    const backend = createBitbucketBackend({ auth: bitbucketApiTokenAuth(email, token) });
+    const { backend, email } = createGitHostSession(kind, process.env, config.currentHuman?.email);
 
     // TAI-163 ADR: TAI_GIT_WORKSPACE discovers every repo in the workspace by default;
     // TAI_GIT_REPOS, if also set, narrows that discovered list down to a subset rather than
@@ -567,6 +585,8 @@ async function tryResolveReadyGitDeps(
         checkRequired: checkCommandFromEnv() !== null,
         currentHuman,
         ...(prReviewers ? { prReviewers } : {}),
+        // TAI-585: GitHub refuses an author's own approval unless TAI_PR_SELF_REVIEW records it as a self-review.
+        authorMayReview: kind !== "github" || selfReviewAllowed(process.env),
     };
 }
 
@@ -619,6 +639,7 @@ function renderGitMutationResult(
         // shape `git-pr create`'s PR+link already has). `undefined` (no line at all) when
         // no linked issue was found (best-effort — see `findLinkedIssueForPR`).
         if (closedIssueKey) lines.push("", `${closedIssueKey} transitioned to Done (its PR just merged).`);
+        if (result.note) lines.push("", `Note: ${result.note}`);
         return lines.join("\n");
     }
     const lines = [`# Merge denied (as ${personaId})`, "", result.reason];
@@ -1540,7 +1561,18 @@ async function main(): Promise<void> {
             return;
         }
 
+        // TAI-583: the GitHub counterpart, recorded as the same git-host step.
+        if (action === "github") {
+            const repo = initArgs[0];
+            if (!repo) throw new Error("Usage: init github <OWNER/REPO>");
+            const result = await verifyGitHubSetup({ token: requireEnv("GITHUB_TOKEN"), repo });
+            if (result.ok) await markStepDone(taiRoot, "bitbucket", result.detail);
+            console.log(renderInitStepResult("bitbucket", result.ok, result.detail, false, "github"));
+            return;
+        }
+
         if (action === "env") {
+            const githubToken = process.env["TAI_GIT_HOST"]?.trim().toLowerCase() === "github" ? process.env["GITHUB_TOKEN"] : undefined;
             const bitbucketEmail = process.env["BITBUCKET_EMAIL"];
             const bitbucketApiToken = process.env["BITBUCKET_API_TOKEN"];
             const gitRepos = process.env["TAI_GIT_REPOS"];
@@ -1552,6 +1584,7 @@ async function main(): Promise<void> {
                 apiToken: requireEnv("TAI_JIRA_API_TOKEN"),
                 ...(bitbucketEmail ? { bitbucketEmail } : {}),
                 ...(bitbucketApiToken ? { bitbucketApiToken } : {}),
+                ...(githubToken ? { githubToken } : {}),
                 ...(gitRepos ? { gitRepos } : {}),
             });
             await markStepDone(taiRoot, "env", `Wrote ${filePath}.`);
@@ -1601,7 +1634,7 @@ async function main(): Promise<void> {
         }
 
         throw new Error(
-            `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "env", "claude-md", "gemini-md", or "project-context".`
+            `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "github", "env", "claude-md", "gemini-md", or "project-context".`
         );
     }
 
@@ -1757,7 +1790,7 @@ async function main(): Promise<void> {
             if (unrenderedDecision) throw new Error(unrenderedDecision);
             // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
             await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
-            console.log(`# Review posted (as ${currentHuman.email ?? currentHuman.displayName})\n\n${decision} on PR ${prId}.`);
+            console.log(`# Review posted (as ${actingHumanLabel(currentHuman)})\n\n${decision} on PR ${prId}.`);
             return;
         }
 
@@ -1772,9 +1805,7 @@ async function main(): Promise<void> {
             if (!command) {
                 throw new Error("No check command is configured. Set TAI_CHECK_COMMAND in this project's .env to the command that verifies a commit (for example its typecheck, lint and tests).");
             }
-            const backend = createBitbucketBackend({
-                auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")),
-            });
+            const { backend } = await gitHostSession(config);
             const repo = toRepoId(repoArg);
             const prId = await resolvePullRequestId(backend.gitHost, repo, prIdArg);
             const pr = await backend.gitHost.getPullRequest(repo, prId);
@@ -1800,9 +1831,7 @@ async function main(): Promise<void> {
         if (action === "comments") {
             const [repoArg, prIdArg] = actionArgs;
             if (!repoArg) throw new Error(usage);
-            const backend = createBitbucketBackend({
-                auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")),
-            });
+            const { backend } = await gitHostSession(config);
             const repo = toRepoId(repoArg);
             const prId = await resolvePullRequestId(backend.gitHost, repo, prIdArg);
             console.log(renderPullRequestComments(String(prId), await backend.gitHost.listPullRequestComments(repo, prId)));
@@ -1821,7 +1850,7 @@ async function main(): Promise<void> {
             const { prIdArg, body } = parseCommentArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             const comment = await gitHost.addPullRequestComment(repo, prId, stampComment(body, actingPersonaOf(config)));
-            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}`);
+            console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}`);
             return;
         }
 
@@ -1885,7 +1914,7 @@ async function main(): Promise<void> {
             const failureNote = inlineFailures.length > 0
                 ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
                 : "";
-            console.log(`# Comment posted on PR ${prId} (as ${currentHuman.email ?? currentHuman.displayName})\n\n${comment.body}${failureNote}`);
+            console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}${failureNote}`);
             return;
         }
 
@@ -1901,7 +1930,7 @@ async function main(): Promise<void> {
 
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
             await gitHost.unapprovePullRequest(repo, prId);
-            console.log(`# Approval withdrawn (as ${currentHuman.email ?? currentHuman.displayName})\n\nPR ${prId} is no longer approved by ${currentHuman.email ?? currentHuman.displayName}.`);
+            console.log(`# Approval withdrawn (as ${actingHumanLabel(currentHuman)})\n\nPR ${prId} is no longer approved by ${actingHumanLabel(currentHuman)}.`);
             return;
         }
 
@@ -1944,15 +1973,22 @@ async function main(): Promise<void> {
                     spaceKey: config.spaceKey,
                     projectKey: config.projectKey,
                 });
-                const authorEmail = process.env["BITBUCKET_EMAIL"];
-                const candidates = roster.filter((r) => r.email !== authorEmail);
-                const resolved = await Promise.all(
-                    candidates.map((r) => (r.email ? config.backend.workTracker.resolveHuman(r.email) : Promise.resolve(null)))
-                );
-                prReviewers = resolved.filter((h): h is HumanRef => h !== null);
-                droppedReviewers = candidates
-                    .filter((_, i) => resolved[i] === null)
-                    .map((r) => r.email ?? r.displayName);
+                const session = await gitHostSession(config);
+                const candidates = roster.filter((r) => !session.email || r.email !== session.email);
+                if (session.kind === "github") {
+                    // TAI-583 ADR decision 3: GitHub reviewers come from the page's GitHub column.
+                    const reviewers = githubReviewers(candidates);
+                    prReviewers = reviewers.reviewers;
+                    droppedReviewers = reviewers.dropped;
+                } else {
+                    const resolved = await Promise.all(
+                        candidates.map((r) => (r.email ? config.backend.workTracker.resolveHuman(r.email) : Promise.resolve(null)))
+                    );
+                    prReviewers = resolved.filter((h): h is HumanRef => h !== null);
+                    droppedReviewers = candidates
+                        .filter((_, i) => resolved[i] === null)
+                        .map((r) => r.email ?? r.displayName);
+                }
             } catch {
                 prReviewers = undefined;
             }
@@ -1974,9 +2010,15 @@ async function main(): Promise<void> {
             await config.backend.workTracker.createRemoteLink(issue.key, pr.url, pr.title);
 
             console.log(renderPullRequestRef(pr, personaId, issue.key));
+            // PR 215 review: a reviewer request that failed after the PR was created (GitHub asks for them
+            // in a second call) leaves the PR without them; say who.
+            const notRequested = reviewersNotRequested(prReviewers ?? [], pr.reviewers, pr.author);
+            if (notRequested.length > 0) {
+                console.log(`\nNote: ${notRequested.map((r) => r.displayName).join(", ")} could not be requested as reviewer on the PR; add them on the git host.`);
+            }
             if (droppedReviewers.length > 0) {
                 console.log(
-                    `\nNote: ${droppedReviewers.join(", ")} on the PR Reviewers roster could not be resolved to a real account id and was not added as a reviewer.`
+                    `\nNote: ${droppedReviewers.join(", ")} on the PR Reviewers roster could not be resolved to a real account on the git host (on GitHub: no login in the page's GitHub column) and was not added as a reviewer.`
                 );
             }
             return;
@@ -2026,7 +2068,8 @@ async function main(): Promise<void> {
                 return;
             }
 
-            const result = await gitHost.mergePullRequest(repo, prId, strategy);
+            // TAI-585: the merge only goes through on the commit the gate was checked against.
+            const result = await gitHost.mergePullRequest(repo, prId, strategy, { expectedHead: pr.sourceCommit });
             if (result.ok && blockers.length > 0) {
                 // Past the gate on purpose: say so on the PR, stamped, after the merge went through.
                 await gitHost.addPullRequestComment(repo, prId, stampComment(mergeOverrideComment(blockers), actingPersonaOf(config)));
@@ -2145,7 +2188,7 @@ async function main(): Promise<void> {
         }
         const tester = await loadPersonaConfig(config.backend.docStore, "tester", { spaceKey: config.spaceKey });
         // Read-only, so no reviewer-roster gate: it only reads pull requests and diffs.
-        const gitHost = createBitbucketBackend({ auth: bitbucketApiTokenAuth(requireEnv("BITBUCKET_EMAIL"), requireEnv("BITBUCKET_API_TOKEN")) }).gitHost;
+        const gitHost = (await gitHostSession(config)).backend.gitHost;
         const rows = await findVerifyPullRequests({ workTracker: config.backend.workTracker, gitHost, projectKey: config.projectKey }, story.key);
         const withDiffs = [];
         for (const row of rows) {
@@ -2811,7 +2854,7 @@ async function main(): Promise<void> {
     throw new Error(
         `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
-            `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|env|claude-md|gemini-md`
+            `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );
 }
 

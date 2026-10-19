@@ -91,6 +91,10 @@ export TAI_JIRA_API_TOKEN=<token>
 export BITBUCKET_EMAIL=<you@example.com>
 export BITBUCKET_API_TOKEN=<token>
 export TAI_GIT_REPOS=<workspace/repo>
+# ...or, for a project on GitHub (TAI-583):
+# export TAI_GIT_HOST=github
+# export GITHUB_TOKEN=<token>
+# export TAI_GIT_REPOS=<owner/repo>
 ```
 
 `cli.ts init status` shows progress at any time, and a step already recorded done is safe to
@@ -180,21 +184,39 @@ alias that works on your site (`TAI` for TAI's own space), never one derived fro
 Then open the new **Persona Roster** page and fill in the "Authorized humans" column —
 review-gate `Approved:`/`Rejected:` comment validation (brief §3.5) depends on it.
 
-## 3. Bitbucket
+## 3. Bitbucket or GitHub
 
-Only needed if this project will use `git-pr`/`tai-pr`. Identify (or create) the repo, and
-generate an API token with repo read/write + pull-request scopes.
+Only needed if this project will use `git-pr`/`tai-pr`. Identify (or create) the repo. Both
+hosts record the same `bitbucket` step in `init status`.
+
+**Bitbucket:** generate an API token with repo read/write + pull-request scopes.
 
 ```bash
 npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init bitbucket <workspace/repo>
 ```
+
+**GitHub:** set `TAI_GIT_HOST=github` and create a fine-grained personal access token on the
+project's repositories with Pull requests, Contents and Commit statuses read/write, and Actions
+and Metadata read, as `GITHUB_TOKEN`. A fine-grained token cannot read check runs, so TAI reads
+CI results from the commit's GitHub Actions runs instead; a check app other than GitHub Actions
+is only seen with a classic token (scope `repo`).
+
+```bash
+npx --prefix <taiHome> tsx <taiHome>/src/hosts/cli.ts init github <owner/repo>
+```
+
+On GitHub, the "PR Reviewers" page needs a `GitHub` column with each reviewer's login (for
+example `@octocat`): GitHub has no account id shared with Jira, so that is how `git-pr create`
+requests reviewers and how a reviewer is recognised. GitHub also refuses an approval from a
+PR's own author; a one-person project can set `TAI_PR_SELF_REVIEW=true` so the author's
+approval is recorded as a visible self-review that counts as one approval.
 
 ## 4. Generate `.env`
 
 `init run` already does this — it writes `.env` first, since it needs your credentials before
 it can discover or verify anything. This section is for the individual `init env` action.
 Requires the `jira`/`confluence` steps above (and `bitbucket`, if `BITBUCKET_EMAIL`/
-`BITBUCKET_API_TOKEN` are exported) to already be recorded done — `init env` refuses to
+`BITBUCKET_API_TOKEN` are exported, or `TAI_GIT_HOST=github` with `GITHUB_TOKEN`) to already be recorded done — `init env` refuses to
 run ahead of them, so the generated file is never built from an unverified setup.
 
 ```bash

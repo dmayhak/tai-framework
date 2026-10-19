@@ -151,6 +151,8 @@ interface HarnessOptions {
     projects?: Listing<DiscoveredProject>;
     spaces?: Listing<DiscoveredSpace>;
     repo?: string | null;
+    /** Which host `repo` is on (TAI-583); Bitbucket by default. */
+    remoteKind?: "bitbucket" | "github";
     jiraOk?: boolean;
     listProjectsThrows?: string;
     listSpacesThrows?: string;
@@ -213,7 +215,7 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
                 if (opts.listSpacesThrows) throw new Error(opts.listSpacesThrows);
                 return opts.spaces ?? SPACES;
             },
-            detectBitbucketRepo: async () => opts.repo ?? null,
+            detectGitRemote: async () => (opts.repo ? { kind: opts.remoteKind ?? "bitbucket", repo: opts.repo } : null),
             verifyJira: async (input) => {
                 calls.push("verifyJira");
                 jiraInput = input;
@@ -248,6 +250,12 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
                 return ok
                     ? { ok: true, detail: "Repository reachable." }
                     : { ok: false, detail: `Repository "${input.repo}" not found (or these credentials can't see it).` };
+            },
+            verifyGitHub: async (input) => {
+                calls.push("verifyGitHub");
+                bitbucketInput = input;
+                bitbucketRepos.push(input.repo);
+                return { ok: true, detail: `GitHub repository "${input.repo}" reachable as me.` };
             },
             gitStatusPorcelain: async () => opts.porcelain ?? null,
         },
@@ -348,6 +356,43 @@ describe("runInit — non-interactive (no TTY)", () => {
             assert.deepEqual(h.bitbucketInput(), { email: "a@b.c", apiToken: "btok", repo: "dmayhak/x" });
             const state = await readInitState(h.deps.taiRoot);
             assert.ok(!/^N\/A/.test(state.steps.bitbucket?.detail ?? "N/A"));
+        });
+    });
+
+    it("verifies GitHub with GITHUB_TOKEN and writes TAI_GIT_HOST=github (TAI-583)", async () => {
+        await withTempDir(async (dir) => {
+            const env = COMPLETE_ENV + "TAI_GIT_HOST=github\nGITHUB_TOKEN=gtok\nTAI_GIT_REPOS=octo/widgets\n";
+            const h = await harness(dir, { envFile: env });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.deepEqual(h.bitbucketInput(), { token: "gtok", repo: "octo/widgets" });
+            assert.ok(!h.calls.includes("verifyBitbucket"));
+            assert.match((await readInitState(h.deps.taiRoot)).steps.bitbucket?.detail ?? "", /GitHub repository "octo\/widgets" reachable/);
+            assert.match(h.all(), /\[ok\] github: GitHub repository/);
+        });
+    });
+
+    it("a GitHub remote is offered as GitHub, and accepting it writes TAI_GIT_HOST and leaves a GITHUB_TOKEN line (TAI-583)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, {
+                envFile: COMPLETE_ENV,
+                repo: "octo/widgets",
+                remoteKind: "github",
+                interactive: true,
+                answers: ["", "", ""],
+                editor: async (envPath) => {
+                    const content = await readFile(envPath, "utf-8");
+                    await writeFile(envPath, content.replace(/^GITHUB_TOKEN=$/m, "GITHUB_TOKEN=gtok"), "utf-8");
+                },
+            });
+            const result = await runInit(h.deps);
+            assert.equal(result.exitCode, 0, h.all());
+            assert.ok(h.asked.some((q) => /remote is on GitHub \(octo\/widgets\)/.test(q)), h.asked.join("\n"));
+            const written = await readFile(h.envPath, "utf-8");
+            assert.match(written, /^TAI_GIT_HOST=github$/m);
+            assert.match(written, /^TAI_GIT_REPOS=octo\/widgets$/m);
+            assert.ok(!/BITBUCKET_EMAIL=/.test(written));
+            assert.deepEqual(h.bitbucketInput(), { token: "gtok", repo: "octo/widgets" });
         });
     });
 

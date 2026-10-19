@@ -27,6 +27,7 @@ import type {
     GitHost,
     GitMutationResult,
     InlineCommentInput,
+    MergeOptions,
     PullRequestActivity,
     PullRequestComment,
     PullRequestId,
@@ -118,7 +119,8 @@ export class PersonaScopedGitHost implements GitHost {
     async mergePullRequest(
         repo: RepoId,
         id: PullRequestId,
-        strategy?: "mergeCommit" | "squash" | "fastForward"
+        strategy?: "mergeCommit" | "squash" | "fastForward",
+        options?: MergeOptions
     ): Promise<GitMutationResult> {
         if (!canPerformGitAction(this.persona, "mergePullRequest")) {
             return {
@@ -126,7 +128,7 @@ export class PersonaScopedGitHost implements GitHost {
                 reason: `Persona "${this.persona.id}" is not permitted to merge pull requests (brief §3.1 permission matrix).`,
             };
         }
-        return this.inner.mergePullRequest(repo, id, strategy);
+        return this.inner.mergePullRequest(repo, id, strategy, options);
     }
 
     getCommitStatuses(repo: RepoId, commit: CommitSha): Promise<readonly CommitStatus[]> {

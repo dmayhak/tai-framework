@@ -11,6 +11,9 @@ import {
     listConfluenceSpaces,
     parseBitbucketRemote,
     detectBitbucketRepo,
+    parseGitHubRemote,
+    parseGitRemote,
+    detectGitRemote,
     projectChoices,
     spaceChoices,
     filterChoices,
@@ -224,6 +227,39 @@ describe("parseBitbucketRemote", () => {
             assert.equal(parseBitbucketRemote(input), expected);
         });
     }
+});
+
+describe("parseGitHubRemote and parseGitRemote (TAI-583)", () => {
+    const cases: [string, string | null][] = [
+        ["git@github.com:dmayhak/tai-framework.git", "dmayhak/tai-framework"],
+        ["https://github.com/dmayhak/tai-framework", "dmayhak/tai-framework"],
+        ["https://user@github.com/dmayhak/tai-framework.git", "dmayhak/tai-framework"],
+        ["ssh://git@github.com/dmayhak/tai-framework.git", "dmayhak/tai-framework"],
+        ["git@bitbucket.org:dmayhak/tai-framework.git", null],
+        ["https://github.example.com/a/b.git", null],
+        ["https://notgithub.com/a/b.git", null],
+    ];
+    for (const [input, expected] of cases) {
+        it(`${JSON.stringify(input)} -> ${JSON.stringify(expected)}`, () => {
+            assert.equal(parseGitHubRemote(input), expected);
+        });
+    }
+
+    it("names the host of a remote", () => {
+        assert.deepEqual(parseGitRemote("git@github.com:a/b.git"), { kind: "github", repo: "a/b" });
+        assert.deepEqual(parseGitRemote("git@bitbucket.org:a/b.git"), { kind: "bitbucket", repo: "a/b" });
+        assert.equal(parseGitRemote("https://gitlab.com/a/b.git"), null);
+    });
+});
+
+describe("detectGitRemote", () => {
+    it("reads a GitHub origin from a real repo", async () => {
+        await withTempDir(async (dir) => {
+            execFileSync("git", ["init", "-q"], { cwd: dir, stdio: "ignore", env: isolatedGitEnv() });
+            execFileSync("git", ["remote", "add", "origin", "git@github.com:a/b.git"], { cwd: dir, stdio: "ignore", env: isolatedGitEnv() });
+            assert.deepEqual(await detectGitRemote(dir, isolatedGitEnv()), { kind: "github", repo: "a/b" });
+        });
+    });
 });
 
 describe("detectBitbucketRepo", () => {

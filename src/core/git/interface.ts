@@ -94,6 +94,16 @@ export interface ListPullRequestsOptions {
     readonly updatedSince?: string;
 }
 
+/** TAI-585: what a merge must still find true when it happens. */
+export interface MergeOptions {
+    /**
+     * The head commit the merge gate was checked against. A host that can refuses the merge when
+     * the PR's head is no longer this commit, so a push in between cannot slip past the gate.
+     * GitHub honours it; Bitbucket's merge call has no such guard and ignores it.
+     */
+    readonly expectedHead?: CommitSha;
+}
+
 export interface CreatePullRequestInput {
     readonly repo: RepoId;
     readonly title: string;
@@ -178,7 +188,8 @@ export interface CreateCommitStatusInput {
  * same ok/reason pattern with a payload that fits what a PR merge actually returns.
  */
 export type GitMutationResult =
-    | { readonly ok: true; readonly pullRequest: PullRequestRef }
+    /** `note`: something best-effort after the mutation that did not happen (PR 215 review), e.g. the branch was not deleted. */
+    | { readonly ok: true; readonly pullRequest: PullRequestRef; readonly note?: string }
     | { readonly ok: false; readonly reason: string };
 
 // ---------- GitHost ----------
@@ -243,7 +254,7 @@ export interface GitHost {
      * mutation that would need one.
      */
     addInlineComment(repo: RepoId, id: PullRequestId, input: InlineCommentInput): Promise<Comment>;
-    mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy): Promise<GitMutationResult>;
+    mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy, options?: MergeOptions): Promise<GitMutationResult>;
     /**
      * TAI-383: every (non-deleted) comment on a PR, oldest first as the host returns them --
      * what `git-pr comments` shows so whoever merges reads ALL of them first, including a second

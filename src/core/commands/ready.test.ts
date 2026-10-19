@@ -1301,6 +1301,16 @@ describe("findReadyWork readyToReview", () => {
         });
     });
 
+    test("the author's own PR is left out only when the host refuses an author's approval (TAI-585)", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const pr = prFixture({ author: REVIEWER_A });
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            const deps = { workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo], currentHuman: REVIEWER_A, prReviewers: [REVIEWER_A] };
+            assert.equal((await findReadyWork(deps)).readyToReview.length, 1, "Bitbucket: a solo developer reviews their own PR");
+            assert.equal((await findReadyWork({ ...deps, authorMayReview: false })).readyToReview.length, 0);
+        });
+    });
+
     test("not surfaced when the current human isn't on the PR Reviewers roster", async () => {
         await withBackend(async (backend, taiRoot) => {
             const pr = prFixture({});

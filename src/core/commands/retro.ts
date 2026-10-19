@@ -222,7 +222,7 @@ export async function findRetroSummary(deps: RetroDeps): Promise<RetroReport> {
 // ---------- rendering ----------
 
 const NOT_READ =
-    "Not read: no git host is configured for this session (BITBUCKET_EMAIL, BITBUCKET_API_TOKEN and TAI_GIT_REPOS or TAI_GIT_WORKSPACE). Ask the human whether to go without it.";
+    "Not read: no git host is configured for this session (the git host's credentials, GITHUB_TOKEN or BITBUCKET_EMAIL and BITBUCKET_API_TOKEN, and TAI_GIT_REPOS or TAI_GIT_WORKSPACE). Ask the human whether to go without it.";
 
 const prLabel = (pr: PullRequestRef): string => `PR ${pr.id} (${pr.repo}) ${pr.title} — ${pr.url}`;
 
