@@ -162,7 +162,7 @@ import { latestVerification, unverifiedCloseNote } from "../core/storage/verific
 import { findVerifyPullRequests, renderVerifyTurn } from "../core/commands/verify.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
-import { loadRoster, type Roster } from "../core/personas/roster.js";
+import { loadRoster, sameHuman, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
@@ -639,6 +639,7 @@ function renderGitMutationResult(
         // shape `git-pr create`'s PR+link already has). `undefined` (no line at all) when
         // no linked issue was found (best-effort — see `findLinkedIssueForPR`).
         if (closedIssueKey) lines.push("", `${closedIssueKey} transitioned to Done (its PR just merged).`);
+        if (result.note) lines.push("", `Note: ${result.note}`);
         return lines.join("\n");
     }
     const lines = [`# Merge denied (as ${personaId})`, "", result.reason];
@@ -2009,6 +2010,12 @@ async function main(): Promise<void> {
             await config.backend.workTracker.createRemoteLink(issue.key, pr.url, pr.title);
 
             console.log(renderPullRequestRef(pr, personaId, issue.key));
+            // PR 215 review: a reviewer request that failed after the PR was created (GitHub asks for them
+            // in a second call) leaves the PR without them; say who.
+            const notRequested = (prReviewers ?? []).filter((r) => !pr.reviewers.some((p) => sameHuman(p.human, r)));
+            if (notRequested.length > 0) {
+                console.log(`\nNote: ${notRequested.map((r) => r.displayName).join(", ")} could not be requested as reviewer on the PR; add them on the git host.`);
+            }
             if (droppedReviewers.length > 0) {
                 console.log(
                     `\nNote: ${droppedReviewers.join(", ")} on the PR Reviewers roster could not be resolved to a real account on the git host (on GitHub: no login in the page's GitHub column) and was not added as a reviewer.`

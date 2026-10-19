@@ -27,6 +27,7 @@ import type {
     MergeOptions,
 } from "../interface.js";
 import { RestClient, GitHubRejection } from "./rest-client.js";
+import { StorageConnectivityError } from "../../storage/interface.js";
 import {
     SELF_REVIEW_MARKER,
     SELF_REVIEW_WITHDRAWN,
@@ -157,7 +158,9 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
                         reviewers: logins,
                     });
                 } catch (err) {
-                    if (!(err instanceof GitHubRejection)) throw err;
+                    // The PR exists either way; a reviewer not requested shows in the PR's reviewers, and
+                    // `git-pr create` names who is missing (PR 215 review: a rate limit lands here too).
+                    if (!(err instanceof GitHubRejection) && !(err instanceof StorageConnectivityError)) throw err;
                 }
             }
             return toPullRequestRef(pr, input.repo, [], allowSelfReview);
@@ -277,10 +280,11 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
 
         async mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy, options?: MergeOptions): Promise<GitMutationResult> {
             const expected = options?.expectedHead;
+            const before = await requirePullRequest(repo, id);
             if (expected) {
                 // Found live (TAI-585): GitHub reports a PR's new head a few seconds after a push, so the
                 // PR read the gate was checked on can be behind the branch. The branch itself is current.
-                const pr = await requirePullRequest(repo, id);
+                const pr = before;
                 if (sameRepo(pr.head.repo?.full_name, repo)) {
                     const ref = await client.getOrNull<{ object: { sha: string } }>(`${base(repo)}/git/ref/heads/${encodeURIComponent(pr.head.ref).replace(/%2F/g, "/")}`);
                     if (ref && !ref.object.sha.startsWith(expected as string) && !(expected as string).startsWith(ref.object.sha)) {
@@ -300,17 +304,27 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
                 if (err instanceof GitHubRejection) return { ok: false, reason: err.reason };
                 throw err;
             }
-            const pr = await requirePullRequest(repo, id);
+            // The merge went through: nothing after it may report a failure (PR 215 review). A re-read that
+            // fails falls back to the PR as read before, marked merged.
+            let pr: GitHubPullRequestJson;
+            try {
+                pr = await requirePullRequest(repo, id);
+            } catch (err) {
+                if (!(err instanceof GitHubRejection) && !(err instanceof StorageConnectivityError)) throw err;
+                pr = { ...before, state: "closed", merged_at: before.merged_at ?? new Date().toISOString() };
+            }
             // Matches Bitbucket's close_source_branch: a branch is used for one unit of work (brief §6).
             // Only a branch in this same repository, and a failure to delete it does not undo the merge.
+            let note: string | undefined;
             if (sameRepo(pr.head.repo?.full_name, repo)) {
                 try {
                     await client.request("DELETE", `${base(repo)}/git/refs/heads/${encodeURIComponent(pr.head.ref).replace(/%2F/g, "/")}`);
                 } catch (err) {
-                    if (!(err instanceof GitHubRejection)) throw err;
+                    if (!(err instanceof GitHubRejection) && !(err instanceof StorageConnectivityError)) throw err;
+                    note = `The branch ${pr.head.ref} was not deleted (${(err as Error).message}); delete it by hand.`;
                 }
             }
-            return { ok: true, pullRequest: toPullRequestRef(pr, repo, null, allowSelfReview) };
+            return { ok: true, pullRequest: toPullRequestRef(pr, repo, null, allowSelfReview), ...(note ? { note } : {}) };
         },
 
         // Commit statuses (what `git-pr check` posts) and check runs (what GitHub Actions reports). A

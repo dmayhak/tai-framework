@@ -91,6 +91,7 @@ describe("rest client", () => {
             StorageConnectivityError
         );
         await assert.rejects(hostWith(stubFetch(() => json({ message: "Must have admin rights" }, 403))).getCurrentUser(), GitHubRejection);
+        await assert.rejects(hostWith(stubFetch(() => json({ message: "secondary rate limit" }, 403, { "retry-after": "60" }))).getCurrentUser(), StorageConnectivityError);
     });
 
     it("reads the next page from the Link header", () => {
@@ -185,7 +186,7 @@ describe("createPullRequest", () => {
 
     it("leaves out the author whatever the case of the login on the page (PR 215 review)", async () => {
         const calls: Call[] = [];
-        const host = hostWith(stubFetch((_m, url) => (path(url).endsWith("/requested_reviewers") ? json(PR_JSON, 201) : json(PR_JSON, 201)), calls));
+        const host = hostWith(stubFetch(() => json(PR_JSON, 201), calls));
         await host.createPullRequest({
             repo: REPO,
             title: "t",
@@ -197,6 +198,20 @@ describe("createPullRequest", () => {
             ],
         });
         assert.deepEqual(calls[1]!.body, { reviewers: ["bob"] });
+    });
+
+    it("keeps the PR when the reviewer request is rate-limited (PR 215 review)", async () => {
+        const host = hostWith(
+            stubFetch((_m, url) => (path(url).endsWith("/requested_reviewers") ? json({ message: "slow down" }, 429) : json(PR_JSON, 201)))
+        );
+        const pr = await host.createPullRequest({
+            repo: REPO,
+            title: "t",
+            sourceBranch: "x",
+            destinationBranch: "main",
+            reviewers: [{ id: toHumanId("bob"), displayName: "Bob" }],
+        });
+        assert.deepEqual(pr.reviewers, []);
     });
 
     it("keeps the PR when the reviewer request is refused", async () => {
@@ -510,7 +525,7 @@ describe("mergePullRequest", () => {
     });
 
     it("returns GitHub's reason when the merge is refused", async () => {
-        const host = hostWith(stubFetch(() => json({ message: "Pull Request is not mergeable" }, 405)));
+        const host = hostWith(stubFetch((method) => (method === "PUT" ? json({ message: "Pull Request is not mergeable" }, 405) : json(PR_JSON))));
         assert.deepEqual(await host.mergePullRequest(REPO, PR_ID), { ok: false, reason: "Pull Request is not mergeable" });
     });
 
@@ -522,7 +537,32 @@ describe("mergePullRequest", () => {
                 return json(PR_JSON);
             })
         );
-        assert.equal((await host.mergePullRequest(REPO, PR_ID)).ok, true);
+        const result = await host.mergePullRequest(REPO, PR_ID);
+        assert.equal(result.ok, true);
+        assert.match(result.ok ? (result.note ?? "") : "", /branch TAI-1-thing was not deleted/);
+    });
+
+    it("a rate limit after the merge still reports the merge, with what was not done (PR 215 review)", async () => {
+        let gets = 0;
+        const host = hostWith(
+            stubFetch((method) => {
+                if (method === "PUT") return json({ merged: true });
+                if (method === "GET" && gets++ > 0) return json({ message: "slow down" }, 429);
+                if (method === "DELETE") return json({ message: "slow down" }, 429);
+                return json(PR_JSON);
+            })
+        );
+        const result = await host.mergePullRequest(REPO, PR_ID);
+        assert.equal(result.ok, true);
+        assert.equal(result.ok && result.pullRequest.state, "merged");
+        assert.match(result.ok ? (result.note ?? "") : "", /not deleted/);
+    });
+
+    it("deletes the branch when the repo id is typed in another case (PR 215 review)", async () => {
+        const calls: Call[] = [];
+        const host = hostWith(stubFetch((method) => (method === "PUT" ? json({ merged: true }) : method === "DELETE" ? json(undefined, 204) : json(PR_JSON)), calls));
+        assert.equal((await host.mergePullRequest(toRepoId("Octo/Widgets"), PR_ID)).ok, true);
+        assert.equal(calls.filter((c) => c.method === "DELETE").length, 1);
     });
 });
 

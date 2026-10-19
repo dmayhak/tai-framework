@@ -188,7 +188,8 @@ export interface CreateCommitStatusInput {
  * same ok/reason pattern with a payload that fits what a PR merge actually returns.
  */
 export type GitMutationResult =
-    | { readonly ok: true; readonly pullRequest: PullRequestRef }
+    /** `note`: something best-effort after the mutation that did not happen (PR 215 review), e.g. the branch was not deleted. */
+    | { readonly ok: true; readonly pullRequest: PullRequestRef; readonly note?: string }
     | { readonly ok: false; readonly reason: string };
 
 // ---------- GitHost ----------
