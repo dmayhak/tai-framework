@@ -473,8 +473,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
     current requirements. Each entry carries an owner and a revisit condition, not just a note.
   - **Explicitly Out of Scope:** a separate table — things actively considered and rejected
     for this work, each with its reason, so the same question isn't relitigated.
-- **Issue creation log:** which Jira Epics/Stories/Bugs/Spikes were created from this batch,
-  which `StoryDependency` links were applied, and how any `localId` references were resolved.
+- **Issue creation log** (`jira-issue-creation-log` output type): which Jira Epics/Stories/Bugs/
+  Spikes were created from this batch, which `StoryDependency` links were applied, and how any
+  `localId` references were resolved.
 - **Subtask WBS:** Perry's own assessment of the initial subtask set for each created Story
   (item 4), corrected by each owner on pick-up — a Confluence page (`subtask-wbs` output type)
   attached to the Kickoff Story, alongside Ada's work-breakdown doc.
