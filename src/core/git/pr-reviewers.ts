@@ -126,7 +126,11 @@ export function reviewersNotRequested(
     author: HumanRef
 ): readonly HumanRef[] {
     const same = (a: HumanRef, b: HumanRef): boolean => sameHuman(a, b) || String(a.id).toLowerCase() === String(b.id).toLowerCase();
-    return requested.filter((r) => !same(r, author) && !onPullRequest.some((p) => same(p.human, r)));
+    // The author is matched by id or email only: a shared display name must not hide a reviewer (PR 215 review).
+    const isAuthor = (r: HumanRef): boolean =>
+        String(r.id).toLowerCase() === String(author.id).toLowerCase() ||
+        (r.email !== undefined && author.email !== undefined && r.email.toLowerCase() === author.email.toLowerCase());
+    return requested.filter((r) => !isAuthor(r) && !onPullRequest.some((p) => same(p.human, r)));
 }
 
 /** Does `human` appear on the PR Reviewers list? The check `readyToReview` and

@@ -125,6 +125,11 @@ describe("reviewersNotRequested (PR 215 review)", () => {
         assert.deepEqual(reviewersNotRequested([h("AUTHOR"), h("bob")], [{ human: h("bob") }], author), []);
         assert.deepEqual(reviewersNotRequested([h("x", { email: "a@b.co" })], [], h("y", { email: "A@B.CO" })), []);
     });
+
+    it("a reviewer who only shares the author's display name is still named (PR 215 review)", () => {
+        const sameName = { id: toHumanId("sam-2"), displayName: "Sam" };
+        assert.deepEqual(reviewersNotRequested([sameName], [], { id: toHumanId("sam-1"), displayName: "Sam" }), [sameName]);
+    });
 });
 
 describe("parseGitHubLogin", () => {
