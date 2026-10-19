@@ -8,7 +8,7 @@ current fact; this file says why they are what they are. Where the two disagree,
 For a new initiative Perry creates the Epic and the Kickoff Story; Ada's `Research` is the first
 analytical work inside it. The Phase 1 bootstrap (brief §9) is the exception and is history: TAI's own
 requirements spec was written from the brief as local markdown before Jira and Confluence were wired
-in. The `requirements-spec` output type in the front matter dates from that.
+in. A `requirements-spec` output type dated from that and was removed from the front matter: a Kickoff's requirements are the PM's PRD under the Requirements subtask, and Ada's output is always a Confluence doc. `epic-breakdown` was removed as the same thing as `work-breakdown`: one doc per Kickoff Story, revised in place through EpicReview, with the standalone Epic→Story pass getting its own Kickoff Story and its own copy.
 
 ## Elicitation principles
 
