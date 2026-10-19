@@ -542,6 +542,13 @@ describe("mergePullRequest", () => {
         assert.match(result.ok ? (result.note ?? "") : "", /branch TAI-1-thing was not deleted/);
     });
 
+    it("a PR that cannot be read is a refusal, not a throw (PR 215 review)", async () => {
+        const host = hostWith(stubFetch(() => json({ message: "Not Found" }, 404)));
+        const result = await host.mergePullRequest(REPO, PR_ID);
+        assert.equal(result.ok, false);
+        assert.match(result.ok ? "" : result.reason, /not found/i);
+    });
+
     it("a rate limit after the merge still reports the merge, with what was not done (PR 215 review)", async () => {
         let gets = 0;
         const host = hostWith(

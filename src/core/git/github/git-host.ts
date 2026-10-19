@@ -280,7 +280,15 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
 
         async mergePullRequest(repo: RepoId, id: PullRequestId, strategy?: MergeStrategy, options?: MergeOptions): Promise<GitMutationResult> {
             const expected = options?.expectedHead;
-            const before = await requirePullRequest(repo, id);
+            // Read first so it can stand in after the merge. A PR that cannot be read is a refusal, as the
+            // interface promises, not a throw (PR 215 review).
+            let before: GitHubPullRequestJson;
+            try {
+                before = await requirePullRequest(repo, id);
+            } catch (err) {
+                if (err instanceof GitHubRejection) return { ok: false, reason: err.reason };
+                throw err;
+            }
             if (expected) {
                 // Found live (TAI-585): GitHub reports a PR's new head a few seconds after a push, so the
                 // PR read the gate was checked on can be behind the branch. The branch itself is current.
@@ -311,6 +319,7 @@ export function createGitHubGitHost(client: RestClient, options: GitHubGitHostOp
                 pr = await requirePullRequest(repo, id);
             } catch (err) {
                 if (!(err instanceof GitHubRejection) && !(err instanceof StorageConnectivityError)) throw err;
+                // `merged_at` here is only a marker that maps to "merged"; the read that failed had the real one.
                 pr = { ...before, state: "closed", merged_at: before.merged_at ?? new Date().toISOString() };
             }
             // Matches Bitbucket's close_source_branch: a branch is used for one unit of work (brief §6).

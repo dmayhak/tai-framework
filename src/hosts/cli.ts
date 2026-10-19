@@ -143,7 +143,7 @@ import { PersonaScopedGitHost } from "../core/persona/scoped-git-host.js";
 import { createGitHostSession, hasGitHostCredentials, resolveGitHostKind, selfReviewAllowed, type GitHostSession } from "../core/git/host-factory.js";
 import { detectGitRemote } from "../core/commands/discovery.js";
 import { toPullRequestId, toRepoId, type GitHost, type GitMutationResult, type PullRequestComment, type PullRequestRef, type RepoId } from "../core/git/interface.js";
-import { loadPrReviewers, isEligibleReviewer, githubReviewers } from "../core/git/pr-reviewers.js";
+import { loadPrReviewers, isEligibleReviewer, githubReviewers, reviewersNotRequested } from "../core/git/pr-reviewers.js";
 import { refreshLocalDefaultBranch, renderLocalFetchNote } from "../core/git/local-fetch.js";
 import { gatherDiff, gatherMergedDiff, readFileAtRef, readRenderedFindings, readReviewManifest, recordRenderedFindings, renderReviewPrep, writeReviewFiles } from "../core/git/review-prep.js";
 import { renderPersonaTurn } from "../core/persona/turn.js";
@@ -162,7 +162,7 @@ import { latestVerification, unverifiedCloseNote } from "../core/storage/verific
 import { findVerifyPullRequests, renderVerifyTurn } from "../core/commands/verify.js";
 import { rebaseNeededCommentBody, hasUnresolvedRebaseMarker } from "../core/storage/rebase-marker.js";
 import { isAssignmentGateReason } from "../core/storage/assignment-gate.js";
-import { loadRoster, sameHuman, type Roster } from "../core/personas/roster.js";
+import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
@@ -2012,7 +2012,7 @@ async function main(): Promise<void> {
             console.log(renderPullRequestRef(pr, personaId, issue.key));
             // PR 215 review: a reviewer request that failed after the PR was created (GitHub asks for them
             // in a second call) leaves the PR without them; say who.
-            const notRequested = (prReviewers ?? []).filter((r) => !pr.reviewers.some((p) => sameHuman(p.human, r)));
+            const notRequested = reviewersNotRequested(prReviewers ?? [], pr.reviewers, pr.author);
             if (notRequested.length > 0) {
                 console.log(`\nNote: ${notRequested.map((r) => r.displayName).join(", ")} could not be requested as reviewer on the PR; add them on the git host.`);
             }

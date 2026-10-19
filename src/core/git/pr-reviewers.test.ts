@@ -10,6 +10,7 @@ import {
     parsePrReviewers,
     parseGitHubLogin,
     githubReviewers,
+    reviewersNotRequested,
     isEligibleReviewer,
     loadPrReviewers,
     loadCachedPrReviewers,
@@ -102,6 +103,27 @@ describe("githubReviewers and login matching (TAI-583)", () => {
     it("a GitHub identity is eligible by its login", () => {
         assert.equal(isEligibleReviewer(roster, { id: toHumanId("Alice"), displayName: "Alice A." }), true);
         assert.equal(isEligibleReviewer(roster, { id: toHumanId("mallory"), displayName: "Mallory" }), false);
+    });
+});
+
+describe("reviewersNotRequested (PR 215 review)", () => {
+    const h = (id: string, extra: Partial<HumanRef> = {}): HumanRef => ({ id: toHumanId(id), displayName: id, ...extra });
+    const author = h("author");
+
+    it("is empty when every requested reviewer is on the PR, whatever the case of the login", () => {
+        assert.deepEqual(reviewersNotRequested([h("Bob"), h("carol")], [{ human: h("bob") }, { human: h("CAROL") }], author), []);
+    });
+
+    it("names a reviewer the host did not take", () => {
+        assert.deepEqual(
+            reviewersNotRequested([h("bob"), h("carol")], [{ human: h("bob") }], author).map((r) => r.id),
+            ["carol"]
+        );
+    });
+
+    it("never counts the PR's author, who the host cannot take as a reviewer", () => {
+        assert.deepEqual(reviewersNotRequested([h("AUTHOR"), h("bob")], [{ human: h("bob") }], author), []);
+        assert.deepEqual(reviewersNotRequested([h("x", { email: "a@b.co" })], [], h("y", { email: "A@B.CO" })), []);
     });
 });
 

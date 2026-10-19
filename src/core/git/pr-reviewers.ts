@@ -114,6 +114,21 @@ export function githubReviewers(roster: readonly PrReviewer[]): { readonly revie
     return { reviewers, dropped };
 }
 
+/**
+ * The humans we asked the git host to request that the created PR does not list as reviewers (PR 215
+ * review). Matched as `sameHuman` does, and also by id ignoring case: a GitHub login is
+ * case-insensitive and the page is hand-typed. The PR's own author is never counted: the host will not
+ * take them as a reviewer, and the GitHub backend leaves them out on purpose.
+ */
+export function reviewersNotRequested(
+    requested: readonly HumanRef[],
+    onPullRequest: readonly { readonly human: HumanRef }[],
+    author: HumanRef
+): readonly HumanRef[] {
+    const same = (a: HumanRef, b: HumanRef): boolean => sameHuman(a, b) || String(a.id).toLowerCase() === String(b.id).toLowerCase();
+    return requested.filter((r) => !same(r, author) && !onPullRequest.some((p) => same(p.human, r)));
+}
+
 /** Does `human` appear on the PR Reviewers list? The check `readyToReview` and
  *  `git-pr create`'s roster-derived reviewer assignment both rely on. */
 export function isEligibleReviewer(reviewers: readonly PrReviewer[], human: Pick<HumanRef, "id"> & Partial<HumanRef>): boolean {
