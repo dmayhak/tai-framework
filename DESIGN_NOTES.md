@@ -937,6 +937,9 @@ decide, just worth having in one place:
 | Code Reviewer (Cole) | `review-notes` |
 | Tester (Tessa) | `test-plan`, `triage-notes`, `uat-plan` |
 
+*Superseded for the Analyst row: `requirements-spec` and `epic-breakdown` were later removed (the first was Bootstrap
+history, the second the same doc as `work-breakdown`). `src/personas/analyst.md` is current.*
+
 ### 6d resolved — Confluence↔Jira linking (already covered by existing decisions)
 
 - **6d1/6d2/6d3:** brief §4's existing rule already answers all three — pages tie to
