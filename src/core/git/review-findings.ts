@@ -11,7 +11,7 @@
  * hand.
  *
  * Severity taxonomy and rendering shape follow reviewd's own proven design
- * (`reviewd`'s `models.py`/`commenter.py`) — ADR Decision §1/§2 — with one
+ * (the `reviewd` project's `models.py`/`commenter.py`) — ADR Decision §1/§2 — with one
  * deliberate departure: `leaning`/`leaningReason` replace reviewd's `approve: bool`, since
  * nothing in tai-pr auto-approves (brief §3.4) and Cole's own decision axis is the ternary
  * approve/requestChanges/neither a human always makes, not a bot's auto-approve gate.

@@ -63,7 +63,7 @@ const GIT_HOST_LABEL: Record<GitHostKind, string> = { bitbucket: "Bitbucket", gi
 // ---------- Pure helpers ----------
 
 /** Files `init` generates or edits that a teammate or a fresh clone only gets once they are
- *  committed and pushed -- the EXA case where `CLAUDE.md` sat in a local commit and a clean
+ *  committed and pushed -- the case on a real target project where `CLAUDE.md` sat in a local commit and a clean
  *  clone simply lacked it. */
 const SHARED_INIT_FILES = ["CLAUDE.md", "GEMINI.md", ".gitignore"] as const;
 

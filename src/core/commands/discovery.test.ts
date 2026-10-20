@@ -339,7 +339,7 @@ describe("decidePick", () => {
     });
 
     it("a partial match narrows the list instead of guessing", () => {
-        const d = decidePick("homes", projects, projects);
+        const d = decidePick("exam", projects, projects);
         assert.equal(d.kind, "narrowed");
         assert.deepEqual(d.kind === "narrowed" ? d.matches.map((c) => c.value) : [], ["EXA"]);
     });

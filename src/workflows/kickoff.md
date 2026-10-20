@@ -86,7 +86,7 @@ A type left out on purpose is silenced with a first-line `Skipped: ux-design —
 
 ## EpicReview gate (mandatory, human-gated, TAI-354)
 
-Found live (2026-09-25, EXA): Ada's proposed Epic/Story breakdown was written to
+Found live (2026-09-25, on a real target project): Ada's proposed Epic/Story breakdown was written to
 Confluence and immediately treated as settled — the very next thing surfaced as ready to
 work was a Kickoff-subtask-level `ArchitectureDesign` deep-dive, with no step in between
 where a human had actually discussed the breakdown itself. A human reading the doc and
