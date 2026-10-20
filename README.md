@@ -148,7 +148,7 @@ TAI installs itself **once per machine**, at a fixed location (`~/.tai-framework
 every project on that machine shares the one install:
 
 ```bash
-git clone git@bitbucket.org:dmayhak/tai-framework.git ~/.tai-framework
+git clone git@github.com:dmayhak/tai-framework.git ~/.tai-framework
 cd ~/.tai-framework
 npm install
 npx tsx src/hosts/cli.ts install-global
@@ -432,7 +432,7 @@ need access to. From the outside, a normal fork → branch → PR flow works fin
    npm run typecheck
    npm run lint
    ```
-5. **Open a PR against `master`** with a clear description of what changed and why,
+5. **Open a PR against `main`** with a clear description of what changed and why,
    referencing the issue it addresses if there is one.
 
 By contributing, you agree your contribution is licensed under this project's

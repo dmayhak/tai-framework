@@ -23,6 +23,7 @@ The rules for working in this repo. Read `PROJECT_BRIEF.md` for the design; this
 - A persona prompt carries no revision or ticket references; the reason for a rule goes in `src/personas/rationale/<id>.md`.
 - A rule that can be checked mechanically is enforced in code or a test, not only written in a doc.
 - Live tests and throwaway tickets go in the `TAIT` scratch project, never in `TAI`.
+- Commit messages and PR descriptions carry no `Claude-Session:` link or other session URL: it publishes a private session ID. A `Co-Authored-By:` line is fine.
 
 ## Never
 
