@@ -307,9 +307,9 @@ Epic shells and per-Epic Kickoffs sit outside it.
 
 **TAI-354: Kickoff gains a mandatory,
 human-gated `EpicReview` step — Ada's proposed Epic breakdown is probed with the
-human, epic by epic, not rubber-stamped.** Found live on the same EXA stress-test as
+human, epic by epic, not rubber-stamped.** Found live on the same stress-test of a real target project as
 revs 67–69: after Ada's `Research` subtask produced the work-breakdown doc (proposing
-EXA's Epic breakdown) and was marked Done, the very next thing surfaced as ready to
+that project's Epic breakdown) and was marked Done, the very next thing surfaced as ready to
 work was a Kickoff-subtask-level `ArchitectureDesign` deep-dive (rev 69's own
 mechanism) — with no step in between where the human actually discussed the proposed
 breakdown itself. The only mechanically enforced Kickoff checkpoint (the PM+UX
@@ -341,7 +341,7 @@ Story** — the same container the project-level bootstrap uses, just scoped to 
 Epic — reusing the `Research` → `EpicReview` → optional `Requirements`/`UxDesign`
 sequence above rather than inventing a second mechanism for the narrower pass.
 
-New Jira sub-task issue type `EpicReview` provisioned on both TAI's and EXA's Jira
+New Jira sub-task issue type `EpicReview` provisioned on both TAI's and a target project's Jira
 projects (brief §5.2's "one native sub-task issue type per `SubtaskType`"
 convention). `analyst.md` gained a new item 3 (renumbering items 3–6 to 4–7) plus
 `create`/`workOn`/`alwaysHumanGated` grants — deliberately excluded from `complete`,

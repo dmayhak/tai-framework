@@ -2864,8 +2864,8 @@ async function main(): Promise<void> {
 // cli.test.ts existed before this. `import.meta.main` (Node 24, this repo's own runtime --
 // see loadDotEnv's comment) rather than the classic `import.meta.url === file://+argv[1]`
 // idiom -- that comparison breaks the moment this file is reached through a symlink (found
-// live: EVERY real invocation goes through `~/.tai-framework` -> `tai-
-// framework`, TAI-90's own fixed-install-path convention -- `argv[1]` keeps the symlink
+// live: EVERY real invocation goes through `~/.tai-framework` -> the checkout it is
+// cloned to, TAI-90's own fixed-install-path convention -- `argv[1]` keeps the symlink
 // path while `import.meta.url` resolves through it, so the two never matched and `main()`
 // silently never ran at all). `import.meta.main` handles that correctly by construction.
 if (import.meta.main) {
