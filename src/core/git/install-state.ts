@@ -37,7 +37,10 @@ export async function describeTaiInstall(root: string): Promise<TaiInstallState 
     if (!commit) return null;
     const branch = await tryGit(["symbolic-ref", "--short", "-q", "HEAD"], root);
     const originHead = await tryGit(["symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"], root);
-    return { root, branch: branch || null, commit, defaultBranch: originHead ? originHead.replace(/^origin\//, "") : null };
+    // A symref naming a branch that has no remote-tracking ref (origin repointed at another repo) is not a
+    // recorded default: trusting it would warn that a clone on `main` is off its default `master` (TAI-594).
+    const recorded = originHead && (await tryGit(["rev-parse", "--verify", "--quiet", `refs/remotes/${originHead}`], root)) ? originHead : null;
+    return { root, branch: branch || null, commit, defaultBranch: recorded ? recorded.replace(/^origin\//, "") : null };
 }
 
 const USUAL_DEFAULTS: ReadonlySet<string> = new Set(["main", "master"]);
