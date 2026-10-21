@@ -202,6 +202,28 @@ describe("refreshLocalDefaultBranch", () => {
     });
 });
 
+describe("refreshLocalDefaultBranch when origin/HEAD names a branch that no longer exists (TAI-594)", () => {
+    /** Renames the bare remote's default branch from master to main, then removes the clone's
+     *  origin/master ref, as when a clone is repointed at a repo whose default is main. The
+     *  clone's origin/HEAD symref still names origin/master. */
+    async function renameRemoteDefaultToMain(remote: string, local: string): Promise<void> {
+        await git(["branch", "-m", "master", "main"], remote);
+        await git(["symbolic-ref", "HEAD", "refs/heads/main"], remote);
+        await git(["update-ref", "-d", "refs/remotes/origin/master"], local);
+    }
+
+    it("asks the remote for its real default branch instead of reporting a failed fetch", async () => {
+        await withRemoteAndClone(async ({ remote, local, taiRoot }) => {
+            await renameRemoteDefaultToMain(remote, local);
+            assert.equal(await git(["symbolic-ref", "refs/remotes/origin/HEAD"], local), "refs/remotes/origin/master");
+
+            const outcome = await refreshLocalDefaultBranch(local, taiRoot);
+            assert.notEqual(outcome.kind, "fetch-failed", JSON.stringify(outcome));
+            assert.equal((outcome as { branch?: string }).branch, "main");
+        });
+    });
+});
+
 describe("refreshLocalDefaultBranch under an empty core.sshCommand (TAI-431/433)", () => {
     // Gemini CLI's shell sets core.sshCommand to the empty string; the fake ssh serves ssh://fakehost/<path> locally.
 
