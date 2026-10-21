@@ -78,9 +78,10 @@ async function tryRemoteGit(args: readonly string[], cwd: string): Promise<strin
 /** Local-only default-branch resolution — no Bitbucket/GitHost dependency. Tries the
  *  cached `origin/HEAD` symref first (fast, no network); falls back to `ls-remote`
  *  (one network round-trip) when that symref was never set, which is common on a clone
- *  that didn't fetch with `--tags`/full remote setup, or when it names a branch that no
- *  longer exists (a default branch renamed upstream, or `origin` repointed at another
- *  repo: TAI-594). */
+ *  that didn't fetch with `--tags`/full remote setup, or when it names a branch that has no
+ *  remote-tracking ref (a clone whose `origin` was repointed at another repo: TAI-594).
+ *  Not covered: a default branch renamed upstream whose old `origin/<branch>` ref still exists,
+ *  since a plain `git fetch` does not prune it and the symref then looks valid. */
 async function resolveDefaultBranch(cwd: string): Promise<string | null> {
     const symref = await tryGit(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd);
     if (symref && (await tryGit(["rev-parse", "--verify", "--quiet", `refs/remotes/${symref}`], cwd))) {
