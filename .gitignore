@@ -33,7 +33,9 @@ Thumbs.db
 
 # Environment
 .env
-.env.local
+# Any variant: .env.local, a second account's token file (.env.reviewer), and so on.
+.env.*
+!.env.example
 
 # Local MCP server credentials (Jira/Bitbucket API tokens) -- never commit these
 /.gemini/settings.json
