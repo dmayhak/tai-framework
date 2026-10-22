@@ -643,7 +643,8 @@ These are settled. Change them deliberately and update this file if you do.
     create with neither is refused, so a page never lands at the space root by accident.
     `project-home` is the one type that is not filed (the space's own Overview page).
     `page file <PAGE-ID> type=<output-type>` files an existing loose page, and `/tai-audit`'s
-    `loose-pages` check lists the pages left at the root (`page loose <SPACE-KEY>`).
+    `loose-pages` check lists the pages left at the top of the space (`page loose <SPACE-KEY>`; on
+    Confluence, the children of the space home page, which a page created with no parent lands under).
   - **Naming convention:** page titles are structured —
     `<JIRA-KEY> — <Doc Type>: <short description>` (e.g. `PROJ-123 — ADR: Async job
     queue`). Unlike a Jira issue (whose native issue-type icon already distinguishes it

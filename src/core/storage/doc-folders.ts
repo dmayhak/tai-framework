@@ -103,8 +103,7 @@ export async function resolvePageParent(
 }
 
 /** The pages at a space's root that are neither a doc-type folder nor the `Config` folder (brief §4): the pages
- *  that should have been filed. The space's own Overview page also sits at the root; it is the caller's to
- *  recognise, since a backend may not say which page that is. */
+ *  that should have been filed. */
 export function looseRootPages(rootPages: readonly PageSummary[]): readonly PageSummary[] {
     const kept = new Set<string>([...DOC_FOLDER_NAMES, CONFIG_FOLDER_TITLE]);
     return rootPages.filter((p) => !kept.has(p.title));

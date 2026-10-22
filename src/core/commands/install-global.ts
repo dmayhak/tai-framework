@@ -569,7 +569,7 @@ function auditSkillBody(taiHome: string): string {
         "Pages belong in their doc-type folder (brief §4), never at the space root. Run " +
         `\`${taiHome}/src/hosts/cli.ts page loose <SPACE-KEY>\` for the project's space (the space key is in ` +
         "its `.env`): it lists every page at the root that is not a doc-type folder or `Config`. The " +
-        "space's own Overview page also sits at the root and is not a finding. A finding is: the page id " +
+        "space's own Overview page (its home page) is never listed, and is not a finding. A finding is: the page id " +
         "and title, and the output type it most likely is (from its title and content) so the human can " +
         `file it with \`${taiHome}/src/hosts/cli.ts page file <PAGE-ID> type=<OUTPUT-TYPE>\`. Report only; never ` +
         "file a page yourself.\n\n" +

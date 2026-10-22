@@ -284,19 +284,16 @@ export function createConfluenceDocStore(
 
         async listRootPages(spaceKey: string, limit = 250): Promise<readonly PageSummary[]> {
             const sid = await resolveSpaceId(spaceKey);
-            const res = await client.request<{ results: RawPage[] }>(
-                "GET",
-                `${API}/spaces/${sid}/pages?depth=root&limit=${limit}`
-            );
-            return Promise.all(
-                res.results.map(async (raw) => ({
-                    id: toPageId(raw.id),
-                    spaceKey: await resolveSpaceKeyForId(raw.spaceId),
-                    title: raw.title,
-                    createdAt: raw.createdAt ?? raw.version.createdAt,
-                    updatedAt: raw.version.createdAt,
-                }))
-            );
+            // Found live (TAI-600): Confluence puts a page created with no parent UNDER THE SPACE HOME PAGE, so the
+            // top of the tree is the home page's children. `depth=root` returns only the home page itself, which
+            // would list nothing. A space with no home page falls back to `depth=root`.
+            const space = await client.request<{ homepageId?: string | null }>("GET", `${API}/spaces/${sid}`);
+            const listPath = space.homepageId
+                ? `${API}/pages/${space.homepageId}/children?limit=${limit}`
+                : `${API}/spaces/${sid}/pages?depth=root&limit=${limit}`;
+            const res = await client.request<{ results: { id: string; title: string }[] }>("GET", listPath);
+            const resolvedKey = await resolveSpaceKeyForId(sid);
+            return res.results.map((raw) => ({ id: toPageId(raw.id), spaceKey: resolvedKey, title: raw.title }));
         },
 
         /**

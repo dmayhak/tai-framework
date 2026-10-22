@@ -850,13 +850,7 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
 
         async listRootPages(spaceKey: string, limit?: number): Promise<readonly PageSummary[]> {
             const roots = (await readAllPages(rootDir, spaceKey)).filter((p) => p.parentId === undefined);
-            const summaries = roots.map(({ id, spaceKey: key, title, createdAt, updatedAt }) => ({
-                id,
-                spaceKey: key,
-                title,
-                createdAt,
-                updatedAt,
-            }));
+            const summaries = roots.map(({ id, spaceKey: key, title }) => ({ id, spaceKey: key, title }));
             return limit !== undefined ? summaries.slice(0, limit) : summaries;
         },
 

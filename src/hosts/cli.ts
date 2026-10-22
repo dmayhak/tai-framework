@@ -2835,18 +2835,21 @@ async function main(): Promise<void> {
         // TAI-598: read primitive for `tai-audit`'s `loose-pages` check -- the pages at a space's root that are
         // not a doc-type folder or Config.
         if (action === "loose") {
+            const LOOSE_PAGES_LIMIT = 250;
             const [spaceKey] = pageArgs;
             if (!spaceKey) throw new Error("Usage: page loose <SPACE-KEY>");
-            const loose = looseRootPages(await config.backend.docStore.listRootPages(spaceKey));
+            const rootPages = await config.backend.docStore.listRootPages(spaceKey, LOOSE_PAGES_LIMIT);
+            const loose = looseRootPages(rootPages);
             console.log(
                 [
                     `# Loose pages at the root of ${spaceKey} (${loose.length})`,
                     "",
                     loose.length
-                        ? loose.map((p) => `- ${p.id} — ${p.title} (created ${p.createdAt})`).join("\n")
+                        ? loose.map((p) => `- ${p.id} — ${p.title}`).join("\n")
                         : "_(none: every page is filed)_",
-                    "",
-                    "The space's own Overview page also sits at the root; it is not a finding.",
+                    ...(rootPages.length >= LOOSE_PAGES_LIMIT
+                        ? ["", `Only the first ${LOOSE_PAGES_LIMIT} pages at the root were read, so there may be more.`]
+                        : []),
                 ].join("\n")
             );
             return;
