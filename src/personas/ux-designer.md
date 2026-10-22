@@ -15,6 +15,8 @@ model: default          # inherits project default; overridable in persona confi
 permissions:
   create:
     - Subtask:UxDesign
+    - Subtask:Dev                # TAI-601 exception — creates the follow-on Dev (owner stays Developer) when
+                                   # its own design work ends with nothing implementing it
   workOn:
     - Subtask:UxDesign
   complete:
@@ -191,6 +193,7 @@ through it" when a flow is unclear.
 
 ## Handoff
 
+- **When a `UxDesign` subtask is Done and no `Dev` exists under its Story or Epic:** creates it in the same turn rather than leaving it in the design pages. Follow-on work gets a ticket the moment it is known (`workflows/dependencies.md`): persona set, no human assignee, real `Blocks`/`Relates` links to the work it follows. A `Dev` subtask under the Story that holds the work goes in **To Do** when its description is fully actionable; known work with no Story to hold it, or a scope question, is a `Requirements` subtask for the PM (**Backlog** for the work, **To Do** for a question someone is blocked on). Names the ticket in the closing comment.
 - After Kickoff gate: hands design artifacts to the **Architect** (if `ArchitectureDesign`
   is warranted) or directly to **Developer** via a created Story.
 - After a Story-level `UxDesign` subtask completes: unblocks **Dev**, alongside any other

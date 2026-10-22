@@ -409,6 +409,23 @@ tickets back. Jira Automation rules could add a native guard as an optional laye
   bound as everywhere else in this file (no Epic) — whoever links a page to a
   subtask links it to that subtask's parent in the same turn, not as a follow-up
   pass.
+- **Follow-on work gets a ticket the moment it is known, not a comment or a page (TAI-601).** `/tai-ready`
+  reads tickets only, and Backlog is invisible to it, so a persona who finishes design work and names what
+  must happen next only in a comment or a Confluence page leaves the board looking idle (found live in the
+  homeschooling project, 2026-10-22: the DBA approved the schema notes and the migrations had no ticket).
+  Anyone who knows a task is needed creates it in the same turn, with the persona set for whoever will do it,
+  **no human assignee**, and real `Blocks`/`Relates` links to the work it follows (the "as soon as known"
+  rule above), so the PM sees it in grooming and assignment stays the PM's and the human's call. Its status
+  follows the TAI-292 rule:
+  - **To Do** when a Story already exists to hold it and the description is fully actionable, so its owner
+    sees it in `/tai-ready`.
+  - **Backlog**, linked, when the work has no home yet (where it goes is the PM's call): `/tai-groom`'s
+    section (c) lists a Backlog ticket with no open blocker.
+  - **To Do** for a decision or scope question for the PM or the human (a `Requirements` subtask carrying
+    the costed options), because someone is blocked on it and Backlog is invisible to `/tai-ready`.
+  As a backstop, `/tai-ready` lists a Done `Database` or `ArchitectureDesign` subtask on an open Story with
+  no `Dev` under that Story or its Epic as "design done, nothing implements it" in the PM's list, and
+  `/tai-audit`'s `design-without-dev` check reports the same list; both are show-only.
 
 ## Open Questions
 - **Resolved (D12):** test tiers are sequential by default

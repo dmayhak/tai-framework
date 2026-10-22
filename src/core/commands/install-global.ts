@@ -27,6 +27,7 @@
  * exist yet, `installGlobal` fails loudly with instructions rather than cloning it itself.
  */
 
+import { DESIGN_WITHOUT_DEV_HEADING } from "../storage/design-without-dev.js";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -452,6 +453,7 @@ const AUDIT_CHECKS: readonly { readonly name: string; readonly title: string }[]
     { name: "stale-verification", title: "Stale test/verification claims" },
     { name: "orphaned-descriptions", title: "Orphaned or contradicting descriptions" },
     { name: "loose-pages", title: "Confluence pages left at the space root" },
+    { name: "design-without-dev", title: "Done design work with nothing implementing it" },
 ];
 
 function auditSkillBody(taiHome: string): string {
@@ -573,6 +575,15 @@ function auditSkillBody(taiHome: string): string {
         "and title, and the output type it most likely is (from its title and content) so the human can " +
         `file it with \`${taiHome}/src/hosts/cli.ts page file <PAGE-ID> type=<OUTPUT-TYPE>\`. Report only; never ` +
         "file a page yourself.\n\n" +
+        "## Check: `design-without-dev` — Done design work with nothing implementing it\n\n" +
+        "A `Database` or `ArchitectureDesign` subtask that is Done, on a Story that is still open, with no `Dev` " +
+        "subtask under that Story or any Story of its Epic, leaves the next step invisible (TAI-601). Run " +
+        `\`${taiHome}/src/hosts/cli.ts ready pm\` and read its \`${DESIGN_WITHOUT_DEV_HEADING}\` section: it ` +
+        "is the same mechanical check `/tai-ready` shows the PM, so the two cannot disagree. A finding is: the " +
+        "Story key, the Done design subtask key, and whether a ticket for the follow-on work exists in Backlog " +
+        "(`issue search` for it) so the human can tell a missing ticket from one that only needs promoting. A " +
+        "design Story that deliberately has no implementation (a decision-only ADR) is a finding the human " +
+        "dismisses, not one you drop. Report only; never create the ticket yourself.\n\n" +
         "---\n\n" +
         "**Output:** for each check that ran, a `## <check-name>` section listing every finding " +
         "as its own bullet (ticket key(s) + the specific issue, concrete enough to act on without " +

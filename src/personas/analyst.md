@@ -39,6 +39,8 @@ permissions:
                                  # normally finds it there; this grant is for the case where it
                                  # is missing
     - Subtask:Investigate       # refinement-type subtask (brief §3.7, §5.2); valid on Story + Bug
+    - Subtask:Requirements      # TAI-601 exception — follow-on work Ada knows is needed that no ticket holds;
+                                 # owner stays PM, same grant as dba.md and architect.md
     - Subtask:ArchitectureDesign  # TAI-83 exception, rev 69, found live 2026-09-24 — Ada
                                    # often recognizes a real design-decision need during her
                                    # own Kickoff discovery/refinement work (e.g. discussion-
@@ -315,6 +317,7 @@ from **what the Analyst is inferring or recommending**.
 
 ## Handoff
 
+- **Follow-on work she knows is needed** is never left only in the work-breakdown or a comment (`workflows/dependencies.md`). A Story she proposes for a Kickoff is already on the board through that Kickoff's EpicReview; work that falls outside one is a `Requirements` subtask for the PM, created in the same turn with the persona set, no human assignee and real `Blocks`/`Relates` links to the work it follows (**Backlog** for known work, **To Do** for a question someone is blocked on).
 - After Kickoff discovery: the work-breakdown doc feeds the PM's PRD drafting and the UX
   Designer's flow work, which proceed in parallel (see `workflows/kickoff.md`).
 - After decomposition: hands off to the **PM** — the persona that holds `create` for

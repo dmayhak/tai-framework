@@ -47,6 +47,7 @@ import {
     type StorageBackend,
     type WorkTracker,
 } from "../core/storage/interface.js";
+import { DESIGN_WITHOUT_DEV_HEADING } from "../core/storage/design-without-dev.js";
 import { resolvePageParent, filePage, looseRootPages } from "../core/storage/doc-folders.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
@@ -895,7 +896,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
 
     // TAI-373: a hint is actionable, so "Nothing is currently ready to start." must not be printed beside one --
     // with nothing else ready the hints section below stands alone (no empty Ready Work heading).
-    const hasHints = result.unblockedSubtaskHints.length > 0;
+    const hasHints = result.unblockedSubtaskHints.length > 0 || result.designWithoutDev.length > 0;
     if (result.ready.length > 0 || !hasHints) lines.push("## Ready Work", "");
     if (result.ready.length === 0) {
         if (!hasHints) lines.push("Nothing is currently ready to start.");
@@ -923,7 +924,7 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
     }
     // TAI-373: Kickoff Stories whose precedence now allows subtasks that do not exist yet. Nothing is created
     // automatically -- the next /tai-work on the Story re-engages the PM, who judges and creates them.
-    if (hasHints) {
+    if (result.unblockedSubtaskHints.length > 0) {
         lines.push("", "## Subtasks ready to create", "");
         for (const hint of result.unblockedSubtaskHints) {
             const owner = DEFAULT_PERSONA_DISPLAY_NAME[(hint.story.persona as Persona | undefined) ?? Persona.Pm] ?? hint.story.persona;
@@ -971,6 +972,18 @@ export function renderReadyWork(result: Awaited<ReturnType<typeof findReadyWork>
             lines.push(
                 `${counter.next()}. **${issue.key}** [${issue.issueType}] ${issue.summary} — ${verdict} — ` +
                     `close it with \`issue transition ${issue.key} Done\`${blockedFlag(issue.key)}${isFlagged(issue) ? ` ${FLAG_MARKER}` : ""}${signOffRowNote(issue)}`
+            );
+            actionableCount++;
+        }
+    }
+    // TAI-602: design work that finished with no Dev to implement it. Not auto-created: the PM decides where the work
+    // goes (an existing Story, a new one, or nowhere), so the line names the Story to open with /tai-work.
+    if (result.designWithoutDev.length > 0) {
+        lines.push("", `## ${DESIGN_WITHOUT_DEV_HEADING}`, "");
+        for (const { design, story } of result.designWithoutDev) {
+            lines.push(
+                `${counter.next()}. **${story.key}** ${story.summary} — ${design.key} [${design.issueType}] is Done and no Dev exists under it ` +
+                    `or its Epic -- run /tai-work ${story.key} (Perry)`
             );
             actionableCount++;
         }

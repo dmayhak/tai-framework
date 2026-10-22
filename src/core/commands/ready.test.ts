@@ -2574,3 +2574,38 @@ describe("findReadyWork: Stories whose finished work is not verified (TAI-546)",
         });
     });
 });
+
+describe("findReadyWork designWithoutDev (TAI-602)", () => {
+    async function setup(backend: StorageBackend) {
+        const story = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "S", persona: Persona.Pm });
+        await backend.workTracker.transition(story.key, Status.ToDo);
+        await backend.workTracker.transition(story.key, Status.InProgress);
+        const db = await backend.workTracker.createIssue({ projectKey: "TAI", issueType: SubtaskType.Database, summary: "D", parentKey: story.key, persona: Persona.Dba });
+        await backend.workTracker.assignIssue(db.key, CURRENT_USER);
+        await backend.workTracker.transition(db.key, Status.InProgress, { overridePrecedence: true });
+        const done = await backend.workTracker.transition(db.key, Status.Done);
+        assert.ok(done.ok, done.ok ? "" : done.reason);
+        return { story, db };
+    }
+
+    test("lists a Done Database subtask with no Dev, for the PM's list and the unscoped list", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const { story, db } = await setup(backend);
+            for (const persona of [undefined, Persona.Pm]) {
+                const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" }, persona);
+                assert.deepEqual(result.designWithoutDev.map((d) => [d.design.key, d.story.key]), [[db.key, story.key]]);
+            }
+        });
+    });
+
+    test("is empty for another persona's scoped list, and once a Dev exists", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const { story } = await setup(backend);
+            const dba = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" }, Persona.Dba);
+            assert.deepEqual(dba.designWithoutDev, []);
+            await backend.workTracker.createIssue({ projectKey: "TAI", issueType: SubtaskType.Dev, summary: "Dev", parentKey: story.key, persona: Persona.Developer });
+            const pm = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI" }, Persona.Pm);
+            assert.deepEqual(pm.designWithoutDev, []);
+        });
+    });
+});

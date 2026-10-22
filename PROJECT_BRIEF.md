@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-22 (rev 120). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-22 (rev 121). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -535,6 +535,14 @@ comments (page-level and inline) — not just Jira; `Skipped:`, `Handoff:` and `
   first line of the `Verified:` comment, and its number means show that comment, then `issue transition <KEY> Done`.
   A later `Not verified:` takes it back out; an epic, a Kickoff Story or a Spike is never listed, and the bare `/tai-pr` list
   has no such section.
+- **Follow-on work gets a ticket when it is known.** A persona whose design work ends with a next step nobody has
+  ticketed (the DBA approving schema notes while the migrations have no `Dev`) creates that ticket in the same turn:
+  persona set, no human assignee, real `Blocks`/`Relates` links, **To Do** when a Story holds it and its description is
+  fully actionable or when someone is blocked on a decision, **Backlog** when it has no home yet (`workflows/dependencies.md`).
+  The `Database`, `ArchitectureDesign`, `UxDesign` and Analyst personas hold `create` grants for it. As a backstop,
+  `/tai-ready` lists a Done `Database` or `ArchitectureDesign` subtask on an open Story with no `Dev` under that Story
+  or its Epic, under "Design done, nothing implements it" in the PM's list (`findDesignWithoutDev`, shared with the
+  `/tai-audit` `design-without-dev` check); a Story that is itself Done or Canceled is not listed.
 
 **Why not Confluence's native inline-comment resolve checkmark:** considered and
 rejected as the signal for any of the above, for two concrete reasons — (1) the

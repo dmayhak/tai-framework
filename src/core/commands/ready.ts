@@ -51,11 +51,12 @@ import {
     isSubtaskIssueType,
     isSubtaskReady,
     unblockedAbsentSubtaskTypes,
-    type Persona,
+    Persona,
 } from "../schema/story-schema.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { UnreadableIssueError, reportUnreadableIssue } from "../storage/unreadable-issues.js";
 import { findNotVerified, findReadyToClose } from "../storage/verification.js";
+import { findDesignWithoutDev, type DesignWithoutDev } from "../storage/design-without-dev.js";
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { CommitSha, GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isGreen } from "./git-pr.js";
@@ -232,6 +233,9 @@ export interface ReadyWorkResult {
     /** TAI-569: In Progress Stories and Bugs whose latest verification is `Verified:` and whose subtasks are all Done or
      *  Canceled: waiting only for a human to close them, so `/tai-ready` lists them apart from real in-flight work. */
     readonly readyToClose: ReadonlySet<IssueKey>;
+    /** TAI-602: Done `Database` / `ArchitectureDesign` subtasks on an open Story with no `Dev` under that Story or its
+     *  Epic ("design done, nothing implements it"). PM's list only: empty for another persona's scoped list. Show-only. */
+    readonly designWithoutDev: readonly DesignWithoutDev[];
 }
 
 interface ParentPrecedenceContext {
@@ -884,6 +888,8 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
     const notVerified = await findNotVerified(deps.workTracker, deps.projectKey, inProgress.map((c) => c.issue));
     const readyToClose = await findReadyToClose(deps.workTracker, deps.projectKey, inProgress.map((c) => c.issue));
 
+    const designWithoutDev = persona === undefined || persona === Persona.Pm ? await findDesignWithoutDev(deps.workTracker, deps.projectKey) : [];
+
     const { readyToReview, readyToTest, readyToMerge, waitingToMerge } = await computePRSections(deps);
     const staleLivingDocs = await computeStaleLivingDocs(deps.workTracker, deps.taiRoot, deps.projectKey);
 
@@ -914,6 +920,7 @@ export async function findReadyWork(deps: FindReadyWorkDeps, persona?: Persona):
         assigneeSuggestions,
         notVerified,
         readyToClose,
+        designWithoutDev,
     };
 }
 

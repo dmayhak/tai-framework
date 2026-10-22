@@ -100,3 +100,4 @@ formal marker; the persona creating the next subtask judges readiness.
 - Writing for reading: TAI-475 and TAI-504.
 - The hand-off comment: TAI-489.
 - Unblocking human-gated work: TAI-389/TAI-395.
+- **Decided (TAI-601):** Ada creates a `Requirements` subtask for follow-on work no ticket holds (a Story she proposes for a Kickoff is already on the board); see `workflows/dependencies.md`.

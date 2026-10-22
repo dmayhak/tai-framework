@@ -117,3 +117,4 @@ or already onboarded, is TAI-516.
 - Writing for reading: TAI-475 and TAI-504.
 - The hand-off comment: TAI-489.
 - Unblocking human-gated work: TAI-389/TAI-395.
+- **Decided (TAI-601):** Aria creates the follow-on `Dev` when `ArchitectureDesign` ends with nothing implementing it; see `workflows/dependencies.md`.

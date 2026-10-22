@@ -194,7 +194,7 @@ describe("renderReadyWork flagged view (TAI-390)", () => {
         readyToTest: [],
         readyToMerge: [], waitingToMerge: [],
         blockedBy: new Map(),
-        staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(),
+        staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), designWithoutDev: [],
         assigneeSuggestions: new Map(),
     };
 
@@ -817,7 +817,7 @@ describe("the 'ready for your review' line names review-prep with the PR's real 
     it("renderReadyWork points the review line at git-pr review-prep", () => {
         const out = renderReadyWork({
             ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [candidate], readyToTest: [], readyToMerge: [], waitingToMerge: [],
-            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), designWithoutDev: [], assigneeSuggestions: new Map(),
         });
         assert.match(out, /git-pr review-prep ws\/repo 9/);
         assert.doesNotMatch(out, /git-pr review <REPO> approve/);
@@ -837,7 +837,7 @@ describe("a re-review line says so, names both commits and the diff between them
         pr: renderPRReadyWork({ readyToReview: [c], readyToMerge: [], waitingToMerge: [] } as never),
         ready: renderReadyWork({
             ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [c], readyToTest: [], readyToMerge: [], waitingToMerge: [],
-            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), designWithoutDev: [], assigneeSuggestions: new Map(),
         }),
     });
 
@@ -877,7 +877,7 @@ describe("a re-review line says so, names both commits and the diff between them
 describe("the 'Ready to close' section (TAI-569)", () => {
     const base = {
         ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [], readyToTest: [], readyToMerge: [], waitingToMerge: [],
-        blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+        blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), designWithoutDev: [], assigneeSuggestions: new Map(),
     };
     const verifiedComment = { id: "1", author: { id: "u", displayName: "U" }, body: "Verified: all 5 criteria met\n\n* AC-1 met", createdAt: "x", updatedAt: "x" };
     const done = makeIssue({ key: toIssueKey("TAI-7"), issueType: StoryType.Story, summary: "A finished story", status: Status.InProgress, comments: [verifiedComment] as never });
@@ -943,7 +943,7 @@ describe("the 'approved PRs waiting' section (TAI-564)", () => {
         const prOut = renderPRReadyWork({ readyToReview: [], readyToMerge: [mergeReady], waitingToMerge: [waiting] } as never);
         const readyOut = renderReadyWork({
             ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [], readyToTest: [], readyToMerge: [mergeReady], waitingToMerge: [waiting],
-            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), assigneeSuggestions: new Map(),
+            blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), designWithoutDev: [], assigneeSuggestions: new Map(),
         } as never);
         for (const out of [prOut, readyOut]) {
             assert.match(out, /## Approved PRs waiting on something/);
@@ -976,7 +976,7 @@ describe("renderReadyWork unblocked-subtask hints (TAI-373)", () => {
         readyToTest: [],
         readyToMerge: [], waitingToMerge: [],
         blockedBy: new Map(),
-        staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(),
+        staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), designWithoutDev: [],
         assigneeSuggestions: new Map(),
     };
     const kickoff = makeIssue({ key: toIssueKey("EXA-2"), persona: "pm" as never, status: Status.InProgress });
@@ -1135,5 +1135,25 @@ describe("actingHumanLabel (TAI-585)", () => {
         assert.equal(actingHumanLabel({ displayName: "delmayhak-coder", email: "del@mayhak.com" }), "delmayhak-coder (del@mayhak.com)");
         assert.equal(actingHumanLabel({ displayName: "del@mayhak.com", email: "del@mayhak.com" }), "del@mayhak.com");
         assert.equal(actingHumanLabel({ displayName: "Del" }), "Del");
+    });
+});
+
+describe("the 'Design done, nothing implements it' section (TAI-602)", () => {
+    const base = {
+        ready: [], onHold: [], inProgress: [], unblockedSubtaskHints: [], readyToReview: [], readyToTest: [], readyToMerge: [], waitingToMerge: [],
+        blockedBy: new Map(), staleLivingDocs: [], notVerified: new Set<IssueKey>(), readyToClose: new Set<IssueKey>(), designWithoutDev: [], assigneeSuggestions: new Map(),
+    };
+
+    it("lists the Story and the Done design subtask as a numbered action naming /tai-work", () => {
+        const story = makeIssue({ key: toIssueKey("HSA-70"), issueType: StoryType.Story, summary: "Sites schema", status: Status.InProgress });
+        const design = makeIssue({ key: toIssueKey("HSA-68"), issueType: SubtaskType.Database, summary: "Schema", status: Status.Done });
+        const out = renderReadyWork({ ...base, designWithoutDev: [{ design, story }] });
+        assert.match(out, /## Design done, nothing implements it/);
+        assert.match(out, /1\. \*\*HSA-70\*\* Sites schema — HSA-68 \[database\] is Done and no Dev exists under it or its Epic -- run \/tai-work HSA-70/);
+        assert.doesNotMatch(out, /Nothing is currently ready to start/);
+    });
+
+    it("prints no section without one", () => {
+        assert.doesNotMatch(renderReadyWork(base), /Design done/);
     });
 });
