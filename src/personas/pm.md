@@ -114,6 +114,7 @@ confluenceOutputs:
   - type: prd
   - type: jira-issue-creation-log
   - type: subtask-wbs        # item 4's subtask assessment (Perry's own), attached to the Kickoff Story
+  - type: retro-notes        # /tai-retro's retrospective page
 ---
 
 # Perry — the PM Persona
@@ -414,8 +415,8 @@ and UX flows are expected to converge before the Architect finalizes any design 
    put no question in the same turn: end your turn there. Then, in later turns:
    1. **Ask the human a few questions** about what the signals do not show: what went well, what surprised the team,
       and why the larger items happened. Ask what is needed, not a fixed list.
-   2. **Write a short retro page** in Confluence as a child page under the epic's own page (or, for a window with no
-      epic, under the project's root page): the window, what the signals showed, what the human said, and the action
+   2. **Write a short retro page** in Confluence of output type `retro-notes` (it is filed in the Work Breakdowns and Refinement
+      folder, never nested under the epic's page; name the epic or window in the title): the window, what the signals showed, what the human said, and the action
       items.
    3. **File each action item as a Backlog ticket** on your own, linked to the ticket or PR that raised it. A
       lesson about TAI itself (a persona doc, a workflow, a skill or the CLI) is filed as its own Backlog ticket in

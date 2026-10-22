@@ -33,6 +33,7 @@ export const DOC_TYPE_FOLDERS: Readonly<Record<string, DocFolderName | null>> = 
     "refinement-notes": "Work Breakdowns and Refinement",
     "subtask-wbs": "Work Breakdowns and Refinement",
     "jira-issue-creation-log": "Work Breakdowns and Refinement",
+    "retro-notes": "Work Breakdowns and Refinement",
     // UX
     "ux-flow": "UX Designs",
     wireframe: "UX Designs",
@@ -117,6 +118,9 @@ export async function filePage(docStore: DocStore, pageId: PageId, type: string)
     }
     const page = await docStore.getPage({ id: pageId });
     if (!page) throw new Error(`Page not found: ${pageId}`);
+    if (([...DOC_FOLDER_NAMES, CONFIG_FOLDER_TITLE] as string[]).includes(page.title)) {
+        throw new Error(`Page ${pageId} ("${page.title}") is itself a folder, so it is not filed under another.`);
+    }
     const folder = await ensureDocFolder(docStore, page.spaceKey, type);
     return docStore.updatePage({ id: pageId }, { parentId: folder!.id });
 }

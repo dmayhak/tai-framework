@@ -166,6 +166,13 @@ describe("filePage", () => {
         });
     });
 
+    it("refuses to file a folder under a folder", async () => {
+        await withBackend(async (backend) => {
+            const folder = await ensureDocFolder(backend.docStore, "EXA", "test-plan");
+            await assert.rejects(() => filePage(backend.docStore, folder!.id, "test-plan"), /is itself a folder/);
+        });
+    });
+
     it("refuses a type that is not filed, and a page that does not exist", async () => {
         await withBackend(async (backend) => {
             const loose = await backend.docStore.createPage({ spaceKey: "EXA", title: "Home", content: "x" });
