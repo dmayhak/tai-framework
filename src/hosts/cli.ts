@@ -47,6 +47,7 @@ import {
     type StorageBackend,
     type WorkTracker,
 } from "../core/storage/interface.js";
+import { resolvePageParent } from "../core/storage/doc-folders.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
@@ -2760,18 +2761,19 @@ async function main(): Promise<void> {
             const [spaceKey, title, content, ...kv] = pageArgs;
             if (!spaceKey || !title || !content) {
                 throw new Error(
-                    "Usage: page create <SPACE-KEY> <TITLE> <CONTENT> [parent=<PAGE-ID>]\n" +
+                    "Usage: page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE> | parent=<PAGE-ID>\n" +
+                        "  type= files the page in its doc-type folder (found or created in the space); parent= overrides it. " +
+                        "Neither is refused: a page is never left at the space root (brief section 4).\n" +
                         'Passing content from a file: pass "$(cat file)" unescaped and re-read the page afterward. ' +
                         "One unwrapped line per paragraph/bullet; sequential list numbers (brief section 4)."
                 );
             }
             const fields = parseKeyValueArgs(kv);
-            const input: CreatePageInput = {
-                spaceKey,
-                title,
-                content,
-                ...(fields["parent"] !== undefined ? { parentId: toPageId(fields["parent"]) } : {}),
-            };
+            const parentId = await resolvePageParent(config.backend.docStore, spaceKey, {
+                ...(fields["type"] !== undefined ? { type: fields["type"] } : {}),
+                ...(fields["parent"] !== undefined ? { parent: fields["parent"] } : {}),
+            });
+            const input: CreatePageInput = { spaceKey, title, content, ...(parentId ? { parentId } : {}) };
             const page = await config.backend.docStore.createPage(input);
             console.log(renderPageRef("Page created", page));
             return;
