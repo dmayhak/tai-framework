@@ -51,4 +51,27 @@ describe("TAI install state (TAI-522 ADR decision 4)", () => {
             await rm(dir, { recursive: true, force: true });
         }
     });
+    it("ignores an origin/HEAD that names a branch with no remote-tracking ref, so a repointed clone is not told it is off its default (TAI-594, PR 2 review)", async () => {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-install-state-"));
+        try {
+            const git = (...args: string[]): string => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+            git("init", "-q", "-b", "main");
+            git("config", "user.email", "t@example.com");
+            git("config", "user.name", "T");
+            await writeFile(path.join(dir, "a.txt"), "a");
+            git("add", ".");
+            git("commit", "-q", "-m", "one");
+            // origin/HEAD names origin/master, which was never fetched (as after repointing origin at a repo whose default is main).
+            git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master");
+            const found = await describeTaiInstall(dir);
+            assert.equal(found?.defaultBranch, null, "a dangling symref is not a recorded default");
+            assert.equal(renderInstallWarning(found), undefined, "main counts as a usual default, so no warning");
+
+            // With the ref present, origin/HEAD is trusted again.
+            git("update-ref", "refs/remotes/origin/master", "HEAD");
+            assert.equal((await describeTaiInstall(dir))?.defaultBranch, "master");
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
 });
