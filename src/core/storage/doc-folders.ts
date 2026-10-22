@@ -5,7 +5,7 @@
  * it. `doc-folders.test.ts` fails when a persona declares a type this table lacks.
  */
 
-import { toPageId, type DocStore, type Page, type PageId } from "./interface.js";
+import { toPageId, type DocStore, type Page, type PageId, type PageSummary } from "./interface.js";
 
 export const DOC_FOLDER_NAMES = [
     "Requirements",
@@ -17,6 +17,9 @@ export const DOC_FOLDER_NAMES = [
     "Implementation Notes",
     "Runbooks and Infra",
 ] as const;
+
+/** The top-level folder for personas' and project configuration pages (brief §4); not a doc-type folder. */
+export const CONFIG_FOLDER_TITLE = "Config";
 
 export type DocFolderName = (typeof DOC_FOLDER_NAMES)[number];
 
@@ -97,4 +100,24 @@ export async function resolvePageParent(
     if (fields.parent !== undefined) return toPageId(fields.parent);
     const folder = await ensureDocFolder(docStore, spaceKey, fields.type!);
     return folder?.id;
+}
+
+/** The pages at a space's root that are neither a doc-type folder nor the `Config` folder (brief §4): the pages
+ *  that should have been filed. The space's own Overview page also sits at the root; it is the caller's to
+ *  recognise, since a backend may not say which page that is. */
+export function looseRootPages(rootPages: readonly PageSummary[]): readonly PageSummary[] {
+    const kept = new Set<string>([...DOC_FOLDER_NAMES, CONFIG_FOLDER_TITLE]);
+    return rootPages.filter((p) => !kept.has(p.title));
+}
+
+/** Moves an existing page into the folder for `type`, in the page's own space. Throws for a type that is not
+ *  filed and for a page that does not exist. */
+export async function filePage(docStore: DocStore, pageId: PageId, type: string): Promise<Page> {
+    if (folderForDocType(type) === null) {
+        throw new Error(`Page type "${type}" is not filed in a folder, so there is nothing to file it under.`);
+    }
+    const page = await docStore.getPage({ id: pageId });
+    if (!page) throw new Error(`Page not found: ${pageId}`);
+    const folder = await ensureDocFolder(docStore, page.spaceKey, type);
+    return docStore.updatePage({ id: pageId }, { parentId: folder!.id });
 }

@@ -1029,3 +1029,30 @@ describe("flagged (TAI-390)", () => {
         });
     });
 });
+
+describe("DocStore.listRootPages (TAI-598)", () => {
+    test("lists only pages with no parent, in one space", async () => {
+        await withBackend(async (b) => {
+            const folder = await b.docStore.createPage({ spaceKey: "EXA", title: "Test Plans", content: "f" });
+            await b.docStore.createPage({ spaceKey: "EXA", title: "Filed", content: "x", parentId: folder.id });
+            await b.docStore.createPage({ spaceKey: "EXA", title: "Loose", content: "y" });
+            await b.docStore.createPage({ spaceKey: "EXB", title: "Other space", content: "z" });
+            const root = await b.docStore.listRootPages("EXA");
+            assert.deepEqual(root.map((p) => p.title).sort(), ["Loose", "Test Plans"]);
+            assert.ok(root.every((p) => p.spaceKey === "EXA"));
+        });
+    });
+
+    test("an unknown space has none", async () => {
+        await withBackend(async (b) => {
+            assert.deepEqual(await b.docStore.listRootPages("NOPE"), []);
+        });
+    });
+
+    test("honours the limit", async () => {
+        await withBackend(async (b) => {
+            for (const t of ["A", "B", "C"]) await b.docStore.createPage({ spaceKey: "EXA", title: t, content: "x" });
+            assert.equal((await b.docStore.listRootPages("EXA", 2)).length, 2);
+        });
+    });
+});

@@ -144,6 +144,18 @@ describe("renderGlobalSkillFiles", () => {
         assert.match(groom.content, /needs no ticket/i);
     });
 
+    test("the tai-audit skill has a loose-pages check that reads page loose and states one check count (TAI-598)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const audit = files.find((f) => f.relativePath === `${host}/skills/tai-audit/SKILL.md`)!;
+            assert.match(audit.content, /## Check: `loose-pages`/);
+            assert.match(audit.content, /cli\.ts page loose <SPACE-KEY>/);
+            assert.match(audit.content, /Overview page/);
+            const named = [...audit.content.matchAll(/^## Check: `/gm)].length;
+            assert.match(audit.content, new RegExp(`run all ${named} checks below`));
+            assert.doesNotMatch(audit.content, /\bseven\b/);
+        }
+    });
+
     test("covers both hosts for every skill name", () => {
         for (const name of ["tai-work", "tai-ready", "tai-pr", "tai-init", "tai-audit", "tai-groom"]) {
             assert.ok(files.some((f) => f.relativePath === `.claude/skills/${name}/SKILL.md`));

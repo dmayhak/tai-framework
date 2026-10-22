@@ -440,7 +440,7 @@ function initSkillBody(taiHome: string): string {
     );
 }
 
-/** TAI-268 (TAI-254 ADR) — the seven checks this skill runs, each a `[check-name]` value.
+/** TAI-268 (TAI-254 ADR) — the checks this skill runs, each a `[check-name]` value.
  *  Kept as a named list (not just prose) so both the argument-parsing instructions below
  *  and each check's own subsection can reference the exact same identifiers. */
 const AUDIT_CHECKS: readonly { readonly name: string; readonly title: string }[] = [
@@ -451,14 +451,15 @@ const AUDIT_CHECKS: readonly { readonly name: string; readonly title: string }[]
     { name: "duplicate-scope", title: "Duplicate scope across open tickets" },
     { name: "stale-verification", title: "Stale test/verification claims" },
     { name: "orphaned-descriptions", title: "Orphaned or contradicting descriptions" },
+    { name: "loose-pages", title: "Confluence pages left at the space root" },
 ];
 
 function auditSkillBody(taiHome: string): string {
     const checkList = AUDIT_CHECKS.map((c) => `\`${c.name}\` (${c.title})`).join(", ");
     return (
         "**What this is (TAI-254 ADR):** a report-only, purely human-initiated sweep of the " +
-        "current project's OPEN backlog for seven recurring staleness/drift patterns — the same " +
-        "seven an earlier session ran ad hoc, one \"check the rest of the tickets for X\" request " +
+        `current project's OPEN backlog (and its Confluence space) for ${AUDIT_CHECKS.length} recurring staleness/drift patterns — the same ` +
+        "patterns an earlier session ran ad hoc, one \"check the rest of the tickets for X\" request " +
         "at a time. This skill unifies them under one invocation. It never writes to Jira or " +
         "Confluence itself; every finding is surfaced for the human to decide on, case by case " +
         "(v1 has no auto-fix path at all, not even for the mechanical-looking findings).\n\n" +
@@ -476,6 +477,7 @@ function auditSkillBody(taiHome: string): string {
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue search [status=<CSV>] [type=<CSV>] [persona=<P>] [parent=<KEY>] [limit=<N>]\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts issue get <ISSUE-KEY>\n` +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts page get <SPACE-KEY> <TITLE> | page get id=<PAGE-ID>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts page loose <SPACE-KEY>\n` +
         "```\n\n" +
         "`issue search` defaults to the CURRENT project (from `.env`) and applies NO status " +
         "filter unless given one — for \"the open backlog,\" pass the whole `status=` pair as one " +
@@ -493,7 +495,7 @@ function auditSkillBody(taiHome: string): string {
         `history trail at the top, not a remembered rev number), \`${taiHome}/src/personas/*.md\` ` +
         `(one file per persona), \`${taiHome}/src/workflows/dependencies.md\` (the "material ` +
         "bearing\" link bar, §RelatesTo).\n\n" +
-        `**Argument:** \`tai-audit [check-name]\`. With no argument, run all seven checks below ` +
+        `**Argument:** \`tai-audit [check-name]\`. With no argument, run all ${AUDIT_CHECKS.length} checks below ` +
         "in sequence — each one fully independent (its own fresh searches, no sharing/batching " +
         "across checks; decision #5's own conclusion was that batching was never the actual " +
         "problem, stale-cache correctness was). With a `check-name` argument, run only that one " +
@@ -563,6 +565,14 @@ function auditSkillBody(taiHome: string): string {
         "flagging a page as orphaned from a title mention, prefer resolving it via the mentioning " +
         "ticket's own `issue get` \"Linked pages\" list (by id) if it's linked at all, and treat a " +
         "title-only miss as a lower-confidence finding, not a certain one.\n\n" +
+        "## Check: `loose-pages` — Confluence pages left at the space root\n\n" +
+        "Pages belong in their doc-type folder (brief §4), never at the space root. Run " +
+        `\`${taiHome}/src/hosts/cli.ts page loose <SPACE-KEY>\` for the project's space (the space key is in ` +
+        "its `.env`): it lists every page at the root that is not a doc-type folder or `Config`. The " +
+        "space's own Overview page also sits at the root and is not a finding. A finding is: the page id " +
+        "and title, and the output type it most likely is (from its title and content) so the human can " +
+        `file it with \`${taiHome}/src/hosts/cli.ts page file <PAGE-ID> type=<OUTPUT-TYPE>\`. Report only; never ` +
+        "file a page yourself.\n\n" +
         "---\n\n" +
         "**Output:** for each check that ran, a `## <check-name>` section listing every finding " +
         "as its own bullet (ticket key(s) + the specific issue, concrete enough to act on without " +
@@ -830,9 +840,10 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
         {
             name: "tai-audit",
             description:
-                "Report-only sweep of the open backlog for seven staleness/drift patterns -- stale brief-gap " +
+                "Report-only sweep of the open backlog for staleness/drift patterns -- stale brief-gap " +
                 "notes, undescribed output types, decision drift, missing links, duplicate scope, stale " +
-                "verification claims, orphaned/contradicting descriptions (TAI-254 ADR)",
+                "verification claims, orphaned/contradicting descriptions, pages left at the Confluence space root " +
+                "(TAI-254 ADR)",
             body: auditSkillBody(taiHome),
         },
     ];

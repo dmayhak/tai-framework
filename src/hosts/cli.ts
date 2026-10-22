@@ -47,7 +47,7 @@ import {
     type StorageBackend,
     type WorkTracker,
 } from "../core/storage/interface.js";
-import { resolvePageParent } from "../core/storage/doc-folders.js";
+import { resolvePageParent, filePage, looseRootPages } from "../core/storage/doc-folders.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
@@ -2820,6 +2820,38 @@ async function main(): Promise<void> {
             return;
         }
 
+        // TAI-598: file an existing loose page into its doc-type folder (the retrofit for pages written before
+        // `page create` required a type or a parent).
+        if (action === "file") {
+            const [pageId, ...kv] = pageArgs;
+            const type = parseKeyValueArgs(kv)["type"];
+            if (!pageId || !type) throw new Error("Usage: page file <PAGE-ID> type=<OUTPUT-TYPE>");
+            const page = await filePage(config.backend.docStore, toPageId(pageId), type);
+            await cachePage(config.taiRoot, config.projectKey, page);
+            console.log(renderPageRef("Page filed", page));
+            return;
+        }
+
+        // TAI-598: read primitive for `tai-audit`'s `loose-pages` check -- the pages at a space's root that are
+        // not a doc-type folder or Config.
+        if (action === "loose") {
+            const [spaceKey] = pageArgs;
+            if (!spaceKey) throw new Error("Usage: page loose <SPACE-KEY>");
+            const loose = looseRootPages(await config.backend.docStore.listRootPages(spaceKey));
+            console.log(
+                [
+                    `# Loose pages at the root of ${spaceKey} (${loose.length})`,
+                    "",
+                    loose.length
+                        ? loose.map((p) => `- ${p.id} — ${p.title} (created ${p.createdAt})`).join("\n")
+                        : "_(none: every page is filed)_",
+                    "",
+                    "The space's own Overview page also sits at the root; it is not a finding.",
+                ].join("\n")
+            );
+            return;
+        }
+
         // TAI-301: DocStore.updatePage already existed (exercised in conformance.ts) but
         // had no CLI path -- a persona correcting or refreshing already-published content
         // (a decision record, a living doc) had no sanctioned way to do so. Mirrors "issue
@@ -2855,7 +2887,7 @@ async function main(): Promise<void> {
 
     throw new Error(
         `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
+            `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );
 }

@@ -4,10 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DOC_TYPE_FOLDERS, folderForDocType, ensureDocFolder, resolvePageParent, DOC_FOLDER_NAMES } from "./doc-folders.js";
+import { DOC_TYPE_FOLDERS, folderForDocType, ensureDocFolder, resolvePageParent, looseRootPages, filePage, DOC_FOLDER_NAMES } from "./doc-folders.js";
 import { createFilesystemBackend } from "./filesystem-backend.js";
 import { loadBuiltinPersonaConfigs } from "../persona/config.js";
-import type { HumanRef } from "./interface.js";
+import { toPageId, type HumanRef } from "./interface.js";
 
 const USER = { id: "u1", displayName: "Test", email: "t@example.com" } as unknown as HumanRef;
 
@@ -134,6 +134,43 @@ describe("resolvePageParent", () => {
     it("a type that is not filed creates at the root, deliberately", async () => {
         await withBackend(async (backend) => {
             assert.equal(await resolvePageParent(backend.docStore, "EXA", { type: "project-home" }), undefined);
+        });
+    });
+});
+
+describe("looseRootPages", () => {
+    it("drops the doc-type folders and Config, keeps everything else", () => {
+        const page = (title: string) => ({ id: title, spaceKey: "EXA", title, createdAt: "", updatedAt: "" }) as never;
+        const loose = looseRootPages([page("Test Plans"), page("Config"), page("Schema notes: Sites (EXA-1)"), page("Runbooks and Infra")]);
+        assert.deepEqual(loose.map((p) => p.title), ["Schema notes: Sites (EXA-1)"]);
+    });
+});
+
+describe("filePage", () => {
+    it("moves a loose page under its type's folder", async () => {
+        await withBackend(async (backend) => {
+            const loose = await backend.docStore.createPage({ spaceKey: "EXA", title: "Schema notes: Sites", content: "x" });
+            const moved = await filePage(backend.docStore, loose.id, "schema-notes");
+            const folder = await backend.docStore.getPage({ spaceKey: "EXA", title: "Schema Notes and Migration Plans" });
+            assert.equal(moved.parentId, folder?.id);
+            assert.deepEqual((await backend.docStore.listRootPages("EXA")).map((p) => p.title), ["Schema Notes and Migration Plans"]);
+        });
+    });
+
+    it("files into the page's own space", async () => {
+        await withBackend(async (backend) => {
+            const loose = await backend.docStore.createPage({ spaceKey: "EXB", title: "Plan", content: "x" });
+            const moved = await filePage(backend.docStore, loose.id, "test-plan");
+            assert.equal(moved.spaceKey, "EXB");
+            assert.ok(moved.parentId);
+        });
+    });
+
+    it("refuses a type that is not filed, and a page that does not exist", async () => {
+        await withBackend(async (backend) => {
+            const loose = await backend.docStore.createPage({ spaceKey: "EXA", title: "Home", content: "x" });
+            await assert.rejects(() => filePage(backend.docStore, loose.id, "project-home"), /not filed/);
+            await assert.rejects(() => filePage(backend.docStore, toPageId("EXA-999"), "test-plan"), /not found/i);
         });
     });
 });

@@ -391,6 +391,9 @@ export interface Page {
 // either direction; an uploaded/attached image reference wasn't tested and likely
 // goes through a similar macro mechanism — verify before relying on it.
 
+/** A page without its body or comments: enough to list and file pages cheaply. */
+export type PageSummary = Pick<Page, "id" | "spaceKey" | "title" | "createdAt" | "updatedAt">;
+
 export interface CreatePageInput {
     readonly spaceKey: string;
     readonly title: string;
@@ -414,6 +417,9 @@ export interface DocStore {
     addComment(ref: PageRef, body: string): Promise<Comment>;
     editComment(ref: PageRef, commentId: string, body: string): Promise<Comment>;
     getChildren(ref: PageRef, limit?: number): Promise<readonly Page[]>;
+    /** TAI-598: the pages in a space that have no parent, i.e. sit at its root. Folders and loose pages alike:
+     *  telling a folder from a loose page is the caller's job (`doc-folders.ts`). Titles only, no bodies. */
+    listRootPages(spaceKey: string, limit?: number): Promise<readonly PageSummary[]>;
 
     // Complementary view of the same link data as WorkTracker.getLinkedPages/
     // linkPage — not a second store.

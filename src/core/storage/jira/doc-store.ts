@@ -10,6 +10,7 @@
 import {
     type DocStore,
     type Page,
+    type PageSummary,
     type PageRef,
     type CreatePageInput,
     type PagePatch,
@@ -279,6 +280,23 @@ export function createConfluenceDocStore(
             // The children endpoint returns a summary shape with no body, so fetch each in
             // full — Page promises content, and returning it empty would be a lie.
             return Promise.all(res.results.map((c) => fetchPage(toPageId(c.id))));
+        },
+
+        async listRootPages(spaceKey: string, limit = 250): Promise<readonly PageSummary[]> {
+            const sid = await resolveSpaceId(spaceKey);
+            const res = await client.request<{ results: RawPage[] }>(
+                "GET",
+                `${API}/spaces/${sid}/pages?depth=root&limit=${limit}`
+            );
+            return Promise.all(
+                res.results.map(async (raw) => ({
+                    id: toPageId(raw.id),
+                    spaceKey: await resolveSpaceKeyForId(raw.spaceId),
+                    title: raw.title,
+                    createdAt: raw.createdAt ?? raw.version.createdAt,
+                    updatedAt: raw.version.createdAt,
+                }))
+            );
         },
 
         /**

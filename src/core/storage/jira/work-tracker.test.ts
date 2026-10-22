@@ -40,6 +40,7 @@ function fakeDocStore(pages: Page[] = []): DocStore {
         addComment: notImplemented,
         editComment: notImplemented,
         getChildren: notImplemented,
+        listRootPages: notImplemented,
         getLinkedIssues: notImplemented,
         listAttachments: notImplemented,
         getAttachment: notImplemented,
