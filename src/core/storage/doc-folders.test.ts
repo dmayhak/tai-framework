@@ -146,6 +146,20 @@ describe("looseRootPages", () => {
     });
 });
 
+describe("looseRootPages and Confluence template pages (TAI-603)", () => {
+    const page = (title: string) => ({ id: title, spaceKey: "EXA", title }) as never;
+
+    it("skips pages titled 'Template - ...'", () => {
+        const loose = looseRootPages([page("Template - How-to guide"), page("Template - Troubleshooting article"), page("Notes")]);
+        assert.deepEqual(loose.map((p) => p.title), ["Notes"]);
+    });
+
+    it("still lists a page that only contains Template elsewhere in its title", () => {
+        const loose = looseRootPages([page("Schema Template"), page("Template: Sites"), page("Template")]);
+        assert.equal(loose.length, 3);
+    });
+});
+
 describe("filePage", () => {
     it("moves a loose page under its type's folder", async () => {
         await withBackend(async (backend) => {

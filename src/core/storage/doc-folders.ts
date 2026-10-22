@@ -103,11 +103,14 @@ export async function resolvePageParent(
     return folder?.id;
 }
 
-/** The pages at a space's root that are neither a doc-type folder nor the `Config` folder (brief §4): the pages
- *  that should have been filed. */
+/** The prefix of Confluence's own blueprint pages ("Template - How-to guide"), which sit under the home page. */
+const TEMPLATE_TITLE_PREFIX = "Template - ";
+
+/** The pages at a space's root that are neither a doc-type folder, the `Config` folder, nor one of Confluence's
+ *  own template pages (brief §4): the pages that should have been filed. */
 export function looseRootPages(rootPages: readonly PageSummary[]): readonly PageSummary[] {
     const kept = new Set<string>([...DOC_FOLDER_NAMES, CONFIG_FOLDER_TITLE]);
-    return rootPages.filter((p) => !kept.has(p.title));
+    return rootPages.filter((p) => !kept.has(p.title) && !p.title.startsWith(TEMPLATE_TITLE_PREFIX));
 }
 
 /** Moves an existing page into the folder for `type`, in the page's own space. Throws for a type that is not
