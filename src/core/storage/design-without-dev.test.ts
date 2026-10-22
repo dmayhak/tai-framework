@@ -1,12 +1,19 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { findDesignWithoutDev } from "./design-without-dev.js";
+import { findDesignWithoutDev, isDevDismissal } from "./design-without-dev.js";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import type { Issue, IssueFilter, IssueKey } from "./interface.js";
 
-const issue = (key: string, issueType: string, status: Status, parentKey?: string): Issue =>
-    ({ key: key as IssueKey, issueType, status, parentKey: parentKey as IssueKey | undefined, summary: key, comments: [] }) as unknown as Issue;
+const issue = (key: string, issueType: string, status: Status, parentKey?: string, comments: string[] = []): Issue =>
+    ({
+        key: key as IssueKey,
+        issueType,
+        status,
+        parentKey: parentKey as IssueKey | undefined,
+        summary: key,
+        comments: comments.map((body, i) => ({ id: String(i), body })),
+    }) as unknown as Issue;
 
 function tracker(issues: readonly Issue[]) {
     return {
@@ -17,7 +24,6 @@ function tracker(issues: readonly Issue[]) {
                     (!f.statuses || f.statuses.includes(i.status)) &&
                     (!f.parentKey || i.parentKey === f.parentKey)
             ),
-        getIssue: async (key: IssueKey) => issues.find((i) => i.key === key) ?? null,
     };
 }
 
@@ -85,5 +91,49 @@ describe("findDesignWithoutDev (TAI-602)", () => {
             issue("P-4", SubtaskType.Database, Status.Done, "P-3"),
         ]);
         assert.deepEqual(await findDesignWithoutDev(t, "P"), []);
+    });
+
+    it("flags a Done UxDesign subtask too", async () => {
+        const t = tracker([issue("P-1", StoryType.Story, Status.InProgress), issue("P-2", SubtaskType.UxDesign, Status.Done, "P-1")]);
+        assert.equal((await findDesignWithoutDev(t, "P")).length, 1);
+    });
+
+    it("skips a design subtask carrying a 'No Dev needed:' comment, the dismissal", async () => {
+        const t = tracker([
+            issue("P-1", StoryType.Story, Status.InProgress),
+            issue("P-2", SubtaskType.ArchitectureDesign, Status.Done, "P-1", ["Handoff: done", "No Dev needed: decision-only ADR"]),
+        ]);
+        assert.deepEqual(await findDesignWithoutDev(t, "P"), []);
+    });
+
+    it("a dismissal on one design subtask leaves another on the same Story listed", async () => {
+        const t = tracker([
+            issue("P-1", StoryType.Story, Status.InProgress),
+            issue("P-2", SubtaskType.ArchitectureDesign, Status.Done, "P-1", ["No Dev needed: decision only"]),
+            issue("P-3", SubtaskType.Database, Status.Done, "P-1"),
+        ]);
+        assert.deepEqual((await findDesignWithoutDev(t, "P")).map((f) => f.design.key), ["P-3"]);
+    });
+
+    it("reads no per-subtask parent: one open-Stories search, however many design subtasks", async () => {
+        const issues = [issue("P-1", StoryType.Story, Status.InProgress)];
+        for (let n = 0; n < 5; n++) issues.push(issue(`P-1${n}`, SubtaskType.Database, Status.Done, "P-1"));
+        const base = tracker(issues);
+        let searches = 0;
+        const t = { search: async (f: IssueFilter) => (searches++, base.search(f)) };
+        await findDesignWithoutDev(t, "P");
+        assert.equal(searches, 3, "designs, open Stories, Devs");
+    });
+});
+
+describe("isDevDismissal (TAI-605)", () => {
+    const c = (body: string) => [{ id: "1", body }] as never;
+
+    it("matches on the first line only, in any case", () => {
+        assert.ok(isDevDismissal(c("No Dev needed: decision-only")));
+        assert.ok(isDevDismissal(c("  no dev needed:x")));
+        assert.ok(!isDevDismissal(c("Handoff: no Dev needed: later")));
+        assert.ok(!isDevDismissal(c("First line\nNo Dev needed: yes")));
+        assert.ok(!isDevDismissal(c("No Dev needed")));
     });
 });

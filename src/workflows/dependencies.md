@@ -423,9 +423,11 @@ tickets back. Jira Automation rules could add a native guard as an optional laye
     section (c) lists a Backlog ticket with no open blocker.
   - **To Do** for a decision or scope question for the PM or the human (a `Requirements` subtask carrying
     the costed options), because someone is blocked on it and Backlog is invisible to `/tai-ready`.
-  As a backstop, `/tai-ready` lists a Done `Database` or `ArchitectureDesign` subtask on an open Story with
-  no `Dev` under that Story or its Epic as "design done, nothing implements it" in the PM's list, and
-  `/tai-audit`'s `design-without-dev` check reports the same list; both are show-only.
+  As a backstop, `/tai-ready` lists a Done `Database`, `ArchitectureDesign` or `UxDesign` subtask on an open
+  Story with no `Dev` under that Story or its Epic as "design done, nothing implements it" in the PM's list, and
+  `/tai-audit`'s `design-without-dev` check reports the same list; both are show-only. Design work that
+  deliberately has no implementation (a decision-only ADR) is dismissed with a comment on the design subtask
+  whose first line is `No Dev needed: <reason>`; it is then never listed.
 
 ## Open Questions
 - **Resolved (D12):** test tiers are sequential by default

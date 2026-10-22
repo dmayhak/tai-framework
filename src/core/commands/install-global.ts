@@ -576,14 +576,15 @@ function auditSkillBody(taiHome: string): string {
         `file it with \`${taiHome}/src/hosts/cli.ts page file <PAGE-ID> type=<OUTPUT-TYPE>\`. Report only; never ` +
         "file a page yourself.\n\n" +
         "## Check: `design-without-dev` — Done design work with nothing implementing it\n\n" +
-        "A `Database` or `ArchitectureDesign` subtask that is Done, on a Story that is still open, with no `Dev` " +
+        "A `Database`, `ArchitectureDesign` or `UxDesign` subtask that is Done, on a Story that is still open, with no `Dev` " +
         "subtask under that Story or any Story of its Epic, leaves the next step invisible (TAI-601). Run " +
         `\`${taiHome}/src/hosts/cli.ts ready pm\` and read its \`${DESIGN_WITHOUT_DEV_HEADING}\` section: it ` +
         "is the same mechanical check `/tai-ready` shows the PM, so the two cannot disagree. A finding is: the " +
         "Story key, the Done design subtask key, and whether a ticket for the follow-on work exists in Backlog " +
         "(`issue search` for it) so the human can tell a missing ticket from one that only needs promoting. A " +
-        "design Story that deliberately has no implementation (a decision-only ADR) is a finding the human " +
-        "dismisses, not one you drop. Report only; never create the ticket yourself.\n\n" +
+        "design subtask that deliberately has no implementation (a decision-only ADR) is dismissed by a " +
+        "comment whose first line is `No Dev needed: <reason>`, and is then not listed; a finding the human has not " +
+        "dismissed is never one you drop. Report only; never create the ticket yourself.\n\n" +
         "---\n\n" +
         "**Output:** for each check that ran, a `## <check-name>` section listing every finding " +
         "as its own bullet (ticket key(s) + the specific issue, concrete enough to act on without " +
