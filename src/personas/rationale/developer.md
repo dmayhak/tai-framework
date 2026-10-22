@@ -77,6 +77,7 @@ Pre-merge rework creates no new artifact; see `workflows/story.md`, "Why no Defe
 
 ## The shared bullets
 
+- Filing pages by type: the doc-type folder rule (brief §4), `src/core/storage/doc-folders.ts`, TAI-597.
 - Real links, not prose references: see `workflows/dependencies.md`'s Decided section.
 - Writing for reading: TAI-475 and TAI-504.
 - The hand-off comment: TAI-489.

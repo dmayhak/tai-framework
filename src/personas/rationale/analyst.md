@@ -93,6 +93,7 @@ formal marker; the persona creating the next subtask judges readiness.
 
 ## The shared bullets
 
+- Filing pages by type: the doc-type folder rule (brief §4), `src/core/storage/doc-folders.ts`, TAI-597.
 - Real links, not prose references, and the parent-Story link: `workflows/dependencies.md`'s Decided
   section, plus human feedback that a human browsing Jira does not get the briefing's traversal.
 - Confluence content as unwrapped lines: TAI-397.

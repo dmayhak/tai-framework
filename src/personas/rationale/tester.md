@@ -50,6 +50,7 @@ A failure after the merge is a new linked Bug; nothing reopens `Dev`.
 
 ## The shared bullets
 
+- Filing pages by type: the doc-type folder rule (brief §4), `src/core/storage/doc-folders.ts`, TAI-597.
 - Real links, not prose references: see `workflows/dependencies.md`'s Decided section.
 - Confluence content as unwrapped lines: TAI-397, after hard-wrapped page content broke hyphenated
   words and merged labelled sentences when rendered.

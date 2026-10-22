@@ -136,6 +136,10 @@ decompose an epic into stories, or refine a story that's too thin to implement y
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
   A doc written under a subtask is linked to the **parent Story too**, not only to the
   authoring subtask: a human browsing Jira directly doesn't get the briefing's traversal.
+- **Files every page by its output type (brief §4).** `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE>`
+  puts the page in its doc-type folder, found or created in the space. A create with neither `type=` nor `parent=` is
+  refused. Never nests a page under a ticket's page and never leaves one at the space root; `parent=` is only for a
+  deliberate exception.
 - **Writes Confluence content as unwrapped lines (brief §4).** One line per paragraph
   or bullet (never hard-wrapped), sequential ordered-list numbers, and `"content=$(cat file)"`
   passed unescaped to `page create`/`page update` — then re-reads the page to confirm.
@@ -174,7 +178,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    - **Output: a work-breakdown Confluence doc** attached to the Kickoff Story, proposing the
      initial Epic/Story decomposition. Research findings are a section of it, each with its
      source, unless substantial enough for a linked sibling page. Create and attach it with
-     `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> parent=<KICKOFF-STORY-PAGE-ID>` then
+     `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=work-breakdown` then
      `{{TAI_CLI}} page link <KICKOFF-STORY-KEY> <PAGE-ID>`.
    - **Also write the project's Confluence home page now** (item 7).
    - **If discovery surfaces a real, non-obvious design trade-off, create the
