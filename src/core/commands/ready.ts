@@ -233,7 +233,7 @@ export interface ReadyWorkResult {
     /** TAI-569: In Progress Stories and Bugs whose latest verification is `Verified:` and whose subtasks are all Done or
      *  Canceled: waiting only for a human to close them, so `/tai-ready` lists them apart from real in-flight work. */
     readonly readyToClose: ReadonlySet<IssueKey>;
-    /** TAI-602: Done `Database` / `ArchitectureDesign` subtasks on an open Story with no `Dev` under that Story or its
+    /** TAI-602/605: Done `Database` / `ArchitectureDesign` / `UxDesign` subtasks on an open Story with no `Dev` under that Story or its
      *  Epic ("design done, nothing implements it"). PM's list only: empty for another persona's scoped list. Show-only. */
     readonly designWithoutDev: readonly DesignWithoutDev[];
 }
