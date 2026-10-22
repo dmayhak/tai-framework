@@ -1,3 +1,4 @@
+import { DESIGN_WITHOUT_DEV_HEADING } from "../storage/design-without-dev.js";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, mkdir } from "node:fs/promises";
@@ -153,6 +154,15 @@ describe("renderGlobalSkillFiles", () => {
             const named = [...audit.content.matchAll(/^## Check: `/gm)].length;
             assert.match(audit.content, new RegExp(`run all ${named} checks below`));
             assert.doesNotMatch(audit.content, /\bseven\b/);
+        }
+    });
+
+    test("the tai-audit skill has a design-without-dev check that reads the ready section (TAI-602)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const audit = files.find((f) => f.relativePath === `${host}/skills/tai-audit/SKILL.md`)!;
+            assert.match(audit.content, /## Check: `design-without-dev`/);
+            assert.match(audit.content, /cli\.ts ready pm/);
+            assert.ok(audit.content.includes(DESIGN_WITHOUT_DEV_HEADING));
         }
     });
 

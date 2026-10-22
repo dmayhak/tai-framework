@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 121 (2026-10-22)
+
+**TAI-602 (Story TAI-601): design work that ends leaves a ticket for what comes next.** Found in the homeschooling project, 2026-10-22: the DBA finished and approved the schema notes, but the migrations had no ticket, and `/tai-ready` (which reads tickets only, and never Backlog) showed nothing to do. The rule, confirmed by the human: anyone who knows a task is needed creates it in the same turn, with the persona set, no human assignee and real `Blocks`/`Relates` links, so the PM sees it in grooming; status follows TAI-292 (To Do when a Story holds it and it is fully actionable, or when someone is blocked on a decision; Backlog when it has no home yet). It is in `workflows/dependencies.md` and in the `Database`, `ArchitectureDesign`, `UxDesign` and Analyst persona docs, with a `Subtask:Dev` (Analyst: `Subtask:Requirements`) `create` grant for it. As a backstop, `/tai-ready` lists a Done `Database` or `ArchitectureDesign` subtask on an open Story with no `Dev` under its Story or Epic as "Design done, nothing implements it" in the PM's list, and `/tai-audit` gains the `design-without-dev` check, both from `findDesignWithoutDev`. Not taken: auto-creating the ticket (where the work goes is the PM's call), and flagging design work on a Story that is already Done (history, it would nag forever).
+
 ## rev 120 (2026-10-22)
 
 **TAI-604 (Bug TAI-603): `page loose` and the `loose-pages` audit skip Confluence's template pages.** Found by running `page loose` on the homeschooling project's real space (TAI-597): Confluence's own blueprint pages ("Template - How-to guide", "Template - Troubleshooting article") sit under the home page and were listed as loose on every space. `looseRootPages` now ignores a page whose title starts with "Template - ". The same entry corrects rev 119's note that `/tai-retro` still nested under the epic's page.

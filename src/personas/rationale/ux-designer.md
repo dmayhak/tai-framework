@@ -60,3 +60,4 @@ type in the storage layer was considered and not added.
 - The hand-off comment: TAI-489.
 - Unblocking human-gated work: TAI-389/TAI-395.
 - `NEEDS CLARIFICATION:` markers blocking the Kickoff gate: brief §8.21.
+- **Decided (TAI-601):** the UX Designer creates the follow-on `Dev` when `UxDesign` ends with nothing implementing it; see `workflows/dependencies.md`.

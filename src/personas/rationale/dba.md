@@ -48,3 +48,4 @@ pick-up.
 - **Deferred (TAI-337, Backlog):** splitting a data-engineering role (analytics, pipelines) from the
   DBA. It becomes a real question only once a target project has enough analytics surface to be a
   distinct workload from OLTP schema work; beyond v1's priority.
+- **Decided (TAI-601):** Dana creates the follow-on `Dev` when `Database` ends with nothing implementing it, instead of leaving the migrations in the schema-notes page; see `workflows/dependencies.md`.

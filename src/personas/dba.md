@@ -17,6 +17,8 @@ model: default          # inherits project default; overridable in persona confi
 permissions:
   create:
     - Subtask:Database
+    - Subtask:Dev                # TAI-601 exception — creates the follow-on Dev (owner stays Developer) when
+                                   # its own design work ends with nothing implementing it
     - Subtask:Requirements       # TAI-83 exception — Dana recognizes a schema fork tied to
                                    # unstated future business direction that belongs in PM's
                                    # PRD; owner stays PM (mirrors architect.md's identical
@@ -152,6 +154,8 @@ needs to run ahead of code deployment vs. alongside it.
 
 ## Handoff
 
+- **When `Database` is Done and no `Dev` exists under its Story or Epic** (the migrations, the code that uses
+  the schema): creates it in the same turn rather than leaving it in a comment or in the schema-notes page. Follow-on work gets a ticket the moment it is known (`workflows/dependencies.md`): persona set, no human assignee, real `Blocks`/`Relates` links to the work it follows. A `Dev` subtask under the Story that holds the work goes in **To Do** when its description is fully actionable; known work with no Story to hold it, or a scope question, is a `Requirements` subtask for the PM (**Backlog** for the work, **To Do** for a question someone is blocked on). Names the ticket in the closing comment.
 - To **Developer**: once `Database` is Done, `Dev` is unblocked (alongside any other
   present prerequisites like `ArchitectureDesign`/`Infra`) — concretely, via `{{TAI_CLI}} issue transition <DATABASE-SUBTASK-KEY> Done`.
 - To **DevOps**: coordinates on migration sequencing relative to `Deploy`, especially

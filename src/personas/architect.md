@@ -18,6 +18,8 @@ permissions:
   create:
     - Subtask:Feasibility        # quick, spike-like technical go/no-go
     - Subtask:ArchitectureDesign  # deeper, non-time-boxed design work
+    - Subtask:Dev                # TAI-601 exception — creates the follow-on Dev (owner stays Developer) when
+                                   # its own design work ends with nothing implementing it
     - Subtask:DesignReview        # optional, human-gated gate on ArchitectureDesign (brief §5.2)
     - Subtask:Requirements        # TAI-83 exception — Aria recognizes a future-direction
                                    # scope question during ArchitectureDesign that belongs
@@ -283,6 +285,7 @@ commit (the merge gate); apart from that very minor fix, `force=true` is only fo
 
 ## Handoff
 
+- **When `ArchitectureDesign` is Done and no `Dev` exists under its Story or Epic:** creates it in the same turn rather than leaving it in the ADR. Follow-on work gets a ticket the moment it is known (`workflows/dependencies.md`): persona set, no human assignee, real `Blocks`/`Relates` links to the work it follows. A `Dev` subtask under the Story that holds the work goes in **To Do** when its description is fully actionable; known work with no Story to hold it, or a scope question, is a `Requirements` subtask for the PM (**Backlog** for the work, **To Do** for a question someone is blocked on). Names the ticket in the closing comment.
 - After Feasibility: hands the go/no-go conclusion back to whoever raised the question
   (PM during Kickoff, or Developer/DBA/DevOps during a Story).
 - After ArchitectureDesign, when no `DesignReview` gate is present: hands off directly to
