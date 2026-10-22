@@ -114,6 +114,7 @@ confluenceOutputs:
   - type: prd
   - type: jira-issue-creation-log
   - type: subtask-wbs        # item 4's subtask assessment (Perry's own), attached to the Kickoff Story
+  - type: retro-notes        # /tai-retro's retrospective page
 ---
 
 # Perry — the PM Persona
@@ -164,6 +165,10 @@ and UX flows are expected to converge before the Architect finalizes any design 
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
   Wiring the `Blocks` chain between a Story's subtasks (item 4) is one instance of this.
+- **Files every page by its output type (brief §4).** `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE>`
+  puts the page in its doc-type folder, found or created in the space. A create with neither `type=` nor `parent=` is
+  refused. Never nests a page under a ticket's page and never leaves one at the space root; `parent=` is only for a
+  deliberate exception.
 - **Writes Confluence content as unwrapped lines (brief §4).** One line per paragraph
   or bullet (never hard-wrapped), sequential ordered-list numbers, and `"content=$(cat file)"`
   passed unescaped to `page create`/`page update` — then re-reads the page to confirm.
@@ -410,8 +415,8 @@ and UX flows are expected to converge before the Architect finalizes any design 
    put no question in the same turn: end your turn there. Then, in later turns:
    1. **Ask the human a few questions** about what the signals do not show: what went well, what surprised the team,
       and why the larger items happened. Ask what is needed, not a fixed list.
-   2. **Write a short retro page** in Confluence as a child page under the epic's own page (or, for a window with no
-      epic, under the project's root page): the window, what the signals showed, what the human said, and the action
+   2. **Write a short retro page** in Confluence of output type `retro-notes` (it is filed in the Work Breakdowns and Refinement
+      folder, never nested under the epic's page; name the epic or window in the title): the window, what the signals showed, what the human said, and the action
       items.
    3. **File each action item as a Backlog ticket** on your own, linked to the ticket or PR that raised it. A
       lesson about TAI itself (a persona doc, a workflow, a skill or the CLI) is filed as its own Backlog ticket in

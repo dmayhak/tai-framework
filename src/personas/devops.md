@@ -73,6 +73,10 @@ follow-up work (DBA for a backfill, Developer for a flag flip) (see
   references another ticket or Confluence doc with material bearing on the current work
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
+- **Files every page by its output type (brief §4).** `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE>`
+  puts the page in its doc-type folder, found or created in the space. A create with neither `type=` nor `parent=` is
+  refused. Never nests a page under a ticket's page and never leaves one at the space root; `parent=` is only for a
+  deliberate exception.
 - **Writes ticket descriptions and comments for reading (brief §4).** Short paragraphs separated
   by a blank line, and `* ` bullets when there are several items — never one dense paragraph; both are Jira wiki
   markup, not markdown. If the CLI notes a wall of text after a write, rewrite it. Never types the

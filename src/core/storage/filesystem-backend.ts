@@ -29,6 +29,7 @@ import {
     type HumanRef,
     type AttachmentRef,
     type Page,
+    type PageSummary,
     type PageRef,
     type CreatePageInput,
     type PagePatch,
@@ -845,6 +846,12 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             const pages = await readAllPages(rootDir, parent.spaceKey);
             const children = pages.filter((p) => p.parentId === parent.id);
             return limit !== undefined ? children.slice(0, limit) : children;
+        },
+
+        async listRootPages(spaceKey: string, limit?: number): Promise<readonly PageSummary[]> {
+            const roots = (await readAllPages(rootDir, spaceKey)).filter((p) => p.parentId === undefined);
+            const summaries = roots.map(({ id, spaceKey: key, title }) => ({ id, spaceKey: key, title }));
+            return limit !== undefined ? summaries.slice(0, limit) : summaries;
         },
 
         async getLinkedIssues(ref: PageRef): Promise<readonly IssueKey[]> {

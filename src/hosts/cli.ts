@@ -47,6 +47,7 @@ import {
     type StorageBackend,
     type WorkTracker,
 } from "../core/storage/interface.js";
+import { resolvePageParent, filePage, looseRootPages } from "../core/storage/doc-folders.js";
 import { createFilesystemBackend } from "../core/storage/filesystem-backend.js";
 import { createJiraBackend } from "../core/storage/jira/jira-backend.js";
 import { apiTokenAuth } from "../core/storage/jira/rest-client.js";
@@ -2760,18 +2761,19 @@ async function main(): Promise<void> {
             const [spaceKey, title, content, ...kv] = pageArgs;
             if (!spaceKey || !title || !content) {
                 throw new Error(
-                    "Usage: page create <SPACE-KEY> <TITLE> <CONTENT> [parent=<PAGE-ID>]\n" +
+                    "Usage: page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE> | parent=<PAGE-ID>\n" +
+                        "  type= files the page in its doc-type folder (found or created in the space); parent= overrides it. " +
+                        "Neither is refused: a page is never left at the space root (brief section 4).\n" +
                         'Passing content from a file: pass "$(cat file)" unescaped and re-read the page afterward. ' +
                         "One unwrapped line per paragraph/bullet; sequential list numbers (brief section 4)."
                 );
             }
             const fields = parseKeyValueArgs(kv);
-            const input: CreatePageInput = {
-                spaceKey,
-                title,
-                content,
-                ...(fields["parent"] !== undefined ? { parentId: toPageId(fields["parent"]) } : {}),
-            };
+            const parentId = await resolvePageParent(config.backend.docStore, spaceKey, {
+                ...(fields["type"] !== undefined ? { type: fields["type"] } : {}),
+                ...(fields["parent"] !== undefined ? { parent: fields["parent"] } : {}),
+            });
+            const input: CreatePageInput = { spaceKey, title, content, ...(parentId ? { parentId } : {}) };
             const page = await config.backend.docStore.createPage(input);
             console.log(renderPageRef("Page created", page));
             return;
@@ -2818,6 +2820,41 @@ async function main(): Promise<void> {
             return;
         }
 
+        // TAI-598: file an existing loose page into its doc-type folder (the retrofit for pages written before
+        // `page create` required a type or a parent).
+        if (action === "file") {
+            const [pageId, ...kv] = pageArgs;
+            const type = parseKeyValueArgs(kv)["type"];
+            if (!pageId || !type) throw new Error("Usage: page file <PAGE-ID> type=<OUTPUT-TYPE>");
+            const page = await filePage(config.backend.docStore, toPageId(pageId), type);
+            await cachePage(config.taiRoot, config.projectKey, page);
+            console.log(renderPageRef("Page filed", page));
+            return;
+        }
+
+        // TAI-598: read primitive for `tai-audit`'s `loose-pages` check -- the pages at a space's root that are
+        // not a doc-type folder or Config.
+        if (action === "loose") {
+            const LOOSE_PAGES_LIMIT = 250;
+            const [spaceKey] = pageArgs;
+            if (!spaceKey) throw new Error("Usage: page loose <SPACE-KEY>");
+            const rootPages = await config.backend.docStore.listRootPages(spaceKey, LOOSE_PAGES_LIMIT);
+            const loose = looseRootPages(rootPages);
+            console.log(
+                [
+                    `# Loose pages at the root of ${spaceKey} (${loose.length})`,
+                    "",
+                    loose.length
+                        ? loose.map((p) => `- ${p.id} — ${p.title}`).join("\n")
+                        : "_(none: every page is filed)_",
+                    ...(rootPages.length >= LOOSE_PAGES_LIMIT
+                        ? ["", `Only the first ${LOOSE_PAGES_LIMIT} pages at the root were read, so there may be more.`]
+                        : []),
+                ].join("\n")
+            );
+            return;
+        }
+
         // TAI-301: DocStore.updatePage already existed (exercised in conformance.ts) but
         // had no CLI path -- a persona correcting or refreshing already-published content
         // (a decision record, a living doc) had no sanctioned way to do so. Mirrors "issue
@@ -2853,7 +2890,7 @@ async function main(): Promise<void> {
 
     throw new Error(
         `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link|search|get ... | page create|link|get|update ... | doc snapshot-living-doc ... ` +
+            `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );
 }

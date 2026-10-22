@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-17 (rev 118). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-22 (rev 119). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -634,8 +634,17 @@ These are settled. Change them deliberately and update this file if you do.
     `confluenceOutputs` list. The UX Designer's wireframe/wireframe-index split (one page
     per screen + an index) is the one documented exception, since a single UX flow can
     span many distinct screens — not a new general default.
-  - **Folder structure:** organized **by doc-type** within the project's space
-    (an ADRs folder, a PRDs folder, a Test Plans folder, …), not by ticket hierarchy.
+  - **Folder structure:** organized **by doc-type** within the project's space, not by ticket
+    hierarchy, and enforced in code (`src/core/storage/doc-folders.ts`). One table maps every
+    persona output type to its folder: Requirements, Work Breakdowns and Refinement, UX Designs,
+    Architecture Decisions, Schema Notes and Migration Plans, Test Plans, Implementation Notes,
+    and Runbooks and Infra. `page create` takes `type=<output-type>`, which finds or creates the
+    folder at the space root and files the page under it; an explicit `parent=` overrides it, and a
+    create with neither is refused, so a page never lands at the space root by accident.
+    `project-home` is the one type that is not filed (the space's own Overview page).
+    `page file <PAGE-ID> type=<output-type>` files an existing loose page, and `/tai-audit`'s
+    `loose-pages` check lists the pages left at the top of the space (`page loose <SPACE-KEY>`; on
+    Confluence, the children of the space home page, which a page created with no parent lands under).
   - **Naming convention:** page titles are structured —
     `<JIRA-KEY> — <Doc Type>: <short description>` (e.g. `PROJ-123 — ADR: Async job
     queue`). Unlike a Jira issue (whose native issue-type icon already distinguishes it

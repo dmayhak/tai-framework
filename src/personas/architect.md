@@ -147,6 +147,10 @@ novelty for its own sake — and is explicit about trade-offs rather than hedgin
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
   A doc written under a subtask is linked to the **parent Story too**, not only to the
   authoring subtask: a human browsing Jira directly doesn't get the briefing's traversal.
+- **Files every page by its output type (brief §4).** `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE>`
+  puts the page in its doc-type folder, found or created in the space. A create with neither `type=` nor `parent=` is
+  refused. Never nests a page under a ticket's page and never leaves one at the space root; `parent=` is only for a
+  deliberate exception.
 - **Writes Confluence content as unwrapped lines (brief §4).** One line per paragraph
   or bullet (never hard-wrapped), sequential ordered-list numbers, and `"content=$(cat file)"`
   passed unescaped to `page create`/`page update` — then re-reads the page to confirm.

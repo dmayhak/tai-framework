@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { ALWAYS_HUMAN_GATED_SUBTASKS, StoryType, SubtaskType } from "../schema/story-schema.js";
-import type { AttachmentRef, Comment, CreatePageInput, DocStore, Page, PagePatch, PageRef, IssueKey } from "../storage/interface.js";
+import type { AttachmentRef, Comment, CreatePageInput, DocStore, Page, PagePatch, PageSummary, PageRef, IssueKey } from "../storage/interface.js";
 import {
     PERSONA_PROMPT_SOFT_LIMIT_BYTES,
     docLocationsNote,
@@ -60,6 +60,9 @@ class FakeDocStore implements DocStore {
         throw new Error("not used in these tests");
     }
     async getChildren(_ref: PageRef): Promise<readonly Page[]> {
+        return [];
+    }
+    async listRootPages(): Promise<readonly PageSummary[]> {
         return [];
     }
     async getLinkedIssues(_ref: PageRef): Promise<readonly IssueKey[]> {

@@ -29,6 +29,7 @@ import path from "node:path";
 import { Persona, Status, StoryType, SubtaskType, DependencyRelation } from "../schema/story-schema.js";
 import { gatherAssigneeEvidence } from "../personas/assignee-evidence.js";
 import { ensureFixturePage } from "./fixture-page.js";
+import { ensureDocFolder, filePage, folderForDocType } from "./doc-folders.js";
 import {
     type StorageBackend,
     type Issue,
@@ -2028,6 +2029,91 @@ export function defineStorageConformance(
                     !originalParentChildren.some((c) => c.id === page.id),
                     "must no longer appear under the original parent"
                 );
+            });
+
+            // TAI-600 (TAI-597): the doc-type folder rule is enforced above DocStore (`doc-folders.ts`) but rests
+            // on three backend behaviors, checked here on both: listing a space's root, find-or-create by title
+            // without a duplicate, and filing a page by reparenting it. Assertions are by inclusion, since a live
+            // space has other pages at its root.
+            describe("doc-type folders (TAI-597)", () => {
+                /** The folder this test needs, tracked for disposal ONLY when this test created it: on a live
+                 *  space the folder may already exist, and deleting a page that was not ours would be wrong. */
+                async function folderFor(type: string) {
+                    const title = folderForDocType(type)!;
+                    const existed = (await h.backend.docStore.getPage({ spaceKey: h.spaceKey, title })) !== null;
+                    const folder = (await ensureDocFolder(h.backend.docStore, h.spaceKey, type))!;
+                    if (!existed) trackPage(folder);
+                    return { folder, existed };
+                }
+
+                it("listRootPages lists a page with no parent and not one with a parent", async () => {
+                    const loose = trackPage(
+                        await h.backend.docStore.createPage({
+                            spaceKey: h.spaceKey,
+                            title: `Conformance: root page ${Date.now()}`,
+                            content: "x",
+                        })
+                    );
+                    const child = trackPage(
+                        await h.backend.docStore.createPage({
+                            spaceKey: h.spaceKey,
+                            title: `Conformance: child of root page ${Date.now()}`,
+                            content: "x",
+                            parentId: loose.id,
+                        })
+                    );
+                    const roots = await eventually(
+                        () => h.backend.docStore.listRootPages(h.spaceKey),
+                        (pages) => pages.some((p) => p.id === loose.id),
+                        "the new root page in listRootPages"
+                    );
+                    // A page reports the space's canonical key, which on Confluence is not the alias the harness uses.
+                    assert.ok(roots.every((p) => p.spaceKey === loose.spaceKey));
+                    assert.ok(!roots.some((p) => p.id === child.id), "a page with a parent is not at the root");
+                    const found = roots.find((p) => p.id === loose.id)!;
+                    assert.equal(found.title, loose.title);
+                });
+
+                it("listRootPages honours its limit", async () => {
+                    trackPage(
+                        await h.backend.docStore.createPage({
+                            spaceKey: h.spaceKey,
+                            title: `Conformance: limit page ${Date.now()}`,
+                            content: "x",
+                        })
+                    );
+                    const one = await h.backend.docStore.listRootPages(h.spaceKey, 1);
+                    assert.equal(one.length, 1);
+                });
+
+                it("ensureDocFolder finds the folder on a second call instead of creating a duplicate", async () => {
+                    const { folder } = await folderFor("test-plan");
+                    assert.equal(folder.title, "Test Plans");
+                    const again = await ensureDocFolder(h.backend.docStore, h.spaceKey, "test-plan");
+                    assert.equal(again?.id, folder.id);
+                    const shared = await ensureDocFolder(h.backend.docStore, h.spaceKey, "uat-plan");
+                    assert.equal(shared?.id, folder.id, "two types in one folder share one page");
+                    const roots = await h.backend.docStore.listRootPages(h.spaceKey, 250);
+                    assert.equal(roots.filter((p) => p.title === "Test Plans").length, 1, "exactly one folder page, at the top of the tree");
+                });
+
+                it("filePage moves a loose page under its folder and out of the root", async () => {
+                    const loose = trackPage(
+                        await h.backend.docStore.createPage({
+                            spaceKey: h.spaceKey,
+                            title: `Conformance: loose schema notes ${Date.now()}`,
+                            content: "x",
+                        })
+                    );
+                    // The folder first, so it is tracked for disposal when this test is what created it.
+                    const { folder } = await folderFor("schema-notes");
+                    const filed = await filePage(h.backend.docStore, loose.id, "schema-notes");
+                    assert.equal(filed.parentId, folder.id);
+                    const children = await h.backend.docStore.getChildren({ id: folder.id });
+                    assert.ok(children.some((c) => c.id === loose.id), "the page is a child of its folder");
+                    const roots = await h.backend.docStore.listRootPages(h.spaceKey, 250);
+                    assert.ok(!roots.some((p) => p.id === loose.id), "the page is no longer at the root");
+                });
             });
 
             it("adds and edits a page comment", async () => {

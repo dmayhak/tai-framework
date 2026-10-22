@@ -10,6 +10,7 @@
 import {
     type DocStore,
     type Page,
+    type PageSummary,
     type PageRef,
     type CreatePageInput,
     type PagePatch,
@@ -279,6 +280,20 @@ export function createConfluenceDocStore(
             // The children endpoint returns a summary shape with no body, so fetch each in
             // full — Page promises content, and returning it empty would be a lie.
             return Promise.all(res.results.map((c) => fetchPage(toPageId(c.id))));
+        },
+
+        async listRootPages(spaceKey: string, limit = 250): Promise<readonly PageSummary[]> {
+            const sid = await resolveSpaceId(spaceKey);
+            // Found live (TAI-600): Confluence puts a page created with no parent UNDER THE SPACE HOME PAGE, so the
+            // top of the tree is the home page's children. `depth=root` returns only the home page itself, which
+            // would list nothing. A space with no home page falls back to `depth=root`.
+            const space = await client.request<{ homepageId?: string | null }>("GET", `${API}/spaces/${sid}`);
+            const listPath = space.homepageId
+                ? `${API}/pages/${space.homepageId}/children?limit=${limit}`
+                : `${API}/spaces/${sid}/pages?depth=root&limit=${limit}`;
+            const res = await client.request<{ results: { id: string; title: string }[] }>("GET", listPath);
+            const resolvedKey = await resolveSpaceKeyForId(sid);
+            return res.results.map((raw) => ({ id: toPageId(raw.id), spaceKey: resolvedKey, title: raw.title }));
         },
 
         /**
