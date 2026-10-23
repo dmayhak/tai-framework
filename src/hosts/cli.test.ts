@@ -15,6 +15,7 @@ import {
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../core/schema/story-schema.js";
 import {
     normalizeStatusArg,
+    parseReadyPersonaArg,
     parseIssueSearchFilter,
     parseIssueUpdatePatch,
     renderPullRequestComments,
@@ -1191,5 +1192,16 @@ describe("normalizeStatusArg (TAI-611)", () => {
     it("applies to the status filter of issue search", () => {
         const filter = parseIssueSearchFilter({ status: "cancelled,done,To Do" }, "TAI");
         assert.deepEqual(filter.statuses, [Status.Canceled, Status.Done, Status.ToDo]);
+    });
+});
+
+describe("parseReadyPersonaArg (TAI-615)", () => {
+    it("passes no filter through and accepts a valid persona id", () => {
+        assert.equal(parseReadyPersonaArg(undefined), undefined);
+        assert.equal(parseReadyPersonaArg("developer"), Persona.Developer);
+    });
+
+    it("refuses an unknown persona, naming it and the valid ids, instead of crashing later", () => {
+        assert.throws(() => parseReadyPersonaArg("dev"), /Unknown persona "dev"\. Expected one of: .*developer/);
     });
 });
