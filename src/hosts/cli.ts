@@ -409,8 +409,8 @@ const OWN_PR_SUBTASK_TYPES: ReadonlySet<string> = new Set([
 /**
  * TAI-314/315/316 ADR (Confluence page 40304641): a test-tier subtask's own `persona`
  * field is `tester`, who has no `mergePullRequest` grant (no self-merge for Tester,
- * `tester.md`'s own explicit decision) — and TAI-614 added a `Database` subtask, whose
- * DBA has none either — so MERGING one resolves permission via its
+ * `tester.md`'s own explicit decision); a `Database` subtask's is `dba`, who has none
+ * either (TAI-614) — so MERGING one resolves permission via its
  * sibling `Dev` subtask's persona instead (normally `developer`), falling back to the
  * parent Story's own `persona` field if no sibling `Dev` exists. Every other issue type,
  * and every non-merge action (`create` in particular — Tester's own `createPullRequest`

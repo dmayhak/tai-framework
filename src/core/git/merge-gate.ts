@@ -12,7 +12,8 @@
  *     (a title edit), and that must not turn a good approval stale.
  *  2. No request-changes left standing. Only its author can withdraw one.
  *  3. Every test tier present on the ticket is Done (or Canceled). A tier that was never
- *     created does not block; the PR's own ticket is never its own blocker.
+ *     created does not block; the PR's own ticket is never its own blocker. A `Database` subtask's
+ *     PR skips this rule and the next (TAI-614): it lands before the work the tiers test.
  *  4. A UAT subtask present on the ticket is Done (or Canceled), unless it carries the
  *     `uat-after-merge` label (TAI-507; UAT is before the merge by default, TAI-456).
  *
@@ -150,10 +151,12 @@ export async function checkMergeGate(deps: MergeGateDeps, pullRequest: PullReque
 }
 
 /** The test-tier and UAT subtasks under the same Story/Bug as `issueKey` (or under `issueKey`
- *  itself when it is the Story/Bug), leaving out `issueKey`: a tier's own PR does not wait on itself. */
+ *  itself when it is the Story/Bug), leaving out `issueKey`: a tier's own PR does not wait on itself.
+ *  None for a `Database` subtask's PR (TAI-614): schema work precedes `Dev`, and the tiers test `Dev`'s work, so
+ *  they cannot be Done when it merges; waiting on them would leave only `force=true`. */
 async function verificationSubtasksFor(workTracker: MergeGateDeps["workTracker"], issueKey: IssueKey): Promise<readonly Issue[]> {
     const issue = await workTracker.getIssue(issueKey);
-    if (!issue) return [];
+    if (!issue || issue.issueType === SubtaskType.Database) return [];
     const storyKey = isSubtaskIssueType(issue.issueType) ? issue.parentKey : issue.key;
     if (!storyKey) return [];
     const found = await workTracker.search({ projectKey: issue.projectKey, parentKey: storyKey, issueTypes: [...TEST_TIER_TYPES, SubtaskType.Uat] });

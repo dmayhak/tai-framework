@@ -30,7 +30,7 @@ for the merge, and the merge waits for the tiers (the merge gate, TAI-462).
 
 Before this, Test-tier subtasks sat outside the PR chain and had no way to land their own code. Tessa
 was given `gitHost: createPullRequest` (rev 48) but never `mergePullRequest`. After TAI-456 that grant
-is for one case only: test code discovered after the `Dev` PR has merged.
+is for one case only at that point: test code discovered after the `Dev` PR has merged (widened by TAI-614, below).
 
 A failure after the merge is a new linked Bug; nothing reopens `Dev`.
 

@@ -990,7 +990,9 @@ decision.**
    committed to the Story's branch; when no open PR carries those commits (the `Dev` PR already merged, or the Story
    has no `Dev` work) the author opens a PR titled with the Story key and then their own subtask's key. It is reviewed
    like any other and merged by the `Dev` owner or PM, never by its author; that subtask stays In Progress until its
-   PR merges, and the merge closes it. Nothing goes straight to the default branch.
+   PR merges, and the merge closes it. A `Database` PR skips the merge gate's test-tier and `UAT` checks, because it lands
+   before the work they test; approvals and standing change requests still apply. Nothing goes straight to the default
+   branch.
 
 **How review, readiness and the merge work (TAI-159 ADR):**
 - **Review happens on the real PR, and there is no `CodeReview` subtask.** The git host's own reviewer and

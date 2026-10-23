@@ -134,11 +134,11 @@ export interface ReadyToTestCandidate {
 /** TAI-293/314/315/316: `issueKey` is a `Dev` subtask for ordinary Story/Bug work, a
  *  Story/Bug/Spike/Epic ticket directly for a governance-content PR with no Dev subtask
  *  at all (PM/Architect-authored — see `findStoryLinkedOpenPRs`), or a test-tier subtask
- *  (`IntegrationTest`/`SystemTest`/`E2ETest`) for Tester's own PR (see
+ *  (`IntegrationTest`/`SystemTest`/`E2ETest`) or `Database` subtask for Tester's or the DBA's own PR (see
  *  `findTestTierLinkedOpenPRs`). `git-pr merge` doesn't care which — it resolves merge
- *  permission from whichever issue's own `persona` field, EXCEPT a test-tier subtask,
+ *  permission from whichever issue's own `persona` field, EXCEPT a test-tier or `Database` subtask,
  *  which resolves via its sibling `Dev`'s `persona` instead (`resolveGitHost`, `cli.ts`,
- *  since Tester herself has no `mergePullRequest` grant). */
+ *  since neither Tester nor the DBA has a `mergePullRequest` grant). */
 export interface ReadyToMergeCandidate {
     readonly issueKey: IssueKey;
     readonly pullRequest: PullRequestRef;
