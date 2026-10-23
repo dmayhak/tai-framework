@@ -134,14 +134,14 @@ describe("retro briefing (TAI-491)", () => {
         assert.match(text, /^# Retro briefing/m);
         assert.match(text, /Window: .*last 30 days/);
         for (const heading of ["Tickets cancelled", "Bugs raised", "Tiers sent back", "Stamped overrides", "Stale approvals"]) {
-            assert.match(text, new RegExp(`## \\d\\. ${heading}\\n\\nNone\\.`));
+            assert.match(text, new RegExp(`## \\d\\. ${heading}\\n\\n {3}None\\.`));
         }
     });
 
     it("says the two PR sections were not read when no git host is configured", () => {
         const text = renderRetroBriefing({ summary: computeRetro({ issues: [], pullRequests: null, from: FROM }), window: w, scope: "the whole board" });
-        assert.match(text, /## 4\. Stamped overrides\n\nNot read:/);
-        assert.match(text, /## 5\. Stale approvals\n\nNot read:/);
+        assert.match(text, /## 4\. Stamped overrides\n\n {3}Not read:/);
+        assert.match(text, /## 5\. Stale approvals\n\n {3}Not read:/);
     });
 
     it("lists each item with its ticket or PR key, and tells Perry to write nothing to the human's data until she has asked", () => {

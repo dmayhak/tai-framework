@@ -350,15 +350,24 @@ describe("renderGroomingBriefing (TAI-395)", () => {
     it("numbers the nine sections 1-9 and says None. for an empty one, so Perry knows each was checked", () => {
         const out = renderGroomingBriefing(empty);
         for (let n = 1; n <= 9; n++) assert.match(out, new RegExp(`^## ${n}\\. `, "m"), `section ${n}`);
-        assert.equal((out.match(/^None\.$/gm) ?? []).length, 9);
+        assert.equal((out.match(/^ {3}None\.$/gm) ?? []).length, 9);
+    });
+
+    it("indents everything under a numbered heading by 3 spaces, continuation lines too, and nothing else (TAI-620)", () => {
+        const story = { key: "TAI-5", issueType: "story", status: "Backlog", summary: "Thing", labels: [], comments: [] } as never;
+        const out = renderGroomingBriefing({ ...empty, promotionCandidates: [{ issue: story, warnings: ["no Dev subtask"] }] as never });
+        assert.match(out, /^## 3\. [^\n]*\n\n {3}- \*\*TAI-5\*\*[^\n]*\n {5}⚠ not ready: no Dev subtask$/m);
+        assert.match(out, /^## 1\. /m, "headings stay at column 0");
+        assert.match(out, /^Scope: /m);
+        assert.match(out, /^Perry creates Backlog tickets/m, "the closing paragraph stays at column 0");
     });
 
     it("section 9 lists a Story ready to verify with the command that does it (TAI-550)", () => {
         const story = { key: "TAI-5", issueType: "story", status: "In Progress", summary: "Done work", labels: [], comments: [] } as never;
         const out = renderGroomingBriefing({ ...empty, readyToVerify: [story] });
         assert.match(out, /^## 9\. Stories and Bugs ready to verify/m);
-        assert.match(out, /^- \*\*TAI-5\*\* \[story\] Done work \(In Progress\) — verify it with `\/tai-verify TAI-5`$/m);
-        assert.equal((out.match(/^None\.$/gm) ?? []).length, 8);
+        assert.match(out, /^ {3}- \*\*TAI-5\*\* \[story\] Done work \(In Progress\) — verify it with `\/tai-verify TAI-5`$/m);
+        assert.equal((out.match(/^ {3}None\.$/gm) ?? []).length, 8);
     });
 
     it("states the scope and the stale threshold, and ends with the propose-then-confirm reminder", () => {
@@ -478,7 +487,7 @@ describe("findGroomingWork: ready to verify (TAI-550)", () => {
             await wt.transition((await mk(wt, { issueType: SubtaskType.Dev, parentKey: notStarted.key, assignee: ME })).key, Status.Done);
             const result = await findGroomingWork(deps(wt));
             assert.deepEqual(result.readyToVerify, []);
-            assert.match(renderGroomingBriefing(result), /^## 9\. [^\n]*\n\nNone\.$/m);
+            assert.match(renderGroomingBriefing(result), /^## 9\. [^\n]*\n\n {3}None\.$/m);
         });
     });
 

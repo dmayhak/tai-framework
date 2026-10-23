@@ -20,6 +20,7 @@
  * so they read every open ticket once, exhaustively, and filter in memory (ADR Consequences).
  */
 
+import { indentSectionBody } from "./section-indent.js";
 import { DependencyRelation, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { findClarificationQuestions } from "../storage/review-gate.js";
 import { signOffRowNote } from "../storage/sign-off-provenance.js";
@@ -320,7 +321,7 @@ export function renderGroomingBriefing(result: GroomingResult): string {
         out.push(`⚠️ The \`${ICEBOX_LABEL}\` label only works on an epic; it does nothing on: ${named}. Move the label to the epic.`, "");
     }
     const section = (n: number, title: string, lines: readonly string[]) => {
-        out.push(`## ${n}. ${title}`, "", ...(lines.length > 0 ? lines : ["None."]), "");
+        out.push(`## ${n}. ${title}`, "", ...indentSectionBody(lines.length > 0 ? lines : ["None."]), "");
     };
 
     section(1, "Epics with nothing under them (each needs its Kickoff Story and the Stories already known)", result.childlessEpics.map((e) => row(e)));
