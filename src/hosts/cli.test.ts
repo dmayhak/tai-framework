@@ -747,7 +747,7 @@ describe("persona= validation and create-time assignment safety (TAI-409 review)
         for (const id of ["analyst", "pm", "architect", "ux-designer", "developer", "dba", "code-reviewer", "tester", "devops"]) {
             assert.equal(parsePersonaArg(id), id);
         }
-        assert.throws(() => parsePersonaArg("developr"), /Unknown persona "developr"\. Expected one of: analyst, pm/);
+        assert.throws(() => parsePersonaArg("developr"), /Unknown persona "developr"\. Expected one of: analyst \(/);
     });
 
     it("issue update and issue search reject a bad persona= too, instead of passing it through", () => {
@@ -1195,6 +1195,19 @@ describe("normalizeStatusArg (TAI-611)", () => {
     });
 });
 
+describe("persona= accepts short names (TAI-618)", () => {
+    it("parsePersonaArg resolves an alias to the persona id, in any case", () => {
+        assert.equal(parsePersonaArg("db"), Persona.Dba);
+        assert.equal(parsePersonaArg("UX"), Persona.UxDesigner);
+        assert.equal(parsePersonaArg("reviewer"), Persona.CodeReviewer);
+    });
+
+    it("issue update and issue search resolve an alias too", () => {
+        assert.equal(parseIssueUpdatePatch({ persona: "dev" }).persona, Persona.Developer);
+        assert.equal(parseIssueSearchFilter({ persona: "ops" }, "TAI").persona, Persona.DevOps);
+    });
+});
+
 describe("parseReadyPersonaArg (TAI-615)", () => {
     it("passes no filter through and accepts a valid persona id", () => {
         assert.equal(parseReadyPersonaArg(undefined), undefined);
@@ -1202,6 +1215,11 @@ describe("parseReadyPersonaArg (TAI-615)", () => {
     });
 
     it("refuses an unknown persona, naming it and the valid ids, instead of crashing later", () => {
-        assert.throws(() => parseReadyPersonaArg("dev"), /Unknown persona "dev"\. Expected one of: .*developer/);
+        assert.throws(() => parseReadyPersonaArg("nonsense"), /Unknown persona "nonsense"\. Expected one of: .*developer \(dev, eng, engineer\)/);
+    });
+
+    it("accepts a persona's short name (TAI-618)", () => {
+        assert.equal(parseReadyPersonaArg("dev"), Persona.Developer);
+        assert.equal(parseReadyPersonaArg("QA"), Persona.Tester);
     });
 });

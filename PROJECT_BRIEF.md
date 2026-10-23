@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-23 (rev 127). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-23 (rev 128). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1505,7 +1505,9 @@ each new persona to help build the next.
   reviewable in PRs). A persona doc writes a CLI command as `{{TAI_CLI}} <subcommand> …`; `loadPersonaConfig`
   fills the placeholder with the running install's own invocation, so the command works from any target project. The filled-in command also carries
   `--as <persona id>`, so a command copied from a persona's prompt tells the CLI who is acting; a command without it is
-  unattributed, and nothing guesses. Self-declared: it makes actions attributable, it does not prove who acted.
+  unattributed, and nothing guesses. Self-declared: it makes actions attributable, it does not prove who acted. Wherever a persona
+  is typed (`--as`, `persona=`, the `ready` argument) a built-in's short name works too (`dev` for `developer`, `ux`, `db`, `qa`,
+  `ops`): `PERSONA_ALIASES` in `story-schema.ts` holds them, unique across personas.
 
 ---
 

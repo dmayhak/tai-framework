@@ -159,6 +159,8 @@ import {
     DEFAULT_PERSONA_DISPLAY_NAME,
     Persona,
     StoryType,
+    describePersonaNames,
+    resolvePersonaName,
 } from "../core/schema/story-schema.js";
 import { latestVerification, unverifiedCloseNote } from "../core/storage/verification.js";
 import { findVerifyPullRequests, renderVerifyTurn } from "../core/commands/verify.js";
@@ -1290,11 +1292,11 @@ export function resolveCreatePriority(
  * clear error naming the valid values and not a silent bad value (found in review of TAI-409).
  */
 export function parsePersonaArg(value: string): Persona {
-    const valid = Object.values(Persona) as string[];
-    if (!valid.includes(value)) {
-        throw new Error(`Unknown persona "${value}". Expected one of: ${valid.join(", ")}.`);
+    const persona = resolvePersonaName(value);
+    if (!persona) {
+        throw new Error(`Unknown persona "${value}". Expected one of: ${describePersonaNames()}.`);
     }
-    return value as Persona;
+    return persona;
 }
 
 /** TAI-615: `ready`'s optional persona filter. An unknown word (`dev` for `developer`) is refused with the list of
@@ -2336,7 +2338,7 @@ async function main(): Promise<void> {
               );
         console.log(
             (fetchNote ? `${fetchNote}\n\n` : "") +
-                renderReadyWork(result, arg) +
+                renderReadyWork(result, persona) +
                 (editedSection ? `\n\n${editedSection}` : "") +
                 (unreadableNote ? `\n\n${unreadableNote}` : "")
         );

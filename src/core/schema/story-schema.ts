@@ -25,6 +25,37 @@ export enum Persona {
     DevOps = "devops",
 }
 
+// Short names people type for a persona (`dev` for `developer`), accepted wherever a persona id is typed
+// (`ready`, `--as`, `persona=`). A persona may have several. Unique across personas and never another persona's
+// id: `story-schema.test.ts` fails on a clash, so a name resolves to at most one persona.
+export const PERSONA_ALIASES: Readonly<Record<Persona, readonly string[]>> = {
+    [Persona.Analyst]: ["ana", "research", "researcher"],
+    [Persona.Pm]: ["product", "product-manager"],
+    [Persona.Architect]: ["arch", "architecture"],
+    [Persona.UxDesigner]: ["ux", "design", "designer"],
+    [Persona.Developer]: ["dev", "eng", "engineer"],
+    [Persona.Dba]: ["db", "data", "database"],
+    [Persona.CodeReviewer]: ["review", "reviewer", "cr"],
+    [Persona.Tester]: ["test", "qa"],
+    [Persona.DevOps]: ["ops", "infra", "sre"],
+};
+
+/** The built-in persona a typed name means: its id, or one of its aliases, in any case. `undefined` when it is
+ *  neither. */
+export function resolvePersonaName(name: string): Persona | undefined {
+    const wanted = name.trim().toLowerCase();
+    const personas = Object.values(Persona);
+    return personas.find((p) => p === wanted) ?? personas.find((p) => PERSONA_ALIASES[p].includes(wanted));
+}
+
+/** Every built-in persona id with its aliases, for an error that lists what can be typed:
+ *  `developer (dev, eng, engineer), dba (db, data, database), …`. */
+export function describePersonaNames(): string {
+    return Object.values(Persona)
+        .map((p) => `${p} (${PERSONA_ALIASES[p].join(", ")})`)
+        .join("; ");
+}
+
 // Default/fallback friendly names — actual display names are pulled from
 // Confluence config at runtime and may override these per-org or per-user.
 export const DEFAULT_PERSONA_DISPLAY_NAME: Record<Persona, string> = {

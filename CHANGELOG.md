@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 128 (2026-10-23)
+
+**TAI-618 (Story TAI-617): personas have short names.** Found running `/tai-ready dev` in a real target project: people type `dev`, not `developer`. `PERSONA_ALIASES` (`story-schema.ts`) gives each built-in persona one or more aliases (`dev`/`eng`/`engineer`, `ux`/`design`/`designer`, `db`/`data`/`database`, `ops`/`infra`/`sre`, `qa`/`test`, `reviewer`/`review`/`cr`, and so on), and `resolvePersonaName` matches an id or an alias in any case. It is used by the `ready` argument, `persona=` on `issue create`, `update` and `search`, and `--as`. A test fails when two personas share an alias or an alias equals a persona id. A persona the project added under an id that is also a built-in's alias keeps that id. An unknown name is refused with every id and its aliases. Not taken: aliasing the persona display names (Perry, Dario), which a team can rename. The Claude Code allow rule (`init run`) still spells out ids only, so a command typed with an alias is judged by the classifier as before.
+
 ## rev 127 (2026-10-23)
 
 **TAI-621 (Story TAI-620): the grooming and retro briefings indent each numbered section's content.** Found reading `/tai-groom` in a real target project: under a heading such as `1. Epics with nothing under them`, the rows and `None.` sat at the same column as the heading, which made the briefing hard to scan. `indentSectionBody` (`section-indent.ts`) puts every line under a `## n. Title` heading in by three spaces, continuation lines included, in `renderGroomingBriefing` and `renderRetroBriefing`; headings, the scope line and the closing paragraph stay where they were, and a three-space `- ` row is still a Markdown list item. Not taken: `/tai-ready`, whose bold group names and numbering that runs across groups would read differently indented.
