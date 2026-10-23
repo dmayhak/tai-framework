@@ -373,6 +373,30 @@ describe("resolveStoryKeyForPr (TAI-297)", () => {
     });
 });
 
+describe("git-pr create's key, branch and title rules for a DBA's and a Tester's own PR (TAI-619)", () => {
+    const story = toIssueKey("TAI-613");
+
+    for (const [label, issueType, key] of [
+        ["Database", SubtaskType.Database, "TAI-700"],
+        ["IntegrationTest", SubtaskType.IntegrationTest, "TAI-701"],
+    ] as const) {
+        it(`a ${label} subtask resolves to its Story and passes the branch and title rules`, () => {
+            const subtask = issueFixture({ key: toIssueKey(key), issueType, parentKey: story });
+            const resolved = resolveStoryKeyForPr(subtask);
+            assert.deepEqual(resolved, { storyKey: story, subtaskKey: toIssueKey(key) });
+            assert.doesNotThrow(() => validateBranchName("TAI-613-dba-scripts", resolved.storyKey));
+            assert.doesNotThrow(() => validatePrTitle(`TAI-613 - ${key} - scripts`, resolved.storyKey, resolved.subtaskKey));
+        });
+
+        it(`a ${label} subtask's PR is refused on a branch named for the subtask, or a title without the Story key first`, () => {
+            const subtask = issueFixture({ key: toIssueKey(key), issueType, parentKey: story });
+            const resolved = resolveStoryKeyForPr(subtask);
+            assert.throws(() => validateBranchName(`${key}-scripts`, resolved.storyKey), /parent Story/);
+            assert.throws(() => validatePrTitle(`${key} - scripts`, resolved.storyKey, resolved.subtaskKey));
+        });
+    }
+});
+
 describe("validateBranchName", () => {
     const story = toIssueKey("TAI-96");
 
