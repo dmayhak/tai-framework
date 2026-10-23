@@ -241,7 +241,7 @@ project you've cloned into a new folder or onto a new PC** (a fresh clone has no
    `git-pr`);
 5. writes the `CLAUDE.md` and `GEMINI.md` pointers (Claude Code and Gemini CLI each read their own)
    and reminds you to commit and push them;
-6. **offers a Claude Code allow rule** (a terminal only, asked once, never written silently) — see
+6. **offers a Claude Code allow rule** (a terminal only, asked on each run until you accept, never written silently) — see
    [the allow rule](#the-claude-code-allow-rule-init-run-offers) below.
 
 Re-running is always safe: every step is re-verified live, and `.tai/init-state.json` is just a
@@ -259,9 +259,10 @@ session stalled). So `init run` offers to add a narrow allow rule to your projec
 `.claude/settings.local.json`. It shows the exact rules first and writes them only if you answer yes.
 
 - **Covers:** TAI's `issue` and `page` commands, and the read-only `ready`, `pr-ready`, `work`, `verify` and
-  `git-pr` `review-prep`, `comments` and `render-findings`, each with and without `--as <persona>`.
+  `git-pr` `review-prep`, `comments` and `render-findings`, each bare and with `--as <persona>` spelled out for every persona.
 - **Never covers:** `git-pr merge`, `git-pr review`, `init`, or anything else, so merges and approvals still
   reach you.
+- **Spelling:** it matches commands spelled with this machine's TAI install path (the absolute one the skills use); a command typed with `~/...` is still asked about.
 - **Why that file:** the rule names this machine's TAI install path, so it belongs in the personal file
   Claude Code keeps out of git, not in a committed `settings.json`.
 - **Safe to re-run:** an existing file keeps every other setting and rule, and a second run adds nothing

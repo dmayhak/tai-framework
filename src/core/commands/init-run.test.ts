@@ -170,6 +170,9 @@ interface HarnessOptions {
     env?: Record<string, string>;
 }
 
+/** The allow-rule prompt (TAI-589). One definition, so rewording it breaks one line, not several tests. */
+const ALLOW_RULE_PROMPT = /^Add these \d+ rules to /;
+
 async function harness(dir: string, opts: HarnessOptions = {}) {
     const calls: string[] = [];
     const said: string[] = [];
@@ -194,7 +197,7 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
                 asked.push(question);
                 const next = answers.shift();
                 // TAI-589: the allow-rule offer comes last in every interactive run; a test that is not about it declines.
-                if (next === undefined && /Claude Code allow rule|rules to .*settings\.local\.json/.test(question)) return "n";
+                if (next === undefined && ALLOW_RULE_PROMPT.test(question)) return "n";
                 if (next === undefined) throw new Error(`Unexpected prompt: ${question}`);
                 return next;
             },
@@ -548,7 +551,7 @@ describe("runInit — failures stop at the failing step", () => {
                 answers: [""],
             });
             assert.equal((await runInit(h.deps)).exitCode, 0, h.all());
-            assert.deepEqual(h.asked.filter((q) => !/rules to /.test(q)).length, 1, "only the site URL was asked");
+            assert.deepEqual(h.asked.filter((q) => !ALLOW_RULE_PROMPT.test(q)).length, 1, "only the site URL was asked");
         });
     });
 });
@@ -1045,7 +1048,7 @@ describe("runInit — the Claude Code allow rule offer (TAI-589)", () => {
         await withTempDir(async (dir) => {
             const h = await run(dir, [], { interactive: false });
             assert.equal(await exists(settingsPath(dir)), false);
-            assert.ok(!h.asked.some((q) => /rules to /.test(q)));
+            assert.ok(!h.asked.some((q) => ALLOW_RULE_PROMPT.test(q)));
             assert.match(h.said.join("\n"), /Run `init run` in a terminal to be asked/);
         });
     });
@@ -1068,7 +1071,7 @@ describe("runInit — the Claude Code allow rule offer (TAI-589)", () => {
             const first = await readFile(settingsPath(dir), "utf-8");
             const h = await run(dir, [""]);
             assert.equal(await readFile(settingsPath(dir), "utf-8"), first);
-            assert.ok(!h.asked.some((q) => /rules to /.test(q)));
+            assert.ok(!h.asked.some((q) => ALLOW_RULE_PROMPT.test(q)));
             assert.match(h.said.join("\n"), /already in/);
         });
     });

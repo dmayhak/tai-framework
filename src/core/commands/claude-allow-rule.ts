@@ -13,7 +13,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-/** Subcommands the rule covers, each with and without `--as <persona>`. */
+import { Persona } from "../schema/story-schema.js";
+
+/** Subcommands the rule covers, each bare and with each persona id spelled out after `--as`. A persona is spelled
+ *  out, never a `*`: Claude Code's `*` matches any characters including spaces, so `--as * issue *` would also match
+ *  `--as x git-pr merge ... issue ...` and let a merge or an approval run without reaching the human. */
 const COVERED_SUBCOMMANDS: readonly string[] = [
     "issue",
     "page",
@@ -32,7 +36,7 @@ export function buildAllowRules(taiHome: string): string[] {
     const rules: string[] = [];
     for (const sub of COVERED_SUBCOMMANDS) {
         rules.push(`Bash(${cli} ${sub} *)`);
-        rules.push(`Bash(${cli} --as * ${sub} *)`);
+        for (const persona of Object.values(Persona)) rules.push(`Bash(${cli} --as ${persona} ${sub} *)`);
     }
     return rules;
 }

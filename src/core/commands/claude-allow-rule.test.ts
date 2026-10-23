@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildAllowRules, mergeAllowRules } from "./claude-allow-rule.js";
+import { Persona } from "../schema/story-schema.js";
 
 const HOME = "/home/x/.tai-framework";
 const CLI = `npx --prefix ${HOME} tsx ${HOME}/src/hosts/cli.ts`;
@@ -9,29 +10,64 @@ const CLI = `npx --prefix ${HOME} tsx ${HOME}/src/hosts/cli.ts`;
 describe("buildAllowRules (TAI-589)", () => {
     const rules = buildAllowRules(HOME);
 
-    it("covers the issue and page subcommands, with and without --as", () => {
+    it("covers the issue and page subcommands, bare and with every persona spelled out after --as", () => {
         for (const sub of ["issue", "page"]) {
             assert.ok(rules.includes(`Bash(${CLI} ${sub} *)`), sub);
-            assert.ok(rules.includes(`Bash(${CLI} --as * ${sub} *)`), `--as ${sub}`);
+            for (const persona of Object.values(Persona)) assert.ok(rules.includes(`Bash(${CLI} --as ${persona} ${sub} *)`), `--as ${persona} ${sub}`);
         }
     });
 
-    it("covers the read-only commands, with and without --as", () => {
+    it("covers the read-only commands, bare and with every persona", () => {
         for (const sub of ["ready", "pr-ready", "work", "verify", "git-pr review-prep", "git-pr comments", "git-pr render-findings"]) {
             assert.ok(rules.includes(`Bash(${CLI} ${sub} *)`), sub);
-            assert.ok(rules.includes(`Bash(${CLI} --as * ${sub} *)`), `--as ${sub}`);
+            for (const persona of Object.values(Persona)) assert.ok(rules.includes(`Bash(${CLI} --as ${persona} ${sub} *)`), `--as ${persona} ${sub}`);
         }
+    });
+
+    it("never uses a wildcard for the persona: it would span words (found in the review of PR 8)", () => {
+        assert.ok(rules.every((r) => !r.includes("--as *")));
+    });
+
+    describe("what the rules match, with `*` matching any characters including spaces (as Claude Code's does)", () => {
+        const matches = (rule: string, command: string): boolean => {
+            const body = rule.slice("Bash(".length, -1);
+            const re = new RegExp(`^${body.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+            return re.test(command);
+        };
+        const allowed = (command: string) => rules.some((r) => matches(r, command));
+
+        it("allows the routine commands, with and without --as", () => {
+            assert.ok(allowed(`${CLI} issue comment TAI-1 "Handoff: next"`));
+            assert.ok(allowed(`${CLI} --as tester issue transition TAI-2 Done`));
+            assert.ok(allowed(`${CLI} --as code-reviewer git-pr comments o/r 3`));
+            assert.ok(allowed(`${CLI} ready pm`));
+        });
+
+        it("does not allow merge, review, init or create, even with a covered word in the text", () => {
+            const blocked = [
+                `${CLI} git-pr merge TAI-9 o/r 3`,
+                `${CLI} git-pr review o/r 3 approve "see issue fixed"`,
+                `${CLI} --as x git-pr merge TAI-9 o/r 3 page`,
+                `${CLI} --as code-reviewer git-pr review o/r 3 approve "ready to work on verify"`,
+                `${CLI} --as tester git-pr merge TAI-9 o/r 3 issue`,
+                `${CLI} --as nobody git-pr merge TAI-9 o/r 3 issue`,
+                `${CLI} init run`,
+                `${CLI} --as pm init run issue`,
+                `${CLI} git-pr create TAI-9 o/r b main title`,
+            ];
+            for (const command of blocked) assert.equal(allowed(command), false, command);
+        });
     });
 
     it("never covers git-pr merge, git-pr review, init, or a bare git-pr or wildcard subcommand", () => {
         for (const rule of rules) {
             assert.doesNotMatch(rule, /git-pr merge|git-pr review(?!-prep)|\binit\b/, rule);
-            assert.doesNotMatch(rule, /cli\.ts (--as \* )?\*\)|git-pr \*\)/, rule);
+            assert.doesNotMatch(rule, /cli\.ts (--as \S+ )?\*\)|git-pr \*\)/, rule);
         }
     });
 
     it("names this install's CLI only, and has no duplicates", () => {
-        assert.ok(rules.every((r) => r.startsWith(`Bash(${CLI} `) || r.startsWith(`Bash(${CLI} --as * `)));
+        assert.ok(rules.every((r) => r.startsWith(`Bash(${CLI} `)));
         assert.equal(new Set(rules).size, rules.length);
     });
 });

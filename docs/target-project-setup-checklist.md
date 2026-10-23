@@ -273,7 +273,7 @@ command partway through a long run (one clean-up had 47 `page link` calls go thr
 denied, and the session stalled). The rule lets TAI's own routine commands run without asking.
 
 **What it covers.** The `issue` and `page` commands, and the read-only `ready`, `pr-ready`, `work`,
-`verify` and `git-pr` `review-prep`, `comments` and `render-findings`, each with and without `--as <persona>`.
+`verify` and `git-pr` `review-prep`, `comments` and `render-findings`, each bare and with `--as <persona>` spelled out for every persona (never `--as *`, whose `*` would also match `git-pr merge`).
 **What it never covers:** `git-pr merge`, `git-pr review`, `init`, or anything else, so merges and approvals
 still reach you.
 

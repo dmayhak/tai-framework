@@ -1200,10 +1200,10 @@ comment's content.
   status — not the full breadth of either host's API. It lives at
   `src/core/git/interface.ts`, with a Bitbucket backend at `src/core/git/bitbucket/` and a GitHub
   backend at `src/core/git/github/` (TAI-583 ADR, page 58753025).
-- **`init run` offers a Claude Code allow rule.** After its steps it offers, in a terminal only and once, to add
+- **`init run` offers a Claude Code allow rule.** After its steps it offers, in a terminal only, on each run until accepted, to add
   a narrow allow rule to the project's `.claude/settings.local.json`, so an auto-mode session does not stall on a
   routine TAI command. It covers the `issue` and `page` commands and the read-only `ready`, `pr-ready`, `work`,
-  `verify` and `git-pr review-prep`/`comments`/`render-findings`, each with and without `--as`; it never covers
+  `verify` and `git-pr review-prep`/`comments`/`render-findings`, each bare and with `--as <persona>` for every persona id spelled out (never `--as *`, whose `*` would also match `git-pr merge`); it never covers
   `git-pr merge`, `git-pr review`, `init` or anything else, so merges and approvals still reach the human. The
   rules are shown first and written only on a yes; an existing file keeps every other setting and rule, nothing
   is added twice, and a file that is not valid JSON is left alone (`core/commands/claude-allow-rule.ts`). It
