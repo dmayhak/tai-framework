@@ -1297,6 +1297,12 @@ export function parsePersonaArg(value: string): Persona {
     return value as Persona;
 }
 
+/** TAI-615: `ready`'s optional persona filter. An unknown word (`dev` for `developer`) is refused with the list of
+ *  valid ids; it used to be cast unchecked and crash deeper in with `Cannot read properties of undefined`. */
+export function parseReadyPersonaArg(arg: string | undefined): Persona | undefined {
+    return arg === undefined ? undefined : parsePersonaArg(arg);
+}
+
 /**
  * A roster that cannot be read (e.g. the Persona Roster page is missing) must never stop a ticket being
  * created: it is made unassigned and the reason is shown (TAI-409 review; "never lose a ticket").
@@ -2293,7 +2299,7 @@ async function main(): Promise<void> {
     }
 
     if (subcommand === "ready") {
-        const persona = arg as Persona | undefined;
+        const persona = parseReadyPersonaArg(arg);
         const fetchNote = renderLocalFetchNote(await refreshLocalDefaultBranch(process.cwd(), config.taiRoot));
         const gitDeps = await tryResolveReadyGitDeps(config);
         const evidenceCache = createEvidenceCache(); // TAI-419: shared across every ticket this run suggests for
