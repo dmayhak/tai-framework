@@ -262,6 +262,28 @@ the same prerequisite: an `env` step already recorded in `.tai/init-state.json`,
 clone doesn't have (the command refuses and points you at `init run`). It records no step of
 its own, so `init status` is unaffected.
 
+## The Claude Code allow rule (offered by `init run`, not a verified step)
+
+`init run` ends by offering to add a narrow allow rule to the project's `.claude/settings.local.json`
+(TAI-588). It is not one of the five recorded steps, so `init status` never reports it missing, and it
+only ever asks in a real terminal.
+
+**Why it exists.** Claude Code in auto mode judges each command one by one, and it can deny a routine TAI
+command partway through a long run (one clean-up had 47 `page link` calls go through and 5 identical ones
+denied, and the session stalled). The rule lets TAI's own routine commands run without asking.
+
+**What it covers.** The `issue` and `page` commands, and the read-only `ready`, `pr-ready`, `work`,
+`verify` and `git-pr` `review-prep`, `comments` and `render-findings`, each with and without `--as <persona>`.
+**What it never covers:** `git-pr merge`, `git-pr review`, `init`, or anything else, so merges and approvals
+still reach you.
+
+**How it is written.** `init run` shows the exact rules and writes them only when you answer yes. It goes
+in `.claude/settings.local.json` because the rule names this machine's TAI install path, so it belongs in
+the personal file and not a committed one. An existing file keeps every other setting and rule, a second
+run adds nothing twice, and a file that is not valid JSON is left alone.
+
+**How to remove it.** Delete the lines that name `cli.ts` from the `"allow"` list in that file.
+
 ## Suggested team rituals (not a verified `init` step)
 
 TAI doesn't build or tickle the *schedule* for any of this (human-decided 2026-08-25) —

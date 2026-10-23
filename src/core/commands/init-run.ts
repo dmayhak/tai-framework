@@ -56,6 +56,7 @@ import {
     type DiscoveredSpace,
     type Listing,
 } from "./discovery.js";
+import { buildAllowRules, mergeAllowRules, readSettingsLocal, settingsLocalPath, writeSettingsLocal } from "./claude-allow-rule.js";
 import { GIT_HOST_SECRET_KEYS, parseGitHostKind, type GitHostKind } from "../git/host-factory.js";
 
 const GIT_HOST_LABEL: Record<GitHostKind, string> = { bitbucket: "Bitbucket", github: "GitHub" };
@@ -296,6 +297,54 @@ function canonicalFromList(typed: string, listed: Listing<unknown> | { error: st
 }
 
 /** The whole flow. Never throws for an expected failure -- those come back as `exitCode`. */
+/** The marker a human answers the allow-rule prompt with: a yes is `y` or `yes`; anything else is a no. */
+const YES = /^\s*y(es)?\s*$/i;
+
+/**
+ * TAI-588/589: offers to add a narrow Claude Code allow rule for TAI's ticket, page and read-only commands to the
+ * project's `.claude/settings.local.json`. Asked once, in a terminal, with the rule shown; never written silently.
+ * It is not a recorded step and never fails `init run`: a problem with the file is said and the file is left alone.
+ */
+async function offerClaudeAllowRule(deps: InitRunDeps): Promise<void> {
+    const { cwd, taiHome, io, interactive } = deps;
+    const file = settingsLocalPath(cwd);
+    try {
+        const merged = mergeAllowRules(await readSettingsLocal(cwd), buildAllowRules(taiHome));
+        if (!merged.ok) {
+            io.say(`\nLeft ${file} alone: ${merged.reason}. Fix it and run \`init run\` again to be offered the Claude Code allow rule.`);
+            return;
+        }
+        if (merged.added.length === 0) {
+            io.say(`\nThe Claude Code allow rule for TAI's commands is already in ${file}.`);
+            return;
+        }
+        if (!interactive) {
+            io.say(
+                `\nNot offered: a Claude Code allow rule for TAI's ticket, page and read-only commands (it avoids an auto-mode ` +
+                    `session stalling on a routine command). Run \`init run\` in a terminal to be asked.`
+            );
+            return;
+        }
+        io.say(
+            `\nClaude Code, in auto mode, judges each command one by one and can deny a routine TAI command partway through a ` +
+                `clean-up. This rule lets TAI's own issue, page and read-only commands (with or without --as) run without asking. ` +
+                `It does not cover \`git-pr merge\`, \`git-pr review\`, \`init\` or anything else, so merges and approvals still ` +
+                `reach you. It names this machine's TAI path, so it goes in the personal file ${file}, not a committed one.\n\n` +
+                `Rules to add (${merged.added.length}):\n${merged.added.map((r) => `  ${r}`).join("\n")}\n\n` +
+                `To remove it later, delete these lines from the "allow" list in that file.`
+        );
+        const answer = await io.ask(`Add these ${merged.added.length} rules to ${file}? [y/N]`, "n");
+        if (!YES.test(answer)) {
+            io.say("Not added. Run `init run` again to be offered it.");
+            return;
+        }
+        await writeSettingsLocal(cwd, merged.content);
+        io.say(`Added ${merged.added.length} rules to ${file}.`);
+    } catch (err) {
+        io.say(`\nCould not offer the Claude Code allow rule: ${errorMessage(err)}`);
+    }
+}
+
 export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
     const { cwd, taiRoot, taiHome, io, services, renderStepResult } = deps;
     const envPath = path.join(cwd, ".env");
@@ -654,6 +703,9 @@ export async function runInit(deps: InitRunDeps): Promise<InitRunResult> {
             "claude-md + gemini-md"
         )
     );
+
+    // ----- 5b. The Claude Code allow rule (TAI-589): offered once, written only on a yes -----
+    await offerClaudeAllowRule(deps);
 
     // ----- 6. Plain reminder, never an action -----
     const reminder = unpushedChangesReminder(await services.gitStatusPorcelain(cwd));

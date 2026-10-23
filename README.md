@@ -240,7 +240,9 @@ project you've cloned into a new folder or onto a new PC** (a fresh clone has no
    failure with a concrete to-do list (the git host is skipped as N/A when you don't use
    `git-pr`);
 5. writes the `CLAUDE.md` and `GEMINI.md` pointers (Claude Code and Gemini CLI each read their own)
-   and reminds you to commit and push them.
+   and reminds you to commit and push them;
+6. **offers a Claude Code allow rule** (a terminal only, asked once, never written silently) — see
+   [the allow rule](#the-claude-code-allow-rule-init-run-offers) below.
 
 Re-running is always safe: every step is re-verified live, and `.tai/init-state.json` is just a
 cache it rebuilds — never copy it between clones. For a brand-new project, the one thing it
@@ -248,6 +250,23 @@ can't do is Jira admin provisioning (TAI's issue types and a `Persona` field): i
 says what's missing, and the checklist below has the click-paths. Run
 `npx --prefix ~/.tai-framework tsx ~/.tai-framework/src/hosts/cli.ts init status` any time to
 see progress.
+
+#### The Claude Code allow rule `init run` offers
+
+In auto mode Claude Code judges each command one by one, and it can deny a routine TAI command partway
+through a long run (one clean-up had 47 `page link` calls go through and 5 identical ones denied, and the
+session stalled). So `init run` offers to add a narrow allow rule to your project's
+`.claude/settings.local.json`. It shows the exact rules first and writes them only if you answer yes.
+
+- **Covers:** TAI's `issue` and `page` commands, and the read-only `ready`, `pr-ready`, `work`, `verify` and
+  `git-pr` `review-prep`, `comments` and `render-findings`, each with and without `--as <persona>`.
+- **Never covers:** `git-pr merge`, `git-pr review`, `init`, or anything else, so merges and approvals still
+  reach you.
+- **Why that file:** the rule names this machine's TAI install path, so it belongs in the personal file
+  Claude Code keeps out of git, not in a committed `settings.json`.
+- **Safe to re-run:** an existing file keeps every other setting and rule, and a second run adds nothing
+  twice. A file that is not valid JSON is left alone.
+- **Remove it:** delete the lines that name `cli.ts` from the `"allow"` list in `.claude/settings.local.json`.
 
 The full manual admin steps (exact Jira/Confluence click-paths, the complete `.env` var
 reference, the Bitbucket and GitHub token scopes) live in
