@@ -426,7 +426,9 @@ describe("loadBuiltinPersonaConfigs (real src/personas/*.md)", () => {
             [...configs.get("architect")!.permissions.gitHost].sort(),
             ["createPullRequest", "mergePullRequest"]
         );
-        for (const id of ["analyst", "dba", "ux-designer"]) {
+        // DBA (TAI-614): opens a PR for the scripts and migrations she writes; the Dev owner or PM merges.
+        assert.deepEqual([...configs.get("dba")!.permissions.gitHost], ["createPullRequest"]);
+        for (const id of ["analyst", "ux-designer"]) {
             assert.deepEqual(configs.get(id)!.permissions.gitHost, [], `${id} should have no gitHost grants`);
         }
     });

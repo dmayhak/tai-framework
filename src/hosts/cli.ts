@@ -397,16 +397,20 @@ async function resolveIssueAssignment(
     return { assignee: real, candidates: resolved.candidates };
 }
 
-const TEST_TIER_TYPES: ReadonlySet<string> = new Set([
+/** The subtask types whose owner opens a PR of its own but never merges it: the test tiers (Tester) and `Database`
+ *  (DBA). Merging one resolves permission through the sibling `Dev` below. */
+const OWN_PR_SUBTASK_TYPES: ReadonlySet<string> = new Set([
     SubtaskType.IntegrationTest,
     SubtaskType.SystemTest,
     SubtaskType.E2ETest,
+    SubtaskType.Database,
 ]);
 
 /**
  * TAI-314/315/316 ADR (Confluence page 40304641): a test-tier subtask's own `persona`
  * field is `tester`, who has no `mergePullRequest` grant (no self-merge for Tester,
- * `tester.md`'s own explicit decision) — so MERGING one resolves permission via its
+ * `tester.md`'s own explicit decision) — and TAI-614 added a `Database` subtask, whose
+ * DBA has none either — so MERGING one resolves permission via its
  * sibling `Dev` subtask's persona instead (normally `developer`), falling back to the
  * parent Story's own `persona` field if no sibling `Dev` exists. Every other issue type,
  * and every non-merge action (`create` in particular — Tester's own `createPullRequest`
@@ -418,7 +422,7 @@ export async function resolveMergePersona(
     projectKey: string,
     issue: Issue
 ): Promise<Persona | null | undefined> {
-    if (!TEST_TIER_TYPES.has(issue.issueType) || !issue.parentKey) return issue.persona;
+    if (!OWN_PR_SUBTASK_TYPES.has(issue.issueType) || !issue.parentKey) return issue.persona;
 
     const siblings = await workTracker.search({
         projectKey,

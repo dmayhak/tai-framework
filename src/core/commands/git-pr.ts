@@ -98,7 +98,7 @@ export function isMergeConflict(reason: string): boolean {
  * Story/Bug work, (TAI-293) a governance-content Story/Bug/Spike/Epic ticket with no
  * `Dev` subtask at all (PM/Architect-authored, e.g. `PROJECT_BRIEF.md`/persona-doc
  * content), or (TAI-314/315/316) a test-tier subtask (`IntegrationTest`/`SystemTest`/
- * `E2ETest`) that opened its own PR — so `git-pr merge` can transition it to `Done` as a
+ * `E2ETest`) or (TAI-614) `Database` subtask that opened its own PR — so `git-pr merge` can transition it to `Done` as a
  * second write in the same call. Same "one command, two writes" shape `git-pr create`
  * already has (PR create + remote link).
  *
@@ -129,6 +129,7 @@ export async function findLinkedIssueForPR(
             SubtaskType.IntegrationTest,
             SubtaskType.SystemTest,
             SubtaskType.E2ETest,
+            SubtaskType.Database,
             StoryType.Story,
             StoryType.Bug,
             StoryType.Spike,

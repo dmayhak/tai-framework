@@ -22,6 +22,14 @@ the schema's allowed map until TAI-458 (2026-10-08) added it for exactly this ha
 
 "Not limited to the piece she was asked about" is brief §4's peripheral-awareness sharpening.
 
+## Opening her own PR
+
+A DBA writes real files (migrations, SQL, scripts) and had no way to land them: the persona held no `gitHost`
+grant. Found in a real target project and decided with the human (TAI-613/TAI-614): the DBA commits onto the Story's
+branch and opens a PR from it when no open PR carries the commits, and the `Dev` owner or PM merges, so the DBA gets
+`createPullRequest` and not `mergePullRequest`, the same shape as Tester. A separate branch per subtask was not
+taken: it adds a second merge into the Story branch for no gain.
+
 ## Dynamic insertion
 
 A `Database` subtask found mid-flight is the canonical example behind

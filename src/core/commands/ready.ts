@@ -453,6 +453,7 @@ async function findDevLinkedOpenPRs(
  * revision, this same ADR) so it can be found here the same way `Dev` already is. Feeds
  * `readyToMerge` ONLY, never `readyToTest` — testing your own test-tier PR is meaningless
  * (same posture `findStoryLinkedOpenPRs` already established for governance-content PRs).
+ * TAI-614: a `Database` subtask that opened its own PR (DBA's scripts) is found the same way.
  */
 async function findTestTierLinkedOpenPRs(
     workTracker: WorkTracker,
@@ -462,7 +463,7 @@ async function findTestTierLinkedOpenPRs(
     return findSubtaskLinkedOpenPRs(
         workTracker,
         projectKey,
-        [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest],
+        [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest, SubtaskType.Database],
         openPRsByRepo
     );
 }
@@ -534,6 +535,7 @@ async function syncMergedIssues(
             SubtaskType.IntegrationTest,
             SubtaskType.SystemTest,
             SubtaskType.E2ETest,
+            SubtaskType.Database,
             ...GOVERNANCE_ISSUE_TYPES,
         ],
         statuses: [Status.InProgress],

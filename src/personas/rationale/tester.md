@@ -48,6 +48,12 @@ A failure after the merge is a new linked Bug; nothing reopens `Dev`.
 `defaultTestTiersForBug(priority)` is TAI-119: for a Priority=Highest Bug it recommends
 `IntegrationTest` only, per the Expedited Path in `workflows/bug.md`.
 
+## When she opens a PR
+
+The grant started as one case, test code found after the `Dev` PR had merged. A real target project showed the
+other: a Story where the Tester writes the scripts and no Developer has a PR open for them to ride in. TAI-614
+widened it to any time no open PR carries her test code, still without `mergePullRequest`.
+
 ## The shared bullets
 
 - Filing pages by type: the doc-type folder rule (brief §4), `src/core/storage/doc-folders.ts`, TAI-597.
