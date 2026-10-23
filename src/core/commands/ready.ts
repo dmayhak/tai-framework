@@ -135,7 +135,7 @@ export interface ReadyToTestCandidate {
  *  Story/Bug/Spike/Epic ticket directly for a governance-content PR with no Dev subtask
  *  at all (PM/Architect-authored — see `findStoryLinkedOpenPRs`), or a test-tier subtask
  *  (`IntegrationTest`/`SystemTest`/`E2ETest`) or `Database` subtask for Tester's or the DBA's own PR (see
- *  `findTestTierLinkedOpenPRs`). `git-pr merge` doesn't care which — it resolves merge
+ *  `findOwnPrSubtaskLinkedOpenPRs`). `git-pr merge` doesn't care which — it resolves merge
  *  permission from whichever issue's own `persona` field, EXCEPT a test-tier or `Database` subtask,
  *  which resolves via its sibling `Dev`'s `persona` instead (`resolveGitHost`, `cli.ts`,
  *  since neither Tester nor the DBA has a `mergePullRequest` grant). */
@@ -387,7 +387,7 @@ async function fetchOpenPRsByRepo(
 }
 
 /**
- * Shared correlation logic underneath `findDevLinkedOpenPRs`/`findTestTierLinkedOpenPRs`
+ * Shared correlation logic underneath `findDevLinkedOpenPRs`/`findOwnPrSubtaskLinkedOpenPRs`
  * below: searches `In Progress` issues of the given `issueTypes`, then correlates each
  * one's `WorkTracker.getRemoteLinks` against every configured repo's open PRs — the same
  * mechanism TAI-107/108's original `findReadyToMergePRs` used for `CodeReview` subtasks,
@@ -434,7 +434,7 @@ async function findSubtaskLinkedOpenPRs(
  * merges, not until the PR opens — see story-schema.ts) with a linked open PR (`git-pr
  * create` now links directly to the `Dev` subtask, not a `CodeReview` sibling — TAI-159
  * ADR §4). Feeds BOTH `readyToTest` and `readyToMerge` (see `computePRSections`) — unlike
- * `findTestTierLinkedOpenPRs` below, which feeds `readyToMerge` only.
+ * `findOwnPrSubtaskLinkedOpenPRs` below, which feeds `readyToMerge` only.
  */
 async function findDevLinkedOpenPRs(
     workTracker: WorkTracker,
@@ -455,7 +455,7 @@ async function findDevLinkedOpenPRs(
  * (same posture `findStoryLinkedOpenPRs` already established for governance-content PRs).
  * TAI-614: a `Database` subtask that opened its own PR (DBA's scripts) is found the same way.
  */
-async function findTestTierLinkedOpenPRs(
+async function findOwnPrSubtaskLinkedOpenPRs(
     workTracker: WorkTracker,
     projectKey: string,
     openPRsByRepo: ReadonlyMap<RepoId, readonly PullRequestRef[]>
@@ -652,7 +652,7 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
         // field (or, for a test-tier subtask, its sibling `Dev`'s — see `resolveGitHost`,
         // `cli.ts`), not from which source found it.
         const storyLinked = await findStoryLinkedOpenPRs(deps.workTracker, deps.projectKey, openPRsByRepo);
-        const testTierLinked = await findTestTierLinkedOpenPRs(deps.workTracker, deps.projectKey, openPRsByRepo);
+        const testTierLinked = await findOwnPrSubtaskLinkedOpenPRs(deps.workTracker, deps.projectKey, openPRsByRepo);
         const mergeCandidates: readonly ReadyToMergeCandidate[] = [
             ...devLinked.map((c) => ({ issueKey: c.devSubtaskKey, pullRequest: c.pullRequest })),
             ...storyLinked,

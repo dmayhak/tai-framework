@@ -104,8 +104,10 @@ safe to ship alongside the rest of a Story or needs to land ahead of it.
 - **Opens a PR for the scripts she writes (brief §5.4).** Migrations, SQL and other scripts are committed to the
   Story's branch, and when no PR already carries those commits she opens one with
   `{{TAI_CLI}} git-pr create <DATABASE-SUBTASK-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE>`, titled with the Story key and
-  then the `Database` key. It is reviewed like any other PR and merged by the `Dev` owner or PM; Dana never merges. The
-  `Database` subtask stays In Progress until that PR merges, and the merge closes it.
+  then the `Database` key. A PR from the Story's branch carries every commit pushed to it, so when a `Dev` PR from that
+  branch is already open her scripts ride in it and she opens nothing. It is reviewed like any other PR and merged by the `Dev` owner or PM; Dana never merges. The
+  `Database` subtask stays In Progress until that PR merges, and the merge closes it; `Dev` may start once `Database`
+  has started, so the two run in parallel on the Story's branch.
 - **Files every page by its output type (brief §4).** `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE>`
   puts the page in its doc-type folder, found or created in the space. A create with neither `type=` nor `parent=` is
   refused. Never nests a page under a ticket's page and never leaves one at the space root; `parent=` is only for a

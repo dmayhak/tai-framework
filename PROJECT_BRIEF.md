@@ -991,7 +991,8 @@ decision.**
    has no `Dev` work) the author opens a PR titled with the Story key and then their own subtask's key. It is reviewed
    like any other and merged by the `Dev` owner or PM, never by its author; that subtask stays In Progress until its
    PR merges, and the merge closes it. A `Database` PR skips the merge gate's test-tier and `UAT` checks, because it lands
-   before the work they test; approvals and standing change requests still apply. Nothing goes straight to the default
+   before the work they test; approvals and standing change requests still apply. `Dev` may start once `Database` has
+   started (the precedence gate), since `Database` stays open until its PR merges. Nothing goes straight to the default
    branch.
 
 **How review, readiness and the merge work (TAI-159 ADR):**
