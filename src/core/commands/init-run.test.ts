@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -170,6 +170,9 @@ interface HarnessOptions {
     env?: Record<string, string>;
 }
 
+/** The allow-rule prompt (TAI-589). One definition, so rewording it breaks one line, not several tests. */
+const ALLOW_RULE_PROMPT = /^Add these \d+ rules to /;
+
 async function harness(dir: string, opts: HarnessOptions = {}) {
     const calls: string[] = [];
     const said: string[] = [];
@@ -193,6 +196,8 @@ async function harness(dir: string, opts: HarnessOptions = {}) {
             ask: async (question) => {
                 asked.push(question);
                 const next = answers.shift();
+                // TAI-589: the allow-rule offer comes last in every interactive run; a test that is not about it declines.
+                if (next === undefined && ALLOW_RULE_PROMPT.test(question)) return "n";
                 if (next === undefined) throw new Error(`Unexpected prompt: ${question}`);
                 return next;
             },
@@ -546,7 +551,7 @@ describe("runInit — failures stop at the failing step", () => {
                 answers: [""],
             });
             assert.equal((await runInit(h.deps)).exitCode, 0, h.all());
-            assert.deepEqual(h.asked.length, 1, "only the site URL was asked");
+            assert.deepEqual(h.asked.filter((q) => !ALLOW_RULE_PROMPT.test(q)).length, 1, "only the site URL was asked");
         });
     });
 });
@@ -1000,3 +1005,82 @@ async function withTempDirResult<T>(fn: (dir: string) => Promise<T>): Promise<T>
     });
     return out as T;
 }
+
+describe("runInit — the Claude Code allow rule offer (TAI-589)", () => {
+    const settingsPath = (dir: string) => path.join(dir, ".claude", "settings.local.json");
+    const readSettings = async (dir: string) => JSON.parse(await readFile(settingsPath(dir), "utf-8"));
+    const exists = (file: string) => stat(file).then(() => true, () => false);
+
+    async function run(dir: string, answers: string[], opts: { interactive?: boolean; existing?: string } = {}) {
+        if (opts.existing !== undefined) {
+            await mkdir(path.dirname(settingsPath(dir)), { recursive: true });
+            await writeFile(settingsPath(dir), opts.existing, "utf-8");
+        }
+        const h = await harness(dir, { interactive: opts.interactive ?? true, envFile: COMPLETE_ENV, answers });
+        const result = await runInit(h.deps);
+        assert.equal(result.exitCode, 0, h.all());
+        return h;
+    }
+
+    it("shows the exact rules and writes them only on a yes", async () => {
+        await withTempDir(async (dir) => {
+            const h = await run(dir, ["", "y"]);
+            const shown = h.said.join("\n");
+            assert.match(shown, /Bash\(npx --prefix \/opt\/tai tsx \/opt\/tai\/src\/hosts\/cli\.ts issue \*\)/);
+            assert.match(shown, /git-pr merge/, "the exclusions are named");
+            assert.match(shown, /delete these lines/i, "removal is explained");
+            const allow = (await readSettings(dir)).permissions.allow as string[];
+            assert.ok(allow.some((r) => r.includes("cli.ts page *")));
+            assert.ok(allow.every((r) => !/git-pr merge|git-pr review \*|\binit\b/.test(r)));
+        });
+    });
+
+    it("writes nothing on a no, an empty answer, or anything else", async () => {
+        for (const answer of ["n", "", "maybe"]) {
+            await withTempDir(async (dir) => {
+                await run(dir, ["", answer]);
+                assert.equal(await exists(settingsPath(dir)), false, `answer ${JSON.stringify(answer)}`);
+            });
+        }
+    });
+
+    it("never writes or prompts in a non-interactive run, and says how to be offered it", async () => {
+        await withTempDir(async (dir) => {
+            const h = await run(dir, [], { interactive: false });
+            assert.equal(await exists(settingsPath(dir)), false);
+            assert.ok(!h.asked.some((q) => ALLOW_RULE_PROMPT.test(q)));
+            assert.match(h.said.join("\n"), /Run `init run` in a terminal to be asked/);
+        });
+    });
+
+    it("merges into an existing file, keeping every other setting and rule", async () => {
+        await withTempDir(async (dir) => {
+            const existing = JSON.stringify({ env: { A: "1" }, permissions: { allow: ["Bash(npm test *)"], deny: ["Bash(rm *)"] } });
+            await run(dir, ["", "yes"], { existing });
+            const out = await readSettings(dir);
+            assert.deepEqual(out.env, { A: "1" });
+            assert.deepEqual(out.permissions.deny, ["Bash(rm *)"]);
+            assert.equal(out.permissions.allow[0], "Bash(npm test *)");
+            assert.ok(out.permissions.allow.length > 1);
+        });
+    });
+
+    it("a second run adds no duplicate and does not ask again", async () => {
+        await withTempDir(async (dir) => {
+            await run(dir, ["", "y"]);
+            const first = await readFile(settingsPath(dir), "utf-8");
+            const h = await run(dir, [""]);
+            assert.equal(await readFile(settingsPath(dir), "utf-8"), first);
+            assert.ok(!h.asked.some((q) => ALLOW_RULE_PROMPT.test(q)));
+            assert.match(h.said.join("\n"), /already in/);
+        });
+    });
+
+    it("leaves a settings file it cannot merge into alone, and init run still succeeds", async () => {
+        await withTempDir(async (dir) => {
+            const h = await run(dir, [""], { existing: "{not json" });
+            assert.equal(await readFile(settingsPath(dir), "utf-8"), "{not json");
+            assert.match(h.said.join("\n"), /Left .* alone: it is not valid JSON/);
+        });
+    });
+});
