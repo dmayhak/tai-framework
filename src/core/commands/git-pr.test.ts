@@ -312,6 +312,12 @@ describe("findLinkedIssueForPR (rev 52, TAI-159 ADR §4)", () => {
         assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), devB.key);
     });
 
+    it("finds an In-Progress Database subtask that opened its own PR (TAI-614)", async () => {
+        const database = issueFixture({ key: toIssueKey("TAI-170"), issueType: SubtaskType.Database, status: Status.InProgress });
+        const wt = new FakeSearchLinksWorkTracker([database], new Map([[database.key, [{ url: prUrl, title: "PR" }]]]));
+        assert.equal(await findLinkedIssueForPR(wt, "TAI", prUrl), database.key);
+    });
+
     it("finds an In-Progress governance-content Bug/Story/Spike/Epic ticket with no Dev subtask at all (TAI-293)", async () => {
         const bug = issueFixture({ key: toIssueKey("TAI-292"), issueType: StoryType.Bug, status: Status.InProgress });
         const wt = new FakeSearchLinksWorkTracker([bug], new Map([[bug.key, [{ url: prUrl, title: "PR" }]]]));

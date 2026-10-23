@@ -58,6 +58,34 @@ describe("openPrerequisites", () => {
         }
     });
 
+    it("lets Dev start once Database has started, since Database stays open until its PR merges (TAI-614)", () => {
+        const database = subtask(SubtaskType.Database, Status.InProgress);
+        const dev = subtask(SubtaskType.Dev, Status.ToDo);
+        assert.deepEqual(openPrerequisites(dev, story, [database, dev]), []);
+    });
+
+    it("lets a test tier or UAT start while Database is In Progress, once Dev has started (TAI-614)", () => {
+        const database = subtask(SubtaskType.Database, Status.InProgress);
+        const dev = subtask(SubtaskType.Dev, Status.InProgress);
+        for (const type of [SubtaskType.IntegrationTest, SubtaskType.SystemTest, SubtaskType.E2ETest, SubtaskType.Uat]) {
+            const tier = subtask(type, Status.ToDo);
+            assert.deepEqual(openPrerequisites(tier, story, [database, dev, tier]), [], type);
+        }
+    });
+
+    it("still refuses a test tier while Database has not started (TAI-614)", () => {
+        const database = subtask(SubtaskType.Database, Status.ToDo);
+        const dev = subtask(SubtaskType.Dev, Status.InProgress);
+        const tier = subtask(SubtaskType.IntegrationTest, Status.ToDo);
+        assert.deepEqual(keys(openPrerequisites(tier, story, [database, dev, tier])), [database.key]);
+    });
+
+    it("still refuses Dev while Database has not started (TAI-614)", () => {
+        const database = subtask(SubtaskType.Database, Status.ToDo);
+        const dev = subtask(SubtaskType.Dev, Status.ToDo);
+        assert.deepEqual(keys(openPrerequisites(dev, story, [database, dev])), [database.key]);
+    });
+
     it("still refuses a test tier while Dev has not started, and a later tier while an earlier one is open", () => {
         const dev = subtask(SubtaskType.Dev, Status.ToDo);
         const integration = subtask(SubtaskType.IntegrationTest, Status.ToDo);

@@ -17,6 +17,11 @@
  * start once `Dev` has STARTED. `Dev` stays In Progress until its PR merges and testing happens
  * before the merge, so requiring `Dev` to be Done would refuse every test tier.
  *
+ * A SECOND rule (TAI-614): `Dev`, and so a test tier or UAT, may start once `Database` has STARTED. A DBA opens a PR for her scripts and
+ * `Database` stays In Progress until it merges, so requiring `Database` to be Done would stall `Dev` and the tiers behind it on a human
+ * merge. Both work on the Story's branch. `/tai-ready` still reads the static graph, so it lists `Dev` as ready
+ * only once `Database` is Done; a person starts it earlier by hand.
+ *
  * The gate can be overridden per call (`TransitionOptions.overridePrecedence`, interface.ts); the backend then
  * leaves `precedenceOverrideComment` on the ticket so the bypass is visible.
  */
@@ -47,6 +52,9 @@ export function openPrerequisites(issue: Issue, parent: Pick<Issue, "issueType">
     const done = new Set(subtasks.filter((s) => FINISHED.has(s.status)).map((s) => s.issueType as SubtaskType));
     if (STARTS_ONCE_DEV_HAS.has(issue.issueType) && subtasks.some((s) => s.issueType === SubtaskType.Dev && STARTED.has(s.status))) {
         done.add(SubtaskType.Dev);
+    }
+    if (issue.issueType === SubtaskType.Dev || STARTS_ONCE_DEV_HAS.has(issue.issueType)) {
+        for (const s of subtasks) if (s.issueType === SubtaskType.Database && STARTED.has(s.status)) done.add(SubtaskType.Database);
     }
     if (isSubtaskReady(issue.issueType, parent.issueType, present, done)) return [];
 

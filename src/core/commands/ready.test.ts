@@ -1607,6 +1607,41 @@ describe("findReadyWork out-of-band merge sync (rev 52, TAI-159 ADR)", () => {
     });
 });
 
+describe("findReadyWork -- a DBA's own PR (TAI-614)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+
+    test("an In-Progress Database subtask with a linked, approved PR surfaces in readyToMerge beside a Dev PR, and neither is readyToTest for it", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const devPr = prFixture({ id: toPullRequestId("30"), url: "https://example.com/pull/30", reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, devPr.url, "PR");
+
+            const database = await inProgressTestTier(backend, "Migration scripts", SubtaskType.Database);
+            const dbPr = prFixture({ id: toPullRequestId("31"), url: "https://example.com/pull/31", reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(database.key, dbPr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [devPr, dbPr]]]));
+            const result = await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            assert.deepEqual(result.readyToMerge.map((c) => c.issueKey).sort(), [database.key, dev.key].sort());
+            assert.deepEqual(result.readyToTest.map((c) => c.devSubtaskKey), [dev.key], "only the Dev PR is something to test");
+        });
+    });
+
+    test("an In-Progress Database subtask whose linked PR has merged is synced to Done", async () => {
+        await withBackend(async (backend, taiRoot) => {
+            const database = await inProgressTestTier(backend, "Migration scripts", SubtaskType.Database);
+            const pr = prFixture({ state: "merged" });
+            await backend.workTracker.createRemoteLink(database.key, pr.url, "PR");
+
+            const gitHost = new FakeGitHost(new Map([[repo, [pr]]]));
+            await findReadyWork({ workTracker: backend.workTracker, taiRoot, projectKey: "TAI", gitHost, repos: [repo] });
+
+            assert.equal((await backend.workTracker.getIssue(database.key))?.status, Status.Done);
+        });
+    });
+});
+
 describe("findReadyWork Test-tier To Do sync (TAI-194)", () => {
     const repo = toRepoId("dmayhak/tai-framework");
 

@@ -155,6 +155,24 @@ describe("checkMergeGate: gathering", () => {
         assert.deepEqual(verdict.blockers, ["UAT TAI-8 is To Do, not Done, and does not carry the uat-after-merge label."]);
     });
 
+    it("does not hold a Database subtask's PR for the Story's open tiers and UAT, which only follow Dev (TAI-614)", async () => {
+        const database = tier("TAI-6", Status.InProgress, SubtaskType.Database);
+        const withDb = {
+            ...deps,
+            workTracker: {
+                getIssue: async (key: string) => (key === database.key ? database : issues.get(key) ?? null),
+                search: async () => [integ, uat("TAI-8", Status.ToDo)],
+            },
+        };
+        assert.equal((await checkMergeGate(withDb, pr([approved()]), database.key)).ok, true);
+    });
+
+    it("still needs the Database PR's approval (TAI-614)", async () => {
+        const database = tier("TAI-6", Status.InProgress, SubtaskType.Database);
+        const withDb = { ...deps, workTracker: { ...deps.workTracker, getIssue: async () => database } };
+        assert.equal((await checkMergeGate(withDb, pr([]), database.key)).ok, false);
+    });
+
     it("checks approvals only when the PR is tied to no ticket", async () => {
         assert.equal((await checkMergeGate(deps, pr([approved()]), null)).ok, true);
     });

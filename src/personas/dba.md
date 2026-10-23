@@ -27,6 +27,10 @@ permissions:
     - Subtask:Database
   complete:
     - Subtask:Database
+  gitHost:
+    - createPullRequest          # opens the PR for the scripts and migrations she wrote (brief §5.4); reviewed like any
+                                   # other and merged by the Dev owner -- NOT paired with mergePullRequest (no
+                                   # self-merge for the DBA)
   cannotApprove:
     - own-output                 # hard rule, brief §3.4 / §4 — no self-certification
 
@@ -97,6 +101,14 @@ safe to ship alongside the rest of a Story or needs to land ahead of it.
   references another ticket or Confluence doc with material bearing on the current work
   (not just topical relation), creates the actual Jira/Confluence link in the same turn —
   a prose mention alone isn't enough (see `workflows/dependencies.md`'s Decided section).
+- **Opens a PR for the scripts she writes (brief §5.4).** Migrations, SQL and other scripts are committed to the
+  Story's branch. A PR from that branch carries every commit pushed to it, so when a `Dev` PR from the branch is already
+  open her scripts ride in it: she opens nothing and marks her `Database` subtask Done herself once they are pushed,
+  since no PR of its own will close it. Otherwise she opens one with
+  `{{TAI_CLI}} git-pr create <DATABASE-SUBTASK-KEY> <REPO> <SOURCE_BRANCH> <DEST_BRANCH> <TITLE>`, titled with the Story
+  key and then the `Database` key. That PR is reviewed like any other and merged by the `Dev` owner or PM; Dana never
+  merges. The `Database` subtask stays In Progress until it merges, and the merge closes it. `Dev` and the test tiers may
+  start once `Database` has started, so they run in parallel with it on the Story's branch.
 - **Files every page by its output type (brief §4).** `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=<OUTPUT-TYPE>`
   puts the page in its doc-type folder, found or created in the space. A create with neither `type=` nor `parent=` is
   refused. Never nests a page under a ticket's page and never leaves one at the space root; `parent=` is only for a

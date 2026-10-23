@@ -30,7 +30,7 @@ for the merge, and the merge waits for the tiers (the merge gate, TAI-462).
 
 Before this, Test-tier subtasks sat outside the PR chain and had no way to land their own code. Tessa
 was given `gitHost: createPullRequest` (rev 48) but never `mergePullRequest`. After TAI-456 that grant
-is for one case only: test code discovered after the `Dev` PR has merged.
+is for one case only at that point: test code discovered after the `Dev` PR has merged (widened by TAI-614, below).
 
 A failure after the merge is a new linked Bug; nothing reopens `Dev`.
 
@@ -47,6 +47,12 @@ A failure after the merge is a new linked Bug; nothing reopens `Dev`.
 
 `defaultTestTiersForBug(priority)` is TAI-119: for a Priority=Highest Bug it recommends
 `IntegrationTest` only, per the Expedited Path in `workflows/bug.md`.
+
+## When she opens a PR
+
+The grant started as one case, test code found after the `Dev` PR had merged. A real target project showed the
+other: a Story where the Tester writes the scripts and no Developer has a PR open for them to ride in. TAI-614
+widened it to any time no open PR carries her test code, still without `mergePullRequest`.
 
 ## The shared bullets
 

@@ -644,6 +644,14 @@ describe("resolveMergePersona (TAI-314/315/316)", () => {
         assert.equal(await resolveMergePersona(wt, "TAI", testTier), Persona.Developer);
     });
 
+    it("a Database subtask resolves via its sibling Dev subtask's persona, since the DBA cannot merge (TAI-614)", async () => {
+        const story = makeIssue({ key: toIssueKey("TAI-604"), issueType: StoryType.Story, persona: Persona.Pm });
+        const dev = makeIssue({ key: toIssueKey("TAI-612"), issueType: SubtaskType.Dev, persona: Persona.Developer, parentKey: story.key });
+        const database = makeIssue({ key: toIssueKey("TAI-613"), issueType: SubtaskType.Database, persona: Persona.Dba, parentKey: story.key });
+        const wt = new FakeWorkTracker([story, dev, database]);
+        assert.equal(await resolveMergePersona(wt, "TAI", database), Persona.Developer);
+    });
+
     it("falls back to the parent Story's own persona when no sibling Dev subtask exists", async () => {
         const story = makeIssue({ key: toIssueKey("TAI-304"), issueType: StoryType.Bug, persona: Persona.Pm });
         const testTier = makeIssue({

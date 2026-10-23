@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-23 (rev 124). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-23 (rev 125). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -986,8 +986,14 @@ decision.**
 6. **A test failure before the merge** sends that tier back to To Do. `Dev` never left In Progress, and the fix
    is more commits on the same PR.
 7. **A failure found after the merge is a new linked Bug.** Nothing reopens `Dev`.
-8. **Test code discovered only after the merge** opens its own PR, reviewed like any other and merged by the
-   `Dev` owner; that tier stays In Progress until its PR merges. Nothing goes straight to the default branch.
+8. **Scripts nobody else carries open their own PR.** A Tester's test code, or a DBA's migrations and scripts, are
+   committed to the Story's branch; when no open PR carries those commits (the `Dev` PR already merged, or the Story
+   has no `Dev` work) the author opens a PR titled with the Story key and then their own subtask's key. It is reviewed
+   like any other and merged by the `Dev` owner or PM, never by its author; that subtask stays In Progress until its
+   PR merges, and the merge closes it. A `Database` PR skips the merge gate's test-tier and `UAT` checks, because it lands
+   before the work they test; approvals and standing change requests still apply. `Dev` may start once `Database` has
+   started (the precedence gate), since `Database` stays open until its PR merges. Nothing goes straight to the default
+   branch.
 
 **How review, readiness and the merge work (TAI-159 ADR):**
 - **Review happens on the real PR, and there is no `CodeReview` subtask.** The git host's own reviewer and
@@ -1046,9 +1052,10 @@ TA space, page 28704769). The earlier chains this replaced, including the `CodeR
 
 **Test-tier subtasks:** a test tier's code normally lands in the `Dev` branch and PR
 (item 2 above), and the tiers gate both the merge (the merge gate) and `Deploy`. Tester keeps
-`gitHost: createPullRequest` for one case only: test code discovered after the `Dev` PR has merged (item 8). She
-opens that PR herself, it is reviewed like any other, and the `Dev` owner merges it — Tester was not granted
-`mergePullRequest`, so there is no self-merge path for her.
+`gitHost: createPullRequest` for the case where no open PR carries her test code (item 8). She opens that PR
+herself, it is reviewed like any other, and the `Dev` owner or PM merges it — Tester was not granted
+`mergePullRequest`, so there is no self-merge path for her. The DBA holds the same grant for her `Database`
+scripts, on the same terms.
 
 See TAI-33's ADR for the `GitHost` interface this depends on.
 
