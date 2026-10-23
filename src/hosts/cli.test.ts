@@ -1145,11 +1145,11 @@ describe("the 'Design done, nothing implements it' section (TAI-602)", () => {
     };
 
     it("lists the Story and the Done design subtask as a numbered action naming /tai-work", () => {
-        const story = makeIssue({ key: toIssueKey("HSA-70"), issueType: StoryType.Story, summary: "Sites schema", status: Status.InProgress });
-        const design = makeIssue({ key: toIssueKey("HSA-68"), issueType: SubtaskType.Database, summary: "Schema", status: Status.Done });
+        const story = makeIssue({ key: toIssueKey("ABC-70"), issueType: StoryType.Story, summary: "Sites schema", status: Status.InProgress });
+        const design = makeIssue({ key: toIssueKey("ABC-68"), issueType: SubtaskType.Database, summary: "Schema", status: Status.Done });
         const out = renderReadyWork({ ...base, designWithoutDev: [{ design, story }] });
         assert.match(out, /## Design done, nothing implements it/);
-        assert.match(out, /1\. \*\*HSA-70\*\* Sites schema — HSA-68 \[database\] is Done and no Dev exists under it or its Epic -- run \/tai-work HSA-70/);
+        assert.match(out, /1\. \*\*ABC-70\*\* Sites schema — ABC-68 \[database\] is Done and no Dev exists under it or its Epic -- run \/tai-work ABC-70/);
         assert.doesNotMatch(out, /Nothing is currently ready to start/);
     });
 

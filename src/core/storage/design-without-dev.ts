@@ -1,9 +1,9 @@
 /**
  * TAI-601/602: a Done design subtask with nothing implementing it.
  *
- * A `Database` or `ArchitectureDesign` subtask that is Done while no `Dev` subtask exists under its Story, or
+ * A `Database`, `ArchitectureDesign` or `UxDesign` subtask that is Done while no `Dev` subtask exists under its Story, or
  * under any Story of that Story's Epic, leaves the next step invisible: `/tai-ready` reads tickets only, so a
- * comment or a Confluence page never surfaces it (found in the homeschooling project, 2026-10-22). One copy of the
+ * comment or a Confluence page never surfaces it (found in a real target project, 2026-10-22). One copy of the
  * check, used by `/tai-ready` and the `/tai-audit` pattern, so the two cannot disagree. Read-only.
  *
  * A Story that is itself Done or Canceled is skipped: it is history, and listing it would nag forever. A design
@@ -17,7 +17,7 @@ import type { Comment, Issue, IssueKey, WorkTracker } from "./interface.js";
 export const DESIGN_WITHOUT_DEV_HEADING = "Design done, nothing implements it";
 
 export interface DesignWithoutDev {
-    /** The Done `Database` / `ArchitectureDesign` subtask. */
+    /** The Done `Database` / `ArchitectureDesign` / `UxDesign` subtask. */
     readonly design: Issue;
     /** The Story or Bug it belongs to, still open. */
     readonly story: Issue;
