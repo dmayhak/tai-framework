@@ -411,8 +411,8 @@ tickets back. Jira Automation rules could add a native guard as an optional laye
   pass.
 - **Follow-on work gets a ticket the moment it is known, not a comment or a page (TAI-601).** `/tai-ready`
   reads tickets only, and Backlog is invisible to it, so a persona who finishes design work and names what
-  must happen next only in a comment or a Confluence page leaves the board looking idle (found live in the
-  homeschooling project, 2026-10-22: the DBA approved the schema notes and the migrations had no ticket).
+  must happen next only in a comment or a Confluence page leaves the board looking idle (found live in a
+  real target project, 2026-10-22: the DBA approved the schema notes and the migrations had no ticket).
   Anyone who knows a task is needed creates it in the same turn, with the persona set for whoever will do it,
   **no human assignee**, and real `Blocks`/`Relates` links to the work it follows (the "as soon as known"
   rule above), so the PM sees it in grooming and assignment stays the PM's and the human's call. Its status
