@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { load as loadYaml } from "js-yaml";
 
-import { StoryType, SubtaskType } from "../schema/story-schema.js";
+import { StoryType, SubtaskType, describePersonaNames, resolvePersonaName } from "../schema/story-schema.js";
 import type { DocStore, PageRef } from "../storage/interface.js";
 
 // ---------- Permission target parsing ----------
@@ -601,6 +601,9 @@ export async function resolveActingPersonaId(docStore: DocStore, personaId: stri
     } satisfies PageRef);
     const overrides = overridesPage ? parsePersonasOverridePage(overridesPage.content) : new Map<string, PersonaOverride>();
     if (overrides.has(personaId)) return personaId;
+    // TAI-618: a short name for a built-in (`dev`), tried last so a persona the project added under that very id wins.
+    const aliased = resolvePersonaName(personaId);
+    if (aliased && builtins.has(aliased)) return aliased;
     const known = [...new Set([...builtins.keys(), ...overrides.keys()])].sort().join(", ");
-    throw new Error(`Unknown persona "${personaId}" given to --as. Known personas: ${known}.`);
+    throw new Error(`Unknown persona "${personaId}" given to --as. Known personas: ${known}. Short names for the built-ins: ${describePersonaNames()}.`);
 }

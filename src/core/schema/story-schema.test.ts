@@ -14,6 +14,9 @@ import assert from "node:assert/strict";
 
 import {
     Persona,
+    PERSONA_ALIASES,
+    describePersonaNames,
+    resolvePersonaName,
     SUBTASK_OWNER,
     defaultPersonaFor,
     StoryType,
@@ -617,5 +620,37 @@ describe("subtaskOutsideMapNote (TAI-479)", () => {
         assert.match(underEpic, /^Note: a "dev" subtask was created directly under an Epic\. Subtasks belong under a Kickoff, Spike, Story or Bug, never under an Epic or another subtask\./);
         assert.match(underEpic, /The ticket was created\./);
         assert.match(subtaskOutsideMapNote(SubtaskType.Dev, SubtaskType.Dev)!, /created directly under a "dev" subtask/);
+    });
+});
+
+describe("persona aliases (TAI-618)", () => {
+    const personas = Object.values(Persona);
+
+    it("every persona has at least one alias", () => {
+        for (const p of personas) assert.ok(PERSONA_ALIASES[p].length > 0, p);
+    });
+
+    it("no alias is shared by two personas or equals any persona id, and each is lower-case", () => {
+        const seen = new Map<string, Persona>();
+        for (const p of personas) {
+            for (const alias of PERSONA_ALIASES[p]) {
+                assert.equal(alias, alias.toLowerCase(), `${alias} must be lower-case`);
+                assert.ok(!(personas as string[]).includes(alias), `${alias} is also a persona id`);
+                assert.equal(seen.get(alias), undefined, `${alias} belongs to both ${seen.get(alias)} and ${p}`);
+                seen.set(alias, p);
+            }
+        }
+    });
+
+    it("resolvePersonaName maps an id or an alias to the persona, in any case, and anything else to undefined", () => {
+        assert.equal(resolvePersonaName("developer"), Persona.Developer);
+        assert.equal(resolvePersonaName("Dev"), Persona.Developer);
+        assert.equal(resolvePersonaName(" qa "), Persona.Tester);
+        assert.equal(resolvePersonaName("nobody"), undefined);
+    });
+
+    it("describePersonaNames lists every persona id with its aliases", () => {
+        const text = describePersonaNames();
+        for (const p of personas) assert.ok(text.includes(`${p} (${PERSONA_ALIASES[p].join(", ")})`), p);
     });
 });

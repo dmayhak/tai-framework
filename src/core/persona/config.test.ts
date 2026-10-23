@@ -797,10 +797,20 @@ describe("acting persona (TAI-477)", () => {
         assert.equal(await resolveActingPersonaId(docStore, "release-manager", { spaceKey: "TA" }), "release-manager");
     });
 
+    it("resolveActingPersonaId resolves a built-in's short name to its id (TAI-618)", async () => {
+        assert.equal(await resolveActingPersonaId(new FakeDocStore(), "dev", { spaceKey: "TA" }), "developer");
+    });
+
+    it("resolveActingPersonaId lets a user-added persona keep an id that is also a built-in's short name (TAI-618)", async () => {
+        const docStore = new FakeDocStore();
+        docStore.seed("TA", "Personas", "### ops\n\n```yaml\ndisplayName: Olly\n```\n");
+        assert.equal(await resolveActingPersonaId(docStore, "ops", { spaceKey: "TA" }), "ops");
+    });
+
     it("resolveActingPersonaId rejects an unknown id, naming the ones it knows", async () => {
         await assert.rejects(
             resolveActingPersonaId(new FakeDocStore(), "develper", { spaceKey: "TA" }),
-            /Unknown persona "develper".*developer/s
+            /Unknown persona "develper".*developer.*Short names for the built-ins: .*developer \(dev, eng, engineer\)/s
         );
     });
 });
