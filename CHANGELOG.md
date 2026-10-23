@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 127 (2026-10-23)
+
+**TAI-621 (Story TAI-620): the grooming and retro briefings indent each numbered section's content.** Found reading `/tai-groom` in a real target project: under a heading such as `1. Epics with nothing under them`, the rows and `None.` sat at the same column as the heading, which made the briefing hard to scan. `indentSectionBody` (`section-indent.ts`) puts every line under a `## n. Title` heading in by three spaces, continuation lines included, in `renderGroomingBriefing` and `renderRetroBriefing`; headings, the scope line and the closing paragraph stay where they were, and a three-space `- ` row is still a Markdown list item. Not taken: `/tai-ready`, whose bold group names and numbering that runs across groups would read differently indented.
+
 ## rev 126 (2026-10-23)
 
 **TAI-616 (Bug TAI-615): `ready <persona>` refuses an unknown persona.** Found in a real target project, 2026-10-23: `/tai-ready dev` (`dev` is not a persona id; `developer` is) failed with `Cannot read properties of undefined (reading 'replace')`, because the `ready` branch of `cli.ts` cast its argument to `Persona` without checking it. `parseReadyPersonaArg` now runs it through `parsePersonaArg`, so a wrong word gets the same `Unknown persona "<value>". Expected one of: …` message `issue search persona=` already gave. Short aliases for personas are TAI-617.

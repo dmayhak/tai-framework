@@ -21,6 +21,7 @@
  *    same rule as the merge gate, which this reuses.
  */
 
+import { indentSectionBody } from "./section-indent.js";
 import { Status } from "../schema/story-schema.js";
 import { evaluateMergeGate } from "../git/merge-gate.js";
 import type { GitHost, PullRequestActivity, PullRequestRef, RepoId } from "../git/interface.js";
@@ -232,9 +233,7 @@ export function renderRetroBriefing(input: { readonly summary: RetroSummary; rea
 
     const section = (n: number, title: string, rows: readonly string[] | null): void => {
         out.push(`## ${n}. ${title}`, "");
-        if (rows === null) out.push(NOT_READ, "");
-        else if (rows.length === 0) out.push("None.", "");
-        else out.push(...rows, "");
+        out.push(...indentSectionBody(rows === null ? [NOT_READ] : rows.length === 0 ? ["None."] : rows), "");
     };
 
     section(
