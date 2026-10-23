@@ -1120,6 +1120,14 @@ function parseKeyValueArgs(args: readonly string[]): Record<string, string> {
     return fields;
 }
 
+/** TAI-611: a status typed on the command line, matched to TAI's own spelling. Case does not matter and the British
+ *  `Cancelled` is `Canceled` (Jira's spelling), which a person types by habit and which cost a retry. A word that is
+ *  no status is returned unchanged, so the backend still refuses it with its own message. */
+export function normalizeStatusArg(raw: string): string {
+    const wanted = raw.trim().toLowerCase().replace(/^cancelled$/, "canceled");
+    return Object.values(Status).find((status) => status.toLowerCase() === wanted) ?? raw;
+}
+
 /** Builds an `issue update` patch from its `key=value` arguments. Rejects an unknown key rather
  *  than ignoring it (found live: a typo'd `lables=` would otherwise "succeed" doing nothing).
  *  `parent=` re-parents a Story/Bug under an Epic; `labels=` REPLACES the whole list (an empty
@@ -1230,7 +1238,7 @@ export function renderCascadeWarnings(warnings: readonly CascadeWarning[] | unde
 export function parseIssueSearchFilter(fields: Readonly<Record<string, string>>, defaultProjectKey: string): IssueFilter {
     return {
         projectKey: fields["projectKey"] ?? defaultProjectKey,
-        ...(fields["status"] !== undefined ? { statuses: fields["status"].split(",") as Status[] } : {}),
+        ...(fields["status"] !== undefined ? { statuses: fields["status"].split(",").map(normalizeStatusArg) as Status[] } : {}),
         ...(fields["type"] !== undefined ? { issueTypes: fields["type"].split(",") as (StoryType | SubtaskType | "epic")[] } : {}),
         ...(fields["persona"] !== undefined ? { persona: parsePersonaArg(fields["persona"]) } : {}),
         ...(fields["parent"] !== undefined ? { parentKey: toIssueKey(fields["parent"]) } : {}),
@@ -2589,8 +2597,9 @@ async function main(): Promise<void> {
                 );
             }
             const key = toIssueKey(issueKey);
+            const target = normalizeStatusArg(status) as Status;
             const options = parseKeyValueArgs(kv)["force"] === "true" ? { overridePrecedence: true } : undefined;
-            let result = await config.backend.workTracker.transition(key, status as Status, options);
+            let result = await config.backend.workTracker.transition(key, target, options);
             let enrichedCandidates: string | undefined;
             let autoAssignFailure: string | undefined;
 
@@ -2607,7 +2616,7 @@ async function main(): Promise<void> {
                     if (assignee) {
                         const assigned = await config.backend.workTracker.assignIssue(key, assignee);
                         if (assigned.ok) {
-                            result = await config.backend.workTracker.transition(key, status as Status, options);
+                            result = await config.backend.workTracker.transition(key, target, options);
                         } else {
                             // Falls through to reporting the ORIGINAL transition rejection
                             // below (no retry attempted), but the human also sees WHY the
@@ -2631,7 +2640,7 @@ async function main(): Promise<void> {
             // TAI-475: a sign-off made through the CLI (UAT, EpicReview, DesignReview, an Epic -> Done) leaves a
             // stamped comment saying so. Best-effort: the transition has already happened.
             let signOffNote = "";
-            const signOff = result.ok ? signOffComment(result.issue, status as Status, actingPersonaOf(config)) : null;
+            const signOff = result.ok ? signOffComment(result.issue, target, actingPersonaOf(config)) : null;
             if (signOff) {
                 try {
                     await config.backend.workTracker.addComment(key, signOff);
@@ -2643,11 +2652,11 @@ async function main(): Promise<void> {
 
             // TAI-478: closing something outside the acting persona's `complete` grant gets a note, not a
             // refusal. Done only: a Cancel is a grooming action the human confirms, not a claim of completion.
-            const completeNote = result.ok && status === Status.Done ? await actingGrantNote(config, "complete", result.issue.issueType) : null;
+            const completeNote = result.ok && target === Status.Done ? await actingGrantNote(config, "complete", result.issue.issueType) : null;
 
             // TAI-468/546: closing a Story or Bug that has no Verified: / Not verified: comment still goes through;
             // the note says so. Show-only, nothing is blocked.
-            const unverifiedNote = result.ok && status === Status.Done ? unverifiedCloseNote(result.issue) : null;
+            const unverifiedNote = result.ok && target === Status.Done ? unverifiedCloseNote(result.issue) : null;
 
             // TAI-491: an Epic that just moved to Done gets a one-line suggestion. Never blocks or runs anything.
             const retroHint = result.ok ? retroEpicCloseHint(result.issue) : null;
@@ -2655,7 +2664,7 @@ async function main(): Promise<void> {
             console.log(
                 result.ok
                     ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "") + (unverifiedNote ? `\n\n${unverifiedNote}` : "") + (retroHint ? `\n\n${retroHint}` : "")
-                    : `# Transition denied\n\n${issueKey} -> "${status}": ${result.reason}` +
+                    : `# Transition denied\n\n${issueKey} -> "${target}": ${result.reason}` +
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")
             );

@@ -14,6 +14,7 @@ import {
 } from "../core/storage/interface.js";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../core/schema/story-schema.js";
 import {
+    normalizeStatusArg,
     parseIssueSearchFilter,
     parseIssueUpdatePatch,
     renderPullRequestComments,
@@ -1155,5 +1156,32 @@ describe("the 'Design done, nothing implements it' section (TAI-602)", () => {
 
     it("prints no section without one", () => {
         assert.doesNotMatch(renderReadyWork(base), /Design done/);
+    });
+});
+
+describe("normalizeStatusArg (TAI-611)", () => {
+    it("treats the British Cancelled as Canceled, in any case", () => {
+        for (const typed of ["Cancelled", "cancelled", "CANCELLED", "Canceled", "canceled", " Cancelled "]) {
+            assert.equal(normalizeStatusArg(typed), Status.Canceled, typed);
+        }
+    });
+
+    it("matches every other status case-insensitively, to TAI's own spelling", () => {
+        assert.equal(normalizeStatusArg("done"), Status.Done);
+        assert.equal(normalizeStatusArg("in progress"), Status.InProgress);
+        assert.equal(normalizeStatusArg("TO DO"), Status.ToDo);
+        assert.equal(normalizeStatusArg("In Review"), Status.InReview);
+        assert.equal(normalizeStatusArg("backlog"), Status.Backlog);
+    });
+
+    it("returns an unknown word unchanged, so the backend still refuses it with its own message", () => {
+        assert.equal(normalizeStatusArg("Finished"), "Finished");
+        assert.equal(normalizeStatusArg("Cancel"), "Cancel");
+        assert.equal(normalizeStatusArg(""), "");
+    });
+
+    it("applies to the status filter of issue search", () => {
+        const filter = parseIssueSearchFilter({ status: "cancelled,done,To Do" }, "TAI");
+        assert.deepEqual(filter.statuses, [Status.Canceled, Status.Done, Status.ToDo]);
     });
 });
