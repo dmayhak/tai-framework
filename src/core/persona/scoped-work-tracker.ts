@@ -117,6 +117,9 @@ export class PersonaScopedWorkTracker implements WorkTracker {
     createLink(from: IssueKey, relation: DependencyRelation, to: IssueKey): Promise<void> {
         return this.inner.createLink(from, relation, to);
     }
+    removeLink(from: IssueKey, relation: DependencyRelation, to: IssueKey): Promise<boolean> {
+        return this.inner.removeLink(from, relation, to);
+    }
 
     getLinkedIssues(
         key: IssueKey,

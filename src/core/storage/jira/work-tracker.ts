@@ -656,6 +656,37 @@ export function createJiraWorkTracker(
             });
         },
 
+        /**
+         * Inverse of `createLink`, same slot mapping: for DependsOn the blocker `to` sits in
+         * the INWARD slot and `from` in the OUTWARD one; RelatesTo matches either way round.
+         * Jira deletes a link by its own id, so read the links `from` carries and delete each
+         * match (a duplicated pair goes in one call). Only links of our own types are touched.
+         */
+        async removeLink(from: IssueKey, relation: DependencyRelation, to: IssueKey): Promise<boolean> {
+            const raw = await client.request<{
+                fields: {
+                    issuelinks?: {
+                        id: string;
+                        type: { name: string };
+                        inwardIssue?: { key: string };
+                        outwardIssue?: { key: string };
+                    }[];
+                };
+            }>("GET", `${API}/issue/${from}?fields=issuelinks`);
+
+            const ids: string[] = [];
+            for (const link of raw.fields.issuelinks ?? []) {
+                if (fromJiraLinkType(link.type.name) !== relation) continue;
+                const inward = link.inwardIssue?.key;
+                const outward = link.outwardIssue?.key;
+                // These are `from`'s own links, so the far end must be `to`: in the inward slot
+                // when `to` is the blocker, in the outward slot only for a symmetric RelatesTo.
+                if (inward === to || (relation === Rel.RelatesTo && outward === to)) ids.push(link.id);
+            }
+            for (const id of ids) await client.request("DELETE", `${API}/issueLink/${id}`);
+            return ids.length > 0;
+        },
+
         async getLinkedIssues(
             key: IssueKey,
             relation?: DependencyRelation,
