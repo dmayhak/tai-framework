@@ -686,6 +686,19 @@ export function createFilesystemBackend(rootDir: string, currentUser: HumanRef):
             await writeLinks(rootDir, data);
         },
 
+        async removeLink(from: IssueKey, relation: DependencyRelation, to: IssueKey): Promise<boolean> {
+            const data = await readLinks(rootDir);
+            const symmetric = relation === DependencyRelation.RelatesTo;
+            const matches = (l: { from: string; relation: string; to: string }): boolean =>
+                l.relation === relation &&
+                ((l.from === from && l.to === to) || (symmetric && l.from === to && l.to === from));
+            const kept = data.issueLinks.filter((l) => !matches(l));
+            if (kept.length === data.issueLinks.length) return false;
+            data.issueLinks = kept;
+            await writeLinks(rootDir, data);
+            return true;
+        },
+
         async getLinkedIssues(
             key: IssueKey,
             relation?: DependencyRelation,

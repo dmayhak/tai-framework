@@ -801,6 +801,54 @@ describe("issue links", () => {
     });
 });
 
+describe("issue links: removeLink", () => {
+    test("removes a DependsOn link in the direction it was made, and only that one", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const a = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "A" });
+            const b = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "B" });
+            await workTracker.createLink(a.key, DependencyRelation.DependsOn, b.key);
+
+            // Reversed: b does not depend on a, so nothing matches.
+            assert.equal(await workTracker.removeLink(b.key, DependencyRelation.DependsOn, a.key), false);
+            assert.equal((await workTracker.getLinkedIssues(a.key, DependencyRelation.DependsOn)).length, 1);
+
+            assert.equal(await workTracker.removeLink(a.key, DependencyRelation.DependsOn, b.key), true);
+            assert.deepEqual([...(await workTracker.getLinkedIssues(a.key, DependencyRelation.DependsOn))], []);
+        });
+    });
+
+    test("RelatesTo is symmetric: either orientation removes it", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const a = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "A" });
+            const b = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "B" });
+            await workTracker.createLink(a.key, DependencyRelation.RelatesTo, b.key);
+            assert.equal(await workTracker.removeLink(b.key, DependencyRelation.RelatesTo, a.key), true);
+            assert.deepEqual([...(await workTracker.getLinkedIssues(a.key, DependencyRelation.RelatesTo))], []);
+        });
+    });
+
+    test("a different relation, or no link at all, changes nothing", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const a = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "A" });
+            const b = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "B" });
+            await workTracker.createLink(a.key, DependencyRelation.DependsOn, b.key);
+            assert.equal(await workTracker.removeLink(a.key, DependencyRelation.RelatesTo, b.key), false);
+            assert.equal((await workTracker.getLinkedIssues(a.key, DependencyRelation.DependsOn)).length, 1);
+        });
+    });
+
+    test("removes every copy of a duplicated link", async () => {
+        await withBackend(async ({ workTracker }) => {
+            const a = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "A" });
+            const b = await workTracker.createIssue({ projectKey: "TAI", issueType: StoryType.Story, summary: "B" });
+            await workTracker.createLink(a.key, DependencyRelation.DependsOn, b.key);
+            await workTracker.createLink(a.key, DependencyRelation.DependsOn, b.key);
+            assert.equal(await workTracker.removeLink(a.key, DependencyRelation.DependsOn, b.key), true);
+            assert.deepEqual([...(await workTracker.getLinkedIssues(a.key, DependencyRelation.DependsOn))], []);
+        });
+    });
+});
+
 describe("pages", () => {
     test("createPage, getPage by id and by title, updatePage", async () => {
         await withBackend(async ({ docStore }) => {

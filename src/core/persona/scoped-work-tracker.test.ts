@@ -109,6 +109,11 @@ class RecordingWorkTracker implements WorkTracker {
         this.calls.push("createLink");
     }
 
+    async removeLink(): Promise<boolean> {
+        this.calls.push("removeLink");
+        return true;
+    }
+
     async getLinkedIssues(): Promise<readonly IssueLink[]> {
         this.calls.push("getLinkedIssues");
         return [];
@@ -256,6 +261,7 @@ describe("PersonaScopedWorkTracker pass-through methods", () => {
         await scoped.addLabel(key, "x");
         await scoped.removeLabel(key, "x");
         await scoped.createLink(key, DependencyRelation.RelatesTo, toIssueKey("TAI-2"));
+        await scoped.removeLink(key, DependencyRelation.RelatesTo, toIssueKey("TAI-2"));
         await scoped.getLinkedIssues(key);
         await scoped.linkPage(key, "p1" as PageId);
         await scoped.getLinkedPages(key);
@@ -268,6 +274,7 @@ describe("PersonaScopedWorkTracker pass-through methods", () => {
             "addLabel",
             "removeLabel",
             "createLink",
+            "removeLink",
             "getLinkedIssues",
             "linkPage",
             "getLinkedPages",

@@ -1846,6 +1846,62 @@ export function defineStorageConformance(
                 );
             });
 
+            it("removeLink removes what createLink made, and says so when there is nothing to remove", async () => {
+                const parent = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: StoryType.Story,
+                        summary: "Conformance: unlink parent",
+                    })
+                );
+                const blocker = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.Dev,
+                        parentKey: parent.key,
+                        summary: "Conformance: unlink blocker",
+                    })
+                );
+                const dependent = track(
+                    await h.backend.workTracker.createIssue({
+                        projectKey: h.projectKey,
+                        issueType: SubtaskType.CodeReview,
+                        parentKey: parent.key,
+                        summary: "Conformance: unlink dependent",
+                    })
+                );
+                const wt = h.backend.workTracker;
+
+                await wt.createLink(dependent.key, DependencyRelation.DependsOn, blocker.key);
+                await wt.createLink(dependent.key, DependencyRelation.RelatesTo, blocker.key);
+
+                // The reverse of a DependsOn link is not that link.
+                assert.equal(await wt.removeLink(blocker.key, DependencyRelation.DependsOn, dependent.key), false);
+                assert.ok(
+                    (await wt.getLinkedIssues(dependent.key, DependencyRelation.DependsOn, "outgoing")).some(
+                        (l) => l.key === blocker.key
+                    ),
+                    "a non-matching removeLink must change nothing"
+                );
+
+                assert.equal(await wt.removeLink(dependent.key, DependencyRelation.DependsOn, blocker.key), true);
+                assert.deepEqual(
+                    [...(await wt.getLinkedIssues(dependent.key, DependencyRelation.DependsOn, "outgoing"))],
+                    [],
+                    "the DependsOn link is gone"
+                );
+                assert.ok(
+                    (await wt.getLinkedIssues(dependent.key, DependencyRelation.RelatesTo)).some((l) => l.key === blocker.key),
+                    "the RelatesTo link between the same pair is untouched"
+                );
+
+                // RelatesTo is symmetric: removing it from the other end works.
+                assert.equal(await wt.removeLink(blocker.key, DependencyRelation.RelatesTo, dependent.key), true);
+                assert.deepEqual([...(await wt.getLinkedIssues(dependent.key, DependencyRelation.RelatesTo))], []);
+
+                assert.equal(await wt.removeLink(dependent.key, DependencyRelation.DependsOn, blocker.key), false, "already gone");
+            });
+
             it("search scopes to the project and filters by type/persona/parent", async () => {
                 const parent = track(
                     await h.backend.workTracker.createIssue({

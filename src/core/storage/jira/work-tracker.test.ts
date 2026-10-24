@@ -948,6 +948,56 @@ describe("createLink", () => {
     });
 });
 
+describe("removeLink", () => {
+    /** TAI-11's links as Jira returns them: TAI-10 blocks it (inward), it blocks TAI-12 (outward). */
+    const links = {
+        fields: {
+            issuelinks: [
+                { id: "501", type: { name: "Blocks" }, inwardIssue: { key: "TAI-10" } },
+                { id: "502", type: { name: "Blocks" }, outwardIssue: { key: "TAI-12" } },
+                { id: "503", type: { name: "Relates" }, outwardIssue: { key: "TAI-10" } },
+                { id: "504", type: { name: "Duplicate" }, inwardIssue: { key: "TAI-10" } },
+            ],
+        },
+    };
+
+    function trackerRecordingDeletes(deleted: string[]) {
+        return trackerWith(
+            stubFetch((url, init) => {
+                if (init.method === "DELETE") {
+                    deleted.push(url.replace(/^.*\/issueLink\//, ""));
+                    return new Response(null, { status: 204 });
+                }
+                return json(links);
+            })
+        );
+    }
+
+    it("deletes the Blocks link whose blocker sits in the inward slot", async () => {
+        const deleted: string[] = [];
+        const wt = trackerRecordingDeletes(deleted);
+        // "TAI-11 depends on TAI-10": TAI-10 blocks TAI-11.
+        const removed = await wt.removeLink(toIssueKey("TAI-11"), "depends-on" as never, toIssueKey("TAI-10"));
+        assert.equal(removed, true);
+        assert.deepEqual(deleted, ["501"], "not the link where TAI-11 is the blocker, and not the Relates or Duplicate one");
+    });
+
+    it("matches RelatesTo whichever slot the far end is in", async () => {
+        const deleted: string[] = [];
+        const wt = trackerRecordingDeletes(deleted);
+        assert.equal(await wt.removeLink(toIssueKey("TAI-11"), "relates-to" as never, toIssueKey("TAI-10")), true);
+        assert.deepEqual(deleted, ["503"]);
+    });
+
+    it("answers false and deletes nothing when no link matches", async () => {
+        const deleted: string[] = [];
+        const wt = trackerRecordingDeletes(deleted);
+        // TAI-11 blocks TAI-12, so "TAI-11 depends on TAI-12" does not exist.
+        assert.equal(await wt.removeLink(toIssueKey("TAI-11"), "depends-on" as never, toIssueKey("TAI-12")), false);
+        assert.deepEqual(deleted, []);
+    });
+});
+
 describe("linkPage", () => {
     /**
      * REGRESSION. `object.url` must be a genuine URL — Jira's remote-link API validates it

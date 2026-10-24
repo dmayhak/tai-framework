@@ -304,6 +304,11 @@ export interface WorkTracker {
     removeLabel(key: IssueKey, label: string): Promise<void>;
 
     createLink(from: IssueKey, relation: DependencyRelation, to: IssueKey): Promise<void>;
+    // Inverse of createLink, with the same (from, relation, to) meaning: for DependsOn,
+    // `to` is the blocker; RelatesTo is symmetric, so either orientation matches. Removes
+    // every matching link (a duplicate pair goes in one call) and answers whether there
+    // was one: `false` means nothing matched and nothing changed, not an error.
+    removeLink(from: IssueKey, relation: DependencyRelation, to: IssueKey): Promise<boolean>;
     // direction 'outgoing' (default): links where `key` is the `from` end (what this
     // depends on / relates to). 'incoming': where `key` is the `to` end (what depends
     // on this). Disambiguates DependsOn's direction, which story-schema.ts documents

@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-23 (rev 128). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-23 (rev 129). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -136,7 +136,7 @@ backend, is what actually enforces identical behavior.
 interface.ts` defines `WorkTracker` (issue CRUD minus delete — cancellation via `Canceled`,
 §5.3, covers that case instead; `transition`/`getAvailableTransitions`; `addComment`/
 `editComment`, no delete, matching the edit-only comment model elsewhere; `createLink`/
-`getLinkedIssues`; `linkPage`/`getLinkedPages`; `listAttachments`/`getAttachment`, read-only;
+`removeLink`/`getLinkedIssues`; `linkPage`/`getLinkedPages`; `listAttachments`/`getAttachment`, read-only;
 `search(filter: IssueFilter)` as the typed JQL-equivalent) and `DocStore` (page CRUD,
 comments, children, linked issues, attachments), bundled as `StorageBackend`. Proven
 identical across the filesystem and Jira backends by the conformance suite referenced above.

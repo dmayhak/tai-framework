@@ -1283,6 +1283,31 @@ export function resolveCreatePriority(
     return undefined;
 }
 
+/** `issue link` / `issue unlink` relation argument: only the two relations a person can name. */
+function parseLinkRelation(relation: string): DependencyRelation {
+    if (relation !== DependencyRelation.DependsOn && relation !== DependencyRelation.RelatesTo) {
+        throw new Error(`Unknown relation "${relation}" -- expected "depends-on" or "relates-to".`);
+    }
+    return relation;
+}
+
+/**
+ * `issue unlink`: removes the link `issue link <relation> <from> <to>` created. Removing a link that
+ * is not there is reported as such and changes nothing, so a repeated unlink is harmless.
+ */
+export async function unlinkIssues(
+    workTracker: Pick<WorkTracker, "removeLink">,
+    relation: string,
+    fromKey: string,
+    toKey: string
+): Promise<string> {
+    const parsed = parseLinkRelation(relation);
+    const removed = await workTracker.removeLink(toIssueKey(fromKey), parsed, toIssueKey(toKey));
+    return removed
+        ? `# Link removed\n\n${fromKey} ${parsed} ${toKey}.`
+        : `# No such link\n\n${fromKey} ${parsed} ${toKey} does not exist; nothing changed.`;
+}
+
 /**
  * `skippedCount` (TAI-405) is how many rows the backend fetched but could not read (unmapped Jira type): they
  * count toward the cap, so a full page with one skipped row still shows the "hit the search limit" hint.
@@ -2743,12 +2768,22 @@ async function main(): Promise<void> {
                         "(TO-KEY blocks FROM-KEY). Getting this backwards silently inverts the edge."
                 );
             }
-            if (relation !== DependencyRelation.DependsOn && relation !== DependencyRelation.RelatesTo) {
-                throw new Error(`Unknown relation "${relation}" -- expected "depends-on" or "relates-to".`);
+            const parsed = parseLinkRelation(relation);
+            await config.backend.workTracker.createLink(toIssueKey(fromKey), parsed, toIssueKey(toKey));
+            const note = parsed === DependencyRelation.DependsOn ? ` (${toKey} blocks ${fromKey})` : "";
+            console.log(`# Link created\n\n${fromKey} ${parsed} ${toKey}${note}.`);
+            return;
+        }
+
+        if (action === "unlink") {
+            const [relation, fromKey, toKey] = issueArgs;
+            if (!relation || !fromKey || !toKey) {
+                throw new Error(
+                    "Usage: issue unlink <depends-on|relates-to> <FROM-KEY> <TO-KEY>\n" +
+                        "  Takes the same arguments as issue link: removes the link that command created."
+                );
             }
-            await config.backend.workTracker.createLink(toIssueKey(fromKey), relation, toIssueKey(toKey));
-            const note = relation === DependencyRelation.DependsOn ? ` (${toKey} blocks ${fromKey})` : "";
-            console.log(`# Link created\n\n${fromKey} ${relation} ${toKey}${note}.`);
+            console.log(await unlinkIssues(config.backend.workTracker, relation, fromKey, toKey));
             return;
         }
 
@@ -2784,7 +2819,7 @@ async function main(): Promise<void> {
 
         throw new Error(
             `Unknown issue action "${action}" -- expected "create", "create-small", "update", "transition", "assign", "suggest", "comment", ` +
-                `"link", "search", or "get".`
+                `"link", "unlink", "search", or "get".`
         );
     }
 

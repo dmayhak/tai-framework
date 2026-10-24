@@ -44,6 +44,7 @@ import {
     actingPersonaOf,
     renderMergeRefused,
     actingHumanLabel,
+    unlinkIssues,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 import type { InitState } from "../core/commands/target-init.js";
@@ -1221,5 +1222,40 @@ describe("parseReadyPersonaArg (TAI-615)", () => {
     it("accepts a persona's short name (TAI-618)", () => {
         assert.equal(parseReadyPersonaArg("dev"), Persona.Developer);
         assert.equal(parseReadyPersonaArg("QA"), Persona.Tester);
+    });
+});
+
+describe("unlinkIssues (issue unlink)", () => {
+    function trackerRemoving(result: boolean) {
+        const calls: unknown[][] = [];
+        return {
+            calls,
+            workTracker: {
+                async removeLink(...args: unknown[]) {
+                    calls.push(args);
+                    return result;
+                },
+            },
+        };
+    }
+
+    it("removes the link with the same argument order as issue link", async () => {
+        const { calls, workTracker } = trackerRemoving(true);
+        const out = await unlinkIssues(workTracker, "depends-on", "TAI-11", "TAI-10");
+        assert.deepEqual(calls, [["TAI-11", DependencyRelation.DependsOn, "TAI-10"]]);
+        assert.match(out, /^# Link removed/);
+    });
+
+    it("says so, and reports nothing removed, when there is no such link", async () => {
+        const { workTracker } = trackerRemoving(false);
+        const out = await unlinkIssues(workTracker, "relates-to", "TAI-1", "TAI-2");
+        assert.match(out, /^# No such link/);
+        assert.match(out, /nothing changed/);
+    });
+
+    it("rejects an unknown relation before touching the tracker", async () => {
+        const { calls, workTracker } = trackerRemoving(true);
+        await assert.rejects(unlinkIssues(workTracker, "blocks", "TAI-1", "TAI-2"), /Unknown relation "blocks"/);
+        assert.deepEqual(calls, []);
     });
 });

@@ -103,6 +103,10 @@ class ScriptedWorkTracker implements WorkTracker {
     async createLink(): Promise<void> {
         this.calls.push("createLink");
     }
+    async removeLink(): Promise<boolean> {
+        this.calls.push("removeLink");
+        return true;
+    }
     async getLinkedIssues(): Promise<readonly IssueLink[]> {
         this.calls.push("getLinkedIssues");
         return [];
