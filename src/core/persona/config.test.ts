@@ -21,6 +21,7 @@ import {
     fillCliPlaceholder,
     personaCliCommand,
     resolveActingPersonaId,
+    listProjectPersonaIds,
     taiCliCommand,
     TAI_CLI_PLACEHOLDER,
     type PersonaConfig,
@@ -805,6 +806,21 @@ describe("acting persona (TAI-477)", () => {
         const docStore = new FakeDocStore();
         docStore.seed("TA", "Personas", "### ops\n\n```yaml\ndisplayName: Olly\n```\n");
         assert.equal(await resolveActingPersonaId(docStore, "ops", { spaceKey: "TA" }), "ops");
+    });
+
+    it("listProjectPersonaIds lists the built-ins plus each persona on the Personas page (TAI-622)", async () => {
+        const docStore = new FakeDocStore();
+        docStore.seed("TA", "Personas", "### release-manager\n\n```yaml\ndisplayName: Rae\n```\n");
+        const ids = await listProjectPersonaIds(docStore, { spaceKey: "TA" });
+        assert.ok(ids.includes("release-manager"));
+        assert.ok(ids.includes("developer"));
+        assert.equal(new Set(ids).size, ids.length);
+    });
+
+    it("listProjectPersonaIds is just the built-ins when there is no Personas page (TAI-622)", async () => {
+        const ids = await listProjectPersonaIds(new FakeDocStore(), { spaceKey: "TA" });
+        assert.ok(ids.includes("pm") && ids.includes("tester"));
+        assert.ok(!ids.includes("release-manager"));
     });
 
     it("resolveActingPersonaId rejects an unknown id, naming the ones it knows", async () => {

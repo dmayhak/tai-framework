@@ -10,10 +10,10 @@
  * approval still reaches the human.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { Persona } from "../schema/story-schema.js";
+import { PERSONA_ALIASES, Persona } from "../schema/story-schema.js";
 
 /** Subcommands the rule covers, each bare and with each persona id spelled out after `--as`. A persona is spelled
  *  out, never a `*`: Claude Code's `*` matches any characters including spaces, so `--as * issue *` would also match
@@ -30,15 +30,55 @@ const COVERED_SUBCOMMANDS: readonly string[] = [
     "git-pr render-findings",
 ];
 
-/** The `Bash(...)` allow entries for the CLI of the install at `taiHome`, in a stable order. */
-export function buildAllowRules(taiHome: string): string[] {
+/** A persona name as `--as` accepts it (the same shape `extractActingPersona` in cli.ts checks). */
+const PERSONA_NAME_SHAPE = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+
+/**
+ * Every name `--as` takes without a project lookup, plus `extraPersonaIds` (the project's own personas): each
+ * built-in id, each built-in's short names, and any extra id of the right shape. Sorted, no duplicates; an id that
+ * is not a valid `--as` value is left out rather than written into a rule.
+ */
+export function personaSpellings(extraPersonaIds: readonly string[] = []): string[] {
+    const names = new Set<string>(Object.values(Persona));
+    for (const aliases of Object.values(PERSONA_ALIASES)) for (const alias of aliases) names.add(alias);
+    for (const id of extraPersonaIds) if (PERSONA_NAME_SHAPE.test(id)) names.add(id);
+    return [...names].sort();
+}
+
+/**
+ * The `Bash(...)` allow entries for the CLI of the install at `taiHome`, in a stable order: each covered
+ * subcommand bare, then with each persona name after `--as` and after `--as=`.
+ */
+export function buildAllowRules(taiHome: string, extraPersonaIds: readonly string[] = []): string[] {
     const cli = `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts`;
+    const names = personaSpellings(extraPersonaIds);
     const rules: string[] = [];
     for (const sub of COVERED_SUBCOMMANDS) {
         rules.push(`Bash(${cli} ${sub} *)`);
-        for (const persona of Object.values(Persona)) rules.push(`Bash(${cli} --as ${persona} ${sub} *)`);
+        for (const name of names) {
+            rules.push(`Bash(${cli} --as ${name} ${sub} *)`);
+            rules.push(`Bash(${cli} --as=${name} ${sub} *)`);
+        }
     }
     return rules;
+}
+
+/**
+ * What the allow-rule prompt shows for `rules`. The bare rules are listed in full; the many `--as <name>` and
+ * `--as=<name>` rules are one line per subcommand, since the same words repeat for every persona name.
+ */
+export function describeAllowRules(rules: readonly string[], taiHome: string, personaNames: readonly string[]): string {
+    const prefix = `Bash(npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts `;
+    const bare = rules.filter((r) => r.startsWith(prefix) && !/^--as[ =]/.test(r.slice(prefix.length)));
+    const withPersona = rules.length - bare.length;
+    const lines = bare.map((r) => `  ${r}`);
+    if (withPersona > 0) {
+        lines.push(
+            `  ...and ${withPersona} more: each of those subcommands after \`--as <name>\` and \`--as=<name>\` for ` +
+                `${personaNames.length} persona names (${personaNames.join(", ")}).`
+        );
+    }
+    return lines.join("\n");
 }
 
 export type MergeResult =
@@ -100,8 +140,16 @@ export async function readSettingsLocal(cwd: string): Promise<string | null> {
     }
 }
 
+/** Written to a temporary file in the same directory and renamed over the target, so an interrupted write leaves the old file. */
 export async function writeSettingsLocal(cwd: string, content: string): Promise<void> {
     const file = settingsLocalPath(cwd);
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, content, "utf-8");
+    const temp = `${file}.${process.pid}.tmp`;
+    try {
+        await writeFile(temp, content, "utf-8");
+        await rename(temp, file);
+    } catch (err) {
+        await rm(temp, { force: true });
+        throw err;
+    }
 }

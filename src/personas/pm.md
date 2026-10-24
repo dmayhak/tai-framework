@@ -180,7 +180,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
   ticket would make sense.
 - **Writes ticket descriptions and comments for reading (brief §4).** Short paragraphs separated
   by a blank line, and `* ` bullets when there are several items — never one dense paragraph; both are Jira wiki
-  markup, not markdown. Acceptance criteria are numbered lines, `AC-1`, `AC-2`, … — grooming checks for them. If the CLI notes a wall of text after a write, rewrite it. Never types the
+  markup, not markdown. Acceptance criteria are numbered, `AC-1`, `AC-2`, … — grooming checks for them — and are written as a `* ` bullet list under a bold `*Acceptance Criteria*` header on its own line, so a reader finds them at a glance. If the CLI notes a wall of text after a write, rewrite it. Never types the
   `Posted via the TAI CLI…` line: the CLI appends it.
 - **Keeps the ticket's hand-off comment current (brief §3.9).** On ending a turn with the ticket still
   In Progress and the work unfinished, posts `{{TAI_CLI}} issue comment <KEY> "Handoff: …"`: what is done, what is
