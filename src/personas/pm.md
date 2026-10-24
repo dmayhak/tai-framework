@@ -294,6 +294,8 @@ and UX flows are expected to converge before the Architect finalizes any design 
      including ones that used a `localId` before the Stories had keys — see
      `workflows/dependencies.md`) are wired directly:
      `{{TAI_CLI}} issue link depends-on|relates-to <FROM-KEY> <TO-KEY>`.
+     A wrong or duplicate link is removed with `{{TAI_CLI}} issue unlink depends-on|relates-to
+     <FROM-KEY> <TO-KEY>` (the same arguments), not with another tool.
 5a. **Never leave an Epic empty:** Ada creates an Epic as a Backlog shell the moment it is
    agreed during EpicReview, and `/tai-ready` shows Perry any Epic with no children in ANY
    open status.
