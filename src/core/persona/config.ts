@@ -607,3 +607,14 @@ export async function resolveActingPersonaId(docStore: DocStore, personaId: stri
     const known = [...new Set([...builtins.keys(), ...overrides.keys()])].sort().join(", ");
     throw new Error(`Unknown persona "${personaId}" given to --as. Known personas: ${known}. Short names for the built-ins: ${describePersonaNames()}.`);
 }
+
+/** Every persona id this project has: the built-ins and each one on the `Personas` page. For the allow rule `init run` offers. */
+export async function listProjectPersonaIds(docStore: DocStore, opts: LoadPersonaConfigOptions): Promise<string[]> {
+    const builtins = await loadBuiltinPersonaConfigs(opts.personasDir);
+    const overridesPage = await docStore.getPage({
+        spaceKey: opts.spaceKey,
+        title: opts.overridePageTitle ?? PERSONAS_PAGE_TITLE,
+    } satisfies PageRef);
+    const overrides = overridesPage ? parsePersonasOverridePage(overridesPage.content) : new Map<string, PersonaOverride>();
+    return [...new Set([...builtins.keys(), ...overrides.keys()])].sort();
+}

@@ -111,7 +111,7 @@ import {
     renderInlineComment,
     type ReviewFinding,
 } from "../core/git/review-findings.js";
-import { loadPersonaConfig, resolveActingPersonaId, taiCliCommand, taiInstallRoot } from "../core/persona/config.js";
+import { listProjectPersonaIds, loadPersonaConfig, resolveActingPersonaId, taiCliCommand, taiInstallRoot } from "../core/persona/config.js";
 import { describeTaiInstall, renderInstallWarning } from "../core/git/install-state.js";
 import { grantNote } from "../core/persona/permission-gate.js";
 import { postIssueComment } from "../core/storage/handoff.js";
@@ -1676,6 +1676,11 @@ async function main(): Promise<void> {
                 io: createTerminalIO(),
                 renderStepResult: renderInitStepResult,
                 services: createRealServices(),
+                // TAI-622: the allow rule names the project's own personas too; a failure here is caught by the engine.
+                listProjectPersonaIds: async () => {
+                    const projectConfig = await resolveConfig();
+                    return listProjectPersonaIds(projectConfig.backend.docStore, { spaceKey: projectConfig.spaceKey });
+                },
             });
             process.exitCode = result.exitCode;
             return;

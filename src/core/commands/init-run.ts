@@ -56,7 +56,7 @@ import {
     type DiscoveredSpace,
     type Listing,
 } from "./discovery.js";
-import { buildAllowRules, mergeAllowRules, readSettingsLocal, settingsLocalPath, writeSettingsLocal } from "./claude-allow-rule.js";
+import { buildAllowRules, describeAllowRules, mergeAllowRules, personaSpellings, readSettingsLocal, settingsLocalPath, writeSettingsLocal } from "./claude-allow-rule.js";
 import { GIT_HOST_SECRET_KEYS, parseGitHostKind, type GitHostKind } from "../git/host-factory.js";
 
 const GIT_HOST_LABEL: Record<GitHostKind, string> = { bitbucket: "Bitbucket", github: "GitHub" };
@@ -194,6 +194,8 @@ export interface InitRunDeps {
         label?: string
     ) => string;
     readonly services: InitRunServices;
+    /** The persona ids this project has, for the allow rule (TAI-622). Absent or failing, the rule covers the built-ins only. */
+    readonly listProjectPersonaIds?: () => Promise<readonly string[]>;
 }
 
 export interface InitRunResult {
@@ -308,7 +310,17 @@ async function offerClaudeAllowRule(deps: InitRunDeps): Promise<void> {
     const { cwd, taiHome, io, interactive } = deps;
     const file = settingsLocalPath(cwd);
     try {
-        const merged = mergeAllowRules(await readSettingsLocal(cwd), buildAllowRules(taiHome));
+        let projectPersonas: readonly string[] = [];
+        let personaNote = "";
+        if (deps.listProjectPersonaIds) {
+            try {
+                projectPersonas = await deps.listProjectPersonaIds();
+            } catch (err) {
+                personaNote = `\nThe project's persona list could not be read (${errorMessage(err)}), so the rule covers the built-in personas only; run \`init run\` again to add the others.`;
+            }
+        }
+        const allRules = buildAllowRules(taiHome, projectPersonas);
+        const merged = mergeAllowRules(await readSettingsLocal(cwd), allRules);
         if (!merged.ok) {
             io.say(`\nLeft ${file} alone: ${merged.reason}. Fix it and run \`init run\` again to be offered the Claude Code allow rule.`);
             return;
@@ -330,7 +342,7 @@ async function offerClaudeAllowRule(deps: InitRunDeps): Promise<void> {
                 `It does not cover \`git-pr merge\`, \`git-pr review\`, \`init\` or anything else, so merges and approvals still ` +
                 `reach you. It matches commands spelled with this machine's TAI path (${taiHome}), so it goes in the personal file ` +
                 `${file}, not a committed one; a command typed with another spelling of that path (~/...) is still asked about.\n\n` +
-                `Rules to add (${merged.added.length}):\n${merged.added.map((r) => `  ${r}`).join("\n")}\n\n` +
+                `Rules to add (${merged.added.length}):\n${describeAllowRules(merged.added, taiHome, personaSpellings(projectPersonas))}${personaNote}\n\n` +
                 `To remove it later, delete these lines from the "allow" list in that file.`
         );
         const answer = await io.ask(`Add these ${merged.added.length} rules to ${file}? [y/N]`, "n");

@@ -1035,6 +1035,38 @@ describe("runInit — the Claude Code allow rule offer (TAI-589)", () => {
         });
     });
 
+    it("offers a rule for each of the project's own personas, summarised rather than printed one by one (TAI-622)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: COMPLETE_ENV, answers: ["", "y"] });
+            const result = await runInit({ ...h.deps, listProjectPersonaIds: async () => ["developer", "release-manager"] });
+            assert.equal(result.exitCode, 0, h.all());
+            const shown = h.said.join("\n");
+            assert.match(shown, /release-manager/);
+            assert.doesNotMatch(shown, /--as release-manager issue \*/, "the per-persona rules are summarised");
+            const allow = (await readSettings(dir)).permissions.allow as string[];
+            assert.ok(allow.includes("Bash(npx --prefix /opt/tai tsx /opt/tai/src/hosts/cli.ts --as release-manager issue *)"));
+            assert.ok(allow.includes("Bash(npx --prefix /opt/tai tsx /opt/tai/src/hosts/cli.ts --as=release-manager issue *)"));
+            assert.ok(allow.includes("Bash(npx --prefix /opt/tai tsx /opt/tai/src/hosts/cli.ts --as dev page *)"), "a short name");
+        });
+    });
+
+    it("falls back to the built-in personas, says so, and still completes when the persona list cannot be read (TAI-622)", async () => {
+        await withTempDir(async (dir) => {
+            const h = await harness(dir, { interactive: true, envFile: COMPLETE_ENV, answers: ["", "y"] });
+            const result = await runInit({
+                ...h.deps,
+                listProjectPersonaIds: async () => {
+                    throw new Error("no Confluence");
+                },
+            });
+            assert.equal(result.exitCode, 0, h.all());
+            assert.match(h.said.join("\n"), /persona list could not be read \(no Confluence\)/);
+            const allow = (await readSettings(dir)).permissions.allow as string[];
+            assert.ok(allow.some((r) => r.includes("--as developer issue *")));
+            assert.ok(allow.every((r) => !r.includes("release-manager")));
+        });
+    });
+
     it("writes nothing on a no, an empty answer, or anything else", async () => {
         for (const answer of ["n", "", "maybe"]) {
             await withTempDir(async (dir) => {
