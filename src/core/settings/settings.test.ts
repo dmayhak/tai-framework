@@ -18,6 +18,7 @@ describe("parseSettingValue", () => {
     it("accepts and normalises each type", () => {
         assert.equal(parseSettingValue(findSetting("dev-yolo")!, "ON"), "true");
         assert.equal(parseSettingValue(findSetting("dev-yolo")!, " no "), "false");
+        assert.equal(findSetting("review-rounds")!.default, "4");
         assert.equal(parseSettingValue(findSetting("review-rounds")!, "3"), "3");
         assert.equal(parseSettingValue(findSetting("reviewer")!, "Claude"), "claude");
     });

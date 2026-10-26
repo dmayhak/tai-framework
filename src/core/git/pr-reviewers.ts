@@ -35,6 +35,8 @@ export const PR_REVIEWERS_TITLE = "PR Reviewers";
  */
 export interface PrReviewer extends HumanRef {
     readonly githubLogin?: string;
+    /** True when the page's optional `Marker` column says `automated`: a separate Claude account that reviews for an unattended run (TAI-634). */
+    readonly automated?: boolean;
 }
 
 /** `@octocat`, `octocat` or a markdown link to the profile -> `octocat`; null when empty. */
@@ -86,15 +88,18 @@ export function parsePrReviewers(markdown: string): readonly PrReviewer[] {
     }
 
     const githubCol = header.findIndex((h, i) => i !== reviewerCol && /github/i.test(h));
+    const markerCol = header.findIndex((h, i) => i !== reviewerCol && /marker/i.test(h));
     const humans: PrReviewer[] = [];
     for (let i = start + 2; i < lines.length; i++) {
         const cells = tableCells(lines[i]!);
         if (!cells) break; // table ended
         const logins = githubCol === -1 ? [] : (cells[githubCol] ?? "").split(/[,;]/).map(parseGitHubLogin);
+        const markers = markerCol === -1 ? [] : (cells[markerCol] ?? "").split(/[,;]/).map((m) => m.trim());
         parseHumanCell(cells[reviewerCol] ?? "").forEach((human, n) => {
             if (humans.some((h) => sameHuman(h, human))) return;
             const login = logins[n];
-            humans.push(login ? { ...human, githubLogin: login } : human);
+            const automated = markers[n]?.toLowerCase() === "automated";
+            humans.push({ ...human, ...(login ? { githubLogin: login } : {}), ...(automated ? { automated: true } : {}) });
         });
     }
     return humans;
