@@ -171,7 +171,7 @@ import { resolveAssignment, type AssignmentResolution } from "../core/personas/a
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
-import { findDevTasks, workDevTasks, renderDevTasksReport, findOpenPullRequest } from "../core/commands/do-dev-tasks.js";
+import { findDevTasks, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude } from "../core/commands/headless-claude.js";
 import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
@@ -2279,12 +2279,25 @@ async function main(): Promise<void> {
                 workTracker: config.backend.workTracker,
                 projectKey: config.projectKey,
                 currentHuman: config.currentHuman,
-                ...(gitDeps ? { openPullRequestFor: async (issue) => (await findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, issue.key, { checkConfigured })).prUrl } : {}),
+                ...(gitDeps
+                    ? {
+                          openPullRequests: async () => {
+                              const listed = await listOpenPullRequests(gitDeps.gitHost, gitDeps.repos);
+                              return (issue) => {
+                                  for (const prs of listed.values()) {
+                                      const pr = prs.find((p) => titleNamesKey(p.title, issue.key));
+                                      if (pr) return pr.url;
+                                  }
+                                  return null;
+                              };
+                          },
+                      }
+                    : {}),
             });
         const found = await find();
         const yolo = (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
         if (dryRun || found.tasks.length === 0) {
-            console.log(renderDevTasksReport(found, null, { yolo }));
+            console.log(renderDevTasksReport(found, null, { yolo, openPullRequestsChecked: gitDeps !== undefined }));
             return;
         }
         if (!gitDeps) throw new Error("do-dev-tasks needs the git host: set TAI_GIT_REPOS (or TAI_GIT_WORKSPACE) and its credentials, so each PR can be found afterwards.");

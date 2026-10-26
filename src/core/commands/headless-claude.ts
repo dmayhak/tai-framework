@@ -28,6 +28,8 @@ export interface HeadlessRunOptions {
     readonly timeoutMs: number;
     /** The Claude executable; `claude` unless the machine says otherwise. */
     readonly bin?: string;
+    /** Milliseconds between the stop and the kill when a run ignores the stop; 10 seconds unless a test says otherwise. */
+    readonly killGraceMs?: number;
 }
 
 export interface HeadlessRunResult {
@@ -52,29 +54,53 @@ export function buildDevPrompt(key: string, cli: string): string {
     ].join("\n");
 }
 
+const TAIL_BYTES = 8_000;
+
+/**
+ * Runs `claude -p` for one ticket and resolves when it ends. It always ends: on the timeout the whole process group is
+ * stopped (SIGTERM, then SIGKILL after `killGraceMs`), because the run's own children (npm, tsx, a test run) can keep the
+ * output pipes open after `claude` itself is gone, and the result is returned from the timeout and not left to a `close`
+ * that may never come. Only the tail of the output is kept.
+ */
 export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): Promise<HeadlessRunResult> {
     return new Promise((resolve) => {
-        const child = spawn(options.bin ?? "claude", ["-p", prompt, "--permission-mode", "acceptEdits"], { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"] });
-        let out = "";
-        let timedOut = false;
+        const bin = options.bin ?? "claude";
+        const child = spawn(bin, ["-p", prompt, "--permission-mode", "acceptEdits"], { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"], detached: true });
+        let tail = "";
+        let settled = false;
+        const grace = options.killGraceMs ?? 10_000;
+        const keep = (d: Buffer): void => {
+            tail = (tail + d.toString()).slice(-TAIL_BYTES);
+        };
+        const lastLines = (): string => tail.trim().split("\n").slice(-6).join("\n");
+        const killGroup = (signal: NodeJS.Signals): void => {
+            try {
+                if (child.pid !== undefined) process.kill(-child.pid, signal);
+            } catch {
+                child.kill(signal);
+            }
+        };
+        const finish = (result: HeadlessRunResult): void => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            child.stdout?.destroy();
+            child.stderr?.destroy();
+            resolve(result);
+        };
         const timer = setTimeout(() => {
-            timedOut = true;
-            child.kill("SIGTERM");
-            // A run that ignores SIGTERM, or whose children hold the pipes open, must not outlast the bound.
-            setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+            killGroup("SIGTERM");
+            setTimeout(() => {
+                killGroup("SIGKILL");
+                finish({ ok: false, summary: `the run was stopped after ${Math.round(options.timeoutMs / 60000)} minutes. Last output:\n${lastLines()}` });
+            }, grace).unref();
         }, options.timeoutMs);
-        child.stdout.on("data", (d: Buffer) => (out += d.toString()));
-        child.stderr.on("data", (d: Buffer) => (out += d.toString()));
-        child.on("error", (err) => {
-            clearTimeout(timer);
-            resolve({ ok: false, summary: `could not start ${options.bin ?? "claude"}: ${err.message}` });
-        });
+        child.stdout?.on("data", keep);
+        child.stderr?.on("data", keep);
+        child.on("error", (err) => finish({ ok: false, summary: `could not start ${bin}: ${err.message}` }));
         child.on("close", (code) => {
-            clearTimeout(timer);
-            const tail = out.trim().split("\n").slice(-6).join("\n");
-            if (timedOut) resolve({ ok: false, summary: `the run was stopped after ${Math.round(options.timeoutMs / 60000)} minutes. Last output:\n${tail}` });
-            else if (code !== 0) resolve({ ok: false, summary: `the run exited with code ${code}. Last output:\n${tail}` });
-            else resolve({ ok: true, summary: tail });
+            if (code === 0) finish({ ok: true, summary: lastLines() });
+            else finish({ ok: false, summary: `the run exited with code ${code}. Last output:\n${lastLines()}` });
         });
     });
 }

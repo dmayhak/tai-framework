@@ -11,15 +11,33 @@
  */
 
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
+import { DirtyTreeError } from "./dev-tasks-git.js";
 import { sameHuman } from "../personas/roster.js";
-import type { GitHost, RepoId } from "../git/interface.js";
+import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import type { HumanRef, Issue, IssueKey, WorkTracker } from "../storage/interface.js";
 import { openPrerequisites } from "../storage/precedence-gate.js";
 import { findOpenDependsOnBlockers, priorityRank } from "./ready.js";
 
-/** Does a PR title name `key` as a whole ticket key? TAI-10 must not match a PR for TAI-100 or TAI-101 (PR 19 review). */
+/**
+ * Does a PR title name `key` as the ticket it is for? The project's title is `TAI-<STORY> - TAI-<SUBTASK> - what changed`
+ * (`validatePrTitle`), so the key must open one of the first two slots, as a whole key: TAI-10 is not TAI-100, and a key
+ * that only appears later in the words ("fix the TAI-10 regression") does not count.
+ */
 export function titleNamesKey(title: string, key: string): boolean {
-    return new RegExp(`(^|[^A-Za-z0-9-])${key.replace(/[^A-Za-z0-9-]/g, "")}(?![A-Za-z0-9])`).test(title);
+    const safe = key.replace(/[^A-Za-z0-9-]/g, "");
+    return title
+        .split(" - ")
+        .slice(0, 2)
+        .some((slot) => new RegExp(`^\\s*${safe}(?![A-Za-z0-9])`).test(slot));
+}
+
+export type OpenPullRequests = ReadonlyMap<RepoId, readonly PullRequestRef[]>;
+
+/** Every open PR in `repos`, listed once so a look at many tickets asks the git host once and not once per ticket. */
+export async function listOpenPullRequests(gitHost: Pick<GitHost, "listPullRequests">, repos: readonly RepoId[]): Promise<OpenPullRequests> {
+    const listed = new Map<RepoId, readonly PullRequestRef[]>();
+    for (const repo of repos) listed.set(repo, await gitHost.listPullRequests(repo, "open"));
+    return listed;
 }
 
 /** The git host's side of "does this ticket have a PR": the open PR whose title names the Dev key, and its check result. */
@@ -27,10 +45,11 @@ export async function findOpenPullRequest(
     gitHost: Pick<GitHost, "listPullRequests" | "getCommitStatuses">,
     repos: readonly RepoId[],
     key: string,
-    options: { readonly checkConfigured: boolean }
+    options: { readonly checkConfigured: boolean; readonly listed?: OpenPullRequests }
 ): Promise<{ readonly prUrl: string | null; readonly checkRecorded: boolean | null }> {
-    for (const repo of repos) {
-        const open = (await gitHost.listPullRequests(repo, "open")).find((pr) => titleNamesKey(pr.title, key));
+    const listed = options.listed ?? (await listOpenPullRequests(gitHost, repos));
+    for (const [repo, prs] of listed) {
+        const open = prs.find((pr) => titleNamesKey(pr.title, key));
         if (!open) continue;
         const statuses = options.checkConfigured ? await gitHost.getCommitStatuses(repo, open.sourceCommit) : null;
         return { prUrl: open.url, checkRecorded: statuses === null ? null : statuses.length > 0 };
@@ -59,8 +78,9 @@ export interface FindDevTasksDeps {
     readonly workTracker: WorkTracker;
     readonly projectKey: string;
     readonly currentHuman: HumanRef | null;
-    /** The open PR URL for a ticket, when it has one. A ticket with its PR already open is waiting for review and is not built again. */
-    readonly openPullRequestFor?: (issue: Issue) => Promise<string | null>;
+    /** Called once at the start of each look; returns the open PR URL for a ticket, when it has one. A ticket with its PR
+     *  already open is waiting for review and is not built again. */
+    readonly openPullRequests?: () => Promise<(issue: Issue) => string | null>;
 }
 
 /**
@@ -78,6 +98,7 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
         statuses: [Status.ToDo, Status.InProgress],
         exhaustive: true,
     });
+    const openPrFor = deps.openPullRequests ? await deps.openPullRequests() : null;
     const mine = candidates.filter((i) => i.issueType === SubtaskType.Dev && i.assignee !== null && sameHuman(i.assignee, me));
 
     const tasks: DevTask[] = [];
@@ -105,7 +126,7 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
                 continue;
             }
         }
-        const openPr = issue.status === Status.InProgress && deps.openPullRequestFor ? await deps.openPullRequestFor(issue) : null;
+        const openPr = issue.status === Status.InProgress && openPrFor ? openPrFor(issue) : null;
         if (openPr) {
             skipped.push({ issue, reason: `its PR is already open and waiting for review: ${openPr}` });
             continue;
@@ -126,7 +147,8 @@ export type DevTaskOutcome =
     | { readonly state: "pr-opened"; readonly prUrl: string; readonly checkRecorded: boolean | null }
     | { readonly state: "handed-on"; readonly note: string }
     | { readonly state: "waiting"; readonly reason: string }
-    | { readonly state: "failed"; readonly reason: string };
+    | { readonly state: "failed"; readonly reason: string }
+    | { readonly state: "stopped"; readonly reason: string };
 
 export interface RunDevTasksDeps {
     /** Called before each ticket: the working tree must be clean and on the default branch. Throws to fail the ticket. */
@@ -162,7 +184,13 @@ export function failureHandoff(reason: string): string {
 export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<DevTaskResult> {
     let outcome: DevTaskOutcome;
     try {
-        await deps.prepare(task);
+        try {
+            await deps.prepare(task);
+        } catch (err) {
+            // A dirty tree is not this ticket's fault: it is not marked failed and gets no hand-off (workDevTasks stops the run).
+            if (err instanceof DirtyTreeError) return { task, outcome: { state: "stopped", reason: err.message } };
+            throw err;
+        }
         if (deps.yolo) {
             outcome = deps.yoloRun
                 ? await deps.yoloRun(task)
@@ -205,7 +233,20 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
         const next = found.tasks.find((t) => !attempted.has(t.issue.key));
         if (!next) return { results, found };
         attempted.add(next.issue.key);
-        results.push(await runDevTask(next, deps));
+        const result = await runDevTask(next, deps);
+        results.push(result);
+        if (result.outcome.state === "stopped") {
+            // The tree was left dirty. Say so on the ticket whose run was the last one, and do not go on to fail the rest.
+            const previous = results.length > 1 ? results[results.length - 2]! : null;
+            if (previous) {
+                try {
+                    await deps.handoff(previous.task.issue.key, failureHandoff(`Its run left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`));
+                } catch {
+                    // the report below still says it
+                }
+            }
+            return { results, found };
+        }
     }
 }
 
@@ -218,10 +259,13 @@ function waitingNote(skipped: SkippedDevTask, worked: ReadonlySet<IssueKey>): st
     return mine.length ? ` Waiting on ${mine.join(", ")}, which this run worked on: it starts once that is merged and done.` : "";
 }
 
-export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean }): string {
+export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean }): string {
     const worked = new Set((results ?? []).flatMap((r) => [r.task.issue.key, r.task.parent.key]));
     const out = ["# Do all dev tasks", "", `DEV-YOLO is ${options.yolo ? "on" : "off"}.`, ""];
     if (results === null) {
+        if (options.openPullRequestsChecked === false) {
+            out.push("_The git host is not configured here, so a ticket that already has an open PR could not be left out of this list._", "");
+        }
         out.push(`## Would work (${found.tasks.length})`, "");
         out.push(...(found.tasks.length ? found.tasks.map((t) => `- ${line(t.issue)} [${t.issue.status}] under ${t.parent.key}`) : ["None."]));
     } else {
@@ -240,6 +284,11 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         );
         out.push("", `## Failed (${failed.length})`, "");
         out.push(...(failed.length ? failed.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason} (hand-off left on the ticket)`) : ["None."]));
+        const stopped = results.filter((r) => r.outcome.state === "stopped");
+        if (stopped.length) {
+            out.push("", "## Stopped", "");
+            out.push(...stopped.map((r) => `- Before ${r.task.issue.key}: ${(r.outcome as { reason: string }).reason}`));
+        }
         if (other.length) {
             out.push("", `## Not run (${other.length})`, "");
             out.push(...other.map((r) => `- ${line(r.task.issue)}: ${r.outcome.state === "waiting" ? r.outcome.reason : (r.outcome as { note: string }).note}`));

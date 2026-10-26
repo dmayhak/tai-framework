@@ -12,6 +12,14 @@ import { readWorkingTree } from "../git/local-check.js";
 
 const execFileAsync = promisify(execFile);
 
+/** The working tree has uncommitted changes. Not a fault of the ticket about to start, so it is not reported against it. */
+export class DirtyTreeError extends Error {
+    constructor(readonly porcelain: string) {
+        super(`The working tree has uncommitted changes, so a new run cannot start on a clean branch:\n${porcelain}`);
+        this.name = "DirtyTreeError";
+    }
+}
+
 /** The default branch name from `origin/HEAD`, or `main` when the clone does not record one. */
 async function defaultBranch(cwd: string): Promise<string> {
     try {
@@ -26,7 +34,7 @@ async function defaultBranch(cwd: string): Promise<string> {
 export async function prepareCleanDefaultBranch(cwd: string, taiRoot: string): Promise<void> {
     const { porcelain } = await readWorkingTree(cwd, taiRoot);
     if (porcelain.trim() !== "") {
-        throw new Error(`The working tree has uncommitted changes, so a new run cannot start on a clean branch:\n${porcelain}`);
+        throw new DirtyTreeError(porcelain);
     }
     const branch = await defaultBranch(cwd);
     await execFileAsync("git", ["checkout", branch], { cwd });

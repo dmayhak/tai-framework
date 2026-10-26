@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { chmod, writeFile } from "node:fs/promises";
 
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
-import { findDevTasks, findOpenPullRequest, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { buildDevPrompt, devRunTimeoutMs } from "./headless-claude.js";
+import { DirtyTreeError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
+import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
+import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
 const OTHER: HumanRef = { id: toHumanId("x@y.z"), displayName: "X", email: "x@y.z" };
@@ -245,6 +248,9 @@ describe("finding a ticket's PR and holding back one that already has it (TAI-63
         assert.equal(titleNamesKey("TAI-100 - TAI-101 - other", "TAI-1"), false);
         assert.equal(titleNamesKey("XTAI-10 - other", "TAI-10"), false);
         assert.equal(titleNamesKey("TAI-10: fix", "TAI-10"), true);
+        // the key must open one of the first two slots: later words that mention it do not count
+        assert.equal(titleNamesKey("TAI-5 - TAI-6 - fix the TAI-10 regression", "TAI-10"), false);
+        assert.equal(titleNamesKey("TAI-5 - TAI-6 - fix the TAI-10 regression", "TAI-6"), true);
     });
 
     it("returns the PR whose title names the key and whether its commit has a check result", async () => {
@@ -268,7 +274,7 @@ describe("finding a ticket's PR and holding back one that already has it (TAI-63
                 workTracker: wt,
                 projectKey: "TAI",
                 currentHuman: ME,
-                openPullRequestFor: async () => "https://pr/1",
+                openPullRequests: async () => () => "https://pr/1",
             });
             assert.equal(tasks.length, 0);
             assert.match(skipped[0]!.reason, /PR is already open and waiting for review: https:\/\/pr\/1/);
@@ -283,6 +289,108 @@ describe("devRunTimeoutMs (TAI-633, PR 19 review)", () => {
         assert.equal(devRunTimeoutMs({ TAI_DEV_RUN_TIMEOUT_MIN: "10" }), 600_000);
         for (const bad of ["45m", "0", "-5", "abc"]) {
             assert.throws(() => devRunTimeoutMs({ TAI_DEV_RUN_TIMEOUT_MIN: bad }), /positive number of minutes/);
+        }
+    });
+});
+
+describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR 19 review)", () => {
+    it("lists the open PRs once and matches many keys from that list", async () => {
+        let lists = 0;
+        const pr = (title: string) => ({ title, url: `https://pr/${title}`, sourceCommit: "c" }) as never;
+        const gitHost = { listPullRequests: async () => (lists++, [pr("TAI-1 - TAI-10 - a"), pr("TAI-2 - TAI-20 - b")]), getCommitStatuses: async () => [] } as never;
+        const listed = await listOpenPullRequests(gitHost, ["o/r" as never]);
+        for (const key of ["TAI-10", "TAI-20", "TAI-30"]) await findOpenPullRequest(gitHost, ["o/r" as never], key, { checkConfigured: false, listed });
+        assert.equal(lists, 1);
+    });
+
+    it("stops on a dirty tree, blames the ticket that ran before and not the one about to start", async () => {
+        const d = deps({
+            prepare: async (t) => {
+                d.calls.push(`prepare ${t.issue.key}`);
+                if (t.issue.key === "TAI-11") throw new DirtyTreeError(" M src/x.ts");
+            },
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11"), task("TAI-12")], skipped: [] }), d);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["pr-opened", "stopped"]);
+        assert.ok(!d.calls.includes("prepare TAI-12"), "the run stops; later tickets are not started");
+        assert.deepEqual(d.handoffs.map(([k]) => k), ["TAI-10"]);
+        assert.match(d.handoffs[0]![1], /left uncommitted changes/);
+        const text = renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: false });
+        assert.match(text, /## Stopped[\s\S]*Before TAI-11/);
+    });
+
+    it("a dirty tree before the first ticket stops the run with no hand-off at all", async () => {
+        const d = deps({ prepare: async () => Promise.reject(new DirtyTreeError(" M a")) });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.equal(results[0]!.outcome.state, "stopped");
+        assert.deepEqual(d.handoffs, []);
+    });
+
+    it("the dry run says when it could not leave out tickets that already have a PR", () => {
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, null, { yolo: false, openPullRequestsChecked: false }), /already has an open PR could not be left out/);
+        assert.doesNotMatch(renderDevTasksReport({ tasks: [], skipped: [] }, null, { yolo: false, openPullRequestsChecked: true }), /could not be left out/);
+    });
+
+    it("prepareCleanDefaultBranch refuses a dirty tree and returns to the default branch when clean", async () => {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-devgit-"));
+        try {
+            const git = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "pipe" });
+            const origin = path.join(dir, "origin.git");
+            execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
+            const work = path.join(dir, "work");
+            execFileSync("git", ["clone", "-q", origin, work]);
+            const g = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: work, stdio: "pipe" });
+            await writeFile(path.join(work, "a.txt"), "1");
+            g("add", "."); g("commit", "-q", "-m", "one"); g("push", "-q", "origin", "HEAD:main"); g("fetch", "-q");
+            g("checkout", "-q", "-b", "TAI-1-feature");
+            await writeFile(path.join(work, "a.txt"), "2");
+            await assert.rejects(prepareCleanDefaultBranch(work, ".tai"), DirtyTreeError);
+            g("checkout", "--", "a.txt");
+            g("branch", "-q", "--set-upstream-to=origin/main", "main");
+            await prepareCleanDefaultBranch(work, ".tai");
+            assert.equal(execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: work }).toString().trim(), "main");
+            void git;
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
+
+    async function fakeClaude(script: string): Promise<{ bin: string; cleanup: () => Promise<void> }> {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-fakeclaude-"));
+        const bin = path.join(dir, "claude");
+        await writeFile(bin, `#!/bin/sh\n${script}\n`);
+        await chmod(bin, 0o755);
+        return { bin, cleanup: () => rm(dir, { recursive: true, force: true }) };
+    }
+
+    it("runHeadlessClaude reports success, a non-zero exit, and a binary that will not start", async () => {
+        const ok = await fakeClaude("echo built; exit 0");
+        const bad = await fakeClaude("echo broke; exit 3");
+        try {
+            const opts = { cwd: tmpdir(), timeoutMs: 20_000 };
+            assert.deepEqual(await runHeadlessClaude("p", { ...opts, bin: ok.bin }), { ok: true, summary: "built" });
+            const failed = await runHeadlessClaude("p", { ...opts, bin: bad.bin });
+            assert.equal(failed.ok, false);
+            assert.match(failed.summary, /exited with code 3[\s\S]*broke/);
+            const missing = await runHeadlessClaude("p", { ...opts, bin: path.join(tmpdir(), "no-such-claude") });
+            assert.equal(missing.ok, false);
+            assert.match(missing.summary, /could not start/);
+        } finally {
+            await ok.cleanup();
+            await bad.cleanup();
+        }
+    });
+
+    it("runHeadlessClaude still returns when the run ignores the stop and a child holds the pipes open", async () => {
+        const stuck = await fakeClaude("trap '' TERM\necho started\nsleep 30 &\nwait");
+        try {
+            const t0 = Date.now();
+            const r = await runHeadlessClaude("p", { cwd: tmpdir(), bin: stuck.bin, timeoutMs: 300, killGraceMs: 300 });
+            assert.equal(r.ok, false);
+            assert.match(r.summary, /was stopped after/);
+            assert.ok(Date.now() - t0 < 10_000, "the bound holds");
+        } finally {
+            await stuck.cleanup();
         }
     });
 });
