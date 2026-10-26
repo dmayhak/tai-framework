@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-23 (rev 130). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-25 (rev 131). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1215,6 +1215,17 @@ comment's content.
   rules are shown first and written only on a yes; an existing file keeps every other setting and rule, nothing
   is added twice, and a file that is not valid JSON is left alone (`core/commands/claude-allow-rule.ts`). It
   is written through a temporary file and a rename, and is not a recorded init step. The file is personal (the rule names this machine's TAI path), not committed.
+- **Settings are a typed `Settings` page, shown and changed with `tai-settings`.** The page sits in the `Config`
+  folder and is read through the DocStore like `Personas` and `PR Reviewers`, so both backends behave the same.
+  Its table holds per-user values keyed by email; its `Autonomy admins` list names the humans who may change an
+  autonomy setting. `core/settings/settings.ts` defines each setting (`dev-yolo`, `review-rounds`, `reviewer`)
+  with a type, default and meaning, and refuses an unknown key or a bad value; a hand-edited bad row is ignored and
+  reported. `settings` shows every setting with its value and default, `settings set <key> <value>` changes one, and
+  `settings admins add|remove <email>` edits the list (`core/commands/settings.ts`). An autonomy change is refused
+  from an acting persona (`--as`), from an AI session (Claude Code and Gemini CLI mark their shells), and from a
+  human not on the list; with an empty list a human may add only themselves. The AI-session check is a guard
+  against accidental self-escalation, not a defence against a session set on evading it. Nothing reads these
+  settings yet: the unattended Dev run (Epic TAI-625) does.
 - **One git host per project, named by `TAI_GIT_HOST`** (`bitbucket` or `github`), which `init run`
   writes from `origin`'s remote. Unset, TAI reads `origin` at run time and falls back to Bitbucket.
   `core/git/host-factory.ts` builds the backend from it for every command. Bitbucket uses

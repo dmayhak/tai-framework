@@ -170,6 +170,7 @@ import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
+import { showSettings, setSetting, changeAdmin, inAiSession } from "../core/commands/settings.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -2238,6 +2239,29 @@ async function main(): Promise<void> {
         );
         const groomBriefing = renderGroomingBriefing(result) + (editedSection ? `\n\n${editedSection}` : "");
         console.log(withTurnNotes([await installWarning()]) + renderGroomTurn(pm, groomBriefing, await loadProjectContextSection()));
+        return;
+    }
+
+    // TAI-627: `settings` shows the project's settings for the current user; `settings set <key> <value>` changes one;
+    // `settings admins add|remove <email>` edits the Autonomy admins list. Autonomy changes are guarded in the command.
+    if (subcommand === "settings") {
+        const ctx = {
+            docStore: config.backend.docStore,
+            spaceKey: config.spaceKey,
+            email: config.currentHuman?.email ?? null,
+            ...(config.actingPersona ? { actingPersona: config.actingPersona } : {}),
+            aiSession: inAiSession(),
+        };
+        if (!arg) console.log(await showSettings(ctx));
+        else if (arg === "set") {
+            const [key, ...value] = rest;
+            if (!key || value.length === 0) throw new Error("Usage: settings set <KEY> <VALUE>");
+            console.log(await setSetting(ctx, key, value.join(" ")));
+        } else if (arg === "admins") {
+            const [action, target] = rest;
+            if (!action || !target) throw new Error("Usage: settings admins add|remove <EMAIL>");
+            console.log(await changeAdmin(ctx, action, target));
+        } else throw new Error(`Unknown settings action "${arg}". Usage: settings | settings set <KEY> <VALUE> | settings admins add|remove <EMAIL>`);
         return;
     }
 
