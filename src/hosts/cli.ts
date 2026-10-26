@@ -176,7 +176,7 @@ import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
 import { findDevTasks, parseDevTasksArgs, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
-import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
+import { assertCleanTree, prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -2340,6 +2340,7 @@ async function main(): Promise<void> {
                       checkCommand: checkCommandFromEnv(),
                       ...requiredApprovalsFromEnv(),
                       stamp: (body: string) => stampComment(body, developer),
+                      assertClean: () => assertCleanTree(process.cwd(), config.taiRoot),
                       prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
                   },
               }

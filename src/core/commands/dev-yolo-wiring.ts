@@ -43,6 +43,7 @@ export interface YoloWiring {
         readonly checkCommand: string | null;
         readonly requiredApprovals?: number;
         readonly stamp: (body: string) => string;
+        readonly assertClean: () => Promise<void>;
         readonly prepare: () => Promise<void>;
     };
     readonly runClaude?: (prompt: string, options: HeadlessRunOptions) => Promise<HeadlessRunResult>;
@@ -173,6 +174,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                         ...(w.finish.requiredApprovals !== undefined ? { requiredApprovals: w.finish.requiredApprovals } : {}),
                         reviewer: () => w.reviewerHost!.getCurrentUser(),
                         stamp: w.finish.stamp,
+                        assertClean: w.finish.assertClean,
                         prepare: w.finish.prepare,
                         verify: (task) => run(buildVerifyPrompt({ key: task.parent.key, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
                         handoff: w.handoff,
