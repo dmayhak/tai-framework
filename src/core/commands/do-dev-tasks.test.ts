@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { chmod, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
@@ -382,6 +382,26 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.ok(!d.calls.some((c) => c.startsWith("prepare")), "no prepare");
     });
 
+    it("a PR opened without a check result is listed on its own, not under Done", () => {
+        const a = task("TAI-10");
+        const b = task("TAI-11");
+        const text = renderDevTasksReport({ tasks: [], skipped: [] }, [
+            { task: a, outcome: { state: "pr-opened", prUrl: "https://pr/1", checkRecorded: true } },
+            { task: b, outcome: { state: "pr-opened", prUrl: "https://pr/2", checkRecorded: false } },
+        ], { yolo: false });
+        assert.match(text, /## Done \(1\)/);
+        assert.match(text, /## PR opened, no check result \(1\)[\s\S]*TAI-11/);
+        assert.match(text, /Review, approval and merge of the PRs for TAI-10, TAI-11/);
+    });
+
+    it("an interrupt stops the loop before the next ticket is looked up or prepared", async () => {
+        let stop = false;
+        const d = deps({ interrupted: () => stop, build: async (t) => (d.calls.push(`build ${t.issue.key}`), (stop = true), { ok: false, summary: "killed by SIGTERM" }) });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.equal(results.length, 1);
+        assert.ok(!d.calls.includes("prepare TAI-11"), "nothing new is prepared");
+    });
+
     it("a branch that will not update stops the run without blaming any ticket", async () => {
         const d = deps({ prepare: async () => Promise.reject(new PrepareStopError("Could not bring main up to date: offline")) });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
@@ -499,6 +519,21 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
             assert.ok(Date.now() - t0 < 10_000);
         } finally {
             await stubborn.cleanup();
+        }
+    });
+
+    it("runHeadlessClaude stops a stray the run left behind even when the pipes close at once", async () => {
+        const pidFile = path.join(tmpdir(), `tai-stray-${process.pid}-${Date.now()}`);
+        const stray = await fakeClaude(`(sleep 30 >/dev/null 2>&1 </dev/null & echo $! > ${pidFile})\necho done\nexit 0`);
+        try {
+            const r = await runHeadlessClaude("p", { cwd: tmpdir(), bin: stray.bin, timeoutMs: 60_000 });
+            assert.equal(r.ok, true);
+            await new Promise((x) => setTimeout(x, 500));
+            const pid = Number((await readFile(pidFile, "utf8")).trim());
+            assert.throws(() => process.kill(pid, 0), "the stray is gone");
+        } finally {
+            await stray.cleanup();
+            await rm(pidFile, { force: true });
         }
     });
 

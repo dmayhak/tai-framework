@@ -172,7 +172,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
 import { findDevTasks, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
-import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt } from "../core/commands/headless-claude.js";
+import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
@@ -2312,6 +2312,7 @@ async function main(): Promise<void> {
         stopRunsOnInterrupt();
         const worked = await workDevTasks(find, {
             yolo,
+            interrupted: wasInterrupted,
             prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
             build: (task) => runHeadlessClaude(buildDevPrompt(task.issue.key, cli), { cwd: process.cwd(), timeoutMs }),
             inspect: (task) => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured }),

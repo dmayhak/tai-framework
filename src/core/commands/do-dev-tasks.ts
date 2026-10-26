@@ -163,6 +163,8 @@ export interface RunDevTasksDeps {
     /** Posts the ticket's `Handoff:` comment. */
     readonly handoff: (key: IssueKey, body: string) => Promise<void>;
     readonly yolo: boolean;
+    /** True once the command has been interrupted: nothing new is looked up, prepared or started. */
+    readonly interrupted?: () => boolean;
 }
 
 export interface DevTaskResult {
@@ -232,6 +234,7 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
     const results: DevTaskResult[] = [];
     let pending = firstLook;
     for (;;) {
+        if (deps.interrupted?.()) return { results, found: pending ?? (await find()) };
         const found = pending ?? (await find());
         pending = undefined;
         const next = found.tasks.find((t) => !attempted.has(t.issue.key));
@@ -277,7 +280,9 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         out.push(`## Would work (${found.tasks.length})`, "");
         out.push(...(found.tasks.length ? found.tasks.map((t) => `- ${line(t.issue)} [${t.issue.status}] under ${t.parent.key}`) : ["None."]));
     } else {
-        const opened = results.filter((r) => r.outcome.state === "pr-opened");
+        const allOpened = results.filter((r) => r.outcome.state === "pr-opened");
+        const noCheck = allOpened.filter((r) => (r.outcome as Extract<DevTaskOutcome, { state: "pr-opened" }>).checkRecorded === false);
+        const opened = allOpened.filter((r) => !noCheck.includes(r));
         const failed = results.filter((r) => r.outcome.state === "failed");
         const other = results.filter((r) => r.outcome.state === "waiting" || r.outcome.state === "handed-on");
         out.push(`## Done (${opened.length})`, "");
@@ -290,6 +295,10 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
                   })
                 : ["None."])
         );
+        if (noCheck.length) {
+            out.push("", `## PR opened, no check result (${noCheck.length})`, "");
+            out.push(...noCheck.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { prUrl: string }).prUrl} — the run did not record its check, so the merge gate will not pass until it is run`));
+        }
         out.push("", `## Failed (${failed.length})`, "");
         out.push(...(failed.length ? failed.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason} (hand-off left on the ticket)`) : ["None."]));
         const stopped = results.filter((r) => r.outcome.state === "stopped");
@@ -301,7 +310,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
             out.push("", `## Not run (${other.length})`, "");
             out.push(...other.map((r) => `- ${line(r.task.issue)}: ${r.outcome.state === "waiting" ? r.outcome.reason : (r.outcome as { note: string }).note}`));
         }
-        const waiting = opened.map((r) => r.task.issue.key);
+        const waiting = allOpened.map((r) => r.task.issue.key);
         out.push("", "## Waiting for a person", "");
         out.push(...(waiting.length ? [`- Review, approval and merge of the PRs for ${waiting.join(", ")}.`] : ["Nothing."]));
     }

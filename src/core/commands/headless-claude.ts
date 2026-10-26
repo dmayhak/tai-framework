@@ -86,10 +86,18 @@ export async function stopActiveRunsHard(graceMs = 3_000): Promise<number> {
     return n;
 }
 
+let interrupted = false;
+
+/** True once an interrupt has been received: the loop must start nothing new. */
+export function wasInterrupted(): boolean {
+    return interrupted;
+}
+
 /** On Ctrl-C or a terminate, stops the runs in flight and exits, so no unattended run outlives the command that started it. */
 export function stopRunsOnInterrupt(): void {
     for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         process.once(signal, () => {
+            interrupted = true;
             void stopActiveRunsHard().then((n) => {
                 console.error(`\nInterrupted: stopped ${n} running Claude run${n === 1 ? "" : "s"}. Tickets already started may be left In Progress with changes on a branch.`);
                 process.exit(signal === "SIGINT" ? 130 : 143);
@@ -173,6 +181,7 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         const ended = (code: number | null, signal: NodeJS.Signals | null): string =>
             signal ? `the run was killed by ${signal}. Last output:\n${lastLines()}` : `the run exited with code ${code}. Last output:\n${lastLines()}`;
         child.on("close", (code, signal) => {
+            if (!settled) killGroup("SIGTERM"); // a stray the run left behind, even one that did not hold the pipes
             if (timedOut) finish({ ok: false, summary: stoppedSummary() });
             else if (code === 0) finish({ ok: true, summary: lastLines() });
             else finish({ ok: false, summary: ended(code, signal) });
