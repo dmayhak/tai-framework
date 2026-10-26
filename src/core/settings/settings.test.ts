@@ -122,4 +122,13 @@ describe("mergeSettingsPage", () => {
         assert.equal(parseSettingsPage(merged).state.values.get("a@b.co")?.get("dev-yolo"), "false");
         assert.equal((merged.match(/dev-yolo/g) ?? []).length, 2);
     });
+
+    it("counts a named mailto link as an admin, and keeps a link that is not an address", () => {
+        const page = "## Autonomy admins\n\n- [Del](mailto:del@mayhak.com)\n- [Policy](https://example.com/policy)\n- a@b.co\n";
+        const { state } = parseSettingsPage(page);
+        assert.deepEqual(state.admins, ["del@mayhak.com", "a@b.co"]);
+        const merged = mergeSettingsPage(page, withAdmins(state, [...state.admins, "c@d.co"]));
+        assert.match(merged, /\[Policy\]\(https:\/\/example\.com\/policy\)/);
+        assert.deepEqual(parseSettingsPage(merged).state.admins, ["del@mayhak.com", "a@b.co", "c@d.co"]);
+    });
 });

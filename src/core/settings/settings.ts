@@ -93,6 +93,19 @@ export const EMPTY_SETTINGS: SettingsState = { values: new Map(), admins: [] };
 
 const ADMINS_HEADING = /^#{1,6}\s*autonomy admins\s*$/i;
 
+/**
+ * The email an `Autonomy admins` bullet names, or null when the bullet is something else (a link to a policy, a note).
+ * A bare address, a link whose text is the address, and a named link to a `mailto:` address all count. Reading and
+ * saving both use this, so a save rewrites exactly the bullets that reading counted as admins and no others.
+ */
+function adminEmailOf(line: string): string | null {
+    const bullet = /^\s*[-*]\s+(.*?)\s*$/.exec(line)?.[1];
+    if (!bullet) return null;
+    const link = /^\[([^\]]*)\]\(([^)]*)\)$/.exec(bullet);
+    const candidate = link ? (link[1]!.includes("@") ? link[1]! : link[2]!.replace(/^mailto:/i, "")) : bullet;
+    return /^\S+@\S+$/.test(candidate) ? candidate.toLowerCase() : null;
+}
+
 /** The settings table is the one whose header starts `User | Setting | Value`; extra columns after those are allowed. */
 function isSettingsHeader(cells: readonly string[]): boolean {
     return /^user$/i.test(cells[0] ?? "") && /^setting$/i.test(cells[1] ?? "") && /^value$/i.test(cells[2] ?? "");
@@ -121,9 +134,8 @@ export function parseSettingsPage(markdown: string): { readonly state: SettingsS
             inTable = false;
         }
         if (inAdmins) {
-            const email = /^\s*[-*]\s+(?:\[([^\]]+)\]\([^)]*\)|(\S+@\S+))\s*$/.exec(line);
-            const found = (email?.[1] ?? email?.[2] ?? "").replace(/^mailto:/, "").trim().toLowerCase();
-            if (found.includes("@") && !admins.includes(found)) admins.push(found);
+            const found = adminEmailOf(line);
+            if (found && !admins.includes(found)) admins.push(found);
             continue;
         }
         const cells = tableRow(line);
@@ -199,7 +211,7 @@ export function mergeSettingsPage(existing: string | null, state: SettingsState)
             inTable = false;
             if (inAdmins) adminsStart = out.length + 1;
         } else if (inAdmins) {
-            if (/^\s*[-*]\s+(?:\[[^\]]+\]\([^)]*\)|\S+@\S+)\s*$/.test(line)) continue;
+            if (adminEmailOf(line) !== null) continue; // an admin entry: written again from `state` below
         } else {
             const cells = tableRow(line);
             if (!cells) inTable = false;
