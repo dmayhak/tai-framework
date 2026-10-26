@@ -12,8 +12,16 @@ import { readWorkingTree } from "../git/local-check.js";
 
 const execFileAsync = promisify(execFile);
 
+/** Preparing the branch failed for a reason that is not the ticket's: the run stops instead of failing each ticket in turn. */
+export class PrepareStopError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "PrepareStopError";
+    }
+}
+
 /** The working tree has uncommitted changes. Not a fault of the ticket about to start, so it is not reported against it. */
-export class DirtyTreeError extends Error {
+export class DirtyTreeError extends PrepareStopError {
     constructor(readonly porcelain: string) {
         super(`The working tree has uncommitted changes, so a new run cannot start on a clean branch:\n${porcelain}`);
         this.name = "DirtyTreeError";
@@ -37,6 +45,11 @@ export async function prepareCleanDefaultBranch(cwd: string, taiRoot: string): P
         throw new DirtyTreeError(porcelain);
     }
     const branch = await defaultBranch(cwd);
-    await execFileAsync("git", ["checkout", branch], { cwd });
-    await execFileAsync("git", ["pull", "--ff-only"], { cwd });
+    try {
+        await execFileAsync("git", ["checkout", branch], { cwd });
+        await execFileAsync("git", ["pull", "--ff-only"], { cwd });
+    } catch (err) {
+        const detail = (err as { stderr?: string }).stderr?.trim() || (err instanceof Error ? err.message : String(err));
+        throw new PrepareStopError(`Could not bring ${branch} up to date, so no run can start: ${detail}`);
+    }
 }

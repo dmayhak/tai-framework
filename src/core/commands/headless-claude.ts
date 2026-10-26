@@ -56,6 +56,15 @@ export function buildDevPrompt(key: string, cli: string): string {
 
 const TAIL_BYTES = 8_000;
 
+/** `text` with the values of credential-looking environment variables and bearer tokens masked, since it is posted to a ticket. */
+export function redactSecrets(text: string, env: NodeJS.ProcessEnv = process.env): string {
+    let out = text.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 ***");
+    for (const [name, value] of Object.entries(env)) {
+        if (value && value.length >= 8 && /TOKEN|SECRET|PASSWORD|API_KEY|^TAI_/i.test(name)) out = out.split(value).join("***");
+    }
+    return out;
+}
+
 /**
  * Runs `claude -p` for one ticket and resolves when it ends. It always ends: on the timeout the whole process group is
  * stopped (SIGTERM, then SIGKILL after `killGraceMs`), because the run's own children (npm, tsx, a test run) can keep the
@@ -72,8 +81,12 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         const keep = (d: Buffer): void => {
             tail = (tail + d.toString()).slice(-TAIL_BYTES);
         };
-        const lastLines = (): string => tail.trim().split("\n").slice(-6).join("\n");
+        const lastLines = (): string => redactSecrets(tail.trim().split("\n").slice(-6).join("\n"));
+        let timedOut = false;
+        let killTimer: NodeJS.Timeout | undefined;
+        const stoppedSummary = (): string => `the run was stopped after ${Math.round(options.timeoutMs / 60000)} minutes. Last output:\n${lastLines()}`;
         const killGroup = (signal: NodeJS.Signals): void => {
+            if (settled) return; // the group is gone and its id may belong to something else by now
             try {
                 if (child.pid !== undefined) process.kill(-child.pid, signal);
             } catch {
@@ -84,22 +97,26 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             if (settled) return;
             settled = true;
             clearTimeout(timer);
+            clearTimeout(killTimer);
             child.stdout?.destroy();
             child.stderr?.destroy();
             resolve(result);
         };
         const timer = setTimeout(() => {
+            timedOut = true;
             killGroup("SIGTERM");
-            setTimeout(() => {
+            killTimer = setTimeout(() => {
                 killGroup("SIGKILL");
-                finish({ ok: false, summary: `the run was stopped after ${Math.round(options.timeoutMs / 60000)} minutes. Last output:\n${lastLines()}` });
-            }, grace).unref();
+                finish({ ok: false, summary: stoppedSummary() });
+            }, grace);
+            killTimer.unref();
         }, options.timeoutMs);
         child.stdout?.on("data", keep);
         child.stderr?.on("data", keep);
         child.on("error", (err) => finish({ ok: false, summary: `could not start ${bin}: ${err.message}` }));
         child.on("close", (code) => {
-            if (code === 0) finish({ ok: true, summary: lastLines() });
+            if (timedOut) finish({ ok: false, summary: stoppedSummary() });
+            else if (code === 0) finish({ ok: true, summary: lastLines() });
             else finish({ ok: false, summary: `the run exited with code ${code}. Last output:\n${lastLines()}` });
         });
     });

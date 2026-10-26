@@ -9,9 +9,9 @@ import { chmod, writeFile } from "node:fs/promises";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
-import { DirtyTreeError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
+import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude } from "./headless-claude.js";
+import { buildDevPrompt, devRunTimeoutMs, redactSecrets, runHeadlessClaude } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
 const OTHER: HumanRef = { id: toHumanId("x@y.z"), displayName: "X", email: "x@y.z" };
@@ -319,6 +319,25 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.match(text, /## Stopped[\s\S]*Before TAI-11/);
     });
 
+    it("keeps the earlier failure reason when the same ticket's run also left the tree dirty", async () => {
+        const d = deps({
+            build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "tests failed" } : { ok: true, summary: "" }),
+            prepare: async (t) => {
+                if (t.issue.key === "TAI-11") throw new DirtyTreeError(" M src/x.ts");
+            },
+        });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        const last = d.handoffs.filter(([k]) => k === "TAI-10").pop()!;
+        assert.match(last[1], /tests failed[\s\S]*also left uncommitted changes/);
+    });
+
+    it("a branch that will not update stops the run without blaming any ticket", async () => {
+        const d = deps({ prepare: async () => Promise.reject(new PrepareStopError("Could not bring main up to date: offline")) });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["stopped"]);
+        assert.deepEqual(d.handoffs, []);
+    });
+
     it("a dirty tree before the first ticket stops the run with no hand-off at all", async () => {
         const d = deps({ prepare: async () => Promise.reject(new DirtyTreeError(" M a")) });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
@@ -379,6 +398,22 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
             await ok.cleanup();
             await bad.cleanup();
         }
+    });
+
+    it("runHeadlessClaude names the timeout when the run honours the stop, and does not signal the group again", async () => {
+        const polite = await fakeClaude("echo started\nsleep 30 &\nwait");
+        try {
+            const r = await runHeadlessClaude("p", { cwd: tmpdir(), bin: polite.bin, timeoutMs: 300, killGraceMs: 5_000 });
+            assert.equal(r.ok, false);
+            assert.match(r.summary, /was stopped after/);
+        } finally {
+            await polite.cleanup();
+        }
+    });
+
+    it("redactSecrets masks bearer tokens and credential-looking environment values", () => {
+        const out = redactSecrets("Authorization: Bearer abcdef123456 and tok-9f8e7d6c5b4a here", { MY_API_TOKEN: "tok-9f8e7d6c5b4a", HOME: "/home/x" });
+        assert.equal(out, "Authorization: Bearer *** and *** here");
     });
 
     it("runHeadlessClaude still returns when the run ignores the stop and a child holds the pipes open", async () => {

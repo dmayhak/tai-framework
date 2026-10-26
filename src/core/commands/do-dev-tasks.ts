@@ -11,7 +11,7 @@
  */
 
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
-import { DirtyTreeError } from "./dev-tasks-git.js";
+import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
 import { sameHuman } from "../personas/roster.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import type { HumanRef, Issue, IssueKey, WorkTracker } from "../storage/interface.js";
@@ -148,7 +148,7 @@ export type DevTaskOutcome =
     | { readonly state: "handed-on"; readonly note: string }
     | { readonly state: "waiting"; readonly reason: string }
     | { readonly state: "failed"; readonly reason: string }
-    | { readonly state: "stopped"; readonly reason: string };
+    | { readonly state: "stopped"; readonly reason: string; readonly dirtyTree?: boolean };
 
 export interface RunDevTasksDeps {
     /** Called before each ticket: the working tree must be clean and on the default branch. Throws to fail the ticket. */
@@ -187,8 +187,8 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
         try {
             await deps.prepare(task);
         } catch (err) {
-            // A dirty tree is not this ticket's fault: it is not marked failed and gets no hand-off (workDevTasks stops the run).
-            if (err instanceof DirtyTreeError) return { task, outcome: { state: "stopped", reason: err.message } };
+            // A dirty tree or a branch that will not update is not this ticket's fault: it is not marked failed and gets no hand-off (workDevTasks stops the run).
+            if (err instanceof PrepareStopError) return { task, outcome: { state: "stopped", reason: err.message, dirtyTree: err instanceof DirtyTreeError } };
             throw err;
         }
         if (deps.yolo) {
@@ -236,11 +236,13 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
         const result = await runDevTask(next, deps);
         results.push(result);
         if (result.outcome.state === "stopped") {
-            // The tree was left dirty. Say so on the ticket whose run was the last one, and do not go on to fail the rest.
+            // Do not go on to fail the rest. A dirty tree is the previous ticket's run's doing, so say so on that ticket,
+            // keeping the reason it already failed for (one current Handoff: per ticket); a branch that will not update is not.
             const previous = results.length > 1 ? results[results.length - 2]! : null;
-            if (previous) {
+            if (previous && result.outcome.dirtyTree) {
+                const earlier = previous.outcome.state === "failed" ? `${previous.outcome.reason} ` : "";
                 try {
-                    await deps.handoff(previous.task.issue.key, failureHandoff(`Its run left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`));
+                    await deps.handoff(previous.task.issue.key, failureHandoff(`${earlier}Its run also left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`));
                 } catch {
                     // the report below still says it
                 }
