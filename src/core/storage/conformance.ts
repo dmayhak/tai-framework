@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { Persona, Status, StoryType, SubtaskType, DependencyRelation } from "../schema/story-schema.js";
+import { EMPTY_SETTINGS, mergeSettingsPage, parseSettingsPage, renderSettingsPage, withAdmins, withValue } from "../settings/settings.js";
 import { gatherAssigneeEvidence } from "../personas/assignee-evidence.js";
 import { ensureFixturePage } from "./fixture-page.js";
 import { ensureDocFolder, filePage, folderForDocType } from "./doc-folders.js";
@@ -2046,6 +2047,39 @@ export function defineStorageConformance(
                 );
                 const updated = await h.backend.docStore.updatePage({ id: page.id }, { content: "after" });
                 assert.equal(updated.content, "after");
+            });
+
+            // TAI-643 (Story TAI-627, AC-5): the Settings page is a markdown table plus a bullet list. Saving it must keep
+            // what a person added by hand, and a read must give back what was saved, on every backend.
+            it("keeps a Settings-shaped page through save and read: table rows, admins, hand notes and unknown rows", async () => {
+                const saved = withAdmins(withValue(EMPTY_SETTINGS, "a@example.com", "review-rounds", "3"), ["a@example.com"]);
+                const page = trackPage(
+                    await h.backend.docStore.createPage({
+                        spaceKey: h.spaceKey,
+                        title: `Conformance: settings ${Date.now()}`,
+                        content: renderSettingsPage(saved),
+                    })
+                );
+                const first = parseSettingsPage((await h.backend.docStore.getPage({ id: page.id }))!.content);
+                assert.equal(first.state.values.get("a@example.com")?.get("review-rounds"), "3");
+                assert.deepEqual(first.state.admins, ["a@example.com"]);
+
+                // A person edits the page by hand: a note, an unknown row and an extra column.
+                const edited = page.content
+                    .replace("| --- | --- | --- |", "| --- | --- | --- |\n| b@example.com | future-setting | 1 |")
+                    .replace("## Autonomy admins", "Hand note: keep me.\n\n## Autonomy admins");
+                await h.backend.docStore.updatePage({ id: page.id }, { content: edited });
+
+                const read = (await h.backend.docStore.getPage({ id: page.id }))!.content;
+                const changed = withValue(parseSettingsPage(read).state, "a@example.com", "review-rounds", "5");
+                await h.backend.docStore.updatePage({ id: page.id }, { content: mergeSettingsPage(read, changed) });
+
+                const after = (await h.backend.docStore.getPage({ id: page.id }))!.content;
+                const { state, unknown } = parseSettingsPage(after);
+                assert.equal(state.values.get("a@example.com")?.get("review-rounds"), "5", "the saved change must read back");
+                assert.deepEqual(state.admins, ["a@example.com"]);
+                assert.deepEqual(unknown, ["future-setting"], "the unknown row must still be on the page");
+                assert.match(after, /Hand note: keep me\./);
             });
 
             // TAI-305: filing a loose page into its doc-type folder (brief §4 rev 11/14)
