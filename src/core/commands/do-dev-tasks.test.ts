@@ -7,8 +7,8 @@ import path from "node:path";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
-import { findDevTasks, renderDevTasksReport, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { buildDevPrompt } from "./headless-claude.js";
+import { findDevTasks, findOpenPullRequest, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
+import { buildDevPrompt, devRunTimeoutMs } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
 const OTHER: HumanRef = { id: toHumanId("x@y.z"), displayName: "X", email: "x@y.z" };
@@ -234,5 +234,55 @@ describe("buildDevPrompt", () => {
         assert.match(p, /Do not review, approve or merge/);
         assert.match(p, /Never use force=true/);
         assert.match(p, /Do not ask any/);
+    });
+});
+
+describe("finding a ticket's PR and holding back one that already has it (TAI-633, PR 19 review)", () => {
+    it("matches the whole ticket key in a title, not a longer one or a part of one", () => {
+        assert.equal(titleNamesKey("TAI-628 - TAI-633 - do all dev tasks", "TAI-633"), true);
+        assert.equal(titleNamesKey("TAI-628 - TAI-633 - do all dev tasks", "TAI-628"), true);
+        assert.equal(titleNamesKey("TAI-100 - TAI-101 - other", "TAI-10"), false);
+        assert.equal(titleNamesKey("TAI-100 - TAI-101 - other", "TAI-1"), false);
+        assert.equal(titleNamesKey("XTAI-10 - other", "TAI-10"), false);
+        assert.equal(titleNamesKey("TAI-10: fix", "TAI-10"), true);
+    });
+
+    it("returns the PR whose title names the key and whether its commit has a check result", async () => {
+        const pr = (title: string, url: string) => ({ title, url, sourceCommit: "abc" }) as never;
+        const gitHost = {
+            listPullRequests: async () => [pr("TAI-100 - TAI-101 - other", "https://pr/other"), pr("TAI-1 - TAI-10 - mine", "https://pr/mine")],
+            getCommitStatuses: async () => [{ key: "k", name: "check", state: "successful" }],
+        } as never;
+        const repo = "o/r" as never;
+        assert.deepEqual(await findOpenPullRequest(gitHost, [repo], "TAI-10", { checkConfigured: true }), { prUrl: "https://pr/mine", checkRecorded: true });
+        assert.deepEqual(await findOpenPullRequest(gitHost, [repo], "TAI-10", { checkConfigured: false }), { prUrl: "https://pr/mine", checkRecorded: null });
+        assert.deepEqual(await findOpenPullRequest(gitHost, [repo], "TAI-11", { checkConfigured: true }), { prUrl: null, checkRecorded: null });
+    });
+
+    it("skips an In Progress ticket whose PR is already open, so the command is safe to run twice", async () => {
+        await withTracker(async (wt) => {
+            const story = await mk(wt, { issueType: StoryType.Story });
+            const dev = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            await wt.transition(dev.key, Status.InProgress);
+            const { tasks, skipped } = await findDevTasks({
+                workTracker: wt,
+                projectKey: "TAI",
+                currentHuman: ME,
+                openPullRequestFor: async () => "https://pr/1",
+            });
+            assert.equal(tasks.length, 0);
+            assert.match(skipped[0]!.reason, /PR is already open and waiting for review: https:\/\/pr\/1/);
+        });
+    });
+});
+
+describe("devRunTimeoutMs (TAI-633, PR 19 review)", () => {
+    it("defaults to 45 minutes, reads a number, and refuses anything else", () => {
+        assert.equal(devRunTimeoutMs({}), 45 * 60_000);
+        assert.equal(devRunTimeoutMs({ TAI_DEV_RUN_TIMEOUT_MIN: "" }), 45 * 60_000);
+        assert.equal(devRunTimeoutMs({ TAI_DEV_RUN_TIMEOUT_MIN: "10" }), 600_000);
+        for (const bad of ["45m", "0", "-5", "abc"]) {
+            assert.throws(() => devRunTimeoutMs({ TAI_DEV_RUN_TIMEOUT_MIN: bad }), /positive number of minutes/);
+        }
     });
 });

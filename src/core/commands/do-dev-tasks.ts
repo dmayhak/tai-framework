@@ -12,9 +12,31 @@
 
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { sameHuman } from "../personas/roster.js";
+import type { GitHost, RepoId } from "../git/interface.js";
 import type { HumanRef, Issue, IssueKey, WorkTracker } from "../storage/interface.js";
 import { openPrerequisites } from "../storage/precedence-gate.js";
 import { findOpenDependsOnBlockers, priorityRank } from "./ready.js";
+
+/** Does a PR title name `key` as a whole ticket key? TAI-10 must not match a PR for TAI-100 or TAI-101 (PR 19 review). */
+export function titleNamesKey(title: string, key: string): boolean {
+    return new RegExp(`(^|[^A-Za-z0-9-])${key.replace(/[^A-Za-z0-9-]/g, "")}(?![A-Za-z0-9])`).test(title);
+}
+
+/** The git host's side of "does this ticket have a PR": the open PR whose title names the Dev key, and its check result. */
+export async function findOpenPullRequest(
+    gitHost: Pick<GitHost, "listPullRequests" | "getCommitStatuses">,
+    repos: readonly RepoId[],
+    key: string,
+    options: { readonly checkConfigured: boolean }
+): Promise<{ readonly prUrl: string | null; readonly checkRecorded: boolean | null }> {
+    for (const repo of repos) {
+        const open = (await gitHost.listPullRequests(repo, "open")).find((pr) => titleNamesKey(pr.title, key));
+        if (!open) continue;
+        const statuses = options.checkConfigured ? await gitHost.getCommitStatuses(repo, open.sourceCommit) : null;
+        return { prUrl: open.url, checkRecorded: statuses === null ? null : statuses.length > 0 };
+    }
+    return { prUrl: null, checkRecorded: null };
+}
 
 export interface DevTask {
     readonly issue: Issue;
@@ -37,6 +59,8 @@ export interface FindDevTasksDeps {
     readonly workTracker: WorkTracker;
     readonly projectKey: string;
     readonly currentHuman: HumanRef | null;
+    /** The open PR URL for a ticket, when it has one. A ticket with its PR already open is waiting for review and is not built again. */
+    readonly openPullRequestFor?: (issue: Issue) => Promise<string | null>;
 }
 
 /**
@@ -80,6 +104,11 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
                 skipped.push({ issue, reason: `precedence holds it until ${open.map((s) => `${s.key} (${s.issueType}, ${s.status})`).join(", ")} is done`, waitingOn: open.map((s) => s.key) });
                 continue;
             }
+        }
+        const openPr = issue.status === Status.InProgress && deps.openPullRequestFor ? await deps.openPullRequestFor(issue) : null;
+        if (openPr) {
+            skipped.push({ issue, reason: `its PR is already open and waiting for review: ${openPr}` });
+            continue;
         }
         const blockers = [...(await findOpenDependsOnBlockers(deps.workTracker, issue)), ...(await findOpenDependsOnBlockers(deps.workTracker, parent))];
         if (blockers.length > 0) {

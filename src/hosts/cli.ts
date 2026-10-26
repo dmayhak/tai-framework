@@ -171,8 +171,8 @@ import { resolveAssignment, type AssignmentResolution } from "../core/personas/a
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
-import { findDevTasks, workDevTasks, renderDevTasksReport } from "../core/commands/do-dev-tasks.js";
-import { buildDevPrompt, runHeadlessClaude } from "../core/commands/headless-claude.js";
+import { findDevTasks, workDevTasks, renderDevTasksReport, findOpenPullRequest } from "../core/commands/do-dev-tasks.js";
+import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude } from "../core/commands/headless-claude.js";
 import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
@@ -2272,32 +2272,31 @@ async function main(): Promise<void> {
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
         const dryRun = [arg, ...rest].includes("dryrun=true");
-        const find = () => findDevTasks({ workTracker: config.backend.workTracker, projectKey: config.projectKey, currentHuman: config.currentHuman });
+        const gitDeps = await tryResolveReadyGitDeps(config);
+        const checkConfigured = checkCommandFromEnv() !== null;
+        const find = () =>
+            findDevTasks({
+                workTracker: config.backend.workTracker,
+                projectKey: config.projectKey,
+                currentHuman: config.currentHuman,
+                ...(gitDeps ? { openPullRequestFor: async (issue) => (await findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, issue.key, { checkConfigured })).prUrl } : {}),
+            });
         const found = await find();
         const yolo = (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
         if (dryRun || found.tasks.length === 0) {
             console.log(renderDevTasksReport(found, null, { yolo }));
             return;
         }
-        const gitDeps = await tryResolveReadyGitDeps(config);
         if (!gitDeps) throw new Error("do-dev-tasks needs the git host: set TAI_GIT_REPOS (or TAI_GIT_WORKSPACE) and its credentials, so each PR can be found afterwards.");
         const taiHome = defaultTaiHome();
         const cli = `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts`;
-        const timeoutMs = Number(process.env["TAI_DEV_RUN_TIMEOUT_MIN"] ?? "45") * 60_000;
+        const timeoutMs = devRunTimeoutMs();
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         const worked = await workDevTasks(find, {
             yolo,
             prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
             build: (task) => runHeadlessClaude(buildDevPrompt(task.issue.key, cli), { cwd: process.cwd(), timeoutMs }),
-            inspect: async (task) => {
-                for (const repo of gitDeps.repos) {
-                    const open = (await gitDeps.gitHost.listPullRequests(repo, "open")).find((pr) => pr.title.includes(task.issue.key));
-                    if (!open) continue;
-                    const statuses = checkCommandFromEnv() === null ? null : await gitDeps.gitHost.getCommitStatuses(repo, open.sourceCommit);
-                    return { prUrl: open.url, checkRecorded: statuses === null ? null : statuses.length > 0 };
-                }
-                return { prUrl: null, checkRecorded: null };
-            },
+            inspect: (task) => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured }),
             handoff: async (key, body) => {
                 await postIssueComment(config.backend.workTracker, key, stampComment(body, developer));
             },

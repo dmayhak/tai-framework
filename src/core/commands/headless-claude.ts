@@ -4,9 +4,24 @@
  * A fresh non-interactive `claude -p` per ticket, so each ticket has a clean context and a failure stops only that
  * ticket. The prompt spells the steps out and does not rely on a skill being loadable in print mode. The run builds the
  * change, opens the PR and records the check, and does nothing past that: no review, approval, merge or close.
+ *
+ * Permissions: file edits are accepted (`--permission-mode acceptEdits`); every other command must already be allowed by
+ * the person's own Claude permission rules, and one that is not is denied and fails that ticket with a hand-off. The run
+ * is never given a blanket allow, because that would include `git-pr merge`, which stays the person's separate opt-in.
  */
 
 import { spawn } from "node:child_process";
+
+/** Minutes a run may take, from `TAI_DEV_RUN_TIMEOUT_MIN` (default 45). A value that is not a positive number is refused, not guessed. */
+export function devRunTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+    const raw = env["TAI_DEV_RUN_TIMEOUT_MIN"];
+    if (raw === undefined || raw.trim() === "") return 45 * 60_000;
+    const minutes = Number(raw);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+        throw new Error(`TAI_DEV_RUN_TIMEOUT_MIN must be a positive number of minutes (got "${raw}").`);
+    }
+    return Math.round(minutes * 60_000);
+}
 
 export interface HeadlessRunOptions {
     readonly cwd: string;
@@ -39,12 +54,14 @@ export function buildDevPrompt(key: string, cli: string): string {
 
 export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): Promise<HeadlessRunResult> {
     return new Promise((resolve) => {
-        const child = spawn(options.bin ?? "claude", ["-p", prompt], { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"] });
+        const child = spawn(options.bin ?? "claude", ["-p", prompt, "--permission-mode", "acceptEdits"], { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"] });
         let out = "";
         let timedOut = false;
         const timer = setTimeout(() => {
             timedOut = true;
             child.kill("SIGTERM");
+            // A run that ignores SIGTERM, or whose children hold the pipes open, must not outlast the bound.
+            setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
         }, options.timeoutMs);
         child.stdout.on("data", (d: Buffer) => (out += d.toString()));
         child.stderr.on("data", (d: Buffer) => (out += d.toString()));

@@ -1240,7 +1240,7 @@ comment's content.
   ticket. A failure posts a `Handoff:` comment on that ticket and the others go on. The command ends with what was done,
   what failed, what was skipped and what waits for a person. `dryrun=true` lists and runs nothing. With the `dev-yolo`
   setting on, each ticket is handed to the full unattended run (TAI-634); until that exists the command builds nothing
-  and says so. `TAI_DEV_RUN_TIMEOUT_MIN` (default 45) stops a run that hangs. The allow rule does not cover this command.
+  and says so. `TAI_DEV_RUN_TIMEOUT_MIN` (default 45; a value that is not a positive number is refused) stops a run that hangs, with a kill after a short grace. The PR is found by the whole Dev key in its title, and a ticket whose PR is already open is skipped, so the command is safe to run twice. A run accepts file edits (`--permission-mode acceptEdits`); every other command must already be allowed by the person's own Claude rules, and one that is not is denied and fails that ticket with a hand-off. The allow rule does not cover this command, and the run is given no blanket allow, because that would include `git-pr merge`.
 - **One git host per project, named by `TAI_GIT_HOST`** (`bitbucket` or `github`), which `init run`
   writes from `origin`'s remote. Unset, TAI reads `origin` at run time and falls back to Bitbucket.
   `core/git/host-factory.ts` builds the backend from it for every command. Bitbucket uses
