@@ -103,4 +103,12 @@ describe("yoloStopReasons (TAI-634)", () => {
             assert.equal(reasons.length, 1);
             assert.match(reasons[0]!, /no user is configured/);
         }));
+    it("a failed page save leaves no record", () =>
+        world(async ({ deps }) => {
+            const ctx = { docStore: deps.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
+            await changeAdmin(ctx, "add", "a@b.co");
+            const failing = { ...deps.docStore, updatePage: async () => { throw new Error("write failed"); }, createPage: async () => { throw new Error("write failed"); } } as typeof deps.docStore;
+            await assert.rejects(setSetting({ ...ctx, docStore: failing, attest: (e, k, v) => recordAttestation(deps.taiDir, e, k, v) }, "dev-yolo", "true"), /write failed/);
+            assert.match((await yoloStopReasons(deps, { issue: {} as never, parent: { key: "TAI-1" } as never })).join("\n"), /no record that you turned DEV-YOLO on/);
+        }));
 });

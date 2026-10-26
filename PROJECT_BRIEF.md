@@ -1253,7 +1253,8 @@ comment's content.
   `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`; GitHub uses `GITHUB_TOKEN`, and the current human's email for
   the "PR Reviewers" page comes from `TAI_JIRA_EMAIL`, since a GitHub token carries none. On GitHub,
   reviewers are named by the login in the page's GitHub column; an optional Marker column set to `automated` marks a
-  separate Claude account that reviews for an unattended run (`PrReviewer.automated`); every GitHub review carries the commit it
+  separate Claude account that reviews for an unattended run (`PrReviewer.automated`; like the GitHub column it is read by position in a row
+  that lists several humans, so a human with no marker before one with it needs a leading comma); every GitHub review carries the commit it
   was cast on, so the merge gate's fresh-approval rule reads the same; commit statuses and check runs
   (GitHub Actions) both count as CI. A fine-grained token cannot read check runs, so with one the
   commit's GitHub Actions workflow runs are read instead (permission Actions: read); CI that cannot be

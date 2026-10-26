@@ -172,6 +172,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
 import { recordAttestation } from "../core/settings/attestation.js";
+import { resolve as resolvePath } from "node:path";
 import { findDevTasks, parseDevTasksArgs, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
@@ -2255,7 +2256,7 @@ async function main(): Promise<void> {
             email: config.currentHuman?.email ?? null,
             ...(config.actingPersona ? { actingPersona: config.actingPersona } : {}),
             aiSession: inAiSession(),
-            attest: (email: string, key: string, value: string) => recordAttestation(config.taiRoot, email, key, value),
+            attest: (email: string, key: string, value: string) => recordAttestation(resolvePath(config.taiRoot), email, key, value),
         };
         if (!arg) console.log(await showSettings(ctx));
         else if (arg === "set") {
