@@ -324,3 +324,11 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
     out.push(...(skipped.length ? skipped.map((s) => `- ${line(s.issue)}: ${s.reason}.${waitingNote(s, worked)}`) : ["None."]));
     return out.join("\n");
 }
+
+/** The command's arguments: only `dryrun=true` is understood. Anything else is refused, because a mistyped flag must not start real builds. */
+export function parseDevTasksArgs(args: readonly (string | undefined)[]): { readonly dryRun: boolean } {
+    const given = args.filter((a): a is string => a !== undefined && a !== "");
+    const unknown = given.filter((a) => a !== "dryrun=true");
+    if (unknown.length > 0) throw new Error(`do-dev-tasks takes only dryrun=true (got: ${unknown.join(" ")}).`);
+    return { dryRun: given.length > 0 };
+}

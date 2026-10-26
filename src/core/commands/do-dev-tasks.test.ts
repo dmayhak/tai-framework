@@ -11,6 +11,7 @@ import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
+import { parseDevTasksArgs } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
@@ -558,6 +559,23 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.equal(cliCommand("/home/del/.tai-framework"), "npx --prefix /home/del/.tai-framework tsx /home/del/.tai-framework/src/hosts/cli.ts");
         assert.equal(cliCommand("/home/my user/tai"), "npx --prefix '/home/my user/tai' tsx '/home/my user/tai/src/hosts/cli.ts'");
         assert.match(cliCommand("/x/it's"), /'\/x\/it'\\''s'/);
+    });
+
+    it("parseDevTasksArgs accepts dryrun=true or nothing and refuses anything else", () => {
+        assert.deepEqual(parseDevTasksArgs([undefined]), { dryRun: false });
+        assert.deepEqual(parseDevTasksArgs(["dryrun=true"]), { dryRun: true });
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true/);
+    });
+
+    it("the timeout message states a fractional timeout as configured", async () => {
+        const stuck = await fakeClaude("sleep 30");
+        try {
+            const r = await runHeadlessClaude("p", { cwd: tmpdir(), bin: stuck.bin, timeoutMs: 300, killGraceMs: 100 });
+            assert.match(r.summary, /stopped after 0 minutes|stopped after 0\.\d? ?minutes/);
+        } finally {
+            await stuck.cleanup();
+        }
+        assert.match(`${Number((90_000 / 60000).toFixed(1))}`, /^1\.5$/);
     });
 
     it("redactSecrets masks bearer tokens and credential-looking environment values", () => {

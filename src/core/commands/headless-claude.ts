@@ -150,7 +150,7 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         let timedOut = false;
         let killTimer: NodeJS.Timeout | undefined;
         let exitTimer: NodeJS.Timeout | undefined;
-        const stoppedSummary = (): string => `the run was stopped after ${Math.round(options.timeoutMs / 60000)} minutes. Last output:\n${lastLines()}`;
+        const stoppedSummary = (): string => `the run was stopped after ${Number((options.timeoutMs / 60000).toFixed(1))} minutes. Last output:\n${lastLines()}`;
         const killGroup = (signal: NodeJS.Signals): void => {
             if (settled) return; // the group is gone and its id may belong to something else by now
             try {

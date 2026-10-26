@@ -171,7 +171,7 @@ import { resolveAssignment, type AssignmentResolution } from "../core/personas/a
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
-import { findDevTasks, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
+import { findDevTasks, parseDevTasksArgs, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
@@ -2271,7 +2271,7 @@ async function main(): Promise<void> {
     // TAI-633: `do-dev-tasks [dryrun=true]` works the current user's In Progress and To Do Dev subtasks one at a time, each in
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
-        const dryRun = [arg, ...rest].includes("dryrun=true");
+        const { dryRun } = parseDevTasksArgs([arg, ...rest]);
         const gitDeps = await tryResolveReadyGitDeps(config);
         const checkConfigured = checkCommandFromEnv() !== null;
         const find = () =>
