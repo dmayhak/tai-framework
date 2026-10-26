@@ -4,7 +4,7 @@
  * Takes every In Progress and To Do `Dev` subtask assigned to the current user, on Stories and Bugs, and works through
  * them one at a time. Each ticket gets its own run, so one failing leaves a hand-off on that ticket and the rest go on.
  * With `dev-yolo` off a run builds the change, opens the PR and records the check, and leaves review and merge to people.
- * With it on the ticket goes to the full run (TAI-634), which this module only calls through `yoloRun`.
+ * With it on the ticket goes to the unattended run (`dev-yolo.ts`), which this module only calls through `yoloRun`.
  *
  * Pure orchestration: the work tracker is read here, and everything that touches a shell, the git host or Claude is a
  * dependency, so the order, the skips and the reporting are tested without any of them.

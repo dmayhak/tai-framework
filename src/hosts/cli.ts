@@ -2336,6 +2336,12 @@ async function main(): Promise<void> {
                   handoff: async (key: string, body: string) => {
                       await postIssueComment(config.backend.workTracker, key as IssueKey, stampComment(body, developer));
                   },
+                  finish: {
+                      checkCommand: checkCommandFromEnv(),
+                      ...requiredApprovalsFromEnv(),
+                      stamp: (body: string) => stampComment(body, developer),
+                      prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
+                  },
               }
             : null;
         const worked = await workDevTasks(find, {

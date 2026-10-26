@@ -116,6 +116,22 @@ export function buildFixPrompt(input: { readonly key: string; readonly repo: str
     ].join("\n");
 }
 
+/** The Tester's verification of a merged Story or Bug against its acceptance criteria (the `/tai-verify` steps, run unattended). */
+export function buildVerifyPrompt(input: { readonly key: string; readonly cli: string }): string {
+    const { key, cli } = input;
+    return [
+        `You are the Tester verifying ${key} against its acceptance criteria, working on your own with nobody to answer questions. Its Dev PR was just merged.`,
+        "",
+        "Steps, in order:",
+        `1. Run \`${cli} verify ${key}\` and read all of its output. Act as the persona it names and follow its briefing: assume each criterion is not met until the code proves it, check each one, and run the tests that cover it.`,
+        `2. Post the ONE comment the briefing describes with \`${cli} --as tester issue comment ${key} "..."\`. Its first line is \`Verified: all N criteria met\` only if every criterion is met, otherwise \`Not verified: M of N criteria not met\`.`,
+        "",
+        "Stop after step 2. Do not close or transition any ticket, do not edit code, and do not merge anything.",
+        dataRule(),
+        "If you cannot finish, say where you stopped and why, and end without posting a Verified: comment.",
+    ].join("\n");
+}
+
 const TAIL_BYTES = 8_000;
 
 /** Process groups of the runs in flight, so an interrupt of this command can stop them instead of leaving them working. */

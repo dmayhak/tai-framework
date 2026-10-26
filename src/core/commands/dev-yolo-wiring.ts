@@ -11,15 +11,16 @@ import type { DocStore, WorkTracker } from "../storage/interface.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isEligibleReviewer, loadPrReviewers } from "../git/pr-reviewers.js";
 import { parseReviewFindings, sameCommitHash } from "../git/review-findings.js";
-import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, runHeadlessClaude, type HeadlessRunOptions, type HeadlessRunResult } from "./headless-claude.js";
+import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, buildVerifyPrompt, runHeadlessClaude, type HeadlessRunOptions, type HeadlessRunResult } from "./headless-claude.js";
 import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask, type DevTaskOutcome } from "./do-dev-tasks.js";
 import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "./dev-yolo.js";
 import { yoloStopReasons } from "./yolo-checks.js";
+import { finishApproved } from "./dev-yolo-finish.js";
 
 export interface YoloWiring {
     readonly gitHost: GitHost;
     readonly repos: readonly RepoId[];
-    readonly workTracker: Pick<WorkTracker, "search">;
+    readonly workTracker: Pick<WorkTracker, "search" | "getRemoteLinks" | "getIssue" | "transition">;
     readonly docStore: DocStore;
     readonly spaceKey: string;
     readonly projectKey: string;
@@ -37,6 +38,13 @@ export interface YoloWiring {
     readonly reviewerHost: Pick<GitHost, "getCurrentUser"> | null;
     readonly handoff: (key: string, body: string) => Promise<void>;
     readonly afterApproved?: YoloDeps["afterApproved"];
+    /** The merge, verification and close of an approved PR (part 3). Without it, and without `afterApproved`, the run ends at the approval. */
+    readonly finish?: {
+        readonly checkCommand: string | null;
+        readonly requiredApprovals?: number;
+        readonly stamp: (body: string) => string;
+        readonly prepare: () => Promise<void>;
+    };
     readonly runClaude?: (prompt: string, options: HeadlessRunOptions) => Promise<HeadlessRunResult>;
 }
 
@@ -152,7 +160,25 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
         },
         head: async (task) => liveHead(await pullRequest(task)),
         handoff: w.handoff,
-        ...(w.afterApproved ? { afterApproved: w.afterApproved } : {}),
+        ...(w.afterApproved
+            ? { afterApproved: w.afterApproved }
+            : w.finish
+              ? {
+                    afterApproved: finishApproved({
+                        gitHost: w.gitHost,
+                        workTracker: w.workTracker,
+                        projectKey: w.projectKey,
+                        pullRequest,
+                        checkCommand: w.finish.checkCommand,
+                        ...(w.finish.requiredApprovals !== undefined ? { requiredApprovals: w.finish.requiredApprovals } : {}),
+                        reviewer: () => w.reviewerHost!.getCurrentUser(),
+                        stamp: w.finish.stamp,
+                        prepare: w.finish.prepare,
+                        verify: (task) => run(buildVerifyPrompt({ key: task.parent.key, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+                        handoff: w.handoff,
+                    }),
+                }
+              : {}),
     };
     return (task) => runYolo(task, deps);
 }
