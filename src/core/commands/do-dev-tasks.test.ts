@@ -284,7 +284,8 @@ describe("finding a ticket's PR and holding back one that already has it (TAI-63
     it("also skips a To Do ticket whose PR was opened by hand, so a second PR is not built", async () => {
         await withTracker(async (wt) => {
             const story = await mk(wt, { issueType: StoryType.Story });
-            await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            const dev = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            await wt.transition(dev.key, Status.ToDo);
             const { tasks, skipped } = await findDevTasks({ workTracker: wt, projectKey: "TAI", currentHuman: ME, openPullRequests: async () => () => "https://pr/2" });
             assert.equal(tasks.length, 0);
             assert.match(skipped[0]!.reason, /https:\/\/pr\/2/);
