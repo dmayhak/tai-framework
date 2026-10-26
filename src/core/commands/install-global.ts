@@ -388,7 +388,7 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts install-global\n` +
         "```\n\n" +
-        "This (re)writes all eleven skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`) " +
+        "This (re)writes all twelve skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-settings`) " +
         "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
         "`tai-framework` itself has been updated at its fixed location. **Gemini CLI does not pick up " +
         "refreshed skill files in a running session — after an install/refresh, tell the human to " +
@@ -641,6 +641,26 @@ function groomSkillBody(taiHome: string): string {
     );
 }
 
+function settingsSkillBody(taiHome: string): string {
+    return (
+        "**What this is (TAI-627):** shows the project's TAI settings for the current user (value, default, meaning, and " +
+        "which ones differ from the default) and changes them. No ticket and no persona are involved.\n\n" +
+        "With no arguments, run this and show the human its output verbatim:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts settings\n` +
+        "```\n\n" +
+        "To change one setting, or edit the Autonomy admins list:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts settings set <KEY> <VALUE>\n` +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts settings admins add|remove <EMAIL>\n` +
+        "```\n\n" +
+        "**An autonomy setting (marked `[autonomy]`) and the Autonomy admins list are the human's to change, never yours.** " +
+        "The command refuses them from an AI session, so do not try to work round the refusal. When the human asks for " +
+        "one, give them the exact command and ask them to run it themselves in a plain terminal. Report any refusal " +
+        "as it is printed.\n"
+    );
+}
+
 function verifySkillBody(taiHome: string): string {
     return (
         "**What this is (TAI-468/546):** a check of a Story's (or Bug's) finished work against its numbered " +
@@ -780,7 +800,7 @@ function changeSkillBody(taiHome: string): string {
     );
 }
 
-/** All 22 skill files (11 skills × 2 hosts) — identical content per skill across hosts, since
+/** All 24 skill files (12 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
     const skills: readonly { readonly name: string; readonly description: string; readonly body: string }[] = [
@@ -850,6 +870,13 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
             body: verifySkillBody(taiHome),
         },
         {
+            name: "tai-settings",
+            description:
+                "Show the project's TAI settings (value, default, meaning) and change them; the autonomy ones only a named " +
+                "human can change, from a plain terminal (TAI-627)",
+            body: settingsSkillBody(taiHome),
+        },
+        {
             name: "tai-audit",
             description:
                 "Report-only sweep of the open backlog for staleness/drift patterns -- stale brief-gap " +
@@ -884,7 +911,7 @@ export function defaultTaiHome(): string {
 }
 
 /**
- * Writes all 22 global skill files (11 skills x 2 hosts) under the user's home directory. Fails loudly if
+ * Writes all 24 global skill files (12 skills x 2 hosts) under the user's home directory. Fails loudly if
  * `taiHome` doesn't exist — this function never clones it (see file header); the caller
  * (the `tai-init` skill's own prose, or a human) is responsible for that first.
  */

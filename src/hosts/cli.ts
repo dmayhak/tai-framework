@@ -13,7 +13,7 @@
  *
  * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
  * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
- * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-audit`), installed
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-audit`/`tai-settings`), installed
  * once via `install-global` (below) rather than generated per-project as
  * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
  * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
@@ -170,6 +170,7 @@ import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
+import { showSettings, setSetting, changeAdmin, inAiSession } from "../core/commands/settings.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -2241,6 +2242,29 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-627: `settings` shows the project's settings for the current user; `settings set <key> <value>` changes one;
+    // `settings admins add|remove <email>` edits the Autonomy admins list. Autonomy changes are guarded in the command.
+    if (subcommand === "settings") {
+        const ctx = {
+            docStore: config.backend.docStore,
+            spaceKey: config.spaceKey,
+            email: config.currentHuman?.email ?? null,
+            ...(config.actingPersona ? { actingPersona: config.actingPersona } : {}),
+            aiSession: inAiSession(),
+        };
+        if (!arg) console.log(await showSettings(ctx));
+        else if (arg === "set") {
+            const [key, ...value] = rest;
+            if (!key || value.length === 0) throw new Error("Usage: settings set <KEY> <VALUE>");
+            console.log(await setSetting(ctx, key, value.join(" ")));
+        } else if (arg === "admins") {
+            const [action, target] = rest;
+            if (!action || !target) throw new Error("Usage: settings admins add|remove <EMAIL>");
+            console.log(await changeAdmin(ctx, action, target));
+        } else throw new Error(`Unknown settings action "${arg}". Usage: settings | settings set <KEY> <VALUE> | settings admins add|remove <EMAIL>`);
+        return;
+    }
+
     // TAI-468/546: `verify <STORY-KEY>` -- loads Tessa with the Story's numbered acceptance criteria and the diff of
     // every Dev PR on it, open or merged. Read-only: she posts the one stamped Verified:/Not verified: comment herself.
     if (subcommand === "verify") {
@@ -2963,7 +2987,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );
