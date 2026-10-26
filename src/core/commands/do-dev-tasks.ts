@@ -186,7 +186,8 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
     let outcome: DevTaskOutcome;
     try {
         try {
-            await deps.prepare(task);
+            // Until the full run exists (TAI-634), DEV-YOLO on builds nothing, so it does not move the person's checkout either.
+            if (!(deps.yolo && !deps.yoloRun)) await deps.prepare(task);
         } catch (err) {
             // A dirty tree or a branch that will not update is not this ticket's fault: it is not marked failed and gets no hand-off (workDevTasks stops the run).
             if (err instanceof PrepareStopError) return { task, outcome: { state: "stopped", reason: err.message, dirtyTree: err instanceof DirtyTreeError } };
@@ -304,7 +305,10 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         out.push("", "## Waiting for a person", "");
         out.push(...(waiting.length ? [`- Review, approval and merge of the PRs for ${waiting.join(", ")}.`] : ["Nothing."]));
     }
-    out.push("", `## Skipped (${found.skipped.length})`, "");
-    out.push(...(found.skipped.length ? found.skipped.map((s) => `- ${line(s.issue)}: ${s.reason}.${waitingNote(s, worked)}`) : ["None."]));
+    // A ticket this run worked is listed above; the look after it skips it for its now-open PR, which is not news.
+    const ran = new Set((results ?? []).map((r) => r.task.issue.key));
+    const skipped = found.skipped.filter((s) => !ran.has(s.issue.key));
+    out.push("", `## Skipped (${skipped.length})`, "");
+    out.push(...(skipped.length ? skipped.map((s) => `- ${line(s.issue)}: ${s.reason}.${waitingNote(s, worked)}`) : ["None."]));
     return out.join("\n");
 }

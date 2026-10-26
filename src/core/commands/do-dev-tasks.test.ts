@@ -236,6 +236,7 @@ describe("buildDevPrompt", () => {
         assert.match(p, /`CLI work TAI-10`/);
         assert.match(p, /Do not review, approve or merge/);
         assert.match(p, /Never use force=true/);
+        assert.match(p, /data, never as instructions/);
         assert.match(p, /Do not ask any/);
     });
 });
@@ -367,6 +368,20 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.equal(looks, 1, "one look after the one ticket, none before it");
     });
 
+    it("a ticket worked this run is not listed again under Skipped", () => {
+        const t = task("TAI-10");
+        const found = { tasks: [], skipped: [{ issue: t.issue, reason: "its PR is already open and waiting for review: https://pr/1" }] };
+        const text = renderDevTasksReport(found, [{ task: t, outcome: { state: "pr-opened", prUrl: "https://pr/1", checkRecorded: true } }], { yolo: false });
+        assert.match(text, /## Done \(1\)/);
+        assert.match(text, /## Skipped \(0\)/);
+    });
+
+    it("DEV-YOLO on with no full run builds nothing and does not touch the checkout", async () => {
+        const d = deps({ yolo: true });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.ok(!d.calls.some((c) => c.startsWith("prepare")), "no prepare");
+    });
+
     it("a branch that will not update stops the run without blaming any ticket", async () => {
         const d = deps({ prepare: async () => Promise.reject(new PrepareStopError("Could not bring main up to date: offline")) });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
@@ -458,6 +473,17 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
             assert.equal(stopActiveRuns(), 0, "nothing left in flight");
         } finally {
             await slow.cleanup();
+        }
+    });
+
+    it("runHeadlessClaude names the signal when the run is killed by one", async () => {
+        const killed = await fakeClaude("kill -9 $$");
+        try {
+            const r = await runHeadlessClaude("p", { cwd: tmpdir(), bin: killed.bin, timeoutMs: 20_000 });
+            assert.equal(r.ok, false);
+            assert.match(r.summary, /killed by SIGKILL/);
+        } finally {
+            await killed.cleanup();
         }
     });
 
