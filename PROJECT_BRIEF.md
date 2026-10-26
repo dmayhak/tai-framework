@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-26 (rev 134). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-26 (rev 135). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1252,8 +1252,13 @@ comment's content.
   and Nitpick (do it now, make a new ticket, or comment why not) and posts one line per finding on the PR. Any finding
   above Suggestion, a request for changes, no approval on the PR's current commit, a failed run, or the last round ending
   in a push with no fresh review stops that ticket with a `Handoff:` for a person and the batch goes on. The findings must name the PR's current commit, and the PR must not move during the review. A fix that pushed
-  needs a fresh review; one that pushed nothing keeps the approval. The merge, the verification and the close are not in
-  this version: an approved PR is left with a hand-off to merge through the gate and run `/tai-verify`. The reviewer's token is in the environment of the reviewer run only (`runEnv` removes it from every other run, which have a shell and read text that may try to instruct them). The runs are told
+  needs a fresh review; one that pushed nothing keeps the approval. An approved PR is then merged by `core/commands/dev-yolo-finish.ts`: only through the same gate as `git-pr merge`
+  (the check green, the gate met, a check result present when a check command is set, and the approval on the current commit
+  the automated reviewer's own), on the commit the gate checked, never with force. A PR comment records that the approval was
+  automated, by which account and on which commit. The linked ticket goes to Done as `git-pr merge` does, the checkout is
+  brought to the updated default branch, and a fresh Tester run verifies the Story or Bug against its criteria. The Story or Bug is closed only when
+  that run posts a `Verified:` comment (one that appeared during the run); `Not verified:`, no verdict or any refusal leaves it
+  open with a `Handoff:` that says whether the PR had merged. The reviewer's token is in the environment of the reviewer run only (`runEnv` removes it from every other run, which have a shell and read text that may try to instruct them). The runs are told
   never to force and never to edit `.tai/` (the reviewer may write its one findings file); the checks run before the build, and the record is not read again. `TAI_DEV_RUN_TIMEOUT_MIN` (default 45; a value that is not a positive number is refused) stops a run that hangs, with the whole process group stopped and then killed after a short grace, and the result returned from the timeout even if a child holds the pipes open. The PR is found by the Dev key opening one of the first two slots of its title (`TAI-<STORY> - TAI-<SUBTASK> - …`), the open PRs are listed once per look, and a ticket whose PR is already open is skipped, so the command is safe to run twice (this includes a PR a reviewer sent back for changes: rework is not picked up by this command yet, and the skip reason says so). A run that leaves the working tree dirty stops the whole command: the report says so, the hand-off goes on the ticket whose run left the changes, and no later ticket is failed for it. Ctrl-C or a terminate stops the runs in flight (their whole process groups) before the command exits, so no unattended run outlives it (SIGTERM, then SIGKILL after a few seconds for any that ignore it). A run accepts file edits (`--permission-mode acceptEdits`); every other command must already be allowed by the person's own Claude rules, and one that is not is denied and fails that ticket with a hand-off. The allow rule does not cover this command, and the run is given no blanket allow, because that would include `git-pr merge`.
 - **One git host per project, named by `TAI_GIT_HOST`** (`bitbucket` or `github`), which `init run`
   writes from `origin`'s remote. Unset, TAI reads `origin` at run time and falls back to Bitbucket.
