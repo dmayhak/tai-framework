@@ -1227,8 +1227,9 @@ comment's content.
   against accidental self-escalation, not a defence against a session set on evading it. The `Autonomy admins` list is
   the same: anyone who can edit the Confluence page can edit it by hand, so it gates this command and is not proof of a
   human decision. A save changes only the rows and admin entries TAI understands and keeps every other row and line
-  of the page. Nothing reads these settings yet; the unattended Dev run (Epic TAI-625) must not treat the page alone as
-  proof that a person turned autonomy on.
+  of the page. Only `do-dev-tasks` reads a setting so far (`dev-yolo`, to choose between its two modes, and with it on it builds
+  nothing until TAI-634); the unattended Dev run (Epic TAI-625) must not treat the page alone as proof that a person turned
+  autonomy on.
 - **"Do all dev tasks" works the current user's Dev subtasks, one headless run each (`do-dev-tasks`, `/tai-do-dev-tasks`).**
   `core/commands/do-dev-tasks.ts` finds the current user's In Progress and To Do `Dev` subtasks on Stories and Bugs,
   most urgent first. It skips, and says why, a To Do one that precedence still holds and any whose Story or itself has an

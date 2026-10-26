@@ -126,7 +126,7 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
                 continue;
             }
         }
-        const openPr = issue.status === Status.InProgress && openPrFor ? openPrFor(issue) : null;
+        const openPr = openPrFor ? openPrFor(issue) : null;
         if (openPr) {
             skipped.push({ issue, reason: `its PR is already open and waiting for review: ${openPr}` });
             continue;

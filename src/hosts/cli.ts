@@ -2296,8 +2296,12 @@ async function main(): Promise<void> {
             });
         const found = await find();
         const yolo = (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        if (dryRun || found.tasks.length === 0) {
+        if (dryRun) {
             console.log(renderDevTasksReport(found, null, { yolo, openPullRequestsChecked: gitDeps !== undefined }));
+            return;
+        }
+        if (found.tasks.length === 0) {
+            console.log(renderDevTasksReport(found, [], { yolo }));
             return;
         }
         if (!gitDeps) throw new Error("do-dev-tasks needs the git host: set TAI_GIT_REPOS (or TAI_GIT_WORKSPACE) and its credentials, so each PR can be found afterwards.");

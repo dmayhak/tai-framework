@@ -280,6 +280,16 @@ describe("finding a ticket's PR and holding back one that already has it (TAI-63
             assert.match(skipped[0]!.reason, /PR is already open and waiting for review: https:\/\/pr\/1/);
         });
     });
+
+    it("also skips a To Do ticket whose PR was opened by hand, so a second PR is not built", async () => {
+        await withTracker(async (wt) => {
+            const story = await mk(wt, { issueType: StoryType.Story });
+            await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            const { tasks, skipped } = await findDevTasks({ workTracker: wt, projectKey: "TAI", currentHuman: ME, openPullRequests: async () => () => "https://pr/2" });
+            assert.equal(tasks.length, 0);
+            assert.match(skipped[0]!.reason, /https:\/\/pr\/2/);
+        });
+    });
 });
 
 describe("devRunTimeoutMs (TAI-633, PR 19 review)", () => {
