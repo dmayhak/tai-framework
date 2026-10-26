@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { toHumanId } from "../storage/interface.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
-import { changeAdmin, inAiSession, setSetting, showSettings, type SettingsContext } from "./settings.js";
+import { changeAdmin, inAiSession, readSettingValue, setSetting, showSettings, type SettingsContext } from "./settings.js";
 
 async function withStore(run: (make: (over?: Partial<SettingsContext>) => SettingsContext) => Promise<void>): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-settings-"));
@@ -70,4 +70,18 @@ describe("tai-settings", () => {
         assert.equal(inAiSession({ CLAUDECODE: "1" }), true);
         assert.equal(inAiSession({ GEMINI_CLI: "1" }), true);
     });
+});
+
+describe("readSettingValue", () => {
+    it("gives the default with no page, the default for a user with no row, the set value, and refuses an unknown key", () =>
+        withStore(async (make) => {
+            const ctx = make();
+            assert.equal(await readSettingValue(ctx.docStore, "TAIT", "del@mayhak.com", "dev-yolo"), "false");
+            await changeAdmin(ctx, "add", "del@mayhak.com");
+            await setSetting(ctx, "dev-yolo", "on");
+            assert.equal(await readSettingValue(ctx.docStore, "TAIT", "DEL@mayhak.com", "dev-yolo"), "true");
+            assert.equal(await readSettingValue(ctx.docStore, "TAIT", "other@mayhak.com", "dev-yolo"), "false", "another user has no row");
+            assert.equal(await readSettingValue(ctx.docStore, "TAIT", null, "dev-yolo"), "false", "no user means the default");
+            await assert.rejects(readSettingValue(ctx.docStore, "TAIT", "del@mayhak.com", "nonsense"), /Unknown setting/);
+        }));
 });
