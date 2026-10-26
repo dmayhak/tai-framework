@@ -388,7 +388,7 @@ function initSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts install-global\n` +
         "```\n\n" +
-        "This (re)writes all twelve skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-settings`) " +
+        "This (re)writes all thirteen skills (`tai-work`/`tai-ready`/`tai-pr`/`tai-init`/`tai-audit`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-settings`/`tai-do-dev-tasks`) " +
         "for both Claude Code and Gemini CLI, so it's always safe to re-run — e.g. after " +
         "`tai-framework` itself has been updated at its fixed location. **Gemini CLI does not pick up " +
         "refreshed skill files in a running session — after an install/refresh, tell the human to " +
@@ -641,6 +641,27 @@ function groomSkillBody(taiHome: string): string {
     );
 }
 
+function doDevTasksSkillBody(taiHome: string): string {
+    return (
+        "**What this is (TAI-633):** \"Do all dev tasks\" -- works the current user's In Progress and To Do `Dev` subtasks (on Stories " +
+        "and Bugs) one at a time. The command itself starts a separate headless Claude run for each ticket; YOU do not do the tickets. " +
+        "With `DEV-YOLO` off, each run builds the change with its tests, opens the PR and records the check, and leaves review and merge " +
+        "to people. A ticket that fails gets a `Handoff:` comment and the rest carry on.\n\n" +
+        "First list what it would do, and show the human the output verbatim:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts do-dev-tasks dryrun=true\n` +
+        "```\n\n" +
+        "The list names each ticket it would work, and each it skips with the reason (precedence, or an open blocker). " +
+        "Only when the human says to go ahead, run it for real. It can take a long time (up to 45 minutes per ticket by " +
+        "default, `TAI_DEV_RUN_TIMEOUT_MIN`), so run it in the background if you can, and it needs a clean working tree:\n\n" +
+        "```bash\n" +
+        `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts do-dev-tasks\n` +
+        "```\n\n" +
+        "Show the human its closing report: what was done for each ticket, what failed, what was skipped, and what waits for a person. " +
+        "If `DEV-YOLO` is on it says so, and says whether the full run is available; never turn the setting on yourself.\n"
+    );
+}
+
 function settingsSkillBody(taiHome: string): string {
     return (
         "**What this is (TAI-627):** shows the project's TAI settings for the current user (value, default, meaning, and " +
@@ -800,7 +821,7 @@ function changeSkillBody(taiHome: string): string {
     );
 }
 
-/** All 24 skill files (12 skills × 2 hosts) — identical content per skill across hosts, since
+/** All 26 skill files (13 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
     const skills: readonly { readonly name: string; readonly description: string; readonly body: string }[] = [
@@ -877,6 +898,13 @@ export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
             body: settingsSkillBody(taiHome),
         },
         {
+            name: "tai-do-dev-tasks",
+            description:
+                "Do all dev tasks -- work the current user's In Progress and To Do Dev subtasks one at a time, each in its own " +
+                "headless run: build, open the PR, record the check; review and merge stay with people (TAI-633)",
+            body: doDevTasksSkillBody(taiHome),
+        },
+        {
             name: "tai-audit",
             description:
                 "Report-only sweep of the open backlog for staleness/drift patterns -- stale brief-gap " +
@@ -911,7 +939,7 @@ export function defaultTaiHome(): string {
 }
 
 /**
- * Writes all 24 global skill files (12 skills x 2 hosts) under the user's home directory. Fails loudly if
+ * Writes all 26 global skill files (13 skills x 2 hosts) under the user's home directory. Fails loudly if
  * `taiHome` doesn't exist — this function never clones it (see file header); the caller
  * (the `tai-init` skill's own prose, or a human) is responsible for that first.
  */

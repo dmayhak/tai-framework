@@ -303,7 +303,7 @@ async function loadParentPrecedenceContext(
  * for sibling precedence (ADR decision #2: no batching/caching layer for this project's
  * current backlog size).
  */
-async function findOpenDependsOnBlockers(workTracker: WorkTracker, issue: Issue): Promise<readonly IssueKey[]> {
+export async function findOpenDependsOnBlockers(workTracker: WorkTracker, issue: Issue): Promise<readonly IssueKey[]> {
     const links = await workTracker.getLinkedIssues(issue.key, DependencyRelation.DependsOn, "outgoing");
     if (links.length === 0) return [];
 
@@ -339,7 +339,7 @@ const PRIORITY_RANK: Readonly<Record<string, number>> = {
 };
 const UNRANKED_PRIORITY = 5;
 
-function priorityRank(priority: string | undefined): number {
+export function priorityRank(priority: string | undefined): number {
     return priority !== undefined ? (PRIORITY_RANK[priority] ?? UNRANKED_PRIORITY) : UNRANKED_PRIORITY;
 }
 

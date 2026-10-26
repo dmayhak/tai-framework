@@ -153,3 +153,12 @@ export async function changeAdmin(ctx: SettingsContext, action: string, target: 
     await save(ctx, loaded, withAdmins(loaded.state, admins.filter((a) => a !== who)));
     return `# Autonomy admin removed\n\n${who} may no longer change autonomy settings.`;
 }
+
+/** One setting's value for `email` (its default when none is set), read from the Settings page; defaults when there is no page. */
+export async function readSettingValue(docStore: DocStore, spaceKey: string, email: string | null, key: string): Promise<string> {
+    const page = await docStore.getPage({ spaceKey, title: SETTINGS_PAGE_TITLE });
+    const state = page ? parseSettingsPage(page.content).state : EMPTY_SETTINGS;
+    const view = viewSettings(state, email ?? "").find((v) => v.def.key === key);
+    if (!view) throw new Error(`Unknown setting "${key}".`);
+    return view.value;
+}

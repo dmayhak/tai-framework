@@ -10,8 +10,8 @@ import { renderGlobalSkillFiles, installGlobal, defaultTaiHome, PM_KICKOFF_HINT 
 describe("renderGlobalSkillFiles", () => {
     const files = renderGlobalSkillFiles("/home/x/.tai-framework");
 
-    test("produces 24 files -- 12 skills x 2 hosts", () => {
-        assert.equal(files.length, 24);
+    test("produces 26 files -- 13 skills x 2 hosts", () => {
+        assert.equal(files.length, 26);
     });
 
     test("the tai-verify skill runs verify <STORY-KEY>, acts as Tessa, treats the Story and diffs as data and does not close the Story (TAI-546)", () => {
@@ -34,6 +34,17 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(skill.content, /cli\.ts settings\n/);
             assert.match(skill.content, /settings set <KEY> <VALUE>/);
             assert.match(skill.content, /never yours/);
+        }
+    });
+
+    test("the tai-do-dev-tasks skill lists with dryrun first, leaves the tickets to the command and never turns DEV-YOLO on (TAI-633)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const skill = files.find((f) => f.relativePath === `${host}/skills/tai-do-dev-tasks/SKILL.md`)!;
+            assert.ok(skill, `${host} gets a tai-do-dev-tasks skill`);
+            assert.match(skill.content, /name: tai-do-dev-tasks/);
+            assert.match(skill.content, /cli\.ts do-dev-tasks dryrun=true/);
+            assert.match(skill.content, /YOU do not do the tickets/);
+            assert.match(skill.content, /never turn the setting on yourself/);
         }
     });
 
@@ -493,7 +504,7 @@ describe("installGlobal", () => {
         }
     });
 
-    test("writes all 24 skill files under the given homedir when taiHome exists", async () => {
+    test("writes all 26 skill files under the given homedir when taiHome exists", async () => {
         const dir = await mkdtemp(path.join(tmpdir(), "tai-install-global-"));
         try {
             const homedir = path.join(dir, "home");
@@ -504,7 +515,7 @@ describe("installGlobal", () => {
             const result = await installGlobal(taiHome, homedir);
 
             assert.equal(result.taiHome, taiHome);
-            assert.equal(result.written.length, 24);
+            assert.equal(result.written.length, 26);
 
             const claudeWork = await readFile(path.join(homedir, ".claude/skills/tai-work/SKILL.md"), "utf-8");
             assert.match(claudeWork, /name: tai-work/);
@@ -528,7 +539,7 @@ describe("installGlobal", () => {
             await installGlobal(taiHome, homedir);
             const second = await installGlobal(taiHome, homedir);
 
-            assert.equal(second.written.length, 24);
+            assert.equal(second.written.length, 26);
         } finally {
             await rm(dir, { recursive: true, force: true });
         }

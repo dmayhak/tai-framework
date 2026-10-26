@@ -13,7 +13,7 @@
  *
  * **Wrapper location (TAI-90/126, rev — superseded the original per-project convention):**
  * both hosts' wrappers are global skills — `~/.claude/skills/tai-work/SKILL.md` and
- * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-audit`/`tai-settings`), installed
+ * `~/.gemini/skills/tai-work/SKILL.md` (same for `tai-ready`/`tai-pr`/`tai-init`/`tai-groom`/`tai-kickoff`/`tai-retro`/`tai-change`/`tai-small`/`tai-verify`/`tai-audit`/`tai-settings`/`tai-do-dev-tasks`), installed
  * once via `install-global` (below) rather than generated per-project as
  * `.claude/commands/*.md`/`.gemini/commands/*.toml`. Every command references this file by
  * its fixed install path (`~/.tai-framework/` by default), not a path relative to whatever
@@ -170,7 +170,10 @@ import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
-import { showSettings, setSetting, changeAdmin, inAiSession } from "../core/commands/settings.js";
+import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
+import { findDevTasks, runDevTasks, renderDevTasksReport } from "../core/commands/do-dev-tasks.js";
+import { buildDevPrompt, runHeadlessClaude } from "../core/commands/headless-claude.js";
+import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -2265,6 +2268,43 @@ async function main(): Promise<void> {
         return;
     }
 
+    // TAI-633: `do-dev-tasks [dryrun=true]` works the current user's In Progress and To Do Dev subtasks one at a time, each in
+    // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
+    if (subcommand === "do-dev-tasks") {
+        const dryRun = [arg, ...rest].includes("dryrun=true");
+        const found = await findDevTasks({ workTracker: config.backend.workTracker, projectKey: config.projectKey, currentHuman: config.currentHuman });
+        const yolo = (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
+        if (dryRun || found.tasks.length === 0) {
+            console.log(renderDevTasksReport(found, null, { yolo }));
+            return;
+        }
+        const gitDeps = await tryResolveReadyGitDeps(config);
+        if (!gitDeps) throw new Error("do-dev-tasks needs the git host: set TAI_GIT_REPOS (or TAI_GIT_WORKSPACE) and its credentials, so each PR can be found afterwards.");
+        const taiHome = defaultTaiHome();
+        const cli = `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts`;
+        const timeoutMs = Number(process.env["TAI_DEV_RUN_TIMEOUT_MIN"] ?? "45") * 60_000;
+        const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
+        const results = await runDevTasks(found.tasks, {
+            yolo,
+            prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
+            build: (task) => runHeadlessClaude(buildDevPrompt(task.issue.key, cli), { cwd: process.cwd(), timeoutMs }),
+            inspect: async (task) => {
+                for (const repo of gitDeps.repos) {
+                    const open = (await gitDeps.gitHost.listPullRequests(repo, "open")).find((pr) => pr.title.includes(task.issue.key));
+                    if (!open) continue;
+                    const statuses = checkCommandFromEnv() === null ? null : await gitDeps.gitHost.getCommitStatuses(repo, open.sourceCommit);
+                    return { prUrl: open.url, checkRecorded: statuses === null ? null : statuses.length > 0 };
+                }
+                return { prUrl: null, checkRecorded: null };
+            },
+            handoff: async (key, body) => {
+                await postIssueComment(config.backend.workTracker, key, stampComment(body, developer));
+            },
+        });
+        console.log(renderDevTasksReport(found, results, { yolo }));
+        return;
+    }
+
     // TAI-468/546: `verify <STORY-KEY>` -- loads Tessa with the Story's numbered acceptance criteria and the diff of
     // every Dev PR on it, open or merged. Read-only: she posts the one stamped Verified:/Not verified: comment herself.
     if (subcommand === "verify") {
@@ -2987,7 +3027,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );

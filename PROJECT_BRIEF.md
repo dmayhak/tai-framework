@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-25 (rev 131). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-25 (rev 132). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1229,6 +1229,18 @@ comment's content.
   human decision. A save changes only the rows and admin entries TAI understands and keeps every other row and line
   of the page. Nothing reads these settings yet; the unattended Dev run (Epic TAI-625) must not treat the page alone as
   proof that a person turned autonomy on.
+- **"Do all dev tasks" works the current user's Dev subtasks, one headless run each (`do-dev-tasks`, `/tai-do-dev-tasks`).**
+  `core/commands/do-dev-tasks.ts` finds the current user's In Progress and To Do `Dev` subtasks on Stories and Bugs,
+  most urgent first. It skips, and says why, a To Do one that precedence still holds and any whose Story or itself has an
+  open `DependsOn` blocker. For each, `core/commands/headless-claude.ts` starts a fresh `claude -p` run with the steps
+  spelled out in its prompt; the run builds the change with its tests, opens the PR, records the check and leaves a
+  `Handoff:` comment, and does not review, approve, merge or close. Before each ticket the working tree must be clean and
+  is returned to the default branch (`dev-tasks-git.ts`). Afterwards the open PR for the ticket is looked up on the git
+  host (its title carries the Dev key) and whether its commit has a check result; a run that leaves no PR fails the
+  ticket. A failure posts a `Handoff:` comment on that ticket and the others go on. The command ends with what was done,
+  what failed, what was skipped and what waits for a person. `dryrun=true` lists and runs nothing. With the `dev-yolo`
+  setting on, each ticket is handed to the full unattended run (TAI-634); until that exists the command builds nothing
+  and says so. `TAI_DEV_RUN_TIMEOUT_MIN` (default 45) stops a run that hangs. The allow rule does not cover this command.
 - **One git host per project, named by `TAI_GIT_HOST`** (`bitbucket` or `github`), which `init run`
   writes from `origin`'s remote. Unset, TAI reads `origin` at run time and falls back to Bitbucket.
   `core/git/host-factory.ts` builds the backend from it for every command. Bitbucket uses

@@ -664,7 +664,7 @@ function pointerSection(rawTaiHome: string): string {
         `## Team AI (TAI)\n\n` +
         `This project uses [TAI](${taiHome}) (Team AI) for Jira/Confluence-driven persona ` +
         `workflows. Global skills (\`tai-work\`, \`tai-ready\`, \`tai-pr\`, \`tai-init\`, ` +
-        `\`tai-groom\`, \`tai-kickoff\`, \`tai-retro\`, \`tai-change\`, \`tai-small\`, \`tai-verify\`, \`tai-audit\`, \`tai-settings\`) are installed at \`~/.claude/skills/tai-*/\` and \`~/.gemini/skills/tai-*/\`, referencing ` +
+        `\`tai-groom\`, \`tai-kickoff\`, \`tai-retro\`, \`tai-change\`, \`tai-small\`, \`tai-verify\`, \`tai-audit\`, \`tai-settings\`, \`tai-do-dev-tasks\`) are installed at \`~/.claude/skills/tai-*/\` and \`~/.gemini/skills/tai-*/\`, referencing ` +
         `TAI's fixed install at \`${taiHome}\`. See \`${taiHome}/PROJECT_BRIEF.md\` for the ` +
         `framework's own design reference. When the human says scope, requirements or direction changed ` +
         `("the admin area is out", "billing moves to Stripe"), use \`tai-change\` rather than editing tickets one by one.\n` +
