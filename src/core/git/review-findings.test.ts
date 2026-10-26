@@ -245,6 +245,31 @@ describe("render-findings next-step options (TAI-411)", () => {
         assert.ok(preview.endsWith(`${renderFindingsNextSteps(validFindings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`), "the options, then the reminder (TAI-575)");
     });
 
+    it("the preview lists the findings that will be posted inline, in full, before the options (TAI-644)", () => {
+        const preview = renderFindingsPreview(validFindings);
+        const block = preview.slice(preview.indexOf("### Will be posted inline"), preview.indexOf("Nothing has been posted yet"));
+        assert.match(block, /Will be posted inline \(1\)/);
+        assert.match(block, /SQL injection/);
+        assert.match(block, /`src\/db\.ts` \(line 42\)/);
+        assert.match(block, /User input is concatenated directly into the query\./);
+        assert.ok(!block.includes("Inconsistent naming"), "only the inline findings are listed there");
+        assert.ok(preview.indexOf("Will be posted inline") < preview.indexOf("Nothing has been posted yet"));
+    });
+
+    it("what is posted to the PR is unchanged: the summary keeps the tally and never the inline block (TAI-644)", () => {
+        const posted = renderReviewFindings(validFindings);
+        assert.ok(!posted.includes("Will be posted inline"));
+        assert.ok(!posted.includes("User input is concatenated"));
+        assert.match(posted, /posted as inline comments/);
+    });
+
+    it("a review with no inline findings previews exactly as before (TAI-644)", () => {
+        const none: ReviewFindings = { ...validFindings, findings: validFindings.findings.filter((f) => f.severity !== "critical") };
+        const preview = renderFindingsPreview(none);
+        assert.ok(!preview.includes("Will be posted inline"));
+        assert.equal(preview, `${renderReviewFindings(none)}\n\n${renderFindingsNextSteps(none.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`);
+    });
+
     it("the options NEVER appear in renderReviewFindings -- that is the text comment-findings posts to the PR", () => {
         for (const leaning of ["approve", "requestChanges", "neither"] as const) {
             const posted = renderReviewFindings({ ...validFindings, leaning });

@@ -276,7 +276,7 @@ function prSkillBody(taiHome: string): string {
         "previews TAI-207's inline-vs-summary split (next bullet) — a `critical`-severity " +
         "finding with a `line` is pulled out of its severity section and shown as a one-line " +
         "tally instead (e.g. \"🔴 — posted as inline comments\"), same as what `comment-findings` " +
-        "will actually do. Its output ENDS with a numbered \"what would you like to do?\" list " +
+        "will actually do. The preview also lists those inline findings in full, under \"Will be posted inline\", so the whole review is on screen; that block is only in the preview, never posted. Its output ENDS with a numbered \"what would you like to do?\" list " +
         "(TAI-411) — part of the same stdout, never something you write; `comment-findings` does " +
         "not post it. **It also records that these findings were rendered for this PR (TAI-575)**, and ends with a " +
         "line telling you to show the list to the human as chat text and stop.\n" +

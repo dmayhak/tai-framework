@@ -476,7 +476,18 @@ export const SHOW_THE_HUMAN_REMINDER =
 
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
 export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string | null): string {
-    return `${renderReviewFindings(findings, undefined, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`;
+    return `${renderReviewFindings(findings, undefined, manifest, liveCommit)}${renderInlinePreview(findings)}\n\n${renderFindingsNextSteps(findings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`;
+}
+
+/**
+ * TAI-644: the findings `comment-findings` will post as inline PR comments, in full. The review text leaves them out
+ * (a tally stands in for them), which is right on the PR, where each sits on its own line, but in this preview it hid
+ * the most serious findings from the person deciding what to post. Preview only: it is never part of what is posted.
+ */
+function renderInlinePreview(findings: ReviewFindings): string {
+    const { inline } = partitionInlineFindings(findings.findings);
+    if (inline.length === 0) return "";
+    return ["", "", "---", `### Will be posted inline (${inline.length}), shown here in full`, "", ...inline.flatMap((f) => [renderFinding(f), ""])].join("\n").trimEnd();
 }
 
 /**
