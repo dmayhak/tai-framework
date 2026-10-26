@@ -63,11 +63,11 @@ const TAIL_BYTES = 8_000;
 const activeGroups = new Set<number>();
 
 /** Stops every run in flight (SIGTERM to its whole process group). Returns how many it signalled. */
-export function stopActiveRuns(): number {
+export function stopActiveRuns(signal: NodeJS.Signals = "SIGTERM"): number {
     let n = 0;
     for (const pid of activeGroups) {
         try {
-            process.kill(-pid, "SIGTERM");
+            process.kill(-pid, signal);
             n++;
         } catch {
             // already gone
@@ -76,13 +76,24 @@ export function stopActiveRuns(): number {
     return n;
 }
 
+/** Stops every run in flight like the timeout does: SIGTERM, and SIGKILL after `graceMs` for any that ignore it. */
+export async function stopActiveRunsHard(graceMs = 3_000): Promise<number> {
+    const n = stopActiveRuns("SIGTERM");
+    if (n > 0) {
+        await new Promise((r) => setTimeout(r, graceMs));
+        stopActiveRuns("SIGKILL");
+    }
+    return n;
+}
+
 /** On Ctrl-C or a terminate, stops the runs in flight and exits, so no unattended run outlives the command that started it. */
 export function stopRunsOnInterrupt(): void {
     for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         process.once(signal, () => {
-            const n = stopActiveRuns();
-            console.error(`\nInterrupted: stopped ${n} running Claude run${n === 1 ? "" : "s"}. Tickets already started may be left In Progress with changes on a branch.`);
-            process.exit(signal === "SIGINT" ? 130 : 143);
+            void stopActiveRunsHard().then((n) => {
+                console.error(`\nInterrupted: stopped ${n} running Claude run${n === 1 ? "" : "s"}. Tickets already started may be left In Progress with changes on a branch.`);
+                process.exit(signal === "SIGINT" ? 130 : 143);
+            });
         });
     }
 }

@@ -129,7 +129,7 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
         }
         const openPr = openPrFor ? openPrFor(issue) : null;
         if (openPr) {
-            skipped.push({ issue, reason: `its PR is already open and waiting for review: ${openPr}` });
+            skipped.push({ issue, reason: `it has an open PR, so this command leaves it to review, merge or rework by a person (it does not pick up a PR sent back for changes): ${openPr}` });
             continue;
         }
         const blockers = [...(await findOpenDependsOnBlockers(deps.workTracker, issue)), ...(await findOpenDependsOnBlockers(deps.workTracker, parent))];

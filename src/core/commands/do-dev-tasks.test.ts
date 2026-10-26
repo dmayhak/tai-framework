@@ -11,7 +11,7 @@ import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { buildDevPrompt, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns } from "./headless-claude.js";
+import { buildDevPrompt, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
 const OTHER: HumanRef = { id: toHumanId("x@y.z"), displayName: "X", email: "x@y.z" };
@@ -283,7 +283,7 @@ describe("finding a ticket's PR and holding back one that already has it (TAI-63
                 openPullRequests: async () => () => "https://pr/1",
             });
             assert.equal(tasks.length, 0);
-            assert.match(skipped[0]!.reason, /PR is already open and waiting for review: https:\/\/pr\/1/);
+            assert.match(skipped[0]!.reason, /open PR.*does not pick up a PR sent back for changes.*https:\/\/pr\/1/);
         });
     });
 
@@ -370,7 +370,7 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
 
     it("a ticket worked this run is not listed again under Skipped", () => {
         const t = task("TAI-10");
-        const found = { tasks: [], skipped: [{ issue: t.issue, reason: "its PR is already open and waiting for review: https://pr/1" }] };
+        const found = { tasks: [], skipped: [{ issue: t.issue, reason: "it has an open PR, so this command leaves it to review, merge or rework by a person (it does not pick up a PR sent back for changes): https://pr/1" }] };
         const text = renderDevTasksReport(found, [{ task: t, outcome: { state: "pr-opened", prUrl: "https://pr/1", checkRecorded: true } }], { yolo: false });
         assert.match(text, /## Done \(1\)/);
         assert.match(text, /## Skipped \(0\)/);
@@ -484,6 +484,21 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
             assert.match(r.summary, /killed by SIGKILL/);
         } finally {
             await killed.cleanup();
+        }
+    });
+
+    it("stopActiveRunsHard kills a run that ignores the stop, so Ctrl-C leaves nothing working", async () => {
+        const stubborn = await fakeClaude("trap '' TERM\necho started\nsleep 30 &\nwait");
+        try {
+            const t0 = Date.now();
+            const running = runHeadlessClaude("p", { cwd: tmpdir(), bin: stubborn.bin, timeoutMs: 60_000, pipeGraceMs: 60_000 });
+            await new Promise((r) => setTimeout(r, 400));
+            assert.equal(await stopActiveRunsHard(300), 1);
+            const r = await running;
+            assert.equal(r.ok, false);
+            assert.ok(Date.now() - t0 < 10_000);
+        } finally {
+            await stubborn.cleanup();
         }
     });
 
