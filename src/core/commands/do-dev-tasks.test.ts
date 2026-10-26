@@ -257,12 +257,17 @@ describe("finding a ticket's PR and holding back one that already has it (TAI-63
         const pr = (title: string, url: string) => ({ title, url, sourceCommit: "abc" }) as never;
         const gitHost = {
             listPullRequests: async () => [pr("TAI-100 - TAI-101 - other", "https://pr/other"), pr("TAI-1 - TAI-10 - mine", "https://pr/mine")],
-            getCommitStatuses: async () => [{ key: "k", name: "check", state: "successful" }],
+            getCommitStatuses: async () => [{ key: "tai-check", name: "check", state: "successful" }],
         } as never;
         const repo = "o/r" as never;
         assert.deepEqual(await findOpenPullRequest(gitHost, [repo], "TAI-10", { checkConfigured: true }), { prUrl: "https://pr/mine", checkRecorded: true });
         assert.deepEqual(await findOpenPullRequest(gitHost, [repo], "TAI-10", { checkConfigured: false }), { prUrl: "https://pr/mine", checkRecorded: null });
         assert.deepEqual(await findOpenPullRequest(gitHost, [repo], "TAI-11", { checkConfigured: true }), { prUrl: null, checkRecorded: null });
+        const ciOnly = {
+            listPullRequests: async () => [pr("TAI-1 - TAI-10 - mine", "https://pr/mine")],
+            getCommitStatuses: async () => [{ key: "ci/build", name: "build", state: "successful" }],
+        } as never;
+        assert.deepEqual(await findOpenPullRequest(ciOnly, [repo], "TAI-10", { checkConfigured: true }), { prUrl: "https://pr/mine", checkRecorded: false }, "another tool's status is not TAI's check");
     });
 
     it("skips an In Progress ticket whose PR is already open, so the command is safe to run twice", async () => {
@@ -384,7 +389,6 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
     it("prepareCleanDefaultBranch refuses a dirty tree and returns to the default branch when clean", async () => {
         const dir = await mkdtemp(path.join(tmpdir(), "tai-devgit-"));
         try {
-            const git = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "pipe" });
             const origin = path.join(dir, "origin.git");
             execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
             const work = path.join(dir, "work");
@@ -399,7 +403,6 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
             g("branch", "-q", "--set-upstream-to=origin/main", "main");
             await prepareCleanDefaultBranch(work, ".tai");
             assert.equal(execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: work }).toString().trim(), "main");
-            void git;
         } finally {
             await rm(dir, { recursive: true, force: true });
         }
@@ -461,6 +464,18 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
     it("redactSecrets masks bearer tokens and credential-looking environment values", () => {
         const out = redactSecrets("Authorization: Bearer abcdef123456 and tok-9f8e7d6c5b4a here", { MY_API_TOKEN: "tok-9f8e7d6c5b4a", HOME: "/home/x" });
         assert.equal(out, "Authorization: Bearer *** and *** here");
+    });
+
+    it("runHeadlessClaude takes the run's own exit as its result when a child it left behind holds the pipes", async () => {
+        const leaves = await fakeClaude("echo done\nsleep 30 &\nexit 0");
+        try {
+            const t0 = Date.now();
+            const r = await runHeadlessClaude("p", { cwd: tmpdir(), bin: leaves.bin, timeoutMs: 60_000, pipeGraceMs: 200 });
+            assert.equal(r.ok, true);
+            assert.ok(Date.now() - t0 < 10_000, "does not wait out the timeout");
+        } finally {
+            await leaves.cleanup();
+        }
     });
 
     it("runHeadlessClaude still returns when the run ignores the stop and a child holds the pipes open", async () => {

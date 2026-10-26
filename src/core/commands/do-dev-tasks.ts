@@ -10,6 +10,7 @@
  * dependency, so the order, the skips and the reporting are tested without any of them.
  */
 
+import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
 import { sameHuman } from "../personas/roster.js";
@@ -52,7 +53,7 @@ export async function findOpenPullRequest(
         const open = prs.find((pr) => titleNamesKey(pr.title, key));
         if (!open) continue;
         const statuses = options.checkConfigured ? await gitHost.getCommitStatuses(repo, open.sourceCommit) : null;
-        return { prUrl: open.url, checkRecorded: statuses === null ? null : statuses.length > 0 };
+        return { prUrl: open.url, checkRecorded: statuses === null ? null : statuses.some((st) => st.key === CHECK_STATUS_KEY) };
     }
     return { prUrl: null, checkRecorded: null };
 }

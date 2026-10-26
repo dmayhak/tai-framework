@@ -30,6 +30,8 @@ export interface HeadlessRunOptions {
     readonly bin?: string;
     /** Milliseconds between the stop and the kill when a run ignores the stop; 10 seconds unless a test says otherwise. */
     readonly killGraceMs?: number;
+    /** Milliseconds to wait for the output pipes to close once the run itself has exited; 2 seconds unless a test says otherwise. */
+    readonly pipeGraceMs?: number;
 }
 
 export interface HeadlessRunResult {
@@ -113,6 +115,7 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         const lastLines = (): string => redactSecrets(tail.trim().split("\n").slice(-6).join("\n"));
         let timedOut = false;
         let killTimer: NodeJS.Timeout | undefined;
+        let exitTimer: NodeJS.Timeout | undefined;
         const stoppedSummary = (): string => `the run was stopped after ${Math.round(options.timeoutMs / 60000)} minutes. Last output:\n${lastLines()}`;
         const killGroup = (signal: NodeJS.Signals): void => {
             if (settled) return; // the group is gone and its id may belong to something else by now
@@ -128,6 +131,7 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             if (child.pid !== undefined) activeGroups.delete(child.pid);
             clearTimeout(timer);
             clearTimeout(killTimer);
+            clearTimeout(exitTimer);
             child.stdout?.destroy();
             child.stderr?.destroy();
             resolve(result);
@@ -144,6 +148,16 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         child.stdout?.on("data", keep);
         child.stderr?.on("data", keep);
         child.on("error", (err) => finish({ ok: false, summary: `could not start ${bin}: ${err.message}` }));
+        // The run's own exit is its result. A child it left behind (a dev server, a watcher) can hold the pipes open, so
+        // the pipes get a short grace to close and then the strays are stopped, instead of waiting out the timeout.
+        child.on("exit", (code) => {
+            if (timedOut) return;
+            exitTimer = setTimeout(() => {
+                killGroup("SIGTERM");
+                finish(code === 0 ? { ok: true, summary: lastLines() } : { ok: false, summary: `the run exited with code ${code}. Last output:\n${lastLines()}` });
+            }, options.pipeGraceMs ?? 2_000);
+            exitTimer.unref();
+        });
         child.on("close", (code) => {
             if (timedOut) finish({ ok: false, summary: stoppedSummary() });
             else if (code === 0) finish({ ok: true, summary: lastLines() });
