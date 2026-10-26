@@ -251,10 +251,10 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             const previous = results.length > 1 ? results[results.length - 2]! : null;
             if (previous && result.outcome.dirtyTree) {
                 const earlier = previous.outcome.state === "failed" ? `${previous.outcome.reason} ` : "";
-                // A ticket that opened its PR keeps its own hand-off: the note is a plain comment, not a replacement Handoff:.
+                // Only a ticket that failed gets a replacement Handoff:. One that opened its PR, or whose own run left a hand-off, keeps it: the note is a plain comment.
                 const note = `Its run also left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`;
                 try {
-                    await deps.handoff(previous.task.issue.key, previous.outcome.state === "pr-opened" ? `Note: ${note}\n\nThe PR it opened is unaffected.` : failureHandoff(`${earlier}${note}`));
+                    await deps.handoff(previous.task.issue.key, previous.outcome.state === "failed" ? failureHandoff(`${earlier}${note}`) : `Note: ${note}\n\nThe outcome recorded for this ticket is unaffected.`);
                 } catch {
                     // the report below still says it
                 }

@@ -360,6 +360,19 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.doesNotMatch(d.handoffs[0]![1], /^Handoff:/);
     });
 
+    it("a dirty tree after a ticket whose own run handed on leaves that hand-off alone too", async () => {
+        const d = deps({
+            yolo: true,
+            yoloRun: async () => ({ state: "handed-on", note: "stopped at review round 4" }),
+            prepare: async (t) => {
+                if (t.issue.key === "TAI-11") throw new DirtyTreeError(" M src/x.ts");
+            },
+        });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.equal(d.handoffs.length, 1);
+        assert.match(d.handoffs[0]![1], /^Note: /);
+    });
+
     it("uses the look it is given for the first ticket and looks again after", async () => {
         let looks = 0;
         const first = { tasks: [task("TAI-10")], skipped: [] };

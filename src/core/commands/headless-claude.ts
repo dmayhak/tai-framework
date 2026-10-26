@@ -105,7 +105,12 @@ export function wasInterrupted(): boolean {
 /** On Ctrl-C or a terminate, stops the runs in flight and exits, so no unattended run outlives the command that started it. */
 export function stopRunsOnInterrupt(): void {
     for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
-        process.once(signal, () => {
+        process.on(signal, () => {
+            if (interrupted) {
+                // A second interrupt means "now": kill what is left at once and go.
+                stopActiveRuns("SIGKILL");
+                process.exit(signal === "SIGINT" ? 130 : 143);
+            }
             interrupted = true;
             void stopActiveRunsHard().then((n) => {
                 console.error(`\nInterrupted: stopped ${n} running Claude run${n === 1 ? "" : "s"}. Tickets already started may be left In Progress with changes on a branch.`);
