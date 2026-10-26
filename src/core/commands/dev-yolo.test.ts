@@ -146,15 +146,24 @@ describe("runYolo (TAI-634)", () => {
 });
 
 describe("reviewDecisionOnHead", () => {
-    const me = { id: "r", displayName: "R" } as never;
-    const act = (kind: PullRequestActivity["kind"]): PullRequestActivity =>
-        (kind === "update" ? { kind, at: "t", sourceCommit: "c" } : { kind, at: "t", human: me }) as PullRequestActivity;
-    it("takes the last decision, and a push after it cancels it", () => {
-        assert.equal(reviewDecisionOnHead([]), "none");
-        assert.equal(reviewDecisionOnHead([act("update"), act("approval")]), "approve");
-        assert.equal(reviewDecisionOnHead([act("approval"), act("update")]), "none");
-        assert.equal(reviewDecisionOnHead([act("approval"), act("changesRequested")]), "requestChanges");
-        assert.equal(reviewDecisionOnHead([act("changesRequested"), act("update"), act("approval")]), "approve");
+    const bot = { id: "Bot" } as never;
+    const other = { id: "human" } as never;
+    const upd = (): PullRequestActivity => ({ kind: "update", at: "t", sourceCommit: "c" }) as PullRequestActivity;
+    const by = (kind: "approval" | "changesRequested", human: unknown): PullRequestActivity => ({ kind, at: "t", human }) as PullRequestActivity;
+    it("takes the reviewer's last decision, matched without case, and a push after it cancels it", () => {
+        assert.equal(reviewDecisionOnHead([], bot), "none");
+        assert.equal(reviewDecisionOnHead([upd(), by("approval", { id: "bot" })], bot), "approve");
+        assert.equal(reviewDecisionOnHead([by("approval", bot), upd()], bot), "none");
+        assert.equal(reviewDecisionOnHead([by("approval", bot), by("changesRequested", bot)], bot), "requestChanges");
+        assert.equal(reviewDecisionOnHead([by("changesRequested", bot), upd(), by("approval", bot)], bot), "approve");
+    });
+    it("ignores an approval from anyone else, so a run whose reviewer cast nothing does not go on", () => {
+        assert.equal(reviewDecisionOnHead([upd(), by("approval", other)], bot), "none");
+        assert.equal(reviewDecisionOnHead([upd(), by("approval", other), by("approval", bot)], bot), "approve");
+    });
+    it("keeps a request for changes from anyone else as a stop, until the next push", () => {
+        assert.equal(reviewDecisionOnHead([upd(), by("approval", bot), by("changesRequested", other)], bot), "requestChanges");
+        assert.equal(reviewDecisionOnHead([by("changesRequested", other), upd(), by("approval", bot)], bot), "approve");
     });
 });
 

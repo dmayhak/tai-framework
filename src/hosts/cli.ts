@@ -2330,6 +2330,9 @@ async function main(): Promise<void> {
                   rounds: Number(await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "review-rounds")),
                   checkConfigured,
                   reviewer: { token: process.env["TAI_REVIEWER_GITHUB_TOKEN"], email: process.env["TAI_REVIEWER_EMAIL"] },
+                  reviewerHost: process.env["TAI_REVIEWER_GITHUB_TOKEN"]
+                      ? createGitHostSession(await currentGitHostKind(), { ...process.env, GITHUB_TOKEN: process.env["TAI_REVIEWER_GITHUB_TOKEN"] }, process.env["TAI_REVIEWER_EMAIL"]).backend.gitHost
+                      : null,
                   handoff: async (key: string, body: string) => {
                       await postIssueComment(config.backend.workTracker, key as IssueKey, stampComment(body, developer));
                   },

@@ -4,14 +4,13 @@
  * what they left.
  */
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
 import type { DocStore, WorkTracker } from "../storage/interface.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isEligibleReviewer, loadPrReviewers } from "../git/pr-reviewers.js";
-import { parseReviewFindings } from "../git/review-findings.js";
+import { parseReviewFindings, sameCommitHash } from "../git/review-findings.js";
 import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, runHeadlessClaude, type HeadlessRunOptions, type HeadlessRunResult } from "./headless-claude.js";
 import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask, type DevTaskOutcome } from "./do-dev-tasks.js";
 import { runYolo, reviewDecisionOnHead, type YoloDeps } from "./dev-yolo.js";
@@ -34,6 +33,8 @@ export interface YoloWiring {
     readonly checkConfigured: boolean;
     /** The automated reviewer's own git host account and the email the PR Reviewers page lists it under. */
     readonly reviewer: { readonly token: string | undefined; readonly email: string | undefined };
+    /** The git host as the reviewer's own token, so who it is can be asked of the host and not taken from a setting. Null when no token. */
+    readonly reviewerHost: Pick<GitHost, "getCurrentUser"> | null;
     readonly handoff: (key: string, body: string) => Promise<void>;
     readonly afterApproved?: YoloDeps["afterApproved"];
     readonly runClaude?: (prompt: string, options: HeadlessRunOptions) => Promise<HeadlessRunResult>;
@@ -43,7 +44,7 @@ export interface YoloWiring {
 export function yoloGate(w: YoloWiring): (task: DevTask) => Promise<readonly string[]> {
     return async (task) => {
         const reasons = [...(await yoloStopReasons({ workTracker: w.workTracker, docStore: w.docStore, spaceKey: w.spaceKey, projectKey: w.projectKey, taiDir: w.taiDir, email: w.email }, task))];
-        if (!w.reviewer.token || !w.reviewer.email) {
+        if (!w.reviewer.token || !w.reviewer.email || !w.reviewerHost) {
             reasons.push("no automated reviewer account is configured (set TAI_REVIEWER_GITHUB_TOKEN and TAI_REVIEWER_EMAIL)");
         } else {
             const listed = await loadPrReviewers(w.docStore, { spaceKey: w.spaceKey, projectKey: w.projectKey, cacheRoot: null });
@@ -51,9 +52,20 @@ export function yoloGate(w: YoloWiring): (task: DevTask) => Promise<readonly str
             if (!entry || !isEligibleReviewer(listed, entry)) reasons.push(`${w.reviewer.email} is not on the PR Reviewers page`);
             else if (!entry.automated) reasons.push(`${w.reviewer.email} is on the PR Reviewers page without the automated marker`);
             if (w.email && w.reviewer.email.toLowerCase() === w.email.toLowerCase()) reasons.push("the automated reviewer must be a different account from yours");
+            // The token decides who posts the review, so ask the host whose it is, and compare that with the page and with the person.
+            const account = await w.reviewerHost.getCurrentUser();
+            const mine = await w.gitHost.getCurrentUser();
+            if (sameAccount(account, mine)) reasons.push("TAI_REVIEWER_GITHUB_TOKEN belongs to your own account, so the reviewer would be you");
+            else if (entry?.githubLogin && entry.githubLogin.toLowerCase() !== String(account.id).toLowerCase()) {
+                reasons.push(`TAI_REVIEWER_GITHUB_TOKEN belongs to ${account.id}, but ${w.reviewer.email} is listed on PR Reviewers as ${entry.githubLogin}`);
+            }
         }
         return reasons;
     };
+}
+
+function sameAccount(a: { readonly id: unknown }, b: { readonly id: unknown }): boolean {
+    return String(a.id).toLowerCase() === String(b.id).toLowerCase();
 }
 
 async function locate(w: YoloWiring, task: DevTask): Promise<PullRequestRef | null> {
@@ -68,14 +80,31 @@ async function locate(w: YoloWiring, task: DevTask): Promise<PullRequestRef | nu
 /** The run for one ticket: build, review by a fresh reviewer run, decide, fix. */
 export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcome> {
     const run = w.runClaude ?? runHeadlessClaude;
+    // The PR is listed once per ticket; every later read of it is by id, and the head is always read the same way.
+    const found = new Map<string, PullRequestRef>();
+    const pullRequest = async (task: DevTask): Promise<PullRequestRef> => {
+        const known = found.get(task.issue.key);
+        if (known) return known;
+        const pr = await locate(w, task);
+        if (!pr) throw new Error("the PR is no longer open");
+        found.set(task.issue.key, pr);
+        return pr;
+    };
+    const liveHead = async (pr: PullRequestRef): Promise<string> => {
+        const live = await w.gitHost.getPullRequest(pr.repo, pr.id);
+        if (!live || live.state !== "open") throw new Error("the PR is no longer open");
+        return live.sourceCommit;
+    };
     const deps: YoloDeps = {
         rounds: w.rounds,
         build: (task) => run(buildDevPrompt(task.issue.key, w.cli), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
         findPullRequest: (task) => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }),
-        review: async (task, _prUrl) => {
-            const pr = await locate(w, task);
-            if (!pr) return { ok: false, reason: "the PR is no longer open" };
-            const dir = await mkdtemp(path.join(tmpdir(), "tai-review-"));
+        review: async (task) => {
+            const pr = await pullRequest(task);
+            const headBefore = await liveHead(pr);
+            // Under the .tai directory, which is inside the run's working area and ignored by git, so the run may write it.
+            await mkdir(w.taiDir, { recursive: true });
+            const dir = await mkdtemp(path.join(w.taiDir, "yolo-review-"));
             const findingsPath = path.join(dir, "findings.json");
             try {
                 const ran = await run(buildReviewerPrompt({ repo: pr.repo, prId: String(pr.id), cli: w.cli, findingsPath }), {
@@ -96,24 +125,23 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                 } catch (err) {
                     return { ok: false, reason: `the reviewer's findings could not be read: ${err instanceof Error ? err.message : String(err)}` };
                 }
-                const live = await w.gitHost.getPullRequest(pr.repo, pr.id);
-                const decision = reviewDecisionOnHead(await w.gitHost.listPullRequestActivity(pr.repo, pr.id));
-                return { ok: true, review: { findings, decision, head: live?.sourceCommit ?? pr.sourceCommit } };
+                // The findings, the decision and the PR must all be of the same commit: a push during the review, or a reviewer that read an older one, is not a review of this code.
+                const head = await liveHead(pr);
+                if (!sameCommitHash(head, headBefore)) return { ok: false, reason: `the PR moved from ${headBefore} to ${head} during the review` };
+                if (!sameCommitHash(findings.reviewOf.commit, head)) return { ok: false, reason: `the review is of commit ${findings.reviewOf.commit}, but the PR is at ${head}` };
+                const reviewer = await w.reviewerHost!.getCurrentUser();
+                const decision = reviewDecisionOnHead(await w.gitHost.listPullRequestActivity(pr.repo, pr.id), reviewer);
+                return { ok: true, review: { findings, decision, head } };
             } finally {
                 await rm(dir, { recursive: true, force: true });
             }
         },
         fix: async (task, _prUrl, findings) => {
-            const pr = await locate(w, task);
-            if (!pr) return { ok: false, summary: "the PR is no longer open" };
+            const pr = await pullRequest(task);
             const slim = findings.map((f) => ({ severity: f.severity, title: f.title, file: f.file, ...(f.line !== undefined ? { line: f.line } : {}), issue: f.issue }));
             return run(buildFixPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, cli: w.cli, findings: slim }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
         },
-        head: async (task) => {
-            const pr = await locate(w, task);
-            if (!pr) throw new Error("the PR is no longer open");
-            return pr.sourceCommit;
-        },
+        head: async (task) => liveHead(await pullRequest(task)),
         handoff: w.handoff,
         ...(w.afterApproved ? { afterApproved: w.afterApproved } : {}),
     };

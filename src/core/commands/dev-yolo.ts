@@ -8,6 +8,7 @@
  */
 
 import type { PullRequestActivity } from "../git/interface.js";
+import type { HumanRef } from "../storage/interface.js";
 import type { ReviewFinding, ReviewFindings } from "../git/review-findings.js";
 import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
 
@@ -47,15 +48,26 @@ function errorText(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
 
-/** The decision the reviewer cast on the PR's current head, from the git host's activity (oldest first); "none" when it cast none after the last push. */
-export function reviewDecisionOnHead(activity: readonly PullRequestActivity[]): ReviewDecision {
-    let decision: ReviewDecision = "none";
+/**
+ * The decision the automated reviewer cast on the PR's current head, from the git host's activity (oldest first). Only its own
+ * entries count as its decision, so an approval from the developer's account, a person or another bot is ignored. A request for
+ * changes from anyone after the last push is still a stop. "none" when the reviewer cast nothing after the last push.
+ */
+export function reviewDecisionOnHead(activity: readonly PullRequestActivity[], reviewer: Pick<HumanRef, "id">): ReviewDecision {
+    const same = (h: Pick<HumanRef, "id">): boolean => String(h.id).toLowerCase() === String(reviewer.id).toLowerCase();
+    let own: ReviewDecision = "none";
+    let othersAskedForChanges = false;
     for (const entry of activity) {
-        if (entry.kind === "update") decision = "none";
-        else if (entry.kind === "approval") decision = "approve";
-        else decision = "requestChanges";
+        if (entry.kind === "update") {
+            own = "none";
+            othersAskedForChanges = false;
+        } else if (same(entry.human)) {
+            own = entry.kind === "approval" ? "approve" : "requestChanges";
+        } else if (entry.kind === "changesRequested") {
+            othersAskedForChanges = true;
+        }
     }
-    return decision;
+    return othersAskedForChanges ? "requestChanges" : own;
 }
 
 export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOutcome> {
