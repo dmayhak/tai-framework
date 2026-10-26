@@ -56,6 +56,34 @@ export function buildDevPrompt(key: string, cli: string): string {
 
 const TAIL_BYTES = 8_000;
 
+/** Process groups of the runs in flight, so an interrupt of this command can stop them instead of leaving them working. */
+const activeGroups = new Set<number>();
+
+/** Stops every run in flight (SIGTERM to its whole process group). Returns how many it signalled. */
+export function stopActiveRuns(): number {
+    let n = 0;
+    for (const pid of activeGroups) {
+        try {
+            process.kill(-pid, "SIGTERM");
+            n++;
+        } catch {
+            // already gone
+        }
+    }
+    return n;
+}
+
+/** On Ctrl-C or a terminate, stops the runs in flight and exits, so no unattended run outlives the command that started it. */
+export function stopRunsOnInterrupt(): void {
+    for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+        process.once(signal, () => {
+            const n = stopActiveRuns();
+            console.error(`\nInterrupted: stopped ${n} running Claude run${n === 1 ? "" : "s"}. Tickets already started may be left In Progress with changes on a branch.`);
+            process.exit(signal === "SIGINT" ? 130 : 143);
+        });
+    }
+}
+
 /** `text` with the values of credential-looking environment variables and bearer tokens masked, since it is posted to a ticket. */
 export function redactSecrets(text: string, env: NodeJS.ProcessEnv = process.env): string {
     let out = text.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 ***");
@@ -75,6 +103,7 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
     return new Promise((resolve) => {
         const bin = options.bin ?? "claude";
         const child = spawn(bin, ["-p", prompt, "--permission-mode", "acceptEdits"], { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"], detached: true });
+        if (child.pid !== undefined) activeGroups.add(child.pid);
         let tail = "";
         let settled = false;
         const grace = options.killGraceMs ?? 10_000;
@@ -96,6 +125,7 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         const finish = (result: HeadlessRunResult): void => {
             if (settled) return;
             settled = true;
+            if (child.pid !== undefined) activeGroups.delete(child.pid);
             clearTimeout(timer);
             clearTimeout(killTimer);
             child.stdout?.destroy();

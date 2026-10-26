@@ -172,7 +172,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
 import { findDevTasks, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
-import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude } from "../core/commands/headless-claude.js";
+import { buildDevPrompt, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt } from "../core/commands/headless-claude.js";
 import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
@@ -2309,6 +2309,7 @@ async function main(): Promise<void> {
         const cli = `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts`;
         const timeoutMs = devRunTimeoutMs();
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
+        stopRunsOnInterrupt();
         const worked = await workDevTasks(find, {
             yolo,
             prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
@@ -2317,7 +2318,7 @@ async function main(): Promise<void> {
             handoff: async (key, body) => {
                 await postIssueComment(config.backend.workTracker, key, stampComment(body, developer));
             },
-        });
+        }, found);
         console.log(renderDevTasksReport(worked.found, worked.results, { yolo }));
         return;
     }

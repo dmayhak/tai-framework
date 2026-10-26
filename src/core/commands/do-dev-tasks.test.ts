@@ -11,7 +11,7 @@ import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { buildDevPrompt, devRunTimeoutMs, redactSecrets, runHeadlessClaude } from "./headless-claude.js";
+import { buildDevPrompt, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
 const OTHER: HumanRef = { id: toHumanId("x@y.z"), displayName: "X", email: "x@y.z" };
@@ -342,6 +342,26 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.match(last[1], /tests failed[\s\S]*also left uncommitted changes/);
     });
 
+    it("a dirty tree after a ticket that opened its PR leaves that ticket's own hand-off alone", async () => {
+        const d = deps({
+            prepare: async (t) => {
+                if (t.issue.key === "TAI-11") throw new DirtyTreeError(" M src/x.ts");
+            },
+        });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.equal(d.handoffs.length, 1);
+        assert.match(d.handoffs[0]![1], /^Note: /);
+        assert.doesNotMatch(d.handoffs[0]![1], /^Handoff:/);
+    });
+
+    it("uses the look it is given for the first ticket and looks again after", async () => {
+        let looks = 0;
+        const first = { tasks: [task("TAI-10")], skipped: [] };
+        const d = deps({});
+        await workDevTasks(async () => (looks++, { tasks: [], skipped: [] }), d, first);
+        assert.equal(looks, 1, "one look after the one ticket, none before it");
+    });
+
     it("a branch that will not update stops the run without blaming any ticket", async () => {
         const d = deps({ prepare: async () => Promise.reject(new PrepareStopError("Could not bring main up to date: offline")) });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
@@ -419,6 +439,22 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
             assert.match(r.summary, /was stopped after/);
         } finally {
             await polite.cleanup();
+        }
+    });
+
+    it("stopActiveRuns stops a run in flight, so an interrupt does not leave it working", async () => {
+        const slow = await fakeClaude("echo started\nsleep 30 &\nwait");
+        try {
+            const t0 = Date.now();
+            const running = runHeadlessClaude("p", { cwd: tmpdir(), bin: slow.bin, timeoutMs: 60_000 });
+            await new Promise((r) => setTimeout(r, 400));
+            assert.equal(stopActiveRuns(), 1);
+            const r = await running;
+            assert.equal(r.ok, false);
+            assert.ok(Date.now() - t0 < 10_000);
+            assert.equal(stopActiveRuns(), 0, "nothing left in flight");
+        } finally {
+            await slow.cleanup();
         }
     });
 

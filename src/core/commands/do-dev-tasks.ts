@@ -225,11 +225,13 @@ export interface WorkedDevTasks {
  * while this run was going) was skipped at the start but is found by the next look, so it is not dropped. A ticket is
  * attempted once per run, so a failed one is never retried in a loop and one whose PR is still open is not rebuilt.
  */
-export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDeps): Promise<WorkedDevTasks> {
+export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDeps, firstLook?: FoundDevTasks): Promise<WorkedDevTasks> {
     const attempted = new Set<IssueKey>();
     const results: DevTaskResult[] = [];
+    let pending = firstLook;
     for (;;) {
-        const found = await find();
+        const found = pending ?? (await find());
+        pending = undefined;
         const next = found.tasks.find((t) => !attempted.has(t.issue.key));
         if (!next) return { results, found };
         attempted.add(next.issue.key);
@@ -241,8 +243,10 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             const previous = results.length > 1 ? results[results.length - 2]! : null;
             if (previous && result.outcome.dirtyTree) {
                 const earlier = previous.outcome.state === "failed" ? `${previous.outcome.reason} ` : "";
+                // A ticket that opened its PR keeps its own hand-off: the note is a plain comment, not a replacement Handoff:.
+                const note = `Its run also left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`;
                 try {
-                    await deps.handoff(previous.task.issue.key, failureHandoff(`${earlier}Its run also left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`));
+                    await deps.handoff(previous.task.issue.key, previous.outcome.state === "pr-opened" ? `Note: ${note}\n\nThe PR it opened is unaffected.` : failureHandoff(`${earlier}${note}`));
                 } catch {
                     // the report below still says it
                 }
