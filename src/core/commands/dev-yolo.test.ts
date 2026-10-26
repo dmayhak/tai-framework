@@ -172,7 +172,7 @@ describe("reviewDecisionOnHead", () => {
 
 describe("ownDecisionCount", () => {
     it("counts the reviewer's own decisions since the last push", () => {
-        const bot = { id: "bot" };
+        const bot = { id: "bot" as never };
         const upd = { kind: "update", at: "t", sourceCommit: "c" } as PullRequestActivity;
         const by = (id: string, kind: "approval" | "changesRequested") => ({ kind, at: "t", human: { id } }) as unknown as PullRequestActivity;
         assert.equal(ownDecisionCount([], bot), 0);
