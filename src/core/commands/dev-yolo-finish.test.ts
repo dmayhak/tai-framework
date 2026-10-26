@@ -7,13 +7,12 @@ import path from "node:path";
 import { Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef } from "../storage/interface.js";
-import type { GitHost, PullRequestRef } from "../git/interface.js";
 import { stampComment } from "../storage/stamp.js";
+import type { GitHost, PullRequestRef } from "../git/interface.js";
 import type { DevTask } from "./do-dev-tasks.js";
-
-const TESTER = { id: "tester", displayName: "Tessa" };
 import { automatedMergeComment, finishApproved, verificationVerdict, type FinishDeps } from "./dev-yolo-finish.js";
 
+const TESTER = { id: "tester", displayName: "Tessa" };
 const ME: HumanRef = { id: toHumanId("a@b.co"), displayName: "A", email: "a@b.co" };
 const BOT = { id: toHumanId("bot"), displayName: "Bot" } as HumanRef;
 const HEAD = "abc1234def";
@@ -23,6 +22,7 @@ interface Run {
     task: DevTask;
     log: string[];
     handoffs: string[];
+    keys: string[];
     pr: { sourceCommit: string; state: string; statuses: { key: string; state: string }[]; approvedBy: HumanRef[]; mergeResult: { ok: boolean; reason?: string }; mergeThrows?: boolean; mergedAfterThrow?: boolean; commentFails?: boolean };
     verdict: { text: string | null; ok: boolean };
     tracker: ReturnType<typeof createFilesystemBackend>["workTracker"];
@@ -42,6 +42,7 @@ async function world(run: (r: Run) => Promise<void>, over: { subtask?: SubtaskTy
         }
         const log: string[] = [];
         const handoffs: string[] = [];
+        const keys: string[] = [];
         const state: Run["pr"] = { sourceCommit: HEAD, state: "open", statuses: [{ key: "tai-check", state: "successful" }], approvedBy: [BOT], mergeResult: { ok: true } };
         const verdict: Run["verdict"] = { text: "Verified: all 1 criteria met", ok: true };
         const ref = () => ({
@@ -79,9 +80,13 @@ async function world(run: (r: Run) => Promise<void>, over: { subtask?: SubtaskTy
                 if (verdict.text) await backend.workTracker.addComment(story.key, stampComment(verdict.text, TESTER));
                 return { ok: verdict.ok, summary: "verify failed" };
             },
-            handoff: async (_k, b) => void handoffs.push(b),
+            assertClean: async () => void log.push("clean"),
+            handoff: async (k, b) => {
+                keys.push(k);
+                handoffs.push(b);
+            },
         };
-        await run({ deps, task: { issue: dev, parent: story }, log, handoffs, pr: state, verdict, tracker: backend.workTracker });
+        await run({ deps, task: { issue: dev, parent: story }, log, handoffs, keys, pr: state, verdict, tracker: backend.workTracker });
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -94,9 +99,9 @@ describe("finishApproved (TAI-634)", () => {
             assert.equal(out.state, "handed-on");
             assert.match((out as { note: string }).note, /merged https:\/\/pr\/7, verified and closed/);
             assert.deepEqual(handoffs, []);
-            assert.equal(log[0], `merge expected=${HEAD}`);
-            assert.match(log[1]!, /comment: Merged by an unattended DEV-YOLO run. The approval was automated: it was cast by Bot \(bot\)/);
-            assert.deepEqual(log.slice(2), ["prepare", "verify"]);
+            assert.deepEqual(log.slice(0, 2), ["clean", `merge expected=${HEAD}`]);
+            assert.match(log[2]!, /comment: Merged by an unattended DEV-YOLO run. The approval was automated: it was cast by Bot \(bot\)/);
+            assert.deepEqual(log.slice(3), ["prepare", "verify"]);
             assert.equal((await tracker.getIssue(task.issue.key))!.status, Status.Done);
             assert.equal((await tracker.getIssue(task.parent.key))!.status, Status.Done);
         }));
@@ -162,13 +167,13 @@ describe("finishApproved (TAI-634)", () => {
             pr.mergeResult = { ok: false, reason: "head moved" };
             const out = await finishApproved(deps)(task, "u");
             assert.equal(out.state, "waiting");
-            assert.match(handoffs[0]!, /The PR is open, reviewed and approved.*the merge was refused: head moved/s);
+            assert.match(handoffs[0]!, /not merged by this run.*the merge was refused: head moved/s);
         }));
 
     it("says the PR merged when a later step stops: the checkout cannot be updated, or the verification run fails", async () => {
         await world(async ({ deps, task, handoffs }) => {
             await finishApproved({ ...deps, prepare: async () => { throw new Error("dirty tree"); } })(task, "u");
-            assert.match(handoffs[0]!, /reviewed and approved by the automated reviewer and merged/);
+            assert.match(handoffs[0]!, /Dev ticket TAI-\d+ is Done: its PR was reviewed and approved by the automated reviewer and merged/);
             assert.match(handoffs[0]!, /checkout could not be updated for the verification: dirty tree/);
         });
         await world(async ({ deps, task, handoffs, verdict }) => {
@@ -246,9 +251,55 @@ describe("finishApproved hardening (PR 23 review)", () => {
         await world(async ({ deps, task, handoffs, pr }) => {
             pr.mergeThrows = true;
             await finishApproved(deps)(task, "u");
-            assert.match(handoffs[0]!, /The PR is open.*an error: socket hang up/s);
+            assert.match(handoffs[0]!, /not merged by this run.*an error: socket hang up/s);
         });
     });
+});
+
+describe("finishApproved hand-off placement (TAI-664)", () => {
+    it("posts a stop before the merge on the Dev ticket, and one after the merge on the Story that stays open", async () => {
+        await world(async ({ deps, task, keys, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "failed" }];
+            await finishApproved(deps)(task, "u");
+            assert.deepEqual(keys, [task.issue.key]);
+        });
+        await world(async ({ deps, task, keys, handoffs }) => {
+            await finishApproved({ ...deps, prepare: async () => { throw new Error("pull failed"); } })(task, "u");
+            assert.deepEqual(keys, [task.parent.key]);
+            assert.match(handoffs[0]!, new RegExp(`Dev ticket ${task.issue.key} is Done`));
+        });
+        await world(async ({ deps, task, keys, verdict }) => {
+            verdict.text = "Not verified: 1 of 2 criteria not met";
+            await finishApproved(deps)(task, "u");
+            assert.deepEqual(keys, [task.parent.key]);
+        });
+    });
+
+    it("does not call the Dev ticket Done when the move to Done failed, and posts the hand-off on the Dev ticket", () =>
+        world(async ({ deps, task, keys, handoffs }) => {
+            const failing = { ...deps.workTracker, transition: async () => { throw new Error("jira down"); } } as typeof deps.workTracker;
+            await finishApproved({ ...deps, workTracker: failing })(task, "u");
+            assert.deepEqual(keys, [task.issue.key]);
+            assert.match(handoffs[0]!, /merged by this run.*is not Done/s);
+            assert.doesNotMatch(handoffs[0]!, /is Done:/);
+            assert.match(handoffs[0]!, /could not be moved to Done: jira down/);
+        }));
+
+    it("stops before the merge when the working tree is dirty, with the PR still open", () =>
+        world(async ({ deps, task, log, keys, handoffs }) => {
+            const out = await finishApproved({ ...deps, assertClean: async () => { throw new Error("M a.ts"); } })(task, "u");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log, []);
+            assert.deepEqual(keys, [task.issue.key]);
+            assert.match(handoffs[0]!, /not merged by this run.*working tree is not clean.*M a\.ts/s);
+        }));
+
+    it("never says the PR is open", () =>
+        world(async ({ deps, task, handoffs, pr }) => {
+            pr.state = "merged";
+            await finishApproved(deps)(task, "u");
+            assert.doesNotMatch(handoffs[0]!, /The PR is open/);
+        }));
 });
 
 describe("verificationVerdict and the merge comment", () => {

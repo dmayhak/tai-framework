@@ -252,7 +252,7 @@ describe("yoloRun wiring (TAI-634)", () => {
                 runClaude: findingsRun(""),
             }
         ));
-    const FINISH = { checkCommand: null, stamp: (b: string) => b, prepare: async () => undefined };
+    const FINISH = { checkCommand: null, stamp: (b: string) => b, assertClean: async () => undefined, prepare: async () => undefined };
 
     it("hands an approved PR to the merge, verify and close step when finish is configured", () =>
         world(

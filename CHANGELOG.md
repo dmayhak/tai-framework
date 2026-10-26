@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 136 (2026-10-26)
+
+**TAI-665 (Bug TAI-664): DEV-YOLO finish follow-up from the PR 23 review.** A `Handoff:` after the merge goes on the parent Story or Bug and says what the Dev ticket did, since the Dev ticket is Done by then and drops out of the open work. The hand-off before the merge no longer says the PR is open. A dirty working tree is found before the merge (`assertCleanTree`), not after it. PR 24 review: the hand-off says the Dev ticket is Done only once it really reached Done; if the move to Done fails, the hand-off goes on the Dev ticket and says it is not Done.
+
 ## rev 135 (2026-10-26)
 
 **TAI-634 (Story TAI-629), part 3: the gated merge, verify and close.** `core/commands/dev-yolo-finish.ts` finishes a PR the automated reviewer approved. It merges only through the merge gate (check green, gate met, a check result when a check command is set, and the fresh approval the automated reviewer's own), on the commit the gate checked, never with force; says on the PR that the approval was automated, by which account and on which commit; moves the linked ticket to Done; updates the checkout; and has a fresh Tester run verify the Story or Bug (`buildVerifyPrompt`). It closes the Story or Bug only on a `Verified:` comment that appeared during that run. Any other result leaves it open with a `Handoff:` saying whether the PR had merged. The PR 23 review's hardening: a verdict counts only as a comment's first line, stamped as the Tester and new during the run; any `Not verified:` among them keeps the Story open; a Story with other subtasks still open is not closed; a merge call that threw after the host merged is read from the host; a missing merge comment is noted on every later stop. With this, the DEV-YOLO run covers AC-1 to AC-7 of Story TAI-629; the TAIT trial (AC-8) remains.

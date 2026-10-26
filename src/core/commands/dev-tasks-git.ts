@@ -38,12 +38,17 @@ async function defaultBranch(cwd: string): Promise<string> {
     }
 }
 
-/** Throws unless the tree is clean; then checks out the default branch and brings it up to date. */
-export async function prepareCleanDefaultBranch(cwd: string, taiRoot: string): Promise<void> {
+/** Throws a `DirtyTreeError` unless the working tree is clean. */
+export async function assertCleanTree(cwd: string, taiRoot: string): Promise<void> {
     const { porcelain } = await readWorkingTree(cwd, taiRoot);
     if (porcelain.trim() !== "") {
         throw new DirtyTreeError(porcelain);
     }
+}
+
+/** Throws unless the tree is clean; then checks out the default branch and brings it up to date. */
+export async function prepareCleanDefaultBranch(cwd: string, taiRoot: string): Promise<void> {
+    await assertCleanTree(cwd, taiRoot);
     const branch = await defaultBranch(cwd);
     try {
         await execFileAsync("git", ["checkout", branch], { cwd });

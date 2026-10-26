@@ -30,6 +30,8 @@ export interface FinishDeps {
     readonly reviewer: () => Promise<Pick<HumanRef, "id" | "displayName">>;
     /** Signs a comment as the Developer persona. */
     readonly stamp: (body: string) => string;
+    /** Throws when the working tree is not clean. Asked before the merge, so a dirty tree stops the ticket while the PR is still open. */
+    readonly assertClean: () => Promise<void>;
     /** Brings the working tree to the updated default branch, so the verification runs on what was merged. Throws when it cannot. */
     readonly prepare: () => Promise<void>;
     /** The Tessa run: it posts one `Verified:` or `Not verified:` comment on the Story or Bug. */
@@ -57,11 +59,19 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
     return async (task, prUrl) => {
         const key = task.issue.key;
         let merged = false;
+        let devDone = false;
+        let devKey: string = key;
         const notes: string[] = [];
+        // Before the merge the Dev ticket carries the hand-off. After it the Dev ticket is Done and drops out of the open work, so
+        // the hand-off goes on the Story or Bug that stays open, and says what the Dev ticket did.
         const say = async (stoppedAt: string, next: string): Promise<DevTaskOutcome> => {
-            const done = merged ? `The PR was reviewed and approved by the automated reviewer and merged: ${prUrl}.` : `The PR is open, reviewed and approved by the automated reviewer: ${prUrl}.`;
+            const done = devDone
+                ? `Dev ticket ${devKey} is Done: its PR was reviewed and approved by the automated reviewer and merged: ${prUrl}.`
+                : merged
+                  ? `The PR was reviewed and approved by the automated reviewer and merged by this run: ${prUrl}. Dev ticket ${devKey} is not Done.`
+                  : `The PR was reviewed and approved by the automated reviewer and was not merged by this run: ${prUrl}.`;
             try {
-                await deps.handoff(key, yoloHandoff(notes.length ? `${done} Note: ${notes.join("; ")}.` : done, stoppedAt, next));
+                await deps.handoff(devDone ? task.parent.key : devKey, yoloHandoff(notes.length ? `${done} Note: ${notes.join("; ")}.` : done, stoppedAt, next));
             } catch (err) {
                 return { state: "waiting", reason: `${stoppedAt} (and the hand-off comment could not be posted: ${errorText(err)})` };
             }
@@ -76,6 +86,7 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
                 return await say(`the check is not green on ${live.sourceCommit} (${statuses.map((s) => `${s.key}: ${s.state}`).join(", ")}).`, "fix the check and merge through the gate.");
             }
             const linked = (await findLinkedIssueForPR(deps.workTracker, deps.projectKey, live.url).catch(() => null)) ?? key;
+            devKey = linked;
             const verdict = await checkMergeGate({ gitHost: deps.gitHost, workTracker: deps.workTracker, ...(deps.requiredApprovals !== undefined ? { requiredApprovals: deps.requiredApprovals } : {}) }, live, linked as IssueKey);
             // The approval that carries the merge must be the automated reviewer's own, on this commit.
             const reviewer = await deps.reviewer();
@@ -84,6 +95,12 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
                 : [...verdict.blockers, `The automated reviewer (${String(reviewer.id)}) has no approval on the current commit (${live.sourceCommit}).`];
             const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers, checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
             if (!proceed) return await say(`the merge gate refused: ${blockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
+            // A tree the earlier runs left dirty is found now, while the PR is still open, and not after the merge.
+            try {
+                await deps.assertClean();
+            } catch (err) {
+                return await say(`the working tree is not clean, so the verification could not run after a merge: ${errorText(err)}.`, "commit or discard the changes, then run the ticket again.");
+            }
             // Only on the commit the gate was checked against, and never forced.
             let result: Awaited<ReturnType<FinishDeps["gitHost"]["mergePullRequest"]>>;
             try {
@@ -104,6 +121,7 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             }
             try {
                 await deps.workTracker.transition(linked as IssueKey, Status.Done);
+                devDone = true;
             } catch (err) {
                 return await say(`the PR merged, but ${linked} could not be moved to Done: ${errorText(err)}.`, "move it to Done and run /tai-verify on the Story.");
             }
