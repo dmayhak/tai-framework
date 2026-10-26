@@ -233,10 +233,13 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
     const attempted = new Set<IssueKey>();
     const results: DevTaskResult[] = [];
     let pending = firstLook;
+    let last: FoundDevTasks = firstLook ?? { tasks: [], skipped: [] };
     for (;;) {
-        if (deps.interrupted?.()) return { results, found: pending ?? (await find()) };
+        // An interrupt ends the run with what it has: no new look, which would only add calls on the way out.
+        if (deps.interrupted?.()) return { results, found: last };
         const found = pending ?? (await find());
         pending = undefined;
+        last = found;
         const next = found.tasks.find((t) => !attempted.has(t.issue.key));
         if (!next) return { results, found };
         attempted.add(next.issue.key);

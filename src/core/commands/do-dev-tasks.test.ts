@@ -11,7 +11,7 @@ import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { buildDevPrompt, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
+import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
 const OTHER: HumanRef = { id: toHumanId("x@y.z"), displayName: "X", email: "x@y.z" };
@@ -400,6 +400,10 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
         assert.equal(results.length, 1);
         assert.ok(!d.calls.includes("prepare TAI-11"), "nothing new is prepared");
+        let looks = 0;
+        stop = true;
+        await workDevTasks(async () => (looks++, { tasks: [], skipped: [] }), d, { tasks: [task("TAI-12")], skipped: [] });
+        assert.equal(looks, 0, "no new look on the way out");
     });
 
     it("a branch that will not update stops the run without blaming any ticket", async () => {
@@ -535,6 +539,12 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
             await stray.cleanup();
             await rm(pidFile, { force: true });
         }
+    });
+
+    it("cliCommand leaves a plain path bare, so an allow rule matches it, and quotes one with a space", () => {
+        assert.equal(cliCommand("/home/del/.tai-framework"), "npx --prefix /home/del/.tai-framework tsx /home/del/.tai-framework/src/hosts/cli.ts");
+        assert.equal(cliCommand("/home/my user/tai"), "npx --prefix '/home/my user/tai' tsx '/home/my user/tai/src/hosts/cli.ts'");
+        assert.match(cliCommand("/x/it's"), /'\/x\/it'\\''s'/);
     });
 
     it("redactSecrets masks bearer tokens and credential-looking environment values", () => {

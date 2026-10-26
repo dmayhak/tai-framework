@@ -39,6 +39,15 @@ export interface HeadlessRunResult {
     readonly summary: string;
 }
 
+/**
+ * The command that runs TAI's CLI, for the prompt. A plain path is left bare so it matches the person's allow rule for
+ * it; a path with a space or a shell character is single-quoted so the steps do not fail on it.
+ */
+export function cliCommand(taiHome: string): string {
+    const q = (p: string): string => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`);
+    return `npx --prefix ${q(taiHome)} tsx ${q(`${taiHome}/src/hosts/cli.ts`)}`;
+}
+
 /** The instructions for building one Dev subtask unattended; `cli` is the command that runs TAI's CLI. */
 export function buildDevPrompt(key: string, cli: string): string {
     return [
