@@ -70,6 +70,16 @@ export function reviewDecisionOnHead(activity: readonly PullRequestActivity[], r
     return othersAskedForChanges ? "requestChanges" : own;
 }
 
+/** How many decisions the reviewer's own account has cast since the PR's last push. A decision from this run is one more than before it. */
+export function ownDecisionCount(activity: readonly PullRequestActivity[], reviewer: Pick<HumanRef, "id">): number {
+    let n = 0;
+    for (const entry of activity) {
+        if (entry.kind === "update") n = 0;
+        else if (String(entry.human.id).toLowerCase() === String(reviewer.id).toLowerCase()) n++;
+    }
+    return n;
+}
+
 export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOutcome> {
     const key = task.issue.key;
     const say = async (done: string, stoppedAt: string, next: string): Promise<DevTaskOutcome> => {

@@ -18,7 +18,7 @@ const ME: HumanRef = { id: toHumanId("a@b.co"), displayName: "A", email: "a@b.co
 const BOT = { id: "bot", displayName: "Bot" } as unknown as HumanRef;
 const HEAD = "abc1234def";
 
-const REVIEWERS = "| Reviewer | GitHub | Marker |\n| --- | --- | --- |\n| a@b.co | me | |\n| bot@b.co | bot | automated |\n| human@b.co | h | |";
+const REVIEWERS = "| Reviewer | GitHub | Marker |\n| --- | --- | --- |\n| a@b.co | me | |\n| bot@b.co | bot | automated |\n| human@b.co | h | |\n| nologin@b.co | | automated |";
 
 const FINDINGS = (sev: string): string =>
     JSON.stringify({
@@ -30,7 +30,7 @@ const FINDINGS = (sev: string): string =>
         leaningReason: "fine",
     });
 
-async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string } = {}): Promise<void> {
+async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string; before?: PullRequestActivity[] } = {}): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-yolo-wire-"));
     try {
         const backend = createFilesystemBackend(dir, ME);
@@ -44,12 +44,17 @@ async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: str
         await setSetting({ ...ctx, attest: (e, k, v) => recordAttestation(taiDir, e, k, v) }, "dev-yolo", "true");
         const pr = { id: 7, repo: "o/r", title: `${story.key} - ${dev.key} - x`, sourceBranch: "b", sourceCommit: HEAD, state: "open", url: "https://pr/7" };
         const heads = [...(over.heads ?? [])];
+        let activityReads = 0;
         const gitHost = {
             listPullRequests: async () => [pr],
             getPullRequest: async () => ({ ...pr, sourceCommit: heads.shift() ?? HEAD }),
             getCurrentUser: async () => ME,
             getCommitStatuses: async () => [],
-            listPullRequestActivity: async () => over.activity ?? [{ kind: "update", at: "t", sourceCommit: HEAD as never }, { kind: "approval", at: "t", human: BOT }],
+            // The first read is before the reviewer run, the later ones after it.
+            listPullRequestActivity: async () =>
+                activityReads++ === 0
+                    ? (over.before ?? [{ kind: "update", at: "t", sourceCommit: HEAD as never }])
+                    : (over.activity ?? [{ kind: "update", at: "t", sourceCommit: HEAD as never }, { kind: "approval", at: "t", human: BOT }]),
         } as unknown as GitHost;
         const handoffs: string[] = [];
         const prompts: string[] = [];
@@ -99,6 +104,14 @@ describe("yoloGate account identity (TAI-634)", () => {
         ));
 });
 
+describe("yoloGate reviewer login (TAI-634)", () => {
+    it("stops when the reviewer's row has no GitHub login, since that is how the account is recognised", () =>
+        world(async ({ wiring, task }) => {
+            const gate = await yoloGate({ ...wiring, reviewer: { token: "t", email: "nologin@b.co" } })(task);
+            assert.match(gate.join("\n"), /nologin@b.co has no GitHub login on PR Reviewers/);
+        }));
+});
+
 describe("yoloRun wiring (TAI-634)", () => {
     it("runs the reviewer with its own credentials and reads the findings it left", () => {
         const seen: { prompt: string; env?: Readonly<Record<string, string>> }[] = [];
@@ -108,7 +121,7 @@ describe("yoloRun wiring (TAI-634)", () => {
                 assert.equal(out.state, "handed-on");
                 assert.deepEqual(handoffs, []);
                 const reviewer = seen.find((s) => /automated Code Reviewer/.test(s.prompt))!;
-                assert.deepEqual(reviewer.env, { GITHUB_TOKEN: "tok-reviewer-123", TAI_JIRA_EMAIL: "bot@b.co" });
+                assert.deepEqual(reviewer.env, { GITHUB_TOKEN: "tok-reviewer-123" });
                 assert.equal(seen.find((s) => /You are working Jira ticket/.test(s.prompt))!.env, undefined);
             },
             {
@@ -225,6 +238,18 @@ describe("yoloRun wiring (TAI-634)", () => {
                     if (file) await writeFile(file, FINDINGS("").replace('"pr":"7"', '"pr":"99"'));
                     return { ok: true, summary: "" };
                 },
+            }
+        ));
+    it("does not take an approval the reviewer cast in an earlier, abandoned run as this run's decision", () =>
+        world(
+            async ({ wiring, task, handoffs }) => {
+                await yoloRun(wiring)(task);
+                assert.match(handoffs[0]!, /cast no approval/);
+            },
+            {
+                before: [{ kind: "update", at: "t", sourceCommit: HEAD as never }, { kind: "approval", at: "t", human: BOT }],
+                activity: [{ kind: "update", at: "t", sourceCommit: HEAD as never }, { kind: "approval", at: "t", human: BOT }],
+                runClaude: findingsRun(""),
             }
         ));
 });

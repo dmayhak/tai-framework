@@ -13,7 +13,7 @@ import { isEligibleReviewer, loadPrReviewers } from "../git/pr-reviewers.js";
 import { parseReviewFindings, sameCommitHash } from "../git/review-findings.js";
 import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, runHeadlessClaude, type HeadlessRunOptions, type HeadlessRunResult } from "./headless-claude.js";
 import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask, type DevTaskOutcome } from "./do-dev-tasks.js";
-import { runYolo, reviewDecisionOnHead, type YoloDeps } from "./dev-yolo.js";
+import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "./dev-yolo.js";
 import { yoloStopReasons } from "./yolo-checks.js";
 
 export interface YoloWiring {
@@ -56,7 +56,9 @@ export function yoloGate(w: YoloWiring): (task: DevTask) => Promise<readonly str
             const account = await w.reviewerHost.getCurrentUser();
             const mine = await w.gitHost.getCurrentUser();
             if (sameAccount(account, mine)) reasons.push("TAI_REVIEWER_GITHUB_TOKEN belongs to your own account, so the reviewer would be you");
-            else if (entry?.githubLogin && entry.githubLogin.toLowerCase() !== String(account.id).toLowerCase()) {
+            else if (!entry?.githubLogin) {
+                reasons.push(`${w.reviewer.email} has no GitHub login on PR Reviewers, which is how the reviewer account is recognised`);
+            } else if (entry.githubLogin.toLowerCase() !== String(account.id).toLowerCase()) {
                 reasons.push(`TAI_REVIEWER_GITHUB_TOKEN belongs to ${account.id}, but ${w.reviewer.email} is listed on PR Reviewers as ${entry.githubLogin}`);
             }
         }
@@ -102,6 +104,9 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
         review: async (task) => {
             const pr = await pullRequest(task);
             const headBefore = await liveHead(pr);
+            const reviewerAccount = await w.reviewerHost!.getCurrentUser();
+            // A decision the reviewer cast on this commit in an earlier, abandoned run is not this run's: this run must add one.
+            const decisionsBefore = ownDecisionCount(await w.gitHost.listPullRequestActivity(pr.repo, pr.id), reviewerAccount);
             // Under the .tai directory, which is inside the run's working area and ignored by git, so the run may write it.
             await mkdir(w.taiDir, { recursive: true });
             const dir = await mkdtemp(path.join(w.taiDir, "yolo-review-"));
@@ -110,7 +115,8 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                 const ran = await run(buildReviewerPrompt({ repo: pr.repo, prId: String(pr.id), cli: w.cli, findingsPath }), {
                     cwd: w.cwd,
                     timeoutMs: w.timeoutMs,
-                    env: { GITHUB_TOKEN: w.reviewer.token!, TAI_JIRA_EMAIL: w.reviewer.email! },
+                    // Only the git host identity is the reviewer's; the tracker and page reads stay on the person's own Jira email and token, a pair that matches.
+                    env: { GITHUB_TOKEN: w.reviewer.token! },
                 });
                 if (!ran.ok) return { ok: false, reason: `the reviewer run did not finish: ${ran.summary}` };
                 let raw: string;
@@ -132,8 +138,8 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                 if (findings.reviewOf.repo !== String(pr.repo) || findings.reviewOf.pr !== String(pr.id)) {
                     return { ok: false, reason: `the review is of ${findings.reviewOf.repo} PR ${findings.reviewOf.pr}, not ${pr.repo} PR ${pr.id}` };
                 }
-                const reviewer = await w.reviewerHost!.getCurrentUser();
-                const decision = reviewDecisionOnHead(await w.gitHost.listPullRequestActivity(pr.repo, pr.id), reviewer);
+                const activity = await w.gitHost.listPullRequestActivity(pr.repo, pr.id);
+                const decision = ownDecisionCount(activity, reviewerAccount) > decisionsBefore ? reviewDecisionOnHead(activity, reviewerAccount) : "none";
                 return { ok: true, review: { findings, decision, head } };
             } finally {
                 await rm(dir, { recursive: true, force: true });

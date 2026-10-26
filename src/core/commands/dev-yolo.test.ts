@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import type { PullRequestActivity } from "../git/interface.js";
 import type { ReviewFinding, ReviewFindings } from "../git/review-findings.js";
-import { runYolo, reviewDecisionOnHead, yoloHandoff, type ReviewDecision, type YoloDeps } from "./dev-yolo.js";
+import { runYolo, reviewDecisionOnHead, ownDecisionCount, yoloHandoff, type ReviewDecision, type YoloDeps } from "./dev-yolo.js";
 import { runDevTask, type DevTask, type RunDevTasksDeps } from "./do-dev-tasks.js";
 import { mkdtemp, rm, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -167,6 +167,18 @@ describe("reviewDecisionOnHead", () => {
     it("keeps a request for changes from anyone else as a stop, until the next push", () => {
         assert.equal(reviewDecisionOnHead([upd(), by("approval", bot), by("changesRequested", other)], bot), "requestChanges");
         assert.equal(reviewDecisionOnHead([by("changesRequested", other), upd(), by("approval", bot)], bot), "approve");
+    });
+});
+
+describe("ownDecisionCount", () => {
+    it("counts the reviewer's own decisions since the last push", () => {
+        const bot = { id: "bot" };
+        const upd = { kind: "update", at: "t", sourceCommit: "c" } as PullRequestActivity;
+        const by = (id: string, kind: "approval" | "changesRequested") => ({ kind, at: "t", human: { id } }) as unknown as PullRequestActivity;
+        assert.equal(ownDecisionCount([], bot), 0);
+        assert.equal(ownDecisionCount([upd, by("bot", "approval"), by("human", "approval")], bot), 1);
+        assert.equal(ownDecisionCount([by("bot", "approval"), upd], bot), 0);
+        assert.equal(ownDecisionCount([upd, by("BOT", "changesRequested"), by("bot", "approval")], bot), 2);
     });
 });
 
