@@ -2051,7 +2051,7 @@ export function defineStorageConformance(
 
             // TAI-643 (Story TAI-627, AC-5): the Settings page is a markdown table plus a bullet list. Saving it must keep
             // what a person added by hand, and a read must give back what was saved, on every backend.
-            it("keeps a Settings-shaped page through save and read: table rows, admins, hand notes and unknown rows", async () => {
+            it("keeps a Settings-shaped page through save and read: table rows, admins, an extra column, hand notes and unknown rows", async () => {
                 const saved = withAdmins(withValue(EMPTY_SETTINGS, "a@example.com", "review-rounds", "3"), ["a@example.com"]);
                 const page = trackPage(
                     await h.backend.docStore.createPage({
@@ -2064,10 +2064,20 @@ export function defineStorageConformance(
                 assert.equal(first.state.values.get("a@example.com")?.get("review-rounds"), "3");
                 assert.deepEqual(first.state.admins, ["a@example.com"]);
 
-                // A person edits the page by hand: a note, an unknown row and an extra column.
-                const edited = page.content
-                    .replace("| --- | --- | --- |", "| --- | --- | --- |\n| b@example.com | future-setting | 1 |")
-                    .replace("## Autonomy admins", "Hand note: keep me.\n\n## Autonomy admins");
+                // A person edits the page by hand: an extra Note column, an unknown row and a note. Written out in full, not
+                // patched from the saved text, so a backend that normalises the saved page cannot turn the edit into a no-op.
+                const edited = [
+                    "Hand note: keep me.",
+                    "",
+                    "| User | Setting | Value | Note |",
+                    "| --- | --- | --- | --- |",
+                    "| a@example.com | review-rounds | 3 | agreed in review |",
+                    "| b@example.com | future-setting | 1 | from a newer version |",
+                    "",
+                    "## Autonomy admins",
+                    "",
+                    "- a@example.com",
+                ].join("\n");
                 await h.backend.docStore.updatePage({ id: page.id }, { content: edited });
 
                 const read = (await h.backend.docStore.getPage({ id: page.id }))!.content;
@@ -2080,6 +2090,8 @@ export function defineStorageConformance(
                 assert.deepEqual(state.admins, ["a@example.com"]);
                 assert.deepEqual(unknown, ["future-setting"], "the unknown row must still be on the page");
                 assert.match(after, /Hand note: keep me\./);
+                assert.match(after, /\| a@example\.com \| review-rounds \| 5 \| agreed in review \|/, "the extra column must survive the save");
+                assert.match(after, /\| b@example\.com \| future-setting \| 1 \| from a newer version \|/);
             });
 
             // TAI-305: filing a loose page into its doc-type folder (brief §4 rev 11/14)
