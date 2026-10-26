@@ -24,6 +24,8 @@ export interface DevTask {
 export interface SkippedDevTask {
     readonly issue: Issue;
     readonly reason: string;
+    /** The tickets it waits on, so the report can say when one of them is a ticket this run worked. */
+    readonly waitingOn?: readonly IssueKey[];
 }
 
 export interface FoundDevTasks {
@@ -75,13 +77,14 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
             }
             const open = openPrerequisites(issue, parent, siblings);
             if (open.length > 0) {
-                skipped.push({ issue, reason: `precedence holds it until ${open.map((s) => `${s.key} (${s.issueType}, ${s.status})`).join(", ")} is done` });
+                skipped.push({ issue, reason: `precedence holds it until ${open.map((s) => `${s.key} (${s.issueType}, ${s.status})`).join(", ")} is done`, waitingOn: open.map((s) => s.key) });
                 continue;
             }
         }
         const blockers = [...(await findOpenDependsOnBlockers(deps.workTracker, issue)), ...(await findOpenDependsOnBlockers(deps.workTracker, parent))];
         if (blockers.length > 0) {
-            skipped.push({ issue, reason: `${[...new Set(blockers)].join(", ")} must finish first (DependsOn)` });
+            const waitingOn = [...new Set(blockers)];
+            skipped.push({ issue, reason: `${waitingOn.join(", ")} must finish first (DependsOn)`, waitingOn });
             continue;
         }
         tasks.push({ issue: issue.priority !== undefined ? issue : { ...issue, priority: parent.priority }, parent });
@@ -126,43 +129,68 @@ export function failureHandoff(reason: string): string {
     );
 }
 
-/** Works through `tasks` one at a time. One ticket failing never stops the others. */
-export async function runDevTasks(tasks: readonly DevTask[], deps: RunDevTasksDeps): Promise<readonly DevTaskResult[]> {
-    const results: DevTaskResult[] = [];
-    for (const task of tasks) {
-        let outcome: DevTaskOutcome;
-        try {
-            await deps.prepare(task);
-            if (deps.yolo) {
-                outcome = deps.yoloRun
-                    ? await deps.yoloRun(task)
-                    : { state: "waiting", reason: "DEV-YOLO is on, but the full unattended run is not in this version (TAI-634), so nothing was built" };
-            } else {
-                const built = await deps.build(task);
-                if (!built.ok) throw new Error(built.summary);
-                const found = await deps.inspect(task);
-                if (!found.prUrl) throw new Error("The run finished but no open PR for this ticket was found.");
-                outcome = { state: "pr-opened", prUrl: found.prUrl, checkRecorded: found.checkRecorded };
-            }
-        } catch (err) {
-            const reason = errorText(err);
-            outcome = { state: "failed", reason };
-            try {
-                await deps.handoff(task.issue.key, failureHandoff(reason));
-            } catch (handoffErr) {
-                outcome = { state: "failed", reason: `${reason} (and the hand-off comment could not be posted: ${errorText(handoffErr)})` };
-            }
+/** Runs one ticket. It never throws: a failure becomes a `failed` outcome with a hand-off comment on the ticket. */
+export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<DevTaskResult> {
+    let outcome: DevTaskOutcome;
+    try {
+        await deps.prepare(task);
+        if (deps.yolo) {
+            outcome = deps.yoloRun
+                ? await deps.yoloRun(task)
+                : { state: "waiting", reason: "DEV-YOLO is on, but the full unattended run is not in this version (TAI-634), so nothing was built" };
+        } else {
+            const built = await deps.build(task);
+            if (!built.ok) throw new Error(built.summary);
+            const found = await deps.inspect(task);
+            if (!found.prUrl) throw new Error("The run finished but no open PR for this ticket was found.");
+            outcome = { state: "pr-opened", prUrl: found.prUrl, checkRecorded: found.checkRecorded };
         }
-        results.push({ task, outcome });
+    } catch (err) {
+        const reason = errorText(err);
+        outcome = { state: "failed", reason };
+        try {
+            await deps.handoff(task.issue.key, failureHandoff(reason));
+        } catch (handoffErr) {
+            outcome = { state: "failed", reason: `${reason} (and the hand-off comment could not be posted: ${errorText(handoffErr)})` };
+        }
     }
-    return results;
+    return { task, outcome };
+}
+
+export interface WorkedDevTasks {
+    readonly results: readonly DevTaskResult[];
+    /** What `find` last returned: the tickets still held back once the run is over, with what each waits on. */
+    readonly found: FoundDevTasks;
+}
+
+/**
+ * Works the tickets one at a time and looks again after each. A ticket that one of ours unblocks (its blocker finished
+ * while this run was going) was skipped at the start but is found by the next look, so it is not dropped. A ticket is
+ * attempted once per run, so a failed one is never retried in a loop and one whose PR is still open is not rebuilt.
+ */
+export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDeps): Promise<WorkedDevTasks> {
+    const attempted = new Set<IssueKey>();
+    const results: DevTaskResult[] = [];
+    for (;;) {
+        const found = await find();
+        const next = found.tasks.find((t) => !attempted.has(t.issue.key));
+        if (!next) return { results, found };
+        attempted.add(next.issue.key);
+        results.push(await runDevTask(next, deps));
+    }
 }
 
 function line(issue: Issue): string {
     return `**${issue.key}** ${issue.summary}`;
 }
 
+function waitingNote(skipped: SkippedDevTask, worked: ReadonlySet<IssueKey>): string {
+    const mine = (skipped.waitingOn ?? []).filter((k) => worked.has(k));
+    return mine.length ? ` Waiting on ${mine.join(", ")}, which this run worked on: it starts once that is merged and done.` : "";
+}
+
 export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean }): string {
+    const worked = new Set((results ?? []).flatMap((r) => [r.task.issue.key, r.task.parent.key]));
     const out = ["# Do all dev tasks", "", `DEV-YOLO is ${options.yolo ? "on" : "off"}.`, ""];
     if (results === null) {
         out.push(`## Would work (${found.tasks.length})`, "");
@@ -192,6 +220,6 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         out.push(...(waiting.length ? [`- Review, approval and merge of the PRs for ${waiting.join(", ")}.`] : ["Nothing."]));
     }
     out.push("", `## Skipped (${found.skipped.length})`, "");
-    out.push(...(found.skipped.length ? found.skipped.map((s) => `- ${line(s.issue)}: ${s.reason}`) : ["None."]));
+    out.push(...(found.skipped.length ? found.skipped.map((s) => `- ${line(s.issue)}: ${s.reason}.${waitingNote(s, worked)}`) : ["None."]));
     return out.join("\n");
 }

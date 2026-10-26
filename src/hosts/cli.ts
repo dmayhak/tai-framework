@@ -171,7 +171,7 @@ import { resolveAssignment, type AssignmentResolution } from "../core/personas/a
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
-import { findDevTasks, runDevTasks, renderDevTasksReport } from "../core/commands/do-dev-tasks.js";
+import { findDevTasks, workDevTasks, renderDevTasksReport } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, runHeadlessClaude } from "../core/commands/headless-claude.js";
 import { prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
@@ -2272,7 +2272,8 @@ async function main(): Promise<void> {
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
         const dryRun = [arg, ...rest].includes("dryrun=true");
-        const found = await findDevTasks({ workTracker: config.backend.workTracker, projectKey: config.projectKey, currentHuman: config.currentHuman });
+        const find = () => findDevTasks({ workTracker: config.backend.workTracker, projectKey: config.projectKey, currentHuman: config.currentHuman });
+        const found = await find();
         const yolo = (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
         if (dryRun || found.tasks.length === 0) {
             console.log(renderDevTasksReport(found, null, { yolo }));
@@ -2284,7 +2285,7 @@ async function main(): Promise<void> {
         const cli = `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts`;
         const timeoutMs = Number(process.env["TAI_DEV_RUN_TIMEOUT_MIN"] ?? "45") * 60_000;
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
-        const results = await runDevTasks(found.tasks, {
+        const worked = await workDevTasks(find, {
             yolo,
             prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
             build: (task) => runHeadlessClaude(buildDevPrompt(task.issue.key, cli), { cwd: process.cwd(), timeoutMs }),
@@ -2301,7 +2302,7 @@ async function main(): Promise<void> {
                 await postIssueComment(config.backend.workTracker, key, stampComment(body, developer));
             },
         });
-        console.log(renderDevTasksReport(found, results, { yolo }));
+        console.log(renderDevTasksReport(worked.found, worked.results, { yolo }));
         return;
     }
 

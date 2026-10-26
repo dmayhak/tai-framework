@@ -7,7 +7,7 @@ import path from "node:path";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
-import { findDevTasks, renderDevTasksReport, runDevTasks, type DevTask, type RunDevTasksDeps } from "./do-dev-tasks.js";
+import { findDevTasks, renderDevTasksReport, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
 import { buildDevPrompt } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
@@ -79,6 +79,9 @@ describe("findDevTasks (TAI-633)", () => {
     });
 });
 
+const runDevTasks = async (tasks: readonly DevTask[], d: RunDevTasksDeps) =>
+    (await workDevTasks(async () => ({ tasks, skipped: [] }), d)).results;
+
 function task(key: string): DevTask {
     const issue = { key, summary: `s ${key}`, issueType: SubtaskType.Dev, status: Status.ToDo } as never;
     return { issue, parent: { key: "TAI-1" } as never };
@@ -147,6 +150,62 @@ describe("runDevTasks (TAI-633)", () => {
         assert.equal(r[0]!.outcome.state, "waiting");
         assert.match((r[0]!.outcome as { reason: string }).reason, /TAI-634/);
         assert.ok(!d.calls.some((c) => c.startsWith("build")));
+    });
+});
+
+describe("workDevTasks looks again after each ticket (TAI-633)", () => {
+    async function twoStories(wt: WorkTracker) {
+        const first = await mk(wt, { issueType: StoryType.Story });
+        const second = await mk(wt, { issueType: StoryType.Story });
+        await wt.createLink(second.key, DependencyRelation.DependsOn, first.key);
+        const a = await mk(wt, { issueType: SubtaskType.Dev, parentKey: first.key, assignee: ME });
+        const b = await mk(wt, { issueType: SubtaskType.Dev, parentKey: second.key, assignee: ME });
+        await wt.transition(a.key, Status.ToDo);
+        await wt.transition(b.key, Status.ToDo);
+        return { first, second, a, b };
+    }
+    const finder = (wt: WorkTracker) => () => find(wt);
+
+    it("picks up a ticket that one of ours unblocked, which the first look had to skip", async () => {
+        await withTracker(async (wt) => {
+            const { first, a, b } = await twoStories(wt);
+            const start = await find(wt);
+            assert.deepEqual(start.tasks.map((t) => t.issue.key), [a.key]);
+            assert.equal(start.skipped[0]?.issue.key, b.key);
+            const d = deps({
+                yolo: true,
+                // the full run merges the PR, which finishes the Dev subtask and its Story
+                yoloRun: async (t) => {
+                    await wt.transition(t.issue.key, Status.Done);
+                    if (t.issue.key === a.key) await wt.transition(first.key, Status.Done);
+                    return { state: "handed-on", note: `done ${t.issue.key}` };
+                },
+            });
+            const { results, found } = await workDevTasks(finder(wt), d);
+            assert.deepEqual(results.map((r) => r.task.issue.key), [a.key, b.key]);
+            assert.deepEqual(found.skipped, []);
+        });
+    });
+
+    it("leaves a ticket skipped, and says it waits on one this run worked, when that one is not finished", async () => {
+        await withTracker(async (wt) => {
+            const { first, a, b } = await twoStories(wt);
+            const { results, found } = await workDevTasks(finder(wt), deps());
+            assert.deepEqual(results.map((r) => r.task.issue.key), [a.key]);
+            assert.equal(found.skipped[0]?.issue.key, b.key);
+            assert.match(renderDevTasksReport(found, results, { yolo: false }), new RegExp(`${b.key}[^\\n]*Waiting on ${first.key}`));
+        });
+    });
+
+    it("tries a ticket once per run, so a failure is not retried in a loop", async () => {
+        const t = task("TAI-10");
+        let finds = 0;
+        const find2 = async (): Promise<FoundDevTasks> => (finds++, { tasks: [t], skipped: [] });
+        const d = deps({ build: async () => ({ ok: false, summary: "no" }) });
+        const { results } = await workDevTasks(find2, d);
+        assert.equal(results.length, 1);
+        assert.equal(d.handoffs.length, 1);
+        assert.equal(finds, 2);
     });
 });
 

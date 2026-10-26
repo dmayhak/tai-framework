@@ -1235,7 +1235,7 @@ comment's content.
   open `DependsOn` blocker. For each, `core/commands/headless-claude.ts` starts a fresh `claude -p` run with the steps
   spelled out in its prompt; the run builds the change with its tests, opens the PR, records the check and leaves a
   `Handoff:` comment, and does not review, approve, merge or close. Before each ticket the working tree must be clean and
-  is returned to the default branch (`dev-tasks-git.ts`). Afterwards the open PR for the ticket is looked up on the git
+  is returned to the default branch (`dev-tasks-git.ts`). The list is worked out again after every ticket, so a ticket that one of ours unblocks (its blocker finished during the run) is picked up and not dropped for having been blocked at the start; each ticket is attempted once per run, and one still held back at the end is reported with what it waits on, naming any of those that this run worked on. Afterwards the open PR for the ticket is looked up on the git
   host (its title carries the Dev key) and whether its commit has a check result; a run that leaves no PR fails the
   ticket. A failure posts a `Handoff:` comment on that ticket and the others go on. The command ends with what was done,
   what failed, what was skipped and what waits for a person. `dryrun=true` lists and runs nothing. With the `dev-yolo`
