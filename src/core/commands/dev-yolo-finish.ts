@@ -15,6 +15,7 @@ import { Status } from "../schema/story-schema.js";
 import type { HumanRef, IssueKey, WorkTracker } from "../storage/interface.js";
 import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
 import { yoloHandoff } from "./dev-yolo.js";
+import { stampedAs } from "../storage/stamp.js";
 
 export interface FinishDeps {
     readonly gitHost: Pick<GitHost, "getPullRequest" | "getCommitStatuses" | "listPullRequestActivity" | "mergePullRequest" | "addPullRequestComment">;
@@ -41,9 +42,9 @@ export function automatedMergeComment(reviewer: Pick<HumanRef, "id" | "displayNa
     return `Merged by an unattended DEV-YOLO run. The approval was automated: it was cast by ${reviewer.displayName} (${String(reviewer.id)}), the automated reviewer, on commit ${commit}. The merge went through the merge gate; nothing was forced.`;
 }
 
-/** The verdict in a comment: `Verified:` or `Not verified:` as its first line (a stamp or markup may precede it). */
+/** The verdict in a comment: `Verified:` or `Not verified:` as the comment's first line (blank lines or markup may precede it); a later line never counts. */
 export function verificationVerdict(body: string): "verified" | "not-verified" | null {
-    const m = /^[ \t>*_]*(Not verified|Verified):/im.exec(body);
+    const m = /^\s*[ \t>*_]*(Not verified|Verified):/i.exec(body);
     if (!m) return null;
     return m[1]!.toLowerCase().startsWith("not") ? "not-verified" : "verified";
 }
@@ -56,10 +57,11 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
     return async (task, prUrl) => {
         const key = task.issue.key;
         let merged = false;
+        const notes: string[] = [];
         const say = async (stoppedAt: string, next: string): Promise<DevTaskOutcome> => {
             const done = merged ? `The PR was reviewed and approved by the automated reviewer and merged: ${prUrl}.` : `The PR is open, reviewed and approved by the automated reviewer: ${prUrl}.`;
             try {
-                await deps.handoff(key, yoloHandoff(done, stoppedAt, next));
+                await deps.handoff(key, yoloHandoff(notes.length ? `${done} Note: ${notes.join("; ")}.` : done, stoppedAt, next));
             } catch (err) {
                 return { state: "waiting", reason: `${stoppedAt} (and the hand-off comment could not be posted: ${errorText(err)})` };
             }
@@ -83,10 +85,18 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers, checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
             if (!proceed) return await say(`the merge gate refused: ${blockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
             // Only on the commit the gate was checked against, and never forced.
-            const result = await deps.gitHost.mergePullRequest(live.repo, live.id, undefined, { expectedHead: live.sourceCommit });
+            let result: Awaited<ReturnType<FinishDeps["gitHost"]["mergePullRequest"]>>;
+            try {
+                result = await deps.gitHost.mergePullRequest(live.repo, live.id, undefined, { expectedHead: live.sourceCommit });
+            } catch (err) {
+                // A timeout or a dropped answer can come after the host did merge, so look before saying the PR is open.
+                const after = await deps.gitHost.getPullRequest(live.repo, live.id).catch(() => null);
+                if (after?.state !== "merged") throw err;
+                notes.push(`the merge call failed (${errorText(err)}) but the host shows the PR merged`);
+                result = { ok: true, pullRequest: after };
+            }
             if (!result.ok) return await say(`the merge was refused: ${result.reason}.`, "read the reason and merge it by hand.");
             merged = true;
-            const notes: string[] = [];
             try {
                 await deps.gitHost.addPullRequestComment(live.repo, live.id, deps.stamp(automatedMergeComment(reviewer, live.sourceCommit)));
             } catch (err) {
@@ -107,13 +117,19 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             const ran = await deps.verify(task);
             if (!ran.ok) return await say(`the verification run did not finish: ${ran.summary}`, `run /tai-verify ${task.parent.key} by hand.`);
             const story = await deps.workTracker.getIssue(task.parent.key);
+            // Only the Tester's own new comments count (a stamped "(tester)"), and any Not verified: among them keeps the Story open.
             const verdicts = (story?.comments ?? [])
-                .filter((c) => !before.has(c.id))
+                .filter((c) => !before.has(c.id) && /\(tester\)/.test(stampedAs(c.body) ?? ""))
                 .map((c) => verificationVerdict(c.body))
                 .filter((v) => v !== null);
-            const last = verdicts[verdicts.length - 1];
-            if (last === undefined) return await say("the verification run left no Verified: or Not verified: comment.", `run /tai-verify ${task.parent.key} by hand.`);
+            const last = verdicts.includes("not-verified") ? "not-verified" : verdicts[verdicts.length - 1];
+            if (last === undefined) return await say("the verification run left no Verified: or Not verified: comment from the Tester.", `run /tai-verify ${task.parent.key} by hand.`);
             if (last === "not-verified") return await say(`${task.parent.key} was not verified against its criteria, so it stays open.`, `read the Not verified: comment on ${task.parent.key}.`);
+            // Verified from this PR alone is not enough while other work on the Story is still open.
+            const openSiblings = (await deps.workTracker.search({ projectKey: deps.projectKey, parentKey: task.parent.key, exhaustive: true, readYourWrites: true })).filter((i) => i.status !== Status.Done && i.status !== Status.Canceled);
+            if (openSiblings.length > 0) {
+                return await say(`${task.parent.key} was verified, but other work on it is still open (${openSiblings.map((i) => i.key).join(", ")}), so it stays open.`, "finish that work, then close the Story.");
+            }
             try {
                 await deps.workTracker.transition(task.parent.key, Status.Done);
             } catch (err) {

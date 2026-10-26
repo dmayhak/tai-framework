@@ -8,7 +8,10 @@ import { Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef } from "../storage/interface.js";
 import type { GitHost, PullRequestRef } from "../git/interface.js";
+import { stampComment } from "../storage/stamp.js";
 import type { DevTask } from "./do-dev-tasks.js";
+
+const TESTER = { id: "tester", displayName: "Tessa" };
 import { automatedMergeComment, finishApproved, verificationVerdict, type FinishDeps } from "./dev-yolo-finish.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.co"), displayName: "A", email: "a@b.co" };
@@ -20,7 +23,7 @@ interface Run {
     task: DevTask;
     log: string[];
     handoffs: string[];
-    pr: { sourceCommit: string; state: string; statuses: { key: string; state: string }[]; approvedBy: HumanRef[]; mergeResult: { ok: boolean; reason?: string } };
+    pr: { sourceCommit: string; state: string; statuses: { key: string; state: string }[]; approvedBy: HumanRef[]; mergeResult: { ok: boolean; reason?: string }; mergeThrows?: boolean; mergedAfterThrow?: boolean; commentFails?: boolean };
     verdict: { text: string | null; ok: boolean };
     tracker: ReturnType<typeof createFilesystemBackend>["workTracker"];
 }
@@ -51,9 +54,16 @@ async function world(run: (r: Run) => Promise<void>, over: { subtask?: SubtaskTy
             listPullRequestActivity: async () => [{ kind: "update", at: "t", sourceCommit: state.sourceCommit }, ...state.approvedBy.map((human) => ({ kind: "approval", at: "t", human }))],
             mergePullRequest: async (_r: unknown, _i: unknown, _s: unknown, o: { expectedHead?: string }) => {
                 log.push(`merge expected=${o.expectedHead}`);
+                if (state.mergeThrows) {
+                    if (state.mergedAfterThrow) state.state = "merged";
+                    throw new Error("socket hang up");
+                }
                 return state.mergeResult.ok ? { ok: true, pullRequest: ref() } : { ok: false, reason: state.mergeResult.reason ?? "no" };
             },
-            addPullRequestComment: async (_r: unknown, _i: unknown, body: string) => void log.push(`comment: ${body}`),
+            addPullRequestComment: async (_r: unknown, _i: unknown, body: string) => {
+                if (state.commentFails) throw new Error("comment refused");
+                log.push(`comment: ${body}`);
+            },
         } as unknown as GitHost;
         const deps: FinishDeps = {
             gitHost,
@@ -66,7 +76,7 @@ async function world(run: (r: Run) => Promise<void>, over: { subtask?: SubtaskTy
             prepare: async () => void log.push("prepare"),
             verify: async () => {
                 log.push("verify");
-                if (verdict.text) await backend.workTracker.addComment(story.key, verdict.text);
+                if (verdict.text) await backend.workTracker.addComment(story.key, stampComment(verdict.text, TESTER));
                 return { ok: verdict.ok, summary: "verify failed" };
             },
             handoff: async (_k, b) => void handoffs.push(b),
@@ -102,7 +112,7 @@ describe("finishApproved (TAI-634)", () => {
 
     it("does not close on an older verdict: only a comment from this verification run counts", () =>
         world(async ({ deps, task, handoffs, tracker, verdict }) => {
-            await tracker.addComment(task.parent.key, "Verified: all 1 criteria met");
+            await tracker.addComment(task.parent.key, stampComment("Verified: all 1 criteria met", TESTER));
             verdict.text = null;
             const out = await finishApproved(deps)(task, "u");
             assert.equal(out.state, "waiting");
@@ -176,11 +186,78 @@ describe("finishApproved (TAI-634)", () => {
         }));
 });
 
+describe("finishApproved hardening (PR 23 review)", () => {
+    it("keeps the Story open when any new verdict is Not verified:, even with a Verified: after it", () =>
+        world(async ({ deps, task, handoffs, tracker }) => {
+            const verify = deps.verify;
+            const out = await finishApproved({
+                ...deps,
+                verify: async (t) => {
+                    await tracker.addComment(task.parent.key, stampComment("Not verified: 1 of 2 criteria not met", TESTER));
+                    return verify(t);
+                },
+            })(task, "u");
+            assert.equal(out.state, "waiting");
+            assert.match(handoffs[0]!, /was not verified against its criteria/);
+        }));
+
+    it("ignores a verdict that is not from the Tester, or is not the comment's first line", () =>
+        world(async ({ deps, task, handoffs, verdict, tracker }) => {
+            verdict.text = null;
+            const out = await finishApproved({
+                ...deps,
+                verify: async () => {
+                    await tracker.addComment(task.parent.key, "Verified: all 1 criteria met"); // a person's, unstamped
+                    await tracker.addComment(task.parent.key, stampComment("Notes\nVerified: all 1 criteria met", TESTER)); // not the first line
+                    return { ok: true, summary: "" };
+                },
+            })(task, "u");
+            assert.equal(out.state, "waiting");
+            assert.match(handoffs[0]!, /left no Verified: or Not verified: comment from the Tester/);
+        }));
+
+    it("does not close a verified Story while other work on it is open", () =>
+        world(
+            async ({ deps, task, handoffs, tracker }) => {
+                const out = await finishApproved(deps)(task, "u");
+                assert.equal(out.state, "waiting");
+                assert.match(handoffs[0]!, /was verified, but other work on it is still open \(TAI-\d+\)/);
+                assert.notEqual((await tracker.getIssue(task.parent.key))!.status, Status.Done);
+            },
+            { subtask: SubtaskType.Infra }
+        ));
+
+    it("carries the note about a missing merge comment into a later stop", () =>
+        world(async ({ deps, task, handoffs, pr }) => {
+            pr.commentFails = true;
+            await finishApproved({ ...deps, prepare: async () => { throw new Error("dirty tree"); } })(task, "u");
+            assert.match(handoffs[0]!, /Note: the merge comment could not be posted: comment refused\./);
+        }));
+
+    it("goes on as merged when the merge call threw after the host merged, and stops with the error when it did not", async () => {
+        await world(async ({ deps, task, handoffs, pr }) => {
+            pr.mergeThrows = true;
+            pr.mergedAfterThrow = true;
+            const out = await finishApproved(deps)(task, "u");
+            assert.equal(out.state, "handed-on");
+            assert.match((out as { note: string }).note, /the merge call failed \(socket hang up\) but the host shows the PR merged/);
+            assert.deepEqual(handoffs, []);
+        });
+        await world(async ({ deps, task, handoffs, pr }) => {
+            pr.mergeThrows = true;
+            await finishApproved(deps)(task, "u");
+            assert.match(handoffs[0]!, /The PR is open.*an error: socket hang up/s);
+        });
+    });
+});
+
 describe("verificationVerdict and the merge comment", () => {
     it("reads Verified: and Not verified: as a comment's first line, with or without markup", () => {
         assert.equal(verificationVerdict("Verified: all 3 criteria met\n\n* AC-1 — met"), "verified");
         assert.equal(verificationVerdict("Not verified: 1 of 3 criteria not met"), "not-verified");
         assert.equal(verificationVerdict("*Verified:* ok"), "verified");
+        assert.equal(verificationVerdict("\n\nVerified: after blank lines"), "verified");
+        assert.equal(verificationVerdict("Intro\nVerified: later line"), null);
         assert.equal(verificationVerdict("Handoff: it was Verified: before"), null);
         assert.equal(verificationVerdict("> Verified: quoted"), "verified");
     });

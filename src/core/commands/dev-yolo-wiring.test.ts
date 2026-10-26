@@ -42,7 +42,7 @@ async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: str
         const ctx = { docStore: backend.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
         await changeAdmin(ctx, "add", "a@b.co");
         await setSetting({ ...ctx, attest: (e, k, v) => recordAttestation(taiDir, e, k, v) }, "dev-yolo", "true");
-        const pr = { id: 7, repo: "o/r", title: `${story.key} - ${dev.key} - x`, sourceBranch: "b", sourceCommit: HEAD, state: "open", url: "https://pr/7" };
+        const pr = { id: 7, repo: "o/r", title: `${story.key} - ${dev.key} - x`, sourceBranch: "b", sourceCommit: HEAD, state: "open", reviewers: [], url: "https://pr/7" };
         const heads = [...(over.heads ?? [])];
         let activityReads = 0;
         const gitHost = {
@@ -252,4 +252,35 @@ describe("yoloRun wiring (TAI-634)", () => {
                 runClaude: findingsRun(""),
             }
         ));
+    const FINISH = { checkCommand: null, stamp: (b: string) => b, prepare: async () => undefined };
+
+    it("hands an approved PR to the merge, verify and close step when finish is configured", () =>
+        world(
+            async ({ wiring, task, handoffs }) => {
+                const out = await yoloRun({ ...wiring, finish: FINISH })(task);
+                assert.equal(out.state, "waiting");
+                // The fake PR has no approvals, so the real gate refuses: the step ran, and nothing says the merge is out of this version.
+                assert.match(handoffs[0]!, /the merge gate refused/);
+                assert.doesNotMatch(handoffs[0]!, /not in this version/);
+            },
+            { runClaude: findingsRun("") }
+        ));
+
+    it("uses afterApproved over finish when both are given, and ends at the approval with neither", async () => {
+        await world(
+            async ({ wiring, task, handoffs }) => {
+                const out = await yoloRun({ ...wiring, finish: FINISH, afterApproved: async () => ({ state: "handed-on", note: "custom" }) })(task);
+                assert.deepEqual(out, { state: "handed-on", note: "custom" });
+                assert.deepEqual(handoffs, []);
+            },
+            { runClaude: findingsRun("") }
+        );
+        await world(
+            async ({ wiring, task, handoffs }) => {
+                await yoloRun(wiring)(task);
+                assert.match(handoffs[0]!, /not in this version/);
+            },
+            { runClaude: findingsRun("") }
+        );
+    });
 });
