@@ -4,7 +4,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 ## rev 136 (2026-10-26)
 
-**TAI-665 (Bug TAI-664): DEV-YOLO finish follow-up from the PR 23 review.** A `Handoff:` after the merge goes on the parent Story or Bug and says what the Dev ticket did, since the Dev ticket is Done by then and drops out of the open work. The hand-off before the merge no longer says the PR is open. A dirty working tree is found before the merge (`assertCleanTree`), not after it.
+**TAI-665 (Bug TAI-664): DEV-YOLO finish follow-up from the PR 23 review.** A `Handoff:` after the merge goes on the parent Story or Bug and says what the Dev ticket did, since the Dev ticket is Done by then and drops out of the open work. The hand-off before the merge no longer says the PR is open. A dirty working tree is found before the merge (`assertCleanTree`), not after it. PR 24 review: the hand-off says the Dev ticket is Done only once it really reached Done; if the move to Done fails, the hand-off goes on the Dev ticket and says it is not Done.
 
 ## rev 135 (2026-10-26)
 

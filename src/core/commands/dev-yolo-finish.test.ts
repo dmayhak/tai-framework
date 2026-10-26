@@ -275,6 +275,16 @@ describe("finishApproved hand-off placement (TAI-664)", () => {
         });
     });
 
+    it("does not call the Dev ticket Done when the move to Done failed, and posts the hand-off on the Dev ticket", () =>
+        world(async ({ deps, task, keys, handoffs }) => {
+            const failing = { ...deps.workTracker, transition: async () => { throw new Error("jira down"); } } as typeof deps.workTracker;
+            await finishApproved({ ...deps, workTracker: failing })(task, "u");
+            assert.deepEqual(keys, [task.issue.key]);
+            assert.match(handoffs[0]!, /merged by this run.*is not Done/s);
+            assert.doesNotMatch(handoffs[0]!, /is Done:/);
+            assert.match(handoffs[0]!, /could not be moved to Done: jira down/);
+        }));
+
     it("stops before the merge when the working tree is dirty, with the PR still open", () =>
         world(async ({ deps, task, log, keys, handoffs }) => {
             const out = await finishApproved({ ...deps, assertClean: async () => { throw new Error("M a.ts"); } })(task, "u");
