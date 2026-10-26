@@ -42,7 +42,7 @@ describe("tai-settings", () => {
             await changeAdmin(make(), "add", "del@mayhak.com");
             await assert.rejects(setSetting(make(), "review-rounds", "99"), /1 to 10/);
             await assert.rejects(setSetting(make(), "nope", "1"), /Unknown setting "nope"/);
-            assert.match(await showSettings(make()), /review-rounds\*\*: 2 \(default\)/);
+            assert.match(await showSettings(make()), /review-rounds\*\*: 4 \(default\)/);
         }));
 
     it("refuses an autonomy change from an acting persona, an AI session, or a human not on the list", () =>

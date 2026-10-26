@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-25 (rev 132). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-26 (rev 133). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1228,8 +1228,13 @@ comment's content.
   the same: anyone who can edit the Confluence page can edit it by hand, so it gates this command and is not proof of a
   human decision. A save changes only the rows and admin entries TAI understands and keeps every other row and line
   of the page. Only `do-dev-tasks` reads a setting so far (`dev-yolo`, to choose between its two modes, and with it on it builds
-  nothing until TAI-634); the unattended Dev run (Epic TAI-625) must not treat the page alone as proof that a person turned
-  autonomy on.
+  nothing until the unattended run is finished). `review-rounds` defaults to 4. A change to an autonomy setting through
+  `settings set` also records, in `.tai/autonomy-attestations.json` on that machine (`core/settings/attestation.ts`), that this
+  person set it, even when the page already held the value. The unattended Dev run (Epic TAI-625) does not treat the page
+  alone as proof that a person turned autonomy on: `core/commands/yolo-checks.ts` stops a ticket unless DEV-YOLO is on for
+  the person, the person is on the `Autonomy admins` list, this machine holds that record, and the ticket's Story has no
+  open `Database`, `UAT` or test-tier subtask (a cancelled one is ignored; a `Database` subtask stops it in any other state).
+  Each reason is a sentence for the hand-off.
 - **"Do all dev tasks" works the current user's Dev subtasks, one headless run each (`do-dev-tasks`, `/tai-do-dev-tasks`).**
   `core/commands/do-dev-tasks.ts` finds the current user's In Progress and To Do `Dev` subtasks on Stories and Bugs,
   most urgent first. It skips, and says why, a To Do one that precedence still holds and any whose Story or itself has an
@@ -1247,7 +1252,8 @@ comment's content.
   `core/git/host-factory.ts` builds the backend from it for every command. Bitbucket uses
   `BITBUCKET_EMAIL`/`BITBUCKET_API_TOKEN`; GitHub uses `GITHUB_TOKEN`, and the current human's email for
   the "PR Reviewers" page comes from `TAI_JIRA_EMAIL`, since a GitHub token carries none. On GitHub,
-  reviewers are named by the login in the page's GitHub column; every GitHub review carries the commit it
+  reviewers are named by the login in the page's GitHub column; an optional Marker column set to `automated` marks a
+  separate Claude account that reviews for an unattended run (`PrReviewer.automated`); every GitHub review carries the commit it
   was cast on, so the merge gate's fresh-approval rule reads the same; commit statuses and check runs
   (GitHub Actions) both count as CI. A fine-grained token cannot read check runs, so with one the
   commit's GitHub Actions workflow runs are read instead (permission Actions: read); CI that cannot be

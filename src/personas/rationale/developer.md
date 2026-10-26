@@ -71,6 +71,14 @@ An approved PR was merged with unread reviewer comments on it. The rule since: r
 fix, file a ticket, or skip with a reason, and tell the human. A reviewer's factual claims are checked
 before acting, because they have been wrong.
 
+## Every Suggestion and Nitpick gets a decision (TAI-634, ADR page 64782337 decision 3)
+
+The human's amendment of 2026-10-25: an unattended run may continue past a review whose findings are all Suggestions or
+Nitpicks, but only if none is silently dropped. Each gets one of three outcomes, so nothing is lost and nothing grows the
+change without a reason. "Make a ticket" is for work worth doing that does not belong in this PR. "Comment why not" keeps
+the reason where the reviewer and later readers look. A finding above Suggestion is left to a person on purpose: the
+building run deciding its own serious findings would be self-certification.
+
 ## No Defect subtask
 
 Pre-merge rework creates no new artifact; see `workflows/story.md`, "Why no Defect subtask".

@@ -30,6 +30,8 @@ export interface SettingsContext {
     readonly actingPersona?: string;
     /** True inside an AI session (Claude Code or Gemini CLI set a marker in the environment). */
     readonly aiSession: boolean;
+    /** Records on this machine that the human set an autonomy setting (TAI-634); the unattended run asks for it as well as the page. */
+    readonly attest?: (email: string, key: string, value: string) => Promise<void>;
 }
 
 /** Claude Code and Gemini CLI mark the shells they start. A marker is a guard against an AI session
@@ -121,6 +123,8 @@ export async function setSetting(ctx: SettingsContext, key: string, rawValue: st
     }
     const email = requireEmail(ctx);
     const before = viewSettings(loaded.state, email).find((v) => v.def.key === def.key)!.value;
+    // Recorded even when the page already holds the value, so a person re-running the command can supply a missing record.
+    if (def.autonomy) await ctx.attest?.(email, def.key, value);
     if (before === value) return `# No change\n\n${def.key} is already ${value} for ${email}.`;
     await save(ctx, loaded, withValue(loaded.state, email, def.key, value));
     return `# Setting changed\n\n${def.key} for ${email}: ${before} -> ${value}.`;

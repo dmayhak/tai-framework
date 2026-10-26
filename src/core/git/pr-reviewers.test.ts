@@ -204,4 +204,23 @@ describe("loadPrReviewers / loadCachedPrReviewers", () => {
             await rm(dir, { recursive: true, force: true });
         }
     });
+    it("reads an optional Marker column: automated marks a separate Claude account, any other cell does not (TAI-634)", () => {
+        const md = [
+            "| Reviewer | GitHub | Marker |",
+            "| --- | --- | --- |",
+            "| del@mayhak.com | dmayhak | |",
+            "| claude-reviewer@mayhak.com | delmayhak-coder | Automated |",
+            "| a@b.co, c@d.co | alice, carol | , automated |",
+        ].join("\n");
+        const reviewers = parsePrReviewers(md);
+        assert.deepEqual(
+            reviewers.map((r) => [r.email, r.automated === true]),
+            [
+                ["del@mayhak.com", false],
+                ["claude-reviewer@mayhak.com", true],
+                ["a@b.co", false],
+                ["c@d.co", true],
+            ]
+        );
+    });
 });

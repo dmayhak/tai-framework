@@ -38,7 +38,7 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
     {
         key: "review-rounds",
         type: "integer",
-        default: "2",
+        default: "4",
         autonomy: true,
         min: 1,
         max: 10,
