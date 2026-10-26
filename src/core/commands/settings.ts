@@ -10,11 +10,11 @@ import type { DocStore, Page } from "../storage/interface.js";
 import { CONFIG_FOLDER_TITLE } from "../storage/doc-folders.js";
 import {
     EMPTY_SETTINGS,
+    mergeSettingsPage,
     SETTINGS_PAGE_TITLE,
     findSetting,
     parseSettingValue,
     parseSettingsPage,
-    renderSettingsPage,
     viewSettings,
     withAdmins,
     withValue,
@@ -51,7 +51,7 @@ async function load(ctx: SettingsContext): Promise<Loaded> {
 }
 
 async function save(ctx: SettingsContext, loaded: Loaded, state: SettingsState): Promise<void> {
-    const content = renderSettingsPage(state);
+    const content = mergeSettingsPage(loaded.page?.content ?? null, state);
     if (loaded.page) {
         await ctx.docStore.updatePage({ id: loaded.page.id }, { content });
         return;

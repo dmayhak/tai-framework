@@ -313,6 +313,7 @@ installed and a project is configured (or you're using the filesystem quickstart
 | `/tai-change [epic] <what changed>` | Course-correct after a change in scope or direction: Perry (PM) reads the open board and its linked documents, and proposes a batch of cancels, rewords, new tickets and page revisions, applied only after you confirm. Needs no ticket. |
 | `/tai-small <request>` | The light lane for a very small change (one you could describe in two sentences): creates the Story or Bug and its Dev subtask in one command, both in To Do. Review and the merge gate still apply. |
 | `/tai-verify <STORY-KEY>` | Check a Story's or Bug's finished work against its numbered `AC-n` acceptance criteria: Tessa (Tester) reads the criteria and the Dev PR diffs and posts one `Verified:` / `Not verified:` comment. Show-only; nothing is blocked. |
+| `/tai-settings` | Show the project's TAI settings (value, default, meaning) and change them: `settings set <key> <value>`. The autonomy settings, and the list of humans who may change them, can be changed only by a person on that list, from a plain terminal and not from an AI session. |
 
 `/tai-ready` shows live state, in one numbered list: what's **In Progress**; what's **Ready Work**;
 Stories and Bugs **ready to verify** and **ready to close** (verified, with nothing open); and,

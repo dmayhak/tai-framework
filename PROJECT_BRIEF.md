@@ -1224,8 +1224,11 @@ comment's content.
   `settings admins add|remove <email>` edits the list (`core/commands/settings.ts`). An autonomy change is refused
   from an acting persona (`--as`), from an AI session (Claude Code and Gemini CLI mark their shells), and from a
   human not on the list; with an empty list a human may add only themselves. The AI-session check is a guard
-  against accidental self-escalation, not a defence against a session set on evading it. Nothing reads these
-  settings yet: the unattended Dev run (Epic TAI-625) does.
+  against accidental self-escalation, not a defence against a session set on evading it. The `Autonomy admins` list is
+  the same: anyone who can edit the Confluence page can edit it by hand, so it gates this command and is not proof of a
+  human decision. A save changes only the rows and admin entries TAI understands and keeps every other row and line
+  of the page. Nothing reads these settings yet; the unattended Dev run (Epic TAI-625) must not treat the page alone as
+  proof that a person turned autonomy on.
 - **One git host per project, named by `TAI_GIT_HOST`** (`bitbucket` or `github`), which `init run`
   writes from `origin`'s remote. Unset, TAI reads `origin` at run time and falls back to Bitbucket.
   `core/git/host-factory.ts` builds the backend from it for every command. Bitbucket uses

@@ -800,7 +800,7 @@ function changeSkillBody(taiHome: string): string {
     );
 }
 
-/** All 22 skill files (11 skills × 2 hosts) — identical content per skill across hosts, since
+/** All 24 skill files (12 skills × 2 hosts) — identical content per skill across hosts, since
  *  both use the same SKILL.md format and neither relies on host-specific auto-exec syntax. */
 export function renderGlobalSkillFiles(taiHome: string): readonly SkillFile[] {
     const skills: readonly { readonly name: string; readonly description: string; readonly body: string }[] = [
@@ -911,7 +911,7 @@ export function defaultTaiHome(): string {
 }
 
 /**
- * Writes all 22 global skill files (11 skills x 2 hosts) under the user's home directory. Fails loudly if
+ * Writes all 24 global skill files (12 skills x 2 hosts) under the user's home directory. Fails loudly if
  * `taiHome` doesn't exist — this function never clones it (see file header); the caller
  * (the `tai-init` skill's own prose, or a human) is responsible for that first.
  */

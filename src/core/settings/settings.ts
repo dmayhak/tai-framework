@@ -147,7 +147,7 @@ export function renderSettingsPage(state: SettingsState): string {
         }
     }
     return [
-        "Settings for this project. Edit with the `tai-settings` command; a value that is not valid for its setting is ignored and reported.",
+        "Settings for this project. Edit with the `tai-settings` command; a row that is not valid is not applied, and is left as written for you to fix.",
         "",
         "| User | Setting | Value |",
         "| --- | --- | --- |",
@@ -160,6 +160,65 @@ export function renderSettingsPage(state: SettingsState): string {
         ...state.admins.map((a) => `- ${a}`),
         "",
     ].join("\n");
+}
+
+/**
+ * The page text after a change: `existing` with only the rows and admin entries TAI understands
+ * rewritten from `state`. A row it does not understand, and any prose the page carries, are kept as
+ * they are, so a hand edit or a setting from a newer TAI is never erased by a save (PR 17 review).
+ */
+export function mergeSettingsPage(existing: string | null, state: SettingsState): string {
+    if (existing === null) return renderSettingsPage(state);
+    const rows = renderSettingsPage(state)
+        .split("\n")
+        .filter((l) => /^\| .+ \| .+ \| .+ \|$/.test(l) && !/^\| (User|---)/.test(l));
+    const out: string[] = [];
+    let inAdmins = false;
+    let ruleAt = -1;
+    let adminsStart = -1;
+    for (const line of existing.split("\n")) {
+        if (/^#{1,6}\s/.test(line)) {
+            inAdmins = ADMINS_HEADING.test(line.trim());
+            if (inAdmins) adminsStart = out.length + 1;
+        } else if (inAdmins) {
+            if (/^\s*[-*]\s+(?:\[[^\]]+\]\([^)]*\)|\S+@\S+)\s*$/.test(line)) continue;
+        } else {
+            const cells = tableRow(line);
+            if (cells && cells.length >= 3) {
+                if (ruleAt === -1 && /^[\s:-]+$/.test(cells.join(""))) ruleAt = out.length;
+                else if (!/^user$/i.test(cells[0] ?? "") && findSetting(cells[1] ?? "")) {
+                    try {
+                        parseSettingValue(findSetting(cells[1]!)!, cells[2] ?? "");
+                        continue; // a row TAI understands: written again from `state` below
+                    } catch {
+                        // an invalid value stays on the page for the person to fix
+                    }
+                }
+            }
+        }
+        out.push(line);
+    }
+    const admins = state.admins.map((a) => `- ${a}`);
+    if (ruleAt === -1) {
+        out.unshift("| User | Setting | Value |", "| --- | --- | --- |", ...rows, "");
+        if (adminsStart !== -1) adminsStart += rows.length + 3;
+    } else {
+        out.splice(ruleAt + 1, 0, ...rows);
+        if (ruleAt < adminsStart) adminsStart += rows.length;
+    }
+    if (adminsStart === -1) out.push("", "## Autonomy admins", "", ...admins);
+    else {
+        let end = out.length;
+        for (let i = adminsStart; i < out.length; i++) {
+            if (/^#{1,6}\s/.test(out[i]!)) {
+                end = i;
+                break;
+            }
+        }
+        while (end > adminsStart && out[end - 1]!.trim() === "") end--;
+        out.splice(end, 0, ...admins);
+    }
+    return out.join("\n");
 }
 
 export interface SettingView {

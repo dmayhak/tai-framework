@@ -11,6 +11,7 @@ import {
     withAdmins,
     withValue,
     EMPTY_SETTINGS,
+    mergeSettingsPage,
 } from "./settings.js";
 
 describe("parseSettingValue", () => {
@@ -60,5 +61,39 @@ describe("viewSettings", () => {
         assert.equal(views.length, SETTING_DEFINITIONS.length);
         assert.equal(views.find((v) => v.def.key === "review-rounds")?.isDefault, false);
         assert.equal(views.find((v) => v.def.key === "dev-yolo")?.isDefault, true);
+    });
+});
+
+describe("mergeSettingsPage", () => {
+    const hand =
+        "Our notes: change these with care.\n\n| User | Setting | Value |\n| --- | --- | --- |\n| a@b.co | dev-yolo | maybe |\n| a@b.co | future-setting | 1 |\n| a@b.co | review-rounds | 4 |\n\n## Autonomy admins\n\nOnly these may change autonomy.\n\n- a@b.co\n\n## Later notes\n\nKeep me.\n";
+
+    it("changes one value and keeps unrecognised rows and prose", () => {
+        const { state } = parseSettingsPage(hand);
+        const merged = mergeSettingsPage(hand, withValue(state, "a@b.co", "review-rounds", "6"));
+        assert.match(merged, /Our notes: change these with care\./);
+        assert.match(merged, /\| a@b\.co \| dev-yolo \| maybe \|/);
+        assert.match(merged, /\| a@b\.co \| future-setting \| 1 \|/);
+        assert.match(merged, /Keep me\./);
+        assert.equal((merged.match(/review-rounds/g) ?? []).length, 1);
+        assert.match(merged, /\| a@b\.co \| review-rounds \| 6 \|/);
+        assert.equal(parseSettingsPage(merged).state.values.get("a@b.co")?.get("review-rounds"), "6");
+    });
+
+    it("adds an admin inside its section, before the next heading, without repeating the others", () => {
+        const { state } = parseSettingsPage(hand);
+        const merged = mergeSettingsPage(hand, withAdmins(state, ["a@b.co", "c@d.co"]));
+        assert.deepEqual(parseSettingsPage(merged).state.admins, ["a@b.co", "c@d.co"]);
+        assert.ok(merged.indexOf("c@d.co") < merged.indexOf("## Later notes"));
+    });
+
+    it("builds the table and the admins section when the page has neither, and renders afresh with no page", () => {
+        const state = withAdmins(withValue(EMPTY_SETTINGS, "a@b.co", "dev-yolo", "true"), ["a@b.co"]);
+        const merged = mergeSettingsPage("Just prose.", state);
+        assert.match(merged, /Just prose\./);
+        const parsed = parseSettingsPage(merged).state;
+        assert.equal(parsed.values.get("a@b.co")?.get("dev-yolo"), "true");
+        assert.deepEqual(parsed.admins, ["a@b.co"]);
+        assert.equal(mergeSettingsPage(null, state), renderSettingsPage(state));
     });
 });
