@@ -172,6 +172,7 @@ import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/ass
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
 import { recordAttestation } from "../core/settings/attestation.js";
+import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
 import { findDevTasks, parseDevTasksArgs, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
@@ -2313,8 +2314,30 @@ async function main(): Promise<void> {
         const timeoutMs = devRunTimeoutMs();
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         stopRunsOnInterrupt();
+        const yoloWiring = yolo
+            ? {
+                  gitHost: gitDeps.gitHost,
+                  repos: gitDeps.repos,
+                  workTracker: config.backend.workTracker,
+                  docStore: config.backend.docStore,
+                  spaceKey: config.spaceKey,
+                  projectKey: config.projectKey,
+                  taiDir: resolvePath(config.taiRoot),
+                  email: config.currentHuman?.email ?? null,
+                  cli,
+                  cwd: process.cwd(),
+                  timeoutMs,
+                  rounds: Number(await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "review-rounds")),
+                  checkConfigured,
+                  reviewer: { token: process.env["TAI_REVIEWER_GITHUB_TOKEN"], email: process.env["TAI_REVIEWER_EMAIL"] },
+                  handoff: async (key: string, body: string) => {
+                      await postIssueComment(config.backend.workTracker, key as IssueKey, stampComment(body, developer));
+                  },
+              }
+            : null;
         const worked = await workDevTasks(find, {
             yolo,
+            ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
             prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
             build: (task) => runHeadlessClaude(buildDevPrompt(task.issue.key, cli), { cwd: process.cwd(), timeoutMs }),

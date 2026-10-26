@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-26 (rev 133). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-26 (rev 134). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1227,8 +1227,7 @@ comment's content.
   against accidental self-escalation, not a defence against a session set on evading it. The `Autonomy admins` list is
   the same: anyone who can edit the Confluence page can edit it by hand, so it gates this command and is not proof of a
   human decision. A save changes only the rows and admin entries TAI understands and keeps every other row and line
-  of the page. Only `do-dev-tasks` reads a setting so far (`dev-yolo`, to choose between its two modes, and with it on it builds
-  nothing until the unattended run is finished). `review-rounds` defaults to 4. A change to an autonomy setting through
+  of the page. Only `do-dev-tasks` reads a setting so far (`dev-yolo`, to choose between its two modes, and with it on, the unattended run below). `review-rounds` defaults to 4. A change to an autonomy setting through
   `settings set` also records, in `.tai/autonomy-attestations.json` on that machine (`core/settings/attestation.ts`), that this
   person set it, even when the page already held the value. The unattended Dev run (Epic TAI-625) does not treat the page
   alone as proof that a person turned autonomy on: `core/commands/yolo-checks.ts` stops a ticket unless DEV-YOLO is on for
@@ -1245,8 +1244,17 @@ comment's content.
   host (its title carries the Dev key) and whether its commit has a check result; a run that leaves no PR fails the
   ticket. A failure posts a `Handoff:` comment on that ticket and the others go on. The command ends with what was done,
   what failed, what was skipped and what waits for a person. `dryrun=true` lists and runs nothing. With the `dev-yolo`
-  setting on, each ticket is handed to the full unattended run (TAI-634); until that exists the command builds nothing
-  and says so. `TAI_DEV_RUN_TIMEOUT_MIN` (default 45; a value that is not a positive number is refused) stops a run that hangs, with the whole process group stopped and then killed after a short grace, and the result returned from the timeout even if a child holds the pipes open. The PR is found by the Dev key opening one of the first two slots of its title (`TAI-<STORY> - TAI-<SUBTASK> - …`), the open PRs are listed once per look, and a ticket whose PR is already open is skipped, so the command is safe to run twice (this includes a PR a reviewer sent back for changes: rework is not picked up by this command yet, and the skip reason says so). A run that leaves the working tree dirty stops the whole command: the report says so, the hand-off goes on the ticket whose run left the changes, and no later ticket is failed for it. Ctrl-C or a terminate stops the runs in flight (their whole process groups) before the command exits, so no unattended run outlives it (SIGTERM, then SIGKILL after a few seconds for any that ignore it). A run accepts file edits (`--permission-mode acceptEdits`); every other command must already be allowed by the person's own Claude rules, and one that is not is denied and fails that ticket with a hand-off. The allow rule does not cover this command, and the run is given no blanket allow, because that would include `git-pr merge`.
+  setting on, each ticket is first checked (`yoloStopReasons` plus an automated reviewer account that is set up and listed on
+  `PR Reviewers` with the `automated` marker, different from the person's own); a ticket that fails a check gets a `Handoff:`
+  and nothing is prepared or built. Then `core/commands/dev-yolo.ts` runs it: the build run, then up to `review-rounds`
+  rounds of a fresh Claude run as the Code Reviewer (started with `TAI_REVIEWER_GITHUB_TOKEN` and `TAI_REVIEWER_EMAIL`, so it posts
+  from its own account; it posts its findings and casts its own decision) and a Developer run that decides every Suggestion
+  and Nitpick (do it now, make a new ticket, or comment why not) and posts one line per finding on the PR. Any finding
+  above Suggestion, a request for changes, no approval on the PR's current commit, a failed run, or the last round ending
+  in a push with no fresh review stops that ticket with a `Handoff:` for a person and the batch goes on. A fix that pushed
+  needs a fresh review; one that pushed nothing keeps the approval. The merge, the verification and the close are not in
+  this version: an approved PR is left with a hand-off to merge through the gate and run `/tai-verify`. The runs are told
+  never to force and never to edit `.tai/`; the checks run before the build, and the record is not read again. `TAI_DEV_RUN_TIMEOUT_MIN` (default 45; a value that is not a positive number is refused) stops a run that hangs, with the whole process group stopped and then killed after a short grace, and the result returned from the timeout even if a child holds the pipes open. The PR is found by the Dev key opening one of the first two slots of its title (`TAI-<STORY> - TAI-<SUBTASK> - …`), the open PRs are listed once per look, and a ticket whose PR is already open is skipped, so the command is safe to run twice (this includes a PR a reviewer sent back for changes: rework is not picked up by this command yet, and the skip reason says so). A run that leaves the working tree dirty stops the whole command: the report says so, the hand-off goes on the ticket whose run left the changes, and no later ticket is failed for it. Ctrl-C or a terminate stops the runs in flight (their whole process groups) before the command exits, so no unattended run outlives it (SIGTERM, then SIGKILL after a few seconds for any that ignore it). A run accepts file edits (`--permission-mode acceptEdits`); every other command must already be allowed by the person's own Claude rules, and one that is not is denied and fails that ticket with a hand-off. The allow rule does not cover this command, and the run is given no blanket allow, because that would include `git-pr merge`.
 - **One git host per project, named by `TAI_GIT_HOST`** (`bitbucket` or `github`), which `init run`
   writes from `origin`'s remote. Unset, TAI reads `origin` at run time and falls back to Bitbucket.
   `core/git/host-factory.ts` builds the backend from it for every command. Bitbucket uses
