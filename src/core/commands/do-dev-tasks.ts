@@ -160,6 +160,8 @@ export interface RunDevTasksDeps {
     readonly inspect: (task: DevTask) => Promise<{ readonly prUrl: string | null; readonly checkRecorded: boolean | null }>;
     /** The full unattended run (`dev-yolo` on), when this version has one. */
     readonly yoloRun?: (task: DevTask) => Promise<DevTaskOutcome>;
+    /** Why a ticket needs a person even with `dev-yolo` on (empty when it may run). Asked before anything is prepared or built. */
+    readonly yoloGate?: (task: DevTask) => Promise<readonly string[]>;
     /** Posts the ticket's `Handoff:` comment. */
     readonly handoff: (key: IssueKey, body: string) => Promise<void>;
     readonly yolo: boolean;
@@ -187,6 +189,14 @@ export function failureHandoff(reason: string): string {
 export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<DevTaskResult> {
     let outcome: DevTaskOutcome;
     try {
+        if (deps.yolo && deps.yoloGate) {
+            const reasons = await deps.yoloGate(task);
+            if (reasons.length > 0) {
+                const reason = `needs a person: ${reasons.join("; ")}`;
+                await deps.handoff(task.issue.key, `Handoff: DEV-YOLO did not start on this ticket. ${reason}.\n\nNothing was built, reviewed, merged or closed. Next: put right what is named, or do the ticket by hand.`);
+                return { task, outcome: { state: "waiting", reason } };
+            }
+        }
         try {
             // Until the full run exists (TAI-634), DEV-YOLO on builds nothing, so it does not move the person's checkout either.
             if (!(deps.yolo && !deps.yoloRun)) await deps.prepare(task);
