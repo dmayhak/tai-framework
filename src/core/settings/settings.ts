@@ -216,7 +216,7 @@ export function mergeSettingsPage(existing: string | null, state: SettingsState)
                     }
                 }
                 const value = def ? state.values.get(email)?.get(def.key) : undefined;
-                if (def && valid && value !== undefined && !written.has(`${email}|${def.key}`)) {
+                if (def && valid && value !== undefined) {
                     written.add(`${email}|${def.key}`);
                     out.push(`| ${[cells[0], def.key, value, ...cells.slice(3)].join(" | ")} |`);
                     tableEnd = out.length;

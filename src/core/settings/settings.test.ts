@@ -114,4 +114,12 @@ describe("mergeSettingsPage", () => {
         assert.equal(state.values.size, 0);
         assert.deepEqual(unknown, []);
     });
+
+    it("rewrites every row for a user and setting, so the one that is read back is the one that was saved", () => {
+        const page = "| User | Setting | Value |\n| --- | --- | --- |\n| a@b.co | dev-yolo | true |\n| a@b.co | dev-yolo | true |\n";
+        const { state } = parseSettingsPage(page);
+        const merged = mergeSettingsPage(page, withValue(state, "a@b.co", "dev-yolo", "false"));
+        assert.equal(parseSettingsPage(merged).state.values.get("a@b.co")?.get("dev-yolo"), "false");
+        assert.equal((merged.match(/dev-yolo/g) ?? []).length, 2);
+    });
 });
