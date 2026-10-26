@@ -96,4 +96,22 @@ describe("mergeSettingsPage", () => {
         assert.deepEqual(parsed.admins, ["a@b.co"]);
         assert.equal(mergeSettingsPage(null, state), renderSettingsPage(state));
     });
+
+    it("writes into the settings table, not another table, and keeps an extra column on a row", () => {
+        const page =
+            "| Team | Lead |\n| --- | --- |\n| core | sam |\n\n| User | Setting | Value | Note |\n| --- | --- | --- | --- |\n| a@b.co | review-rounds | 4 | agreed 10/24 |\n";
+        const { state } = parseSettingsPage(page);
+        let merged = mergeSettingsPage(page, withValue(state, "a@b.co", "review-rounds", "5"));
+        assert.match(merged, /\| a@b\.co \| review-rounds \| 5 \| agreed 10\/24 \|/);
+        merged = mergeSettingsPage(merged, withValue(parseSettingsPage(merged).state, "c@d.co", "dev-yolo", "true"));
+        assert.ok(merged.indexOf("| c@d.co | dev-yolo | true |") > merged.indexOf("| User | Setting | Value | Note |"));
+        assert.match(merged, /\| core \| sam \|\n\n\| User/);
+        assert.equal(parseSettingsPage(merged).state.values.get("c@d.co")?.get("dev-yolo"), "true");
+    });
+
+    it("does not read rows of another table as settings", () => {
+        const { state, unknown } = parseSettingsPage("| Team | Lead |\n| --- | --- |\n| a@b.co | dev-yolo | true |\n");
+        assert.equal(state.values.size, 0);
+        assert.deepEqual(unknown, []);
+    });
 });

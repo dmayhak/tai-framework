@@ -93,6 +93,11 @@ export const EMPTY_SETTINGS: SettingsState = { values: new Map(), admins: [] };
 
 const ADMINS_HEADING = /^#{1,6}\s*autonomy admins\s*$/i;
 
+/** The settings table is the one whose header starts `User | Setting | Value`; extra columns after those are allowed. */
+function isSettingsHeader(cells: readonly string[]): boolean {
+    return /^user$/i.test(cells[0] ?? "") && /^setting$/i.test(cells[1] ?? "") && /^value$/i.test(cells[2] ?? "");
+}
+
 function tableRow(line: string): string[] | null {
     const t = line.trim();
     if (!t.startsWith("|") || !t.endsWith("|")) return null;
@@ -109,8 +114,12 @@ export function parseSettingsPage(markdown: string): { readonly state: SettingsS
     const admins: string[] = [];
     const unknown: string[] = [];
     let inAdmins = false;
+    let inTable = false;
     for (const line of markdown.split("\n")) {
-        if (/^#{1,6}\s/.test(line)) inAdmins = ADMINS_HEADING.test(line.trim());
+        if (/^#{1,6}\s/.test(line)) {
+            inAdmins = ADMINS_HEADING.test(line.trim());
+            inTable = false;
+        }
         if (inAdmins) {
             const email = /^\s*[-*]\s+(?:\[([^\]]+)\]\([^)]*\)|(\S+@\S+))\s*$/.exec(line);
             const found = (email?.[1] ?? email?.[2] ?? "").replace(/^mailto:/, "").trim().toLowerCase();
@@ -118,7 +127,15 @@ export function parseSettingsPage(markdown: string): { readonly state: SettingsS
             continue;
         }
         const cells = tableRow(line);
-        if (!cells || cells.length < 3 || /^[\s:-]+$/.test(cells.join("")) || /^user$/i.test(cells[0] ?? "")) continue;
+        if (!cells) {
+            inTable = false;
+            continue;
+        }
+        if (isSettingsHeader(cells)) {
+            inTable = true;
+            continue;
+        }
+        if (!inTable || /^[\s:-]+$/.test(cells.join("")) || cells.length < 3) continue;
         const [user, key, value] = cells as [string, string, string];
         const def = findSetting(key);
         if (!def) {
@@ -164,48 +181,69 @@ export function renderSettingsPage(state: SettingsState): string {
 
 /**
  * The page text after a change: `existing` with only the rows and admin entries TAI understands
- * rewritten from `state`. A row it does not understand, and any prose the page carries, are kept as
- * they are, so a hand edit or a setting from a newer TAI is never erased by a save (PR 17 review).
+ * rewritten from `state`. A row it does not understand, an extra column on a row it does, other
+ * tables and any prose the page carries are kept as they are, so a hand edit or a setting from a
+ * newer TAI is never erased by a save (PR 17 review).
  */
 export function mergeSettingsPage(existing: string | null, state: SettingsState): string {
     if (existing === null) return renderSettingsPage(state);
-    const rows = renderSettingsPage(state)
-        .split("\n")
-        .filter((l) => /^\| .+ \| .+ \| .+ \|$/.test(l) && !/^\| (User|---)/.test(l));
     const out: string[] = [];
+    const written = new Set<string>();
     let inAdmins = false;
-    let ruleAt = -1;
+    let inTable = false;
+    let tableEnd = -1; // index in `out` just after the settings table's last line
     let adminsStart = -1;
     for (const line of existing.split("\n")) {
         if (/^#{1,6}\s/.test(line)) {
             inAdmins = ADMINS_HEADING.test(line.trim());
+            inTable = false;
             if (inAdmins) adminsStart = out.length + 1;
         } else if (inAdmins) {
             if (/^\s*[-*]\s+(?:\[[^\]]+\]\([^)]*\)|\S+@\S+)\s*$/.test(line)) continue;
         } else {
             const cells = tableRow(line);
-            if (cells && cells.length >= 3) {
-                if (ruleAt === -1 && /^[\s:-]+$/.test(cells.join(""))) ruleAt = out.length;
-                else if (!/^user$/i.test(cells[0] ?? "") && findSetting(cells[1] ?? "")) {
+            if (!cells) inTable = false;
+            else if (isSettingsHeader(cells)) inTable = true;
+            else if (inTable && cells.length >= 3 && !/^[\s:-]+$/.test(cells.join(""))) {
+                const def = findSetting(cells[1] ?? "");
+                const email = (cells[0] ?? "").replace(/^\[([^\]]+)\]\([^)]*\)$/, "$1").trim().toLowerCase();
+                let valid = def !== undefined;
+                if (def) {
                     try {
-                        parseSettingValue(findSetting(cells[1]!)!, cells[2] ?? "");
-                        continue; // a row TAI understands: written again from `state` below
+                        parseSettingValue(def, cells[2] ?? "");
                     } catch {
-                        // an invalid value stays on the page for the person to fix
+                        valid = false; // an invalid value stays on the page for the person to fix
                     }
                 }
+                const value = def ? state.values.get(email)?.get(def.key) : undefined;
+                if (def && valid && value !== undefined && !written.has(`${email}|${def.key}`)) {
+                    written.add(`${email}|${def.key}`);
+                    out.push(`| ${[cells[0], def.key, value, ...cells.slice(3)].join(" | ")} |`);
+                    tableEnd = out.length;
+                    continue;
+                }
             }
+            if (inTable) tableEnd = out.length + 1;
         }
         out.push(line);
     }
-    const admins = state.admins.map((a) => `- ${a}`);
-    if (ruleAt === -1) {
-        out.unshift("| User | Setting | Value |", "| --- | --- | --- |", ...rows, "");
-        if (adminsStart !== -1) adminsStart += rows.length + 3;
-    } else {
-        out.splice(ruleAt + 1, 0, ...rows);
-        if (ruleAt < adminsStart) adminsStart += rows.length;
+    const rows: string[] = [];
+    for (const email of [...state.values.keys()].sort()) {
+        for (const def of SETTING_DEFINITIONS) {
+            const value = state.values.get(email)?.get(def.key);
+            if (value !== undefined && !written.has(`${email}|${def.key}`)) rows.push(`| ${email} | ${def.key} | ${value} |`);
+        }
     }
+    if (rows.length > 0) {
+        if (tableEnd === -1) {
+            out.unshift("| User | Setting | Value |", "| --- | --- | --- |", ...rows, "");
+            if (adminsStart !== -1) adminsStart += rows.length + 3;
+        } else {
+            out.splice(tableEnd, 0, ...rows);
+            if (tableEnd <= adminsStart) adminsStart += rows.length;
+        }
+    }
+    const admins = state.admins.map((a) => `- ${a}`);
     if (adminsStart === -1) out.push("", "## Autonomy admins", "", ...admins);
     else {
         let end = out.length;
