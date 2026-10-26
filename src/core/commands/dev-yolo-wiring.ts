@@ -129,6 +129,9 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                 const head = await liveHead(pr);
                 if (!sameCommitHash(head, headBefore)) return { ok: false, reason: `the PR moved from ${headBefore} to ${head} during the review` };
                 if (!sameCommitHash(findings.reviewOf.commit, head)) return { ok: false, reason: `the review is of commit ${findings.reviewOf.commit}, but the PR is at ${head}` };
+                if (findings.reviewOf.repo !== String(pr.repo) || findings.reviewOf.pr !== String(pr.id)) {
+                    return { ok: false, reason: `the review is of ${findings.reviewOf.repo} PR ${findings.reviewOf.pr}, not ${pr.repo} PR ${pr.id}` };
+                }
                 const reviewer = await w.reviewerHost!.getCurrentUser();
                 const decision = reviewDecisionOnHead(await w.gitHost.listPullRequestActivity(pr.repo, pr.id), reviewer);
                 return { ok: true, review: { findings, decision, head } };

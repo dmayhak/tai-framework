@@ -5,7 +5,10 @@ import type { PullRequestActivity } from "../git/interface.js";
 import type { ReviewFinding, ReviewFindings } from "../git/review-findings.js";
 import { runYolo, reviewDecisionOnHead, yoloHandoff, type ReviewDecision, type YoloDeps } from "./dev-yolo.js";
 import { runDevTask, type DevTask, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { buildFixPrompt, buildReviewerPrompt, buildDevPrompt } from "./headless-claude.js";
+import { mkdtemp, rm, writeFile, chmod } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { buildFixPrompt, buildReviewerPrompt, buildDevPrompt, runEnv, runHeadlessClaude } from "./headless-claude.js";
 
 const task = { issue: { key: "TAI-9" }, parent: { key: "TAI-8" } } as unknown as DevTask;
 
@@ -214,5 +217,39 @@ describe("DEV-YOLO prompts", () => {
     });
     it("yoloHandoff names what was done, where it stopped and the next step", () => {
         assert.equal(yoloHandoff("a", "b", "c"), "Handoff: DEV-YOLO run. a\n\nStopped: b\n\nNext: c");
+    });
+    it("the reviewer prompt carves its findings file out of the rule about .tai/, and the other prompts do not", () => {
+        assert.match(buildReviewerPrompt({ repo: "o/r", prId: "7", cli: "tai", findingsPath: "/x/.tai/f.json" }), /yourself \(the TAI commands write there\), except the findings file named in step 2/);
+        assert.doesNotMatch(buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "b", cli: "tai", findings: [] }), /except the findings file/);
+    });
+});
+
+describe("the reviewer's credentials (TAI-634)", () => {
+    it("runEnv leaves the reviewer token out of every run unless that run is given it", () => {
+        process.env["TAI_REVIEWER_GITHUB_TOKEN"] = "tok-reviewer-abcdef";
+        try {
+            assert.equal(runEnv()["TAI_REVIEWER_GITHUB_TOKEN"], undefined);
+            assert.equal(runEnv({ GITHUB_TOKEN: "x" })["GITHUB_TOKEN"], "x");
+            assert.equal(runEnv({ TAI_REVIEWER_GITHUB_TOKEN: "given" })["TAI_REVIEWER_GITHUB_TOKEN"], "given");
+        } finally {
+            delete process.env["TAI_REVIEWER_GITHUB_TOKEN"];
+        }
+    });
+
+    it("a run does not see the reviewer token in its environment, and a reviewer run sees only what it is given", async () => {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-env-"));
+        const bin = path.join(dir, "claude");
+        await writeFile(bin, '#!/bin/sh\necho "reviewer=[$TAI_REVIEWER_GITHUB_TOKEN] gh=[$GITHUB_TOKEN]"\n');
+        await chmod(bin, 0o755);
+        process.env["TAI_REVIEWER_GITHUB_TOKEN"] = "tok-reviewer-abcdef";
+        try {
+            const plain = await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin });
+            assert.equal(plain.summary, "reviewer=[] gh=[]".replace("gh=[]", `gh=[${process.env["GITHUB_TOKEN"] ?? ""}]`));
+            const reviewer = await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin, env: { GITHUB_TOKEN: "tok-given-123456" } });
+            assert.equal(reviewer.summary, "reviewer=[] gh=[***]");
+        } finally {
+            delete process.env["TAI_REVIEWER_GITHUB_TOKEN"];
+            await rm(dir, { recursive: true, force: true });
+        }
     });
 });

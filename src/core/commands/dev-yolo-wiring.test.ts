@@ -213,4 +213,18 @@ describe("yoloRun wiring (TAI-634)", () => {
             }
         );
     });
+    it("stops when the findings are of another PR", () =>
+        world(
+            async ({ wiring, task, handoffs }) => {
+                await yoloRun(wiring)(task);
+                assert.match(handoffs[0]!, /review is of o\/r PR 99, not o\/r PR 7/);
+            },
+            {
+                runClaude: async (prompt) => {
+                    const file = /to (\S+findings\.json)/.exec(prompt)?.[1];
+                    if (file) await writeFile(file, FINDINGS("").replace('"pr":"7"', '"pr":"99"'));
+                    return { ok: true, summary: "" };
+                },
+            }
+        ));
 });
