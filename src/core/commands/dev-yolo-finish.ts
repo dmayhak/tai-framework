@@ -14,6 +14,7 @@ import { mergeBlockersWithCheck } from "../git/local-check.js";
 import { Status } from "../schema/story-schema.js";
 import type { HumanRef, IssueKey, WorkTracker } from "../storage/interface.js";
 import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
+import { DirtyTreeError } from "./dev-tasks-git.js";
 import { yoloHandoff } from "./dev-yolo.js";
 import { stampedAs } from "../storage/stamp.js";
 
@@ -99,14 +100,14 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             try {
                 await deps.assertClean();
             } catch (err) {
-                return await say(`the working tree is not clean, so the verification could not run after a merge: ${errorText(err)}.`, "commit or discard the changes, then run the ticket again.");
+                return await say(`the working tree is not clean, so the verification could not run after a merge: ${err instanceof DirtyTreeError ? err.porcelain.trim() : errorText(err)}.`, "commit or discard the changes, then run the ticket again.");
             }
             // Only on the commit the gate was checked against, and never forced.
             let result: Awaited<ReturnType<FinishDeps["gitHost"]["mergePullRequest"]>>;
             try {
                 result = await deps.gitHost.mergePullRequest(live.repo, live.id, undefined, { expectedHead: live.sourceCommit });
             } catch (err) {
-                // A timeout or a dropped answer can come after the host did merge, so look before saying the PR is open.
+                // A timeout or a dropped answer can come after the host did merge, so look at the host before treating the merge as failed.
                 const after = await deps.gitHost.getPullRequest(live.repo, live.id).catch(() => null);
                 if (after?.state !== "merged") throw err;
                 notes.push(`the merge call failed (${errorText(err)}) but the host shows the PR merged`);

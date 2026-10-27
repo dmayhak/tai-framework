@@ -10,6 +10,7 @@ import { toHumanId, type HumanRef } from "../storage/interface.js";
 import { stampComment } from "../storage/stamp.js";
 import type { GitHost, PullRequestRef } from "../git/interface.js";
 import type { DevTask } from "./do-dev-tasks.js";
+import { DirtyTreeError } from "./dev-tasks-git.js";
 import { automatedMergeComment, finishApproved, verificationVerdict, type FinishDeps } from "./dev-yolo-finish.js";
 
 const TESTER = { id: "tester", displayName: "Tessa" };
@@ -274,6 +275,13 @@ describe("finishApproved hand-off placement (TAI-664)", () => {
             assert.deepEqual(keys, [task.parent.key]);
         });
     });
+
+    it("states the dirty files once when the real DirtyTreeError stops the ticket", () =>
+        world(async ({ deps, task, handoffs }) => {
+            await finishApproved({ ...deps, assertClean: async () => { throw new DirtyTreeError(" M a.ts\n"); } })(task, "u");
+            assert.match(handoffs[0]!, /working tree is not clean.*M a\.ts/s);
+            assert.doesNotMatch(handoffs[0]!, /uncommitted changes|new run/);
+        }));
 
     it("does not call the Dev ticket Done when the move to Done failed, and posts the hand-off on the Dev ticket", () =>
         world(async ({ deps, task, keys, handoffs }) => {
