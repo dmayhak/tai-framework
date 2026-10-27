@@ -150,6 +150,15 @@ describe("short commands (TAI-699)", () => {
             assert.deepEqual(spawnSync("ls", [dir], { encoding: "utf8" }).stdout.trim(), "", "nothing was linked");
         }));
 
+    it("tai-link --remove on a directory that does not exist says so and fails, like the install does (PR 35 review)", () =>
+        world(async (w) => {
+            const missing = path.join(path.dirname(w.project), "nope");
+            const r = w.run("tai-link", ["--remove", missing]);
+            assert.equal(r.status, 2);
+            assert.match(r.err, /is not a directory/);
+            assert.equal(r.out, "");
+        }));
+
     it("says so, and runs nothing, when readlink cannot take -f (PR 35 review)", () =>
         world(async (w) => {
             const fake = path.join(path.dirname(w.project), "fakebin");

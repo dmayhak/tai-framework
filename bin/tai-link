@@ -26,6 +26,8 @@ done
 dir="${dir:-$HOME/.local/bin}"
 names="tai tai-settings tai-do-dev-tasks"
 
+[ -d "$dir" ] || { echo "tai-link: $dir is not a directory (make it, or pass another one that is on your path)" >&2; exit 2; }
+
 if [ "$remove" = 1 ]; then
     for n in $names; do
         if [ -L "$dir/$n" ] && [ "$(readlink -f "$dir/$n")" = "$(readlink -f "$tai")" ]; then
@@ -38,7 +40,6 @@ if [ "$remove" = 1 ]; then
     exit 0
 fi
 
-[ -d "$dir" ] || { echo "tai-link: $dir is not a directory (make it, or pass another one that is on your path)" >&2; exit 2; }
 status=0
 for n in $names; do
     if [ -L "$dir/$n" ] && [ "$(readlink -f "$dir/$n")" = "$(readlink -f "$tai")" ]; then
