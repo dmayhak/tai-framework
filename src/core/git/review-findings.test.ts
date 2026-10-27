@@ -120,15 +120,9 @@ describe("parseReviewFindings", () => {
     });
 });
 
-// A partition that treats nothing as inline -- isolates the pure severity-grouping/
-// per-finding rendering behavior from TAI-207's default auto-partitioning (covered
-// separately below), since `validFindings`' critical finding has a `line` and is
-// therefore inline-eligible by default.
-const noneInline = { inline: [], summary: validFindings.findings };
-
 describe("renderReviewFindings", () => {
     it("groups findings by severity in fixed order (critical, suggestion, nitpick, good)", () => {
-        const rendered = renderReviewFindings(validFindings, noneInline);
+        const rendered = renderReviewFindings(validFindings);
         const criticalIndex = rendered.indexOf("### 🔴 Critical");
         const nitpickIndex = rendered.indexOf("### 🔵 Nitpick");
         assert.ok(criticalIndex >= 0 && nitpickIndex >= 0);
@@ -136,14 +130,14 @@ describe("renderReviewFindings", () => {
     });
 
     it("includes each finding's file, line, issue, and fix", () => {
-        const rendered = renderReviewFindings(validFindings, noneInline);
+        const rendered = renderReviewFindings(validFindings);
         assert.match(rendered, /src\/db\.ts.*line 42/);
         assert.match(rendered, /User input is concatenated directly into the query\./);
         assert.match(rendered, /```suggestion\n\s*use a parameterized query\n\s*```/);
     });
 
     it("omits empty severity sections", () => {
-        const rendered = renderReviewFindings(validFindings, noneInline);
+        const rendered = renderReviewFindings(validFindings);
         assert.ok(!rendered.includes("### 🟡 Suggestion"));
         assert.ok(!rendered.includes("### 🟢 Good"));
     });
@@ -154,26 +148,24 @@ describe("renderReviewFindings", () => {
     });
 
     it("always ends with the leaning and its reason, never a decision", () => {
-        const rendered = renderReviewFindings(validFindings, noneInline);
+        const rendered = renderReviewFindings(validFindings);
         assert.match(rendered, /\*\*Leaning: Request changes\*\* — The SQL injection issue must be fixed before merge\./);
     });
 
-    // TAI-207: default partitioning (no explicit `partition` argument) pulls
-    // critical+line findings out of the severity sections and into a tally instead --
-    // this is what makes `render-findings`' preview match what `comment-findings` will
-    // actually post where.
-    it("by default, excludes a critical+line finding from its severity section and shows a tally instead", () => {
+    // TAI-678: a critical finding that will also be posted inline is still listed in full, under the red heading.
+    it("lists a critical finding that has a line in full under the red heading, with no tally (TAI-678)", () => {
         const rendered = renderReviewFindings(validFindings);
-        assert.ok(!rendered.includes("### 🔴 Critical"));
-        assert.ok(!rendered.includes("**SQL injection**"));
-        assert.match(rendered, /🔴 — posted as inline comments/);
-        // The non-eligible nitpick finding still renders normally.
+        assert.match(rendered, /### 🔴 Critical \(1\)/);
+        assert.match(rendered, /\*\*SQL injection\*\* — `src\/db\.ts` \(line 42\)/);
+        assert.match(rendered, /User input is concatenated directly into the query\./);
+        assert.ok(!rendered.includes("posted as inline comments"), "no tally stands in for it");
+        assert.ok(!rendered.includes("Will be posted inline"), "and no separate block");
         assert.match(rendered, /Inconsistent naming/);
     });
 
-    it("does not show a tally line when nothing is inline-eligible", () => {
-        const rendered = renderReviewFindings(validFindings, noneInline);
-        assert.ok(!rendered.includes("posted as inline comments"));
+    it("puts the critical section before every other severity, so the red dot is at the top (TAI-678)", () => {
+        const rendered = renderReviewFindings(validFindings);
+        assert.ok(rendered.indexOf("### 🔴 Critical") < rendered.indexOf("### 🔵 Nitpick"));
     });
 });
 
@@ -245,29 +237,17 @@ describe("render-findings next-step options (TAI-411)", () => {
         assert.ok(preview.endsWith(`${renderFindingsNextSteps(validFindings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`), "the options, then the reminder (TAI-575)");
     });
 
-    it("the preview lists the findings that will be posted inline, in full, before the options (TAI-644)", () => {
+    it("the preview lists every finding once, critical ones included, and adds only the options and the reminder (TAI-678)", () => {
         const preview = renderFindingsPreview(validFindings);
-        const block = preview.slice(preview.indexOf("### Will be posted inline"), preview.indexOf("Nothing has been posted yet"));
-        assert.match(block, /Will be posted inline \(1\)/);
-        assert.match(block, /SQL injection/);
-        assert.match(block, /`src\/db\.ts` \(line 42\)/);
-        assert.match(block, /User input is concatenated directly into the query\./);
-        assert.ok(!block.includes("Inconsistent naming"), "only the inline findings are listed there");
-        assert.ok(preview.indexOf("Will be posted inline") < preview.indexOf("Nothing has been posted yet"));
-    });
-
-    it("what is posted to the PR is unchanged: the summary keeps the tally and never the inline block (TAI-644)", () => {
-        const posted = renderReviewFindings(validFindings);
-        assert.ok(!posted.includes("Will be posted inline"));
-        assert.ok(!posted.includes("User input is concatenated"));
-        assert.match(posted, /posted as inline comments/);
-    });
-
-    it("a review with no inline findings previews exactly as before (TAI-644)", () => {
-        const none: ReviewFindings = { ...validFindings, findings: validFindings.findings.filter((f) => f.severity !== "critical") };
-        const preview = renderFindingsPreview(none);
+        assert.equal(preview.split("**SQL injection**").length - 1, 1, "listed once, not again in a separate block");
         assert.ok(!preview.includes("Will be posted inline"));
-        assert.equal(preview, `${renderReviewFindings(none)}\n\n${renderFindingsNextSteps(none.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`);
+        assert.equal(preview, `${renderReviewFindings(validFindings)}\n\n${renderFindingsNextSteps(validFindings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`);
+    });
+
+    it("what is posted to the PR lists the critical finding in full too (TAI-678)", () => {
+        const posted = renderReviewFindings(validFindings);
+        assert.match(posted, /User input is concatenated directly into the query\./);
+        assert.ok(!posted.includes("Will be posted inline"));
     });
 
     it("the options NEVER appear in renderReviewFindings -- that is the text comment-findings posts to the PR", () => {
@@ -364,7 +344,7 @@ describe("cross-checking a review against the PR's changed files (TAI-527)", () 
     });
 
     it("the notes are part of the rendered review and of the preview", () => {
-        assert.match(renderReviewFindings(validFindings, undefined, manifest()), /1 of 2 changed files are not listed as read/);
+        assert.match(renderReviewFindings(validFindings, manifest()), /1 of 2 changed files are not listed as read/);
         assert.match(renderFindingsPreview(validFindings, manifest()), /1 of 2 changed files are not listed as read/);
     });
 });
@@ -375,7 +355,7 @@ describe("a review is tied to a commit (TAI-527, from the review of PR 187)", ()
     it("the posted review says when the PR's head has moved since the review was prepared", () => {
         const notes = coverageNotes(validFindings, manifest, "ffff00001111").join("\n");
         assert.match(notes, /This review is of commit abc123def456\. The PR is now at ffff00001111: the changes pushed since have NOT been reviewed\./);
-        assert.match(renderReviewFindings(validFindings, undefined, manifest, "ffff00001111"), /have NOT been reviewed/);
+        assert.match(renderReviewFindings(validFindings, manifest, "ffff00001111"), /have NOT been reviewed/);
     });
 
     it("says nothing when the head is the reviewed commit, at either hash length", () => {
