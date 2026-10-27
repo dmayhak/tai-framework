@@ -8,11 +8,13 @@
 # Run from a project's directory, or point at one with `--project <path>` (first argument) or TAI_PROJECT. The command runs from
 # that directory, so the project's .env is read as it is when run by hand. An explicit path must look like a TAI project (it
 # holds a .env or a .tai directory); the current directory is never refused, since `init` runs in a fresh one.
-# The TAI home is where this script lives, so a link to it from a directory on the path works.
+# The TAI home is where this script lives, so a link to it from a directory on the path works. Needs bash and a readlink that takes -f.
 set -eu
 
 self="${BASH_SOURCE[0]}"
-real="$(readlink -f "$self")"
+# Needs bash and a readlink that takes -f (GNU coreutils; macOS has it from 12.3, or install coreutils).
+real="$(readlink -f "$self" 2>/dev/null)" || real=""
+[ -n "$real" ] || { echo "tai: needs a readlink that supports -f (GNU coreutils; on macOS before 12.3 install coreutils)" >&2; exit 2; }
 home="$(dirname "$(dirname "$real")")"
 name="$(basename "$self")"
 

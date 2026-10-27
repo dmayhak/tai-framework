@@ -2300,7 +2300,7 @@ async function main(): Promise<void> {
                     ? `The Claude Code rules an unattended DEV-YOLO run needs (${yoloArg === undefined ? "dev-yolo is on" : "yolo=true"}): the build, and the review, fix and verify runs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n` +
                       "They leave out git-pr merge and init, and refuse a force push. git-pr review is allowed, since the reviewer run records its own decision with it.\n\n"
                     : `The Claude Code rules an unattended Dev build needs (${yoloArg === false ? "yolo=false" : `dev-yolo ${readFailed ? "could not be read" : "is off"}`}). Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n` +
-                      "They leave out git-pr merge, git-pr review and init, and refuse a force push. With dev-yolo on, `do-dev-tasks rules` prints a larger set.\n\n") +
+                      "They leave out git-pr merge, git-pr review and init, and refuse a force push. With dev-yolo on, `tai-do-dev-tasks rules` prints a larger set.\n\n") +
                     renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yoloRules))
             );
             return;

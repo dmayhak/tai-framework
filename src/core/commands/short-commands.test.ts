@@ -132,4 +132,35 @@ describe("short commands (TAI-699)", () => {
             assert.match(r.out, /left .*tai-do-dev-tasks: it is not a link to this install/);
             assert.deepEqual(spawnSync("ls", [dir], { encoding: "utf8" }).stdout.trim().split("\n"), ["tai-do-dev-tasks"]);
         }));
+
+    it("tai-link takes --remove before or after the directory, and refuses an unknown option or a second directory (PR 35 review)", () =>
+        world(async (w) => {
+            const dir = path.join(path.dirname(w.project), "onpath");
+            await mkdir(dir);
+            w.run("tai-link", [dir]);
+            const after = w.run("tai-link", [dir, "--remove"]);
+            assert.equal(after.status, 0);
+            assert.match(after.out, /removed .*\/tai\n/);
+            assert.deepEqual(spawnSync("ls", [dir], { encoding: "utf8" }).stdout.trim(), "");
+            for (const args of [["--delete", dir], [dir, dir + "2"]]) {
+                const r = w.run("tai-link", args);
+                assert.equal(r.status, 2);
+                assert.match(r.err, /usage: tai-link \[--remove\] \[dir\]/);
+            }
+            assert.deepEqual(spawnSync("ls", [dir], { encoding: "utf8" }).stdout.trim(), "", "nothing was linked");
+        }));
+
+    it("says so, and runs nothing, when readlink cannot take -f (PR 35 review)", () =>
+        world(async (w) => {
+            const fake = path.join(path.dirname(w.project), "fakebin");
+            await mkdir(fake);
+            await writeFile(path.join(fake, "readlink"), "#!/bin/sh\nexit 1\n");
+            await chmod(path.join(fake, "readlink"), 0o755);
+            const env = { PATH: `${fake}:${process.env["PATH"] ?? ""}` };
+            const r = w.run("tai", ["x"], { env });
+            assert.equal(r.status, 2);
+            assert.equal(r.out, "");
+            assert.match(r.err, /needs a readlink that supports -f/);
+            assert.match(w.run("tai-link", [], { env }).err, /needs a readlink that supports -f/);
+        }));
 });

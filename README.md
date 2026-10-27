@@ -187,8 +187,7 @@ tai --project ~/work/shop issue get SHOP-3 # run against another project without
 
 `--project <path>` (first argument) or `TAI_PROJECT` names the project; otherwise the current directory is used. The command runs from
 that directory, so the project's `.env` is read as it is today. An explicit path must hold a `.env` or a `.tai` directory, or it is
-refused. Arguments, spaces and quotes are passed through unchanged, and so is the exit code. It needs a POSIX shell (Linux, macOS,
-WSL). `/tai-init` offers this once; an AI session keeps using the long form.
+refused. Arguments, spaces and quotes are passed through unchanged, and so is the exit code. It needs bash and a `readlink` that takes `-f` (Linux and WSL have one; macOS has it from 12.3, or install coreutils), and says so when it does not find one. `/tai-init` offers this once; an AI session keeps using the long form.
 
 ## Updating TAI
 

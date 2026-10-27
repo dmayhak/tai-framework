@@ -2,19 +2,28 @@
 # TAI-699: put the short commands on the path, or take them off again. Never run by anything else: the person runs it.
 #
 #   tai-link [dir]            links tai, tai-settings and tai-do-dev-tasks into dir (default ~/.local/bin)
-#   tai-link --remove [dir]   removes those links, and only those that point at this install
+#   tai-link --remove [dir]   removes those links, and only those that point at this install (--remove may come after the dir)
+# Needs bash and a readlink that takes -f.
 #
 # It never replaces a file or a link of someone else's, and says what it did.
 set -eu
 
-real="$(readlink -f "${BASH_SOURCE[0]}")"
+real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || real=""
+[ -n "$real" ] || { echo "tai-link: needs a readlink that supports -f (GNU coreutils; on macOS before 12.3 install coreutils)" >&2; exit 2; }
 tai="$(dirname "$real")/tai"
 remove=0
-if [ "${1:-}" = "--remove" ]; then
-    remove=1
-    shift
-fi
-dir="${1:-$HOME/.local/bin}"
+dir=""
+for arg in "$@"; do
+    case "$arg" in
+        --remove) remove=1 ;;
+        -*) echo "tai-link: unknown option $arg (usage: tai-link [--remove] [dir])" >&2; exit 2 ;;
+        *)
+            [ -z "$dir" ] || { echo "tai-link: one directory only (usage: tai-link [--remove] [dir])" >&2; exit 2; }
+            dir="$arg"
+            ;;
+    esac
+done
+dir="${dir:-$HOME/.local/bin}"
 names="tai tai-settings tai-do-dev-tasks"
 
 if [ "$remove" = 1 ]; then
