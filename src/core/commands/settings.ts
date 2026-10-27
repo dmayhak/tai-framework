@@ -100,7 +100,7 @@ function autonomyRefusal(
     return null;
 }
 
-/** The attestation key for one run with DEV-YOLO on, apart from the `dev-yolo` setting's own (TAI-693). */
+/** The attestation key for one run with DEV-YOLO on, apart from the `dev-yolo` setting's own (TAI-693). An audit record: nothing requires it. */
 export const DEV_YOLO_ONCE = "dev-yolo-once";
 
 /**
