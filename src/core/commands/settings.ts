@@ -110,7 +110,7 @@ export const DEV_YOLO_ONCE = "dev-yolo-once";
  */
 export async function allowYoloForOneRun(ctx: SettingsContext, record: boolean): Promise<void> {
     const { state } = await load(ctx);
-    const refusal = autonomyRefusal(ctx, state.admins, "DEV-YOLO cannot be turned on for a run", "Run `do-dev-tasks yolo=true` yourself in a plain terminal.");
+    const refusal = autonomyRefusal(ctx, state.admins, "DEV-YOLO cannot be turned on for a run", "Run `tai-do-dev-tasks yolo=true` yourself in a plain terminal.");
     if (refusal) throw new Error(refusal);
     if (record) await ctx.attest?.(requireEmail(ctx), DEV_YOLO_ONCE, "true");
 }

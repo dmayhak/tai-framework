@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# TAI-699: the short form of `npx --prefix <TAI home> tsx <TAI home>/src/hosts/cli.ts <command>`.
+#
+#   tai <command> [args]          any TAI command
+#   tai-settings [args]           = tai settings [args]
+#   tai-do-dev-tasks [args]       = tai do-dev-tasks [args]
+#
+# Run from a project's directory, or point at one with `--project <path>` (first argument) or TAI_PROJECT. The command runs from
+# that directory, so the project's .env is read as it is when run by hand. An explicit path must look like a TAI project (it
+# holds a .env or a .tai directory); the current directory is never refused, since `init` runs in a fresh one.
+# The TAI home is where this script lives, so a link to it from a directory on the path works.
+set -eu
+
+self="${BASH_SOURCE[0]}"
+real="$(readlink -f "$self")"
+home="$(dirname "$(dirname "$real")")"
+name="$(basename "$self")"
+
+project="${TAI_PROJECT:-}"
+case "${1:-}" in
+    --project)
+        [ $# -ge 2 ] || { echo "tai: --project needs a path" >&2; exit 2; }
+        project="$2"
+        shift 2
+        ;;
+    --project=*)
+        project="${1#--project=}"
+        shift
+        ;;
+esac
+
+if [ -n "$project" ]; then
+    [ -d "$project" ] || { echo "tai: $project is not a directory" >&2; exit 2; }
+    if [ ! -f "$project/.env" ] && [ ! -d "$project/.tai" ]; then
+        echo "tai: $project is not a TAI project directory (it has no .env and no .tai). Run \`init run\` there first, or cd into it." >&2
+        exit 2
+    fi
+    cd "$project"
+fi
+
+case "$name" in
+    tai-settings) set -- settings "$@" ;;
+    tai-do-dev-tasks) set -- do-dev-tasks "$@" ;;
+    tai) ;;
+    *) echo "tai: do not know how to run as $name (links: tai, tai-settings, tai-do-dev-tasks)" >&2; exit 2 ;;
+esac
+
+runner="$home/node_modules/.bin/tsx"
+[ -x "$runner" ] || { echo "tai: $runner is missing; run \`npm install\` in $home" >&2; exit 2; }
+exec "$runner" "$home/src/hosts/cli.ts" "$@"

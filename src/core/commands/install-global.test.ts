@@ -58,6 +58,15 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("the tai-init skill offers the short commands but leaves installing them to the human (TAI-699)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const skill = files.find((f) => f.relativePath === `${host}/skills/tai-init/SKILL.md`)!;
+            assert.match(skill.content, /`tai <command>`, `tai-settings` and `tai-do-dev-tasks`/);
+            assert.match(skill.content, /never install them yourself: tell the human to run `[^`]*\/bin\/tai-link`/);
+            assert.match(skill.content, /bin\/tai-link --remove/);
+        }
+    });
+
     test("the tai-retro skill runs retro [EPIC-KEY | since=<date>], acts as Perry, shows the briefing first and writes nothing itself (TAI-491)", () => {
         for (const host of [".claude", ".gemini"]) {
             const retro = files.find((f) => f.relativePath === `${host}/skills/tai-retro/SKILL.md`)!;

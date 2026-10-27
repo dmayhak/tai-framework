@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# TAI-699: put the short commands on the path, or take them off again. Never run by anything else: the person runs it.
+#
+#   tai-link [dir]            links tai, tai-settings and tai-do-dev-tasks into dir (default ~/.local/bin)
+#   tai-link --remove [dir]   removes those links, and only those that point at this install
+#
+# It never replaces a file or a link of someone else's, and says what it did.
+set -eu
+
+real="$(readlink -f "${BASH_SOURCE[0]}")"
+tai="$(dirname "$real")/tai"
+remove=0
+if [ "${1:-}" = "--remove" ]; then
+    remove=1
+    shift
+fi
+dir="${1:-$HOME/.local/bin}"
+names="tai tai-settings tai-do-dev-tasks"
+
+if [ "$remove" = 1 ]; then
+    for n in $names; do
+        if [ -L "$dir/$n" ] && [ "$(readlink -f "$dir/$n")" = "$(readlink -f "$tai")" ]; then
+            rm "$dir/$n"
+            echo "removed $dir/$n"
+        elif [ -e "$dir/$n" ] || [ -L "$dir/$n" ]; then
+            echo "left $dir/$n: it is not a link to this install"
+        fi
+    done
+    exit 0
+fi
+
+[ -d "$dir" ] || { echo "tai-link: $dir is not a directory (make it, or pass another one that is on your path)" >&2; exit 2; }
+status=0
+for n in $names; do
+    if [ -L "$dir/$n" ] && [ "$(readlink -f "$dir/$n")" = "$(readlink -f "$tai")" ]; then
+        echo "already linked $dir/$n"
+    elif [ -e "$dir/$n" ] || [ -L "$dir/$n" ]; then
+        echo "tai-link: $dir/$n already exists and is not a link to this install; not touching it" >&2
+        status=1
+    else
+        ln -s "$tai" "$dir/$n"
+        echo "linked $dir/$n"
+    fi
+done
+case ":$PATH:" in *":$dir:"*) ;; *) echo "note: $dir is not on your PATH" ;; esac
+exit $status
