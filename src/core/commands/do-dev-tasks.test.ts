@@ -134,6 +134,8 @@ describe("runDevTasks (TAI-633)", () => {
         const r = await runDevTasks([task("TAI-10")], d);
         assert.match((r[0]!.outcome as { reason: string }).reason, /no open PR[\s\S]*needs approval/);
         assert.match(d.handoffs[0]![1], /needs approval/);
+        assert.doesNotMatch(noPrReason("first\nsecond"), /\n/, "one line, so the report bullet stays whole");
+        assert.match(noPrReason("first\nsecond"), /first \/ second/);
         assert.equal(noPrReason("  \n"), "The run finished but no open PR for this ticket was found.");
     });
 

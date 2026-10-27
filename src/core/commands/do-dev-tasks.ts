@@ -228,12 +228,15 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
     return { task, outcome };
 }
 
-/** The reason for a run that exited cleanly but left no open PR: the tail of its own output says why it stopped. */
+/** What a run that exited cleanly left behind when it opened no PR: the end of its own output, on one line, says why it stopped. */
+export function noPrDetail(runOutput: string): string {
+    const tail = runOutput.trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(" / ");
+    return tail === "" ? "no open PR for this ticket was found." : `no open PR for this ticket was found. The end of the run's output: ${tail}`;
+}
+
+/** The failure reason for that run. */
 export function noPrReason(runOutput: string): string {
-    const tail = runOutput.trim();
-    return tail === ""
-        ? "The run finished but no open PR for this ticket was found."
-        : `The run finished but no open PR for this ticket was found. The end of the run's output:\n${tail}`;
+    return `The run finished but ${noPrDetail(runOutput)}`;
 }
 
 export interface WorkedDevTasks {
