@@ -8,12 +8,15 @@
  * What it never allows: `git-pr merge`, `git-pr review` and `init` (ADR decision 9: permission to merge is a separate
  * opt-in), and a force push. The deny entries make a force push refuse even where a broader rule would let it through.
  *
- * Two limits, accepted. The allow set is narrow in the commands it names, not in every argument: `issue *` allows an
- * `issue transition` to any state (a build moves its own ticket), and `git checkout *` allows a checkout of an existing
- * branch. The deny entries take back the destructive forms (a force push, a `--delete` push, a branch delete, a checkout
- * that discards the working tree). And the check reads only the settings files under the directory the command runs from and
- * the user's own, not managed settings or `ask` rules, so a headless run started elsewhere may be judged by other rules
- * than the ones warned about here.
+ * Limits, accepted. The allow set is narrow in the commands it names, not in every argument: `issue *` allows an
+ * `issue transition` to any state (a build moves its own ticket), and `git checkout *`, `git switch *` and `git push origin *`
+ * allow what the deny entries do not take back. Those are the destructive forms (a force push, a `--delete`, `--mirror` or
+ * `--prune` push, a branch delete, a forced or resetting checkout or switch, a checkout that discards the working tree) and a
+ * push to `main` or `master`. A push to the default branch under another name, or by a refspec such as `HEAD:refs/heads/main`,
+ * is not refused. The allow side names `--as developer` and not `--as=developer`, since the prompts TAI writes use the space
+ * form. And the check reads only the settings files under the directory the command runs from and the user's own, so a headless
+ * run started elsewhere, managed settings and `ask` rules can judge differently than the warning says. A person's own deny
+ * rule that refuses a required command is read, since a deny beats an allow.
  */
 
 import { readFile } from "node:fs/promises";
@@ -47,8 +50,9 @@ const GIT_ALLOW: readonly string[] = [
 
 /**
  * What a build never does with git: a force push in any spelling (the flags, and a `+` before a refspec), a push with
- * `--delete`, a branch delete, and a checkout that discards work. A delete by refspec (`git push origin :branch`) is not
- * refused: its pattern would end in `:*`, which Claude Code reads as its older prefix form, so it cannot be written here.
+ * `--delete`, `--mirror` or `--prune`, a push to `main` or `master`, a branch delete, a forced or resetting checkout or
+ * switch, and a checkout that discards work. A delete by refspec (`git push origin :branch`) is not refused: its pattern
+ * would end in `:*`, which Claude Code reads as its older prefix form, so it cannot be written here.
  */
 const GIT_DENY: readonly string[] = [
     "git push *--force*",
@@ -56,9 +60,18 @@ const GIT_DENY: readonly string[] = [
     "git push -f*",
     "git push *+*",
     "git push *--delete*",
+    "git push *--mirror*",
+    "git push *--prune*",
+    ...["main", "master"].flatMap((b) => [`git push origin ${b}`, `git push origin ${b} *`, `git push -u origin ${b}`, `git push -u origin ${b} *`, `git push *:${b}`]),
     "git branch -D*",
     "git branch -d*",
     "git branch --delete*",
+    "git checkout -f*",
+    "git checkout *--force*",
+    "git checkout -B*",
+    "git switch -f*",
+    "git switch *--discard-changes*",
+    "git switch -C*",
     "git checkout -- *",
     "git checkout .",
 ];
@@ -74,7 +87,16 @@ function denySpellings(cli: string, sub: string): string[] {
     return [`Bash(${cli} ${sub} *)`, `Bash(${cli} --as * ${sub} *)`, `Bash(${cli} --as=* ${sub} *)`];
 }
 
-/** The rules for the install at `taiHome`; `checkCommand` is the project's `TAI_CHECK_COMMAND`, allowed as it is written. */
+/**
+ * The commands inside a check command. Claude Code matches each part of a compound command (split on `&&`, `||`, `;` and `|`)
+ * against the rules on its own, so a rule that holds the whole chain would match none of its parts. A `*` in a part is read
+ * as a wildcard.
+ */
+function checkCommandParts(checkCommand: string): string[] {
+    return [...new Set(checkCommand.split(/\s*(?:&&|\|\||;|\|)\s*/).map((p) => p.trim()).filter(Boolean))];
+}
+
+/** The rules for the install at `taiHome`; `checkCommand` is the project's `TAI_CHECK_COMMAND`, each command in it allowed as it is written. */
 export function buildRunRules(taiHome: string, checkCommand: string | null = null): BuildRules {
     const cli = cliCommand(taiHome);
     const allow: string[] = [];
@@ -83,7 +105,7 @@ export function buildRunRules(taiHome: string, checkCommand: string | null = nul
         allow.push(`Bash(${cli} --as developer ${sub} *)`);
     }
     for (const g of GIT_ALLOW) allow.push(`Bash(${g})`);
-    if (checkCommand) allow.push(`Bash(${checkCommand})`);
+    if (checkCommand) for (const part of checkCommandParts(checkCommand)) allow.push(`Bash(${part})`);
     const deny = GIT_DENY.map((g) => `Bash(${g})`);
     for (const sub of NEVER_SUBCOMMANDS) deny.push(...denySpellings(cli, sub));
     return { allow, deny };
@@ -123,15 +145,26 @@ function covered(required: string, have: readonly string[]): boolean {
     });
 }
 
+/** A required allow entry is refused when a deny entry the project has matches the command it stands for: a deny beats an allow. */
+function refused(required: string, deny: readonly string[]): boolean {
+    const pattern = bashPattern(required);
+    if (pattern === null) return false;
+    const sample = pattern.replaceAll("*", "");
+    return deny.some((d) => {
+        const p = bashPattern(d);
+        return p !== null && globMatches(p, sample);
+    });
+}
+
 export interface RuleGaps {
     readonly allow: readonly string[];
     readonly deny: readonly string[];
 }
 
-/** The required entries that no entry in `have` covers. A broader rule the person wrote counts as covering. */
+/** The required entries that no entry in `have` covers, or that a deny of theirs refuses. A broader rule the person wrote counts as covering. */
 export function missingRules(required: BuildRules, have: { readonly allow: readonly string[]; readonly deny: readonly string[] }): RuleGaps {
     return {
-        allow: required.allow.filter((r) => !covered(r, have.allow)),
+        allow: required.allow.filter((r) => !covered(r, have.allow) || refused(r, have.deny)),
         deny: required.deny.filter((r) => !covered(r, have.deny)),
     };
 }
@@ -176,7 +209,7 @@ export async function readPermissionFiles(cwd: string, home: string = os.homedir
 export function readinessWarning(gaps: RuleGaps, checkConfigured: boolean): string | null {
     const lines: string[] = [];
     if (gaps.allow.length > 0) {
-        lines.push(`This project's Claude Code rules do not allow ${gaps.allow.length} command${gaps.allow.length === 1 ? "" : "s"} an unattended build uses, so a run will stop at the first one:`);
+        lines.push(`This project's Claude Code rules do not allow (or a deny rule of yours refuses) ${gaps.allow.length} command${gaps.allow.length === 1 ? "" : "s"} an unattended build uses, so a run will stop at the first one:`);
         lines.push(...gaps.allow.map((r) => `  ${r}`));
     }
     if (gaps.deny.length > 0) {

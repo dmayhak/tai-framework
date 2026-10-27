@@ -55,6 +55,33 @@ describe("build allow rules (TAI-649)", () => {
         assert.ok(!buildRunRules(HOME, null).allow.some((r) => r.includes("npm")));
     });
 
+    it("allows each command of a compound check command on its own, since Claude Code matches the parts separately (PR 27 review)", () => {
+        const { allow } = buildRunRules(HOME, "npm run typecheck && npm run lint && npm test");
+        for (const part of ["npm run typecheck", "npm run lint", "npm test"]) assert.ok(allow.includes(`Bash(${part})`), part);
+        assert.ok(!allow.some((r) => r.includes("&&")), "no rule holds the whole chain");
+        const mixed = buildRunRules(HOME, "make build; make test | tee out.log || true").allow;
+        for (const part of ["make build", "make test", "tee out.log", "true"]) assert.ok(mixed.includes(`Bash(${part})`), part);
+        assert.equal(buildRunRules(HOME, "npm test && npm test").allow.filter((r) => r === "Bash(npm test)").length, 1, "a repeated part is listed once");
+    });
+
+    it("also refuses a push to main or master, --mirror and --prune, and a forced or resetting checkout or switch (PR 27 review)", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const rule of [
+            "git push *--mirror*", "git push *--prune*", "git push origin main", "git push origin main *", "git push -u origin master", "git push *:main",
+            "git checkout -f*", "git checkout *--force*", "git checkout -B*", "git switch -f*", "git switch *--discard-changes*", "git switch -C*",
+        ]) assert.ok(deny.includes(`Bash(${rule})`), rule);
+        assert.ok(!deny.some((r) => r === "Bash(git push origin *)"), "pushing a branch to origin is still allowed");
+    });
+
+    it("reports an allow entry that a deny rule of the person's own refuses, since a deny beats an allow (PR 27 review)", () => {
+        const rules = buildRunRules(HOME);
+        const have = { allow: rules.allow, deny: [...rules.deny, "Bash(git push *)"] };
+        const gaps = missingRules(rules, have).allow;
+        assert.ok(gaps.includes("Bash(git push origin *)") && gaps.includes("Bash(git push -u origin *)"));
+        assert.ok(!gaps.includes("Bash(git status*)"), "commands the deny does not touch stay covered");
+        assert.match(readinessWarning({ allow: gaps, deny: [] }, true)!, /or a deny rule of yours refuses/);
+    });
+
     it("reports nothing missing for the full set, and counts a broader rule the person wrote as covering", () => {
         const rules = buildRunRules(HOME, "npm test");
         assert.deepEqual(missingRules(rules, rules), { allow: [], deny: [] });
