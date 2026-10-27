@@ -349,13 +349,29 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 
 /**
  * The command's arguments: `dryrun=true`, and `yolo=true` or `yolo=false` for this run only (TAI-693). Anything else is refused,
- * because a mistyped flag must not start real builds.
+ * because a mistyped flag must not start real builds. After `rules` (which prints a rule set and runs nothing) only `yolo=` is taken.
  */
-export function parseDevTasksArgs(args: readonly (string | undefined)[]): { readonly dryRun: boolean; readonly yolo?: boolean } {
+export function parseDevTasksArgs(args: readonly (string | undefined)[], options: { readonly rules?: boolean } = {}): { readonly dryRun: boolean; readonly yolo?: boolean } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
-    const unknown = given.filter((a) => a !== "dryrun=true" && a !== "yolo=true" && a !== "yolo=false");
-    if (unknown.length > 0) throw new Error(`do-dev-tasks takes only dryrun=true, yolo=true and yolo=false (got: ${unknown.join(" ")}).`);
-    const yolo = given.includes("yolo=true") ? (given.includes("yolo=false") ? null : true) : given.includes("yolo=false") ? false : undefined;
-    if (yolo === null) throw new Error("do-dev-tasks takes yolo=true or yolo=false, not both.");
+    const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
+    const unknown = given.filter((a) => !known.includes(a));
+    if (unknown.length > 0) {
+        throw new Error(`do-dev-tasks ${options.rules ? "rules takes only yolo=true and yolo=false" : "takes only dryrun=true, yolo=true and yolo=false"} (got: ${unknown.join(" ")}).`);
+    }
+    const wantsOn = given.includes("yolo=true");
+    const wantsOff = given.includes("yolo=false");
+    if (wantsOn && wantsOff) throw new Error("do-dev-tasks takes yolo=true or yolo=false, not both.");
+    let yolo: boolean | undefined;
+    if (wantsOn) yolo = true;
+    else if (wantsOff) yolo = false;
     return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }) };
+}
+
+/**
+ * Whether DEV-YOLO is on for this run (TAI-693): the `yolo=` argument when given, otherwise the stored setting. The argument wins in
+ * both directions and is never written back; the setting is read only when no argument is given. `oneRun` is `yolo=true`, the case
+ * that has to pass the guards the setting does.
+ */
+export async function resolveYolo(arg: boolean | undefined, stored: () => Promise<boolean>): Promise<{ readonly yolo: boolean; readonly oneRun: boolean; readonly thisRunOnly: boolean }> {
+    return { yolo: arg ?? (await stored()), oneRun: arg === true, thisRunOnly: arg !== undefined };
 }
