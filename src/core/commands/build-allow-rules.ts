@@ -7,6 +7,13 @@
  *
  * What it never allows: `git-pr merge`, `git-pr review` and `init` (ADR decision 9: permission to merge is a separate
  * opt-in), and a force push. The deny entries make a force push refuse even where a broader rule would let it through.
+ *
+ * Two limits, accepted. The allow set is narrow in the commands it names, not in every argument: `issue *` allows an
+ * `issue transition` to any state (a build moves its own ticket), and `git checkout *` allows a checkout of an existing
+ * branch. The deny entries take back the destructive forms (a force push, a `--delete` push, a branch delete, a checkout
+ * that discards the working tree). And the check reads only the settings files under the directory the command runs from and
+ * the user's own, not managed settings or `ask` rules, so a headless run started elsewhere may be judged by other rules
+ * than the ones warned about here.
  */
 
 import { readFile } from "node:fs/promises";
@@ -38,8 +45,34 @@ const GIT_ALLOW: readonly string[] = [
     "git push origin *",
 ];
 
-/** A force push in any spelling: the flags, and a `+` before a refspec. */
-const GIT_DENY: readonly string[] = ["git push *--force*", "git push * -f*", "git push -f*", "git push *+*", "git push *--delete*"];
+/**
+ * What a build never does with git: a force push in any spelling (the flags, and a `+` before a refspec), a push with
+ * `--delete`, a branch delete, and a checkout that discards work. A delete by refspec (`git push origin :branch`) is not
+ * refused: its pattern would end in `:*`, which Claude Code reads as its older prefix form, so it cannot be written here.
+ */
+const GIT_DENY: readonly string[] = [
+    "git push *--force*",
+    "git push * -f*",
+    "git push -f*",
+    "git push *+*",
+    "git push *--delete*",
+    "git branch -D*",
+    "git branch -d*",
+    "git branch --delete*",
+    "git checkout -- *",
+    "git checkout .",
+];
+
+/** The TAI commands a build must never reach, however they are spelled (see `denySpellings`). */
+const NEVER_SUBCOMMANDS: readonly string[] = ["git-pr merge", "git-pr review", "init"];
+
+/**
+ * Every spelling of the CLI that reaches `sub`: bare, `--as <persona>` and `--as=<persona>`. A `*` spans spaces, so a deny
+ * written only for the bare spelling does not match `--as developer git-pr merge` (see `claude-allow-rule.ts`).
+ */
+function denySpellings(cli: string, sub: string): string[] {
+    return [`Bash(${cli} ${sub} *)`, `Bash(${cli} --as * ${sub} *)`, `Bash(${cli} --as=* ${sub} *)`];
+}
 
 /** The rules for the install at `taiHome`; `checkCommand` is the project's `TAI_CHECK_COMMAND`, allowed as it is written. */
 export function buildRunRules(taiHome: string, checkCommand: string | null = null): BuildRules {
@@ -52,7 +85,7 @@ export function buildRunRules(taiHome: string, checkCommand: string | null = nul
     for (const g of GIT_ALLOW) allow.push(`Bash(${g})`);
     if (checkCommand) allow.push(`Bash(${checkCommand})`);
     const deny = GIT_DENY.map((g) => `Bash(${g})`);
-    for (const sub of ["git-pr merge", "git-pr review", "init"]) deny.push(`Bash(${cli} ${sub} *)`);
+    for (const sub of NEVER_SUBCOMMANDS) deny.push(...denySpellings(cli, sub));
     return { allow, deny };
 }
 
@@ -68,10 +101,15 @@ function bashPattern(entry: string): string | null {
     return m ? m[1]! : null;
 }
 
-/** Claude Code's `*` matches any characters, spaces included. */
+/**
+ * Claude Code's `*` matches any characters, spaces included. The older prefix form `Bash(git status:*)` matches the
+ * command itself and the command followed by a space and anything: `git status` and `git status -s`, not `git statusx`.
+ */
 function globMatches(pattern: string, command: string): boolean {
-    const re = new RegExp(`^${pattern.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "s");
-    return re.test(command);
+    const prefixForm = pattern.endsWith(":*");
+    const body = prefixForm ? pattern.slice(0, -2) : pattern;
+    const source = body.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+    return new RegExp(prefixForm ? `^${source}(?: .*)?$` : `^${source}$`, "s").test(command);
 }
 
 /** A required entry is covered when some entry the project has matches the command the required one stands for. */
@@ -142,7 +180,7 @@ export function readinessWarning(gaps: RuleGaps, checkConfigured: boolean): stri
         lines.push(...gaps.allow.map((r) => `  ${r}`));
     }
     if (gaps.deny.length > 0) {
-        lines.push(`Nothing refuses ${gaps.deny.length === 1 ? "this" : "these"}, so a run could force a push or reach a merge, a review or init:`);
+        lines.push(`Nothing refuses ${gaps.deny.length === 1 ? "this" : "these"}, so a run could force a push, delete a branch, or reach a merge, a review or init:`);
         lines.push(...gaps.deny.map((r) => `  ${r}`));
     }
     if (!checkConfigured) {

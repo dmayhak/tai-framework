@@ -4,7 +4,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 ## rev 139 (2026-10-27)
 
-**TAI-649 (Story TAI-648): the rules an unattended Dev build needs.** `core/commands/build-allow-rules.ts` names the narrow Claude Code allow set a build uses and the deny entries that keep out a force push, `git-pr merge`, `git-pr review` and `init`. `do-dev-tasks rules` prints it for the person to add themselves; before the first run `do-dev-tasks` checks the project's and the user's settings files against it and says plainly what is missing, what nothing refuses, and when `TAI_CHECK_COMMAND` is not set. Nothing is written or blocked.
+**TAI-649 (Story TAI-648): the rules an unattended Dev build needs.** `core/commands/build-allow-rules.ts` names the narrow Claude Code allow set a build uses and the deny entries that keep out a force push, `git-pr merge`, `git-pr review` and `init`. `do-dev-tasks rules` prints it for the person to add themselves; before the first run `do-dev-tasks` checks the project's and the user's settings files against it and says plainly what is missing, what nothing refuses, and when `TAI_CHECK_COMMAND` is not set. Nothing is written or blocked. PR 27 review: the deny entries for `git-pr merge`, `git-pr review` and `init` also name the `--as <persona>` and `--as=<persona>` spellings (a `*` spans spaces, so the bare entry did not match them); a branch delete, a `--delete` push and a checkout that discards the working tree are denied too (a delete by refspec cannot be written, since its pattern would end in `:*`); the coverage check counts the older `Bash(cmd:*)` prefix form; and the module comment records what the allow set does not narrow and which settings files the check reads.
 
 ## rev 138 (2026-10-26)
 

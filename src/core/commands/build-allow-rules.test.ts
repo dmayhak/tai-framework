@@ -25,6 +25,31 @@ describe("build allow rules (TAI-649)", () => {
         assert.ok(deny.includes(`Bash(${CLI} init *)`));
     });
 
+    it("refuses merge, review and init in the --as spellings too, because * spans spaces (PR 27 review)", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const sub of ["git-pr merge", "git-pr review", "init"]) {
+            assert.ok(deny.includes(`Bash(${CLI} --as * ${sub} *)`), `--as <persona> ${sub}`);
+            assert.ok(deny.includes(`Bash(${CLI} --as=* ${sub} *)`), `--as=<persona> ${sub}`);
+        }
+        const bareOnly = { allow: [], deny: [`Bash(${CLI} git-pr merge *)`, `Bash(${CLI} git-pr review *)`, `Bash(${CLI} init *)`] };
+        const gaps = missingRules(buildRunRules(HOME), bareOnly).deny;
+        assert.ok(gaps.includes(`Bash(${CLI} --as * git-pr merge *)`), "a bare-only deny is not enough");
+        const covered = missingRules(buildRunRules(HOME), { allow: [], deny: [`Bash(${CLI} *git-pr merge*)`, `Bash(${CLI} *git-pr review*)`, `Bash(${CLI} *init*)`] }).deny;
+        assert.ok(!covered.some((r) => r.includes("git-pr merge")), "a deny that spans the persona flag covers every spelling");
+    });
+
+    it("also refuses the destructive git forms: a --delete push, a branch delete, a checkout that discards work", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const rule of ["git push *--delete*", "git branch -D*", "git branch -d*", "git branch --delete*", "git checkout -- *", "git checkout ."]) assert.ok(deny.includes(`Bash(${rule})`), rule);
+    });
+
+    it("counts the older Bash(cmd:*) prefix form as covering, and does not let it match a longer word", () => {
+        const required = { allow: ["Bash(git status*)", "Bash(git add *)"], deny: [] };
+        assert.deepEqual(missingRules(required, { allow: ["Bash(git status:*)", "Bash(git add:*)"], deny: [] }), { allow: [], deny: [] });
+        const wrongWord = missingRules({ allow: ["Bash(git status *)"], deny: [] }, { allow: ["Bash(git statusx:*)"], deny: [] });
+        assert.deepEqual(wrongWord.allow, ["Bash(git status *)"], "git statusx is not git status");
+    });
+
     it("allows the project's check command as it is written, and only when there is one", () => {
         assert.ok(buildRunRules(HOME, "npm test").allow.includes("Bash(npm test)"));
         assert.ok(!buildRunRules(HOME, null).allow.some((r) => r.includes("npm")));
@@ -48,7 +73,7 @@ describe("build allow rules (TAI-649)", () => {
         const gaps = missingRules(buildRunRules(HOME), { allow: [], deny: [] });
         const text = readinessWarning(gaps, false)!;
         assert.match(text, /will stop at the first one/);
-        assert.match(text, /force a push or reach a merge/);
+        assert.match(text, /force a push, delete a branch, or reach a merge/);
         assert.match(text, /TAI_CHECK_COMMAND is not set/);
         assert.match(text, /TAI does not write it/);
         assert.equal(readinessWarning({ allow: [], deny: [] }, true), null);
