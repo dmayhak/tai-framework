@@ -309,6 +309,6 @@ export function readinessWarning(gaps: RuleGaps, checkConfigured: boolean, yolo 
         lines.push("TAI_CHECK_COMMAND is not set, so a run has no check to record and the merge gate will not pass.");
     }
     if (lines.length === 0) return null;
-    lines.push("Run `do-dev-tasks rules` to see the narrow rule set, and add it to your own .claude/settings.local.json yourself. TAI does not write it.");
+    lines.push(`Run \`do-dev-tasks rules\` to see the ${yolo ? "rule set for a DEV-YOLO run" : "narrow rule set"}, and add it to your own .claude/settings.local.json yourself. TAI does not write it.`);
     return lines.join("\n");
 }

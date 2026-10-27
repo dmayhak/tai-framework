@@ -2284,12 +2284,15 @@ async function main(): Promise<void> {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
         if (arg === "rules") {
-            const yoloRules = await devYoloOn();
+            // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
+            let readFailed = false;
+            const yoloRules = await devYoloOn().catch(() => ((readFailed = true), false));
             console.log(
-                (yoloRules
+                (readFailed ? "Could not read the dev-yolo setting, so this is the set for a build without DEV-YOLO. If dev-yolo is on, run this again once the settings page can be read.\n\n" : "") +
+                    (yoloRules
                     ? "The Claude Code rules an unattended DEV-YOLO run needs (dev-yolo is on): the build, and the review, fix and verify runs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
                       "They leave out git-pr merge and init, and refuse a force push. git-pr review is allowed, since the reviewer run records its own decision with it.\n\n"
-                    : "The Claude Code rules an unattended Dev build needs (dev-yolo is off). Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
+                    : `The Claude Code rules an unattended Dev build needs (dev-yolo ${readFailed ? "could not be read" : "is off"}). Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n` +
                       "They leave out git-pr merge, git-pr review and init, and refuse a force push. With dev-yolo on, `do-dev-tasks rules` prints a larger set.\n\n") +
                     renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yoloRules))
             );

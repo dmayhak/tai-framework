@@ -213,6 +213,8 @@ describe("rules for a DEV-YOLO run (TAI-685)", () => {
         const gaps = { allow: [], deny: [`Bash(${CLI} git-pr merge *)`] };
         assert.match(readinessWarning(gaps, true, true)!, /reach a merge or init:/);
         assert.match(readinessWarning(gaps, true)!, /reach a merge, a review or init:/);
+        assert.match(readinessWarning(gaps, true, true)!, /to see the rule set for a DEV-YOLO run/);
+        assert.match(readinessWarning(gaps, true)!, /to see the narrow rule set/);
         const missing = missingRules(yolo, { allow: [], deny: [] });
         assert.ok(!missing.deny.some((r) => r.includes("git-pr review")), "a YOLO run is never told to deny git-pr review");
         assert.ok(missing.allow.some((r) => r.includes("review-prep")));
