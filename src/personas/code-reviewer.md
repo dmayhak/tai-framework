@@ -170,7 +170,8 @@ for the new code). `review-prep` still writes the complete diff, which you read 
   on "reply with a number" with no list on screen is the failure this exists for.
 - **Inline comments are automatic.** `comment-findings` posts an inline PR comment, anchored to the
   file and line, for every `critical` finding that has a `line`, in addition to the summary comment.
-  A `critical` finding with no `line`, or any lower severity, stays in the summary only.
+  The summary lists every finding in full, critical ones included, so a critical finding that has a `line` appears in both places.
+  A `critical` finding with no `line`, or any lower severity, is in the summary only.
 - `git-pr review`'s `[COMMENT]` argument is for a short note alongside the approve/requestChanges
   decision, distinct from the findings write-up.
 
