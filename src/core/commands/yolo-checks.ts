@@ -29,6 +29,8 @@ export interface YoloCheckDeps {
     readonly taiDir: string;
     /** The human running the command, from the session's configured email. */
     readonly email: string | null;
+    /** DEV-YOLO was turned on for this run only (`do-dev-tasks yolo=true`, TAI-693) by a command that already passed the checks the setting does. */
+    readonly oneRun?: boolean;
 }
 
 /** Why `task` may not run unattended; empty when it may. */
@@ -41,12 +43,14 @@ export async function yoloStopReasons(deps: YoloCheckDeps, task: DevTask): Promi
     const page = await deps.docStore.getPage({ spaceKey: deps.spaceKey, title: SETTINGS_PAGE_TITLE });
     const state = page ? parseSettingsPage(page.content).state : EMPTY_SETTINGS;
     const yolo = viewSettings(state, email).find((v) => v.def.key === "dev-yolo")?.value === "true";
-    if (!yolo) reasons.push(`DEV-YOLO is off for ${email}`);
+    if (!yolo && !deps.oneRun) reasons.push(`DEV-YOLO is off for ${email}`);
     if (!state.admins.includes(email)) {
         reasons.push(`${email} is not on the Autonomy admins list${state.admins.length ? ` (${state.admins.join(", ")})` : " (it is empty)"}`);
     }
     // The page is editable by anyone who can edit the Confluence page, so it is not proof that a person turned autonomy on.
-    if (!(await hasAttestation(deps.taiDir, email, "dev-yolo", "true"))) {
+    // A one-run override (TAI-693) was passed by `allowYoloForOneRun` just before the run: its attestation is an audit record written then,
+    // so requiring it here would check nothing. The setting's own record proves a person acted earlier in a terminal, and is checked.
+    if (!deps.oneRun && !(await hasAttestation(deps.taiDir, email, "dev-yolo", "true"))) {
         reasons.push("this machine has no record that you turned DEV-YOLO on; run `tai-settings set dev-yolo true` yourself in a plain terminal");
     }
     const siblings = await deps.workTracker.search({ projectKey: deps.projectKey, parentKey: task.parent.key, exhaustive: true, readYourWrites: true });

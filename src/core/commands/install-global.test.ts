@@ -54,6 +54,7 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(skill.content, /`do-dev-tasks rules` prints the rule set/);
             assert.match(skill.content, /Show the human that warning verbatim/);
             assert.match(skill.content, /Never write that file or those rules yourself/);
+            assert.match(skill.content, /`yolo=true` is refused in an AI session, so never add it yourself/);
         }
     });
 

@@ -112,3 +112,28 @@ describe("yoloStopReasons (TAI-634)", () => {
             assert.match((await yoloStopReasons(deps, { issue: {} as never, parent: { key: "TAI-1" } as never })).join("\n"), /no record that you turned DEV-YOLO on/);
         }));
 });
+
+describe("yoloStopReasons for one run (TAI-693)", () => {
+    it("lets a ticket run with the setting off when the person is an admin; the setting's own record is not asked for", () =>
+        world(async ({ deps, task }) => {
+            const ctx = { docStore: deps.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
+            await changeAdmin(ctx, "add", "a@b.co");
+            assert.deepEqual(await yoloStopReasons({ ...deps, oneRun: true }, task), []);
+            const without = (await yoloStopReasons(deps, task)).join("\n");
+            assert.match(without, /DEV-YOLO is off for a@b\.co/);
+            assert.match(without, /no record that you turned DEV-YOLO on;/);
+        }));
+
+    it("still needs the person on the admins list", () =>
+        world(async ({ deps, task }) => {
+            assert.match((await yoloStopReasons({ ...deps, oneRun: true }, task)).join("\n"), /not on the Autonomy admins list/);
+        }));
+
+    it("still stops on a Database change under a one-run override", () =>
+        world(async ({ deps, task, add }) => {
+            const ctx = { docStore: deps.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
+            await changeAdmin(ctx, "add", "a@b.co");
+            await add(SubtaskType.Database);
+            assert.match((await yoloStopReasons({ ...deps, oneRun: true }, task)).join("\n"), /a Database change/);
+        }));
+});

@@ -28,6 +28,8 @@ export interface YoloWiring {
     /** The resolved `.tai` directory, the same one `settings set` writes its record to. */
     readonly taiDir: string;
     readonly email: string | null;
+    /** DEV-YOLO is on for this run only (`do-dev-tasks yolo=true`), not by the stored setting. */
+    readonly oneRun?: boolean;
     readonly cli: string;
     readonly cwd: string;
     readonly timeoutMs: number;
@@ -53,7 +55,7 @@ export interface YoloWiring {
 /** Why the ticket needs a person before anything runs: the stop checks, and a reviewer account that is not set up. */
 export function yoloGate(w: YoloWiring): (task: DevTask) => Promise<readonly string[]> {
     return async (task) => {
-        const reasons = [...(await yoloStopReasons({ workTracker: w.workTracker, docStore: w.docStore, spaceKey: w.spaceKey, projectKey: w.projectKey, taiDir: w.taiDir, email: w.email }, task))];
+        const reasons = [...(await yoloStopReasons({ workTracker: w.workTracker, docStore: w.docStore, spaceKey: w.spaceKey, projectKey: w.projectKey, taiDir: w.taiDir, email: w.email, ...(w.oneRun ? { oneRun: true } : {}) }, task))];
         if (!w.reviewer.token || !w.reviewer.email || !w.reviewerHost) {
             reasons.push("no automated reviewer account is configured (set TAI_REVIEWER_GITHUB_TOKEN and TAI_REVIEWER_EMAIL)");
         } else {

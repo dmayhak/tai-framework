@@ -591,10 +591,21 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.match(cliCommand("/x/it's"), /'\/x\/it'\\''s'/);
     });
 
-    it("parseDevTasksArgs accepts dryrun=true or nothing and refuses anything else", () => {
+    it("parseDevTasksArgs accepts dryrun=true, yolo=true and yolo=false, or nothing, and refuses anything else (TAI-693)", () => {
         assert.deepEqual(parseDevTasksArgs([undefined]), { dryRun: false });
         assert.deepEqual(parseDevTasksArgs(["dryrun=true"]), { dryRun: true });
-        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true/);
+        assert.deepEqual(parseDevTasksArgs(["yolo=true"]), { dryRun: false, yolo: true });
+        assert.deepEqual(parseDevTasksArgs(["yolo=false"]), { dryRun: false, yolo: false });
+        assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true and yolo=false/);
+        assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
+    });
+
+    it("the report says when DEV-YOLO is on or off for this run only (TAI-693)", () => {
+        const text = (yolo: boolean, only: boolean) => renderDevTasksReport({ tasks: [], skipped: [] }, [], { yolo, ...(only ? { yoloThisRunOnly: true } : {}) });
+        assert.match(text(true, true), /DEV-YOLO is on for this run only \(yolo=true\); the stored setting is unchanged\./);
+        assert.match(text(false, true), /DEV-YOLO is off for this run only \(yolo=false\)/);
+        assert.match(text(true, false), /DEV-YOLO is on\.\n/);
     });
 
     it("the timeout message states a fractional timeout as configured", async () => {

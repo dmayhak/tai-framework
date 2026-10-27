@@ -294,9 +294,9 @@ function waitingNote(skipped: SkippedDevTask, worked: ReadonlySet<IssueKey>): st
     return mine.length ? ` Waiting on ${mine.join(", ")}, which this run worked on: it starts once that is merged and done.` : "";
 }
 
-export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean }): string {
+export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean; readonly yoloThisRunOnly?: boolean }): string {
     const worked = new Set((results ?? []).flatMap((r) => [r.task.issue.key, r.task.parent.key]));
-    const out = ["# Do all dev tasks", "", `DEV-YOLO is ${options.yolo ? "on" : "off"}.`, ""];
+    const out = ["# Do all dev tasks", "", `DEV-YOLO is ${options.yolo ? "on" : "off"}${options.yoloThisRunOnly ? " for this run only (yolo=" + options.yolo + "); the stored setting is unchanged" : ""}.`, ""];
     if (results === null) {
         if (options.openPullRequestsChecked === false) {
             out.push("_The git host is not configured here, so a ticket that already has an open PR could not be left out of this list._", "");
@@ -347,10 +347,15 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
     return out.join("\n");
 }
 
-/** The command's arguments: only `dryrun=true` is understood. Anything else is refused, because a mistyped flag must not start real builds. */
-export function parseDevTasksArgs(args: readonly (string | undefined)[]): { readonly dryRun: boolean } {
+/**
+ * The command's arguments: `dryrun=true`, and `yolo=true` or `yolo=false` for this run only (TAI-693). Anything else is refused,
+ * because a mistyped flag must not start real builds.
+ */
+export function parseDevTasksArgs(args: readonly (string | undefined)[]): { readonly dryRun: boolean; readonly yolo?: boolean } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
-    const unknown = given.filter((a) => a !== "dryrun=true");
-    if (unknown.length > 0) throw new Error(`do-dev-tasks takes only dryrun=true (got: ${unknown.join(" ")}).`);
-    return { dryRun: given.length > 0 };
+    const unknown = given.filter((a) => a !== "dryrun=true" && a !== "yolo=true" && a !== "yolo=false");
+    if (unknown.length > 0) throw new Error(`do-dev-tasks takes only dryrun=true, yolo=true and yolo=false (got: ${unknown.join(" ")}).`);
+    const yolo = given.includes("yolo=true") ? (given.includes("yolo=false") ? null : true) : given.includes("yolo=false") ? false : undefined;
+    if (yolo === null) throw new Error("do-dev-tasks takes yolo=true or yolo=false, not both.");
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }) };
 }
