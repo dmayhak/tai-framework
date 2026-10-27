@@ -174,7 +174,7 @@ import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson } from "../core/commands/build-allow-rules.js";
-import { findDevTasks, parseDevTasksArgs, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
+import { findDevTasks, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
@@ -2278,22 +2278,22 @@ async function main(): Promise<void> {
         return;
     }
 
-    // TAI-633: `do-dev-tasks [dryrun=true]` works the current user's In Progress and To Do Dev subtasks one at a time, each in
+    // TAI-633: `do-dev-tasks [dryrun=true] [yolo=true|false]` (and `do-dev-tasks rules [yolo=true|false]`) works the current user's In Progress and To Do Dev subtasks one at a time, each in
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        const { dryRun, yolo: yoloArg } = parseDevTasksArgs(arg === "rules" ? rest : [arg, ...rest]);
+        const { dryRun, yolo: yoloArg } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
             // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
             let readFailed = false;
-            const yoloRules =
-                yoloArg ??
-                (await devYoloOn().catch(() => {
+            const { yolo: yoloRules } = await resolveYolo(yoloArg, () =>
+                devYoloOn().catch(() => {
                     readFailed = true;
                     return false;
-                }));
+                })
+            );
             console.log(
                 (readFailed ? "Could not read the dev-yolo setting, so this is the set for a build without DEV-YOLO. If dev-yolo is on, run this again once the settings page can be read.\n\n" : "") +
                     (yoloRules
@@ -2339,9 +2339,7 @@ async function main(): Promise<void> {
             attest: (email: string, key: string, value: string) => recordAttestation(resolvePath(config.taiRoot), email, key, value),
         };
         if (yoloArg === true) await allowYoloForOneRun(settingsCtx, false);
-        const yolo = yoloArg ?? (await devYoloOn());
-        const oneRun = yoloArg === true;
-        const thisRunOnly = yoloArg !== undefined;
+        const { yolo, oneRun, thisRunOnly } = await resolveYolo(yoloArg, devYoloOn);
         if (dryRun) {
             console.log(renderDevTasksReport(found, null, { yolo, openPullRequestsChecked: gitDeps !== undefined, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}) }));
             return;
@@ -3129,7 +3127,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true | rules] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true] [yolo=true|false] | do-dev-tasks rules [yolo=true|false] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );

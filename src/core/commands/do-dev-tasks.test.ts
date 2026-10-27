@@ -11,7 +11,7 @@ import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { noPrReason, parseDevTasksArgs } from "./do-dev-tasks.js";
+import { noPrReason, parseDevTasksArgs, resolveYolo } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
@@ -599,6 +599,29 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
         for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true and yolo=false/);
         assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
+    });
+
+    it("after rules only yolo= is taken, so rules dryrun=true is refused (TAI-700)", () => {
+        assert.deepEqual(parseDevTasksArgs([undefined], { rules: true }), { dryRun: false });
+        assert.deepEqual(parseDevTasksArgs(["yolo=true"], { rules: true }), { dryRun: false, yolo: true });
+        assert.throws(() => parseDevTasksArgs(["dryrun=true"], { rules: true }), /rules takes only yolo=true and yolo=false \(got: dryrun=true\)/);
+        assert.throws(() => parseDevTasksArgs(["foo"], { rules: true }), /rules takes only yolo=true and yolo=false/);
+    });
+
+    it("resolveYolo: the argument wins in both directions and the setting is read only when there is none (TAI-700, TAI-692 AC-5)", async () => {
+        const stored = (value: boolean) => {
+            const calls = { n: 0 };
+            return { calls, read: async () => (calls.n++, value) };
+        };
+        const off = stored(false);
+        assert.deepEqual(await resolveYolo(true, off.read), { yolo: true, oneRun: true, thisRunOnly: true });
+        const on = stored(true);
+        assert.deepEqual(await resolveYolo(false, on.read), { yolo: false, oneRun: false, thisRunOnly: true });
+        assert.equal(off.calls.n + on.calls.n, 0, "the stored setting is not read when the argument is given");
+        const settingOn = stored(true);
+        assert.deepEqual(await resolveYolo(undefined, settingOn.read), { yolo: true, oneRun: false, thisRunOnly: false });
+        assert.deepEqual(await resolveYolo(undefined, stored(false).read), { yolo: false, oneRun: false, thisRunOnly: false });
+        assert.equal(settingOn.calls.n, 1);
     });
 
     it("the report says when DEV-YOLO is on or off for this run only (TAI-693)", () => {
