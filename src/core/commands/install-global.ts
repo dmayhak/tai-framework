@@ -661,6 +661,8 @@ function doDevTasksSkillBody(taiHome: string): string {
         "`TAI_CHECK_COMMAND` is set. Show the human that warning verbatim. `do-dev-tasks rules` prints the rule set (the larger one when " +
         "`DEV-YOLO` is on, which also allows the reviewer, fix and verify commands); the human adds it to their own `.claude/settings.local.json`. " +
         "Never write that file or those rules yourself.\n\n" +
+        "`yolo=true` or `yolo=false` after `do-dev-tasks` sets DEV-YOLO for one run without changing the setting. `yolo=true` is refused in an AI " +
+        "session, so never add it yourself: tell the human to run it in a plain terminal.\n\n" +
         "Show the human its closing report: what was done for each ticket, what failed, what was skipped, and what waits for a person. " +
         "If `DEV-YOLO` is on it says so, and says whether the full run is available; never turn the setting on yourself.\n"
     );

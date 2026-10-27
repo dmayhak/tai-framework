@@ -169,7 +169,7 @@ import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
-import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
+import { allowYoloForOneRun, showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
 import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
@@ -2283,22 +2283,28 @@ async function main(): Promise<void> {
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
+        const { dryRun, yolo: yoloArg } = parseDevTasksArgs(arg === "rules" ? rest : [arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
+            // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
             let readFailed = false;
-            const yoloRules = await devYoloOn().catch(() => ((readFailed = true), false));
+            const yoloRules =
+                yoloArg ??
+                (await devYoloOn().catch(() => {
+                    readFailed = true;
+                    return false;
+                }));
             console.log(
                 (readFailed ? "Could not read the dev-yolo setting, so this is the set for a build without DEV-YOLO. If dev-yolo is on, run this again once the settings page can be read.\n\n" : "") +
                     (yoloRules
-                    ? "The Claude Code rules an unattended DEV-YOLO run needs (dev-yolo is on): the build, and the review, fix and verify runs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
+                    ? `The Claude Code rules an unattended DEV-YOLO run needs (${yoloArg === undefined ? "dev-yolo is on" : "yolo=true"}): the build, and the review, fix and verify runs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n` +
                       "They leave out git-pr merge and init, and refuse a force push. git-pr review is allowed, since the reviewer run records its own decision with it.\n\n"
-                    : `The Claude Code rules an unattended Dev build needs (dev-yolo ${readFailed ? "could not be read" : "is off"}). Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n` +
+                    : `The Claude Code rules an unattended Dev build needs (${yoloArg === false ? "yolo=false" : `dev-yolo ${readFailed ? "could not be read" : "is off"}`}). Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n` +
                       "They leave out git-pr merge, git-pr review and init, and refuse a force push. With dev-yolo on, `do-dev-tasks rules` prints a larger set.\n\n") +
                     renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yoloRules))
             );
             return;
         }
-        const { dryRun } = parseDevTasksArgs([arg, ...rest]);
         const gitDeps = await tryResolveReadyGitDeps(config);
         const checkConfigured = checkCommandFromEnv() !== null;
         const find = () =>
@@ -2322,13 +2328,26 @@ async function main(): Promise<void> {
                     : {}),
             });
         const found = await find();
-        const yolo = await devYoloOn();
+        // TAI-693: `yolo=true|false` sets DEV-YOLO for this run only and never writes the setting. Turning it on passes the checks the
+        // setting does (an admin, in a plain terminal, not acting as a persona); turning it off needs none.
+        const settingsCtx = {
+            docStore: config.backend.docStore,
+            spaceKey: config.spaceKey,
+            email: config.currentHuman?.email ?? null,
+            ...(config.actingPersona ? { actingPersona: config.actingPersona } : {}),
+            aiSession: inAiSession(),
+            attest: (email: string, key: string, value: string) => recordAttestation(resolvePath(config.taiRoot), email, key, value),
+        };
+        if (yoloArg === true) await allowYoloForOneRun(settingsCtx, false);
+        const yolo = yoloArg ?? (await devYoloOn());
+        const oneRun = yoloArg === true;
+        const thisRunOnly = yoloArg !== undefined;
         if (dryRun) {
-            console.log(renderDevTasksReport(found, null, { yolo, openPullRequestsChecked: gitDeps !== undefined }));
+            console.log(renderDevTasksReport(found, null, { yolo, openPullRequestsChecked: gitDeps !== undefined, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}) }));
             return;
         }
         if (found.tasks.length === 0) {
-            console.log(renderDevTasksReport(found, [], { yolo }));
+            console.log(renderDevTasksReport(found, [], { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}) }));
             return;
         }
         if (!gitDeps) throw new Error("do-dev-tasks needs the git host: set TAI_GIT_REPOS (or TAI_GIT_WORKSPACE) and its credentials, so each PR can be found afterwards.");
@@ -2338,6 +2357,7 @@ async function main(): Promise<void> {
         // TAI-649: say plainly, before any run starts, when the rules do not cover the build (nothing is blocked).
         const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yolo), await readPermissionFiles(process.cwd())), checkConfigured, yolo);
         if (readiness) console.log(`${readiness}\n`);
+        if (oneRun) await allowYoloForOneRun(settingsCtx, true);
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         stopRunsOnInterrupt();
         const yoloWiring = yolo
@@ -2350,6 +2370,7 @@ async function main(): Promise<void> {
                   projectKey: config.projectKey,
                   taiDir: resolvePath(config.taiRoot),
                   email: config.currentHuman?.email ?? null,
+                  ...(oneRun ? { oneRun: true } : {}),
                   cli,
                   cwd: process.cwd(),
                   timeoutMs,
@@ -2382,7 +2403,7 @@ async function main(): Promise<void> {
                 await postIssueComment(config.backend.workTracker, key, stampComment(body, developer));
             },
         }, found);
-        console.log(renderDevTasksReport(worked.found, worked.results, { yolo }));
+        console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}) }));
         return;
     }
 

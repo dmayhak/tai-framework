@@ -74,13 +74,21 @@ function requireEmail(ctx: SettingsContext): string {
     return ctx.email.toLowerCase();
 }
 
-/** Why `ctx` may not make an autonomy change, or null when it may. `admins` is the page's list. */
-function autonomyRefusal(ctx: SettingsContext, admins: readonly string[]): string | null {
+/**
+ * Why `ctx` may not make an autonomy change, or null when it may. `admins` is the page's list. `what` and `how` word the refusal
+ * for the change being made: the setting itself, or turning DEV-YOLO on for one run (TAI-693).
+ */
+function autonomyRefusal(
+    ctx: SettingsContext,
+    admins: readonly string[],
+    what = "an autonomy setting cannot be changed",
+    how = "Run `tai-settings` yourself in a plain terminal."
+): string | null {
     if (ctx.actingPersona) {
-        return `Refused: an autonomy setting cannot be changed while acting as a persona (--as ${ctx.actingPersona}). Run it yourself, as the human.`;
+        return `Refused: ${what} while acting as a persona (--as ${ctx.actingPersona}). Run it yourself, as the human.`;
     }
     if (ctx.aiSession) {
-        return "Refused: an autonomy setting cannot be changed from an AI session. Run `tai-settings` yourself in a plain terminal.";
+        return `Refused: ${what} from an AI session. ${how}`;
     }
     if (!ctx.email) return "Refused: no user is configured for this session, so TAI cannot tell who is asking.";
     if (admins.length === 0) {
@@ -90,6 +98,21 @@ function autonomyRefusal(ctx: SettingsContext, admins: readonly string[]): strin
         return `Refused: ${ctx.email} is not on the Autonomy admins list (${admins.join(", ")}).`;
     }
     return null;
+}
+
+/** The attestation key for one run with DEV-YOLO on, apart from the `dev-yolo` setting's own (TAI-693). */
+export const DEV_YOLO_ONCE = "dev-yolo-once";
+
+/**
+ * `do-dev-tasks yolo=true` (TAI-693): turning DEV-YOLO on for one run passes the checks the setting does (a person on the Autonomy
+ * admins list, in a plain terminal, not acting as a persona), and when `record` is set leaves an attestation that says it was for
+ * one run. It reads the settings page and never writes it. Throws the refusal, naming the check that failed.
+ */
+export async function allowYoloForOneRun(ctx: SettingsContext, record: boolean): Promise<void> {
+    const { state } = await load(ctx);
+    const refusal = autonomyRefusal(ctx, state.admins, "DEV-YOLO cannot be turned on for a run", "Run `do-dev-tasks yolo=true` yourself in a plain terminal.");
+    if (refusal) throw new Error(refusal);
+    if (record) await ctx.attest?.(requireEmail(ctx), DEV_YOLO_ONCE, "true");
 }
 
 export async function showSettings(ctx: SettingsContext): Promise<string> {

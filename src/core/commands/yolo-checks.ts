@@ -9,6 +9,7 @@ import type { WorkTracker, DocStore } from "../storage/interface.js";
 import { Status, SubtaskType } from "../schema/story-schema.js";
 import { SETTINGS_PAGE_TITLE, EMPTY_SETTINGS, parseSettingsPage, viewSettings } from "../settings/settings.js";
 import { hasAttestation } from "../settings/attestation.js";
+import { DEV_YOLO_ONCE } from "./settings.js";
 import type { DevTask } from "./do-dev-tasks.js";
 
 /** Subtasks that need a person, or a change a person should look at, before an unattended merge. */
@@ -29,6 +30,8 @@ export interface YoloCheckDeps {
     readonly taiDir: string;
     /** The human running the command, from the session's configured email. */
     readonly email: string | null;
+    /** DEV-YOLO was turned on for this run only (`do-dev-tasks yolo=true`, TAI-693): the setting is not what says it is on, the one-run record is. */
+    readonly oneRun?: boolean;
 }
 
 /** Why `task` may not run unattended; empty when it may. */
@@ -41,12 +44,16 @@ export async function yoloStopReasons(deps: YoloCheckDeps, task: DevTask): Promi
     const page = await deps.docStore.getPage({ spaceKey: deps.spaceKey, title: SETTINGS_PAGE_TITLE });
     const state = page ? parseSettingsPage(page.content).state : EMPTY_SETTINGS;
     const yolo = viewSettings(state, email).find((v) => v.def.key === "dev-yolo")?.value === "true";
-    if (!yolo) reasons.push(`DEV-YOLO is off for ${email}`);
+    if (!yolo && !deps.oneRun) reasons.push(`DEV-YOLO is off for ${email}`);
     if (!state.admins.includes(email)) {
         reasons.push(`${email} is not on the Autonomy admins list${state.admins.length ? ` (${state.admins.join(", ")})` : " (it is empty)"}`);
     }
     // The page is editable by anyone who can edit the Confluence page, so it is not proof that a person turned autonomy on.
-    if (!(await hasAttestation(deps.taiDir, email, "dev-yolo", "true"))) {
+    if (deps.oneRun) {
+        if (!(await hasAttestation(deps.taiDir, email, DEV_YOLO_ONCE, "true"))) {
+            reasons.push("this machine has no record that you turned DEV-YOLO on for this run; run `do-dev-tasks yolo=true` yourself in a plain terminal");
+        }
+    } else if (!(await hasAttestation(deps.taiDir, email, "dev-yolo", "true"))) {
         reasons.push("this machine has no record that you turned DEV-YOLO on; run `tai-settings set dev-yolo true` yourself in a plain terminal");
     }
     const siblings = await deps.workTracker.search({ projectKey: deps.projectKey, parentKey: task.parent.key, exhaustive: true, readYourWrites: true });

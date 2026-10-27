@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { toHumanId } from "../storage/interface.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
-import { changeAdmin, inAiSession, readSettingValue, setSetting, showSettings, type SettingsContext } from "./settings.js";
+import { allowYoloForOneRun, changeAdmin, inAiSession, readSettingValue, setSetting, showSettings, type SettingsContext } from "./settings.js";
 
 async function withStore(run: (make: (over?: Partial<SettingsContext>) => SettingsContext) => Promise<void>): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-settings-"));
@@ -85,3 +85,36 @@ describe("readSettingValue", () => {
             await assert.rejects(readSettingValue(ctx.docStore, "TAIT", "del@mayhak.com", "nonsense"), /Unknown setting/);
         }));
 });
+
+describe("DEV-YOLO for one run (TAI-693)", () => {
+    it("is allowed for an admin in a plain terminal, leaves an attestation that says it was for one run, and does not write the setting", () =>
+        withStore(async (make) => {
+            await changeAdmin(make(), "add", "del@mayhak.com");
+            const seen: string[] = [];
+            await allowYoloForOneRun(make({ attest: async (e, k, v) => void seen.push(`${e} ${k} ${v}`) }), true);
+            assert.deepEqual(seen, ["del@mayhak.com dev-yolo-once true"]);
+            assert.match(await showSettings(make()), /\*\*dev-yolo\*\*: false \(default\)/);
+        }));
+
+    it("a check without record leaves no attestation (a dry run)", () =>
+        withStore(async (make) => {
+            await changeAdmin(make(), "add", "del@mayhak.com");
+            const seen: string[] = [];
+            await allowYoloForOneRun(make({ attest: async (e, k, v) => void seen.push(`${e} ${k} ${v}`) }), false);
+            assert.deepEqual(seen, []);
+        }));
+
+    it("is refused from an acting persona, an AI session, a human not on the list, and an empty list, naming the check and leaving no record", () =>
+        withStore(async (make) => {
+            const seen: string[] = [];
+            const attest = async (e: string, k: string, v: string): Promise<void> => void seen.push(`${e} ${k} ${v}`);
+            await assert.rejects(allowYoloForOneRun(make({ attest }), true), /Autonomy admins list is empty/);
+            await changeAdmin(make(), "add", "del@mayhak.com");
+            await assert.rejects(allowYoloForOneRun(make({ actingPersona: "developer", attest }), true), /DEV-YOLO cannot be turned on for a run while acting as a persona/);
+            await assert.rejects(allowYoloForOneRun(make({ aiSession: true, attest }), true), /DEV-YOLO cannot be turned on for a run from an AI session\. Run `do-dev-tasks yolo=true` yourself/);
+            await assert.rejects(allowYoloForOneRun(make({ email: "sam@mayhak.com", attest }), true), /not on the Autonomy admins list/);
+            assert.deepEqual(seen, []);
+            assert.match(await showSettings(make()), /\*\*dev-yolo\*\*: false \(default\)/);
+        }));
+});
+

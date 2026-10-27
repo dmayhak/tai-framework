@@ -112,3 +112,41 @@ describe("yoloStopReasons (TAI-634)", () => {
             assert.match((await yoloStopReasons(deps, { issue: {} as never, parent: { key: "TAI-1" } as never })).join("\n"), /no record that you turned DEV-YOLO on/);
         }));
 });
+
+describe("yoloStopReasons for one run (TAI-693)", () => {
+    it("lets a ticket run with the setting off when this machine holds the one-run record and the person is an admin", () =>
+        world(async ({ deps, task }) => {
+            const ctx = { docStore: deps.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
+            await changeAdmin(ctx, "add", "a@b.co");
+            await recordAttestation(deps.taiDir, "a@b.co", "dev-yolo-once", "true");
+            assert.deepEqual(await yoloStopReasons({ ...deps, oneRun: true }, task), []);
+            assert.match((await yoloStopReasons(deps, task)).join("\n"), /DEV-YOLO is off for a@b\.co/);
+        }));
+
+    it("stops when the one-run record is missing, and does not take the setting's own record in its place", () =>
+        world(async ({ deps, task, on }) => {
+            await on();
+            await rm(path.join(deps.taiDir, "autonomy-attestations.json"));
+            await recordAttestation(deps.taiDir, "a@b.co", "dev-yolo", "true");
+            assert.match((await yoloStopReasons({ ...deps, oneRun: true }, task)).join("\n"), /no record that you turned DEV-YOLO on for this run/);
+        }));
+
+    it("the one-run record does not stand in for the setting's: without oneRun a ticket still needs the setting and its record", () =>
+        world(async ({ deps, task }) => {
+            const ctx = { docStore: deps.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
+            await changeAdmin(ctx, "add", "a@b.co");
+            await recordAttestation(deps.taiDir, "a@b.co", "dev-yolo-once", "true");
+            const reasons = (await yoloStopReasons(deps, task)).join("\n");
+            assert.match(reasons, /DEV-YOLO is off/);
+            assert.match(reasons, /no record that you turned DEV-YOLO on;/);
+        }));
+
+    it("still stops on a Database change under a one-run override", () =>
+        world(async ({ deps, task, add }) => {
+            const ctx = { docStore: deps.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
+            await changeAdmin(ctx, "add", "a@b.co");
+            await recordAttestation(deps.taiDir, "a@b.co", "dev-yolo-once", "true");
+            await add(SubtaskType.Database);
+            assert.match((await yoloStopReasons({ ...deps, oneRun: true }, task)).join("\n"), /a Database change/);
+        }));
+});
