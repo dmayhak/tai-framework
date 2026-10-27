@@ -272,21 +272,20 @@ function prSkillBody(taiHome: string): string {
         "- `render-findings` (TAI-209/210 ADR) — takes a structured findings JSON payload " +
         "(`@<path>` to a file, or the raw JSON inline) and deterministically renders it to " +
         "markdown on stdout. Posts nothing. This is what the review flow below runs so the " +
-        "*rendered output*, not any prose you compose, becomes the visible findings text. Also " +
-        "previews TAI-207's inline-vs-summary split (next bullet) — a `critical`-severity " +
-        "finding with a `line` is pulled out of its severity section and shown as a one-line " +
-        "tally instead (e.g. \"🔴 — posted as inline comments\"), same as what `comment-findings` " +
-        "will actually do. The preview also lists those inline findings in full, under \"Will be posted inline\", so the whole review is on screen; that block is only in the preview, never posted. Its output ENDS with a numbered \"what would you like to do?\" list " +
+        "*rendered output*, not any prose you compose, becomes the visible findings text. It " +
+        "lists every finding in full under its severity, critical ones first beside the red dot, " +
+        "exactly as `comment-findings` will post them. A critical finding that has a `line` is also " +
+        "posted as an inline comment (next bullet), but it is never left out of the review text. " +
+        "Its output ENDS with a numbered \"what would you like to do?\" list " +
         "(TAI-411) — part of the same stdout, never something you write; `comment-findings` does " +
         "not post it. **It also records that these findings were rendered for this PR (TAI-575)**, and ends with a " +
         "line telling you to show the list to the human as chat text and stop.\n" +
         "- `comment-findings` — same rendering as `render-findings`, but posts the result as the " +
         "PR's summary comment (via the same general-comment path `comment` uses). TAI-207: before " +
         "posting the summary, also posts one real inline PR comment (anchored to that exact file " +
-        "and line) for every `critical`-severity finding that has a `line` — those findings are " +
-        "then excluded from the summary's own severity sections (the tally line stands in for " +
-        "them). A finding whose inline post itself fails (e.g. its `line` isn't actually part of " +
-        "the diff) falls back into the summary instead of being silently dropped, and the failure " +
+        "and line) for every `critical`-severity finding that has a `line`. The summary still lists " +
+        "those findings in full. A finding whose inline post itself fails (e.g. its `line` isn't actually part of " +
+        "the diff) loses nothing, since the summary has it, and the failure " +
         "is reported alongside the summary comment's own output. This is how review findings " +
         "actually get posted — see the review-flow section below. **It refuses (TAI-575), and posts nothing, unless " +
         "`render-findings` was run on these exact findings for this PR in this clone** (a re-run of `review-prep` " +

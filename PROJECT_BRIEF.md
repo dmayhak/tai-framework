@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-26 (rev 138). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-27 (rev 139). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1243,7 +1243,7 @@ comment's content.
   is returned to the default branch (`dev-tasks-git.ts`). The list is worked out again after every ticket, so a ticket that one of ours unblocks (its blocker finished during the run) is picked up and not dropped for having been blocked at the start; each ticket is attempted once per run, and one still held back at the end is reported with what it waits on, naming any of those that this run worked on. Afterwards the open PR for the ticket is looked up on the git
   host (its title carries the Dev key) and whether its commit has a check result; a run that leaves no PR fails the
   ticket. A failure posts a `Handoff:` comment on that ticket and the others go on. The command ends with what was done,
-  what failed, what was skipped and what waits for a person. `dryrun=true` lists and runs nothing. With the `dev-yolo`
+  what failed, what was skipped and what waits for a person. `dryrun=true` lists and runs nothing. Before the first run, `core/commands/build-allow-rules.ts` checks the project's and the user's Claude Code settings against the narrow rule set a build needs (the TAI commands for the ticket, the PR and the check, the git add/commit/push commands, the project's `TAI_CHECK_COMMAND`, each command of a compound one on its own, split outside quotes) and says plainly, without blocking, what is not covered, what nothing refuses (a force push, a `--delete`, `--mirror` or `--prune` push, a push with `-uf`, a branch force or `-M`, a push to `main` or `master`, a branch delete, a forced or resetting checkout or switch, a checkout that discards the working tree, and `git-pr merge`, `git-pr review` and `init` bare and after `--as` and `--as=` with every persona name spelled out, never a wildcard, since a `*` spans spaces and would refuse a build's own command that merely mentions the word; a coverage check reads the older `Bash(cmd:*)` prefix form too, counts a rule as covering only when it matches every command the required one stands for, and counts a required command as missing when a deny rule of the person's own refuses it) and when `TAI_CHECK_COMMAND` is not set. `do-dev-tasks rules` prints the set for the person to add to their own `.claude/settings.local.json`; TAI never writes it. With the `dev-yolo`
   setting on, each ticket is first checked (`yoloStopReasons` plus an automated reviewer account that is set up and listed on
   `PR Reviewers` with the `automated` marker, different from the person's own); a ticket that fails a check gets a `Handoff:`
   and nothing is prepared or built. Then `core/commands/dev-yolo.ts` runs it: the build run, then up to `review-rounds`

@@ -109,7 +109,6 @@ import {
     renderFindingsPreview,
     partitionInlineFindings,
     renderInlineComment,
-    type ReviewFinding,
 } from "../core/git/review-findings.js";
 import { listProjectPersonaIds, loadPersonaConfig, resolveActingPersonaId, taiCliCommand, taiInstallRoot } from "../core/persona/config.js";
 import { describeTaiInstall, renderInstallWarning } from "../core/git/install-state.js";
@@ -174,6 +173,7 @@ import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } 
 import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
+import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson } from "../core/commands/build-allow-rules.js";
 import { findDevTasks, parseDevTasksArgs, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
@@ -318,6 +318,18 @@ function requireEnv(name: string): string {
  */
 function withCachingWorkTracker(backend: StorageBackend, taiRoot: string, projectKey: string): StorageBackend {
     return { ...backend, workTracker: new CachingWorkTracker(backend.workTracker, taiRoot, projectKey) };
+}
+
+/**
+ * The project's own persona ids, for the rules an unattended build needs (TAI-649): a deny that spells out every `--as` name
+ * has to know them. A personas page that cannot be read leaves the built-in names only, never a failed command.
+ */
+async function projectPersonaIdsOrNone(config: ResolvedConfig): Promise<string[]> {
+    try {
+        return await listProjectPersonaIds(config.backend.docStore, { spaceKey: config.spaceKey });
+    } catch {
+        return [];
+    }
 }
 
 async function resolveConfig(): Promise<ResolvedConfig> {
@@ -1926,15 +1938,15 @@ async function main(): Promise<void> {
         }
 
         // TAI-209/210 ADR: the step-4 action, run only once the human has said to post.
-        // TAI-207: `critical`-severity findings with a `line` now post as real inline PR
+        // TAI-207: `critical`-severity findings with a `line` also post as real inline PR
         // comments (via GitHost.addInlineComment) FIRST, then the summary comment posts via
-        // the same general-comment path as `comment` above -- renderReviewFindings already
-        // excludes whatever went inline from the summary's own severity sections (a one-line
-        // tally stands in for them instead), same split reviewd's own commenter.py makes.
+        // the same general-comment path as `comment` above. TAI-678: the summary lists every
+        // finding in full, the inline ones included, so a person reading it sees the most
+        // serious findings in one place and a failed inline post loses nothing.
         // Inline posting is best-effort per finding (mirrors reviewd's own
         // catch-log-and-continue posture in _post_review_impl): a single bad anchor (e.g. a
-        // finding's `line` isn't actually part of the diff -- a real, expected Bitbucket
-        // rejection, not a connectivity fault) shouldn't block the summary comment, which is
+        // finding's `line` isn't actually part of the diff -- a real, expected rejection by the
+        // host, not a connectivity fault) shouldn't block the summary comment, which is
         // the one artifact every reviewer actually depends on seeing.
         if (action === "comment-findings") {
             const [repoArg, ...gitArgs] = actionArgs;
@@ -1955,9 +1967,7 @@ async function main(): Promise<void> {
             // The PR's head now: the only thing that can show a push made after the review was prepared.
             const liveCommit = (await gitHost.getPullRequest(repo, prId))?.sourceCommit;
 
-            const { inline: eligible, summary } = partitionInlineFindings(findings.findings);
-            const posted: ReviewFinding[] = [];
-            const failed: ReviewFinding[] = [];
+            const { inline: eligible } = partitionInlineFindings(findings.findings);
             const inlineFailures: string[] = [];
             for (const f of eligible) {
                 try {
@@ -1966,13 +1976,9 @@ async function main(): Promise<void> {
                         line: f.line!,
                         body: stampComment(renderInlineComment(f), actingPersonaOf(config)),
                     });
-                    posted.push(f);
                 } catch (err) {
-                    // A failed inline post (e.g. `line` isn't actually part of the diff --
-                    // a real Bitbucket rejection, not a connectivity fault) falls back into
-                    // the summary below rather than being silently dropped -- it's still
-                    // eligible, just not actually posted anywhere yet.
-                    failed.push(f);
+                    // A failed inline post (e.g. `line` isn't actually part of the diff) never blocks the
+                    // summary, which lists the finding in full anyway; it is reported to the person here.
                     inlineFailures.push(`${f.file}:${f.line} (${f.title}) — ${err instanceof Error ? err.message : String(err)}`);
                 }
             }
@@ -1980,10 +1986,10 @@ async function main(): Promise<void> {
             const comment = await gitHost.addPullRequestComment(
                 repo,
                 prId,
-                stampComment(renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] }, manifest, liveCommit), actingPersonaOf(config))
+                stampComment(renderReviewFindings(findings, manifest, liveCommit), actingPersonaOf(config))
             );
             const failureNote = inlineFailures.length > 0
-                ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
+                ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- still listed in the summary above.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
                 : "";
             console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}${failureNote}`);
             return;
@@ -2275,6 +2281,15 @@ async function main(): Promise<void> {
     // TAI-633: `do-dev-tasks [dryrun=true]` works the current user's In Progress and To Do Dev subtasks one at a time, each in
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
+        // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
+        if (arg === "rules") {
+            console.log(
+                "The Claude Code rules an unattended Dev build needs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
+                    "They leave out git-pr merge, git-pr review and init, and refuse a force push.\n\n" +
+                    renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config)))
+            );
+            return;
+        }
         const { dryRun } = parseDevTasksArgs([arg, ...rest]);
         const gitDeps = await tryResolveReadyGitDeps(config);
         const checkConfigured = checkCommandFromEnv() !== null;
@@ -2312,6 +2327,9 @@ async function main(): Promise<void> {
         const taiHome = defaultTaiHome();
         const cli = cliCommand(taiHome);
         const timeoutMs = devRunTimeoutMs();
+        // TAI-649: say plainly, before any run starts, when the rules do not cover the build (nothing is blocked).
+        const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config)), await readPermissionFiles(process.cwd())), checkConfigured);
+        if (readiness) console.log(`${readiness}\n`);
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         stopRunsOnInterrupt();
         const yoloWiring = yolo
@@ -3082,7 +3100,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true | rules] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );

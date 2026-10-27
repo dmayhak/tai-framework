@@ -105,6 +105,15 @@ describe("runYolo (TAI-634)", () => {
         assert.match(s.handoffs[0]!, /leans "approve"/);
     });
 
+    it("says plainly that a review which approved but leans requestChanges contradicts itself (PR 29 review)", async () => {
+        const leaning = { ...findingsOf(finding("suggestion")), leaning: "requestChanges" } as unknown as ReviewFindings;
+        const s = script({ reviews: [{ findings: leaning, decision: "approve", head: "a" }] });
+        await runYolo(task, deps(s));
+        assert.deepEqual(s.log, ["build", "review 1"], "no fix run starts");
+        assert.match(s.handoffs[0]!, /lean "requestChanges": the review contradicts itself/);
+        assert.doesNotMatch(s.handoffs[0]!, /leans "approve"/, "the neither wording is not reused for this case");
+    });
+
     it("continues when the findings meet the bar and lean approve (TAI-682)", async () => {
         const s = script({ reviews: [{ findings: findingsOf(finding("suggestion")), decision: "approve", head: "a" }], heads: ["a"] });
         await runYolo(task, deps(s));
