@@ -308,17 +308,18 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         const noCheck = allOpened.filter((r) => (r.outcome as Extract<DevTaskOutcome, { state: "pr-opened" }>).checkRecorded === false);
         const opened = allOpened.filter((r) => !noCheck.includes(r));
         const failed = results.filter((r) => r.outcome.state === "failed");
-        const other = results.filter((r) => r.outcome.state === "waiting" || r.outcome.state === "handed-on");
-        out.push(`## Done (${opened.length})`, "");
-        out.push(
-            ...(opened.length
-                ? opened.map((r) => {
-                      const o = r.outcome as Extract<DevTaskOutcome, { state: "pr-opened" }>;
-                      const check = o.checkRecorded === null ? "check not looked up" : o.checkRecorded ? "check recorded" : "no check result on the PR";
-                      return `- ${line(r.task.issue)}: PR opened, ${check} — ${o.prUrl}`;
-                  })
-                : ["None."])
-        );
+        const finished = results.filter((r) => r.outcome.state === "handed-on");
+        const waitingOnPerson = results.filter((r) => r.outcome.state === "waiting");
+        out.push(`## Done (${opened.length + finished.length})`, "");
+        const doneLines = [
+            ...opened.map((r) => {
+                const o = r.outcome as Extract<DevTaskOutcome, { state: "pr-opened" }>;
+                const check = o.checkRecorded === null ? "check not looked up" : o.checkRecorded ? "check recorded" : "no check result on the PR";
+                return `- ${line(r.task.issue)}: PR opened, ${check} — ${o.prUrl}`;
+            }),
+            ...finished.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { note: string }).note}`),
+        ];
+        out.push(...(doneLines.length ? doneLines : ["None."]));
         if (noCheck.length) {
             out.push("", `## PR opened, no check result (${noCheck.length})`, "");
             out.push(...noCheck.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { prUrl: string }).prUrl} — the run did not record its check, so the merge gate will not pass until it is run`));
@@ -330,13 +331,13 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
             out.push("", "## Stopped", "");
             out.push(...stopped.map((r) => `- Before ${r.task.issue.key}: ${(r.outcome as { reason: string }).reason}`));
         }
-        if (other.length) {
-            out.push("", `## Not run (${other.length})`, "");
-            out.push(...other.map((r) => `- ${line(r.task.issue)}: ${r.outcome.state === "waiting" ? r.outcome.reason : (r.outcome as { note: string }).note}`));
-        }
         const waiting = allOpened.map((r) => r.task.issue.key);
         out.push("", "## Waiting for a person", "");
-        out.push(...(waiting.length ? [`- Review, approval and merge of the PRs for ${waiting.join(", ")}.`] : ["Nothing."]));
+        const waitingLines = [
+            ...(waiting.length ? [`- Review, approval and merge of the PRs for ${waiting.join(", ")}.`] : []),
+            ...waitingOnPerson.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason} (hand-off left on the ticket)`),
+        ];
+        out.push(...(waitingLines.length ? waitingLines : ["Nothing."]));
     }
     // A ticket this run worked is listed above; the look after it skips it for its now-open PR, which is not news.
     const ran = new Set((results ?? []).map((r) => r.task.issue.key));

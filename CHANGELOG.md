@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 142 (2026-10-27)
+
+**TAI-689 (Bug TAI-688): the `do-dev-tasks` report puts each outcome where it belongs.** A ticket DEV-YOLO ran to the end (merged, verified, Story closed) is listed under Done with what was done, and a ticket it stopped for a person is listed under "Waiting for a person" with the reason; both used to sit under a "Not run" section, so a finished run showed `Done (0)`. The "Not run" section is gone. A ticket with a PR opened and awaiting review is listed as before. Found in the first live DEV-YOLO trial on TAIT.
+
 ## rev 141 (2026-10-27)
 
 **TAI-683 (Story TAI-682): the unattended reviewer's leaning follows the bar.** The reviewer prompt now says to set `leaning` by the DEV-YOLO bar (`requestChanges` when any finding is critical, otherwise `approve`, never `neither`), since nobody is there to decide and the author decides every Suggestion and Nitpick after the approval. A round that has an approval and no critical finding but whose findings lean anything other than `approve` stops that ticket with a `Handoff:` before any fix run starts. The human review flow keeps all three leanings. The stop reason for an approval whose findings lean `requestChanges` says the review contradicts itself, apart from the `neither` wording.

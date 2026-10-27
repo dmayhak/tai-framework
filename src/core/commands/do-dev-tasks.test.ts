@@ -10,7 +10,7 @@ import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
-import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
+import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
 import { noPrReason, parseDevTasksArgs } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
@@ -234,6 +234,22 @@ describe("renderDevTasksReport (TAI-633)", () => {
         assert.match(text, /## Failed \(1\)[\s\S]*TAI-11.*tests failed/);
         assert.match(text, /## Waiting for a person[\s\S]*TAI-10/);
         assert.match(text, /## Skipped \(1\)[\s\S]*TAI-12.*precedence holds it/);
+    });
+
+    it("lists a ticket DEV-YOLO finished under Done, and one it stopped under Waiting for a person, never under Not run (TAI-688)", () => {
+        const result = (key: string, outcome: DevTaskOutcome): DevTaskResult => ({ task: task(key), outcome });
+        const results = [
+            result("TAI-10", { state: "pr-opened", prUrl: "https://pr/10", checkRecorded: true }),
+            result("TAI-11", { state: "handed-on", note: "merged https://pr/11, verified and closed TAI-1" }),
+            result("TAI-12", { state: "waiting", reason: "needs a person: TAI-1 has a Database change" }),
+            result("TAI-13", { state: "failed", reason: "tests failed" }),
+        ];
+        const text = renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true });
+        assert.match(text, /## Done \(2\)[\s\S]*TAI-10.*PR opened[\s\S]*TAI-11.*merged https:\/\/pr\/11, verified and closed/);
+        assert.match(text, /## Waiting for a person[\s\S]*PRs for TAI-10[\s\S]*TAI-12.*needs a person: TAI-1 has a Database change/);
+        assert.match(text, /## Failed \(1\)[\s\S]*TAI-13/);
+        assert.doesNotMatch(text, /Not run/);
+        assert.doesNotMatch(text.split("## Waiting for a person")[0]!, /TAI-12/);
     });
 
     it("a dry run lists what it would work and runs nothing", () => {
