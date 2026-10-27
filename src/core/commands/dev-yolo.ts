@@ -10,7 +10,7 @@
 import type { PullRequestActivity } from "../git/interface.js";
 import type { HumanRef } from "../storage/interface.js";
 import type { ReviewFinding, ReviewFindings } from "../git/review-findings.js";
-import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
+import { noPrReason, type DevTask, type DevTaskOutcome } from "./do-dev-tasks.js";
 
 export type ReviewDecision = "approve" | "requestChanges" | "none";
 
@@ -94,7 +94,7 @@ export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOut
         const built = await deps.build(task);
         if (!built.ok) return await say("The build run did not finish.", built.summary, "read the reason, fix what it names, and run the ticket again with /tai-work.");
         const found = await deps.findPullRequest(task);
-        if (!found.prUrl) return await say("The build run finished.", "no open PR for this ticket was found.", "check the branch and open the PR with /tai-work.");
+        if (!found.prUrl) return await say("The build run finished.", noPrReason(built.summary).replace(/^The run finished but /, ""), "check the branch and open the PR with /tai-work.");
         const prUrl = found.prUrl;
         if (found.checkRecorded === false) {
             return await say(`The PR is open: ${prUrl}.`, "the PR has no check result.", "run git-pr check on the PR, then run the ticket again.");

@@ -213,7 +213,7 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
             const built = await deps.build(task);
             if (!built.ok) throw new Error(built.summary);
             const found = await deps.inspect(task);
-            if (!found.prUrl) throw new Error("The run finished but no open PR for this ticket was found.");
+            if (!found.prUrl) throw new Error(noPrReason(built.summary));
             outcome = { state: "pr-opened", prUrl: found.prUrl, checkRecorded: found.checkRecorded };
         }
     } catch (err) {
@@ -226,6 +226,14 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
         }
     }
     return { task, outcome };
+}
+
+/** The reason for a run that exited cleanly but left no open PR: the tail of its own output says why it stopped. */
+export function noPrReason(runOutput: string): string {
+    const tail = runOutput.trim();
+    return tail === ""
+        ? "The run finished but no open PR for this ticket was found."
+        : `The run finished but no open PR for this ticket was found. The end of the run's output:\n${tail}`;
 }
 
 export interface WorkedDevTasks {
