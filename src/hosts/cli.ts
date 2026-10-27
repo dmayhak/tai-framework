@@ -174,6 +174,7 @@ import { showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } 
 import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
+import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson } from "../core/commands/build-allow-rules.js";
 import { findDevTasks, parseDevTasksArgs, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
@@ -318,6 +319,18 @@ function requireEnv(name: string): string {
  */
 function withCachingWorkTracker(backend: StorageBackend, taiRoot: string, projectKey: string): StorageBackend {
     return { ...backend, workTracker: new CachingWorkTracker(backend.workTracker, taiRoot, projectKey) };
+}
+
+/**
+ * The project's own persona ids, for the rules an unattended build needs (TAI-649): a deny that spells out every `--as` name
+ * has to know them. A personas page that cannot be read leaves the built-in names only, never a failed command.
+ */
+async function projectPersonaIdsOrNone(config: ResolvedConfig): Promise<string[]> {
+    try {
+        return await listProjectPersonaIds(config.backend.docStore, { spaceKey: config.spaceKey });
+    } catch {
+        return [];
+    }
 }
 
 async function resolveConfig(): Promise<ResolvedConfig> {
@@ -2275,6 +2288,15 @@ async function main(): Promise<void> {
     // TAI-633: `do-dev-tasks [dryrun=true]` works the current user's In Progress and To Do Dev subtasks one at a time, each in
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
+        // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
+        if (arg === "rules") {
+            console.log(
+                "The Claude Code rules an unattended Dev build needs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
+                    "They leave out git-pr merge, git-pr review and init, and refuse a force push.\n\n" +
+                    renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config)))
+            );
+            return;
+        }
         const { dryRun } = parseDevTasksArgs([arg, ...rest]);
         const gitDeps = await tryResolveReadyGitDeps(config);
         const checkConfigured = checkCommandFromEnv() !== null;
@@ -2312,6 +2334,9 @@ async function main(): Promise<void> {
         const taiHome = defaultTaiHome();
         const cli = cliCommand(taiHome);
         const timeoutMs = devRunTimeoutMs();
+        // TAI-649: say plainly, before any run starts, when the rules do not cover the build (nothing is blocked).
+        const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config)), await readPermissionFiles(process.cwd())), checkConfigured);
+        if (readiness) console.log(`${readiness}\n`);
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         stopRunsOnInterrupt();
         const yoloWiring = yolo
@@ -3082,7 +3107,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
+        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true | rules] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
             `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
             `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
     );

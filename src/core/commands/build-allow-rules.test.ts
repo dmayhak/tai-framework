@@ -1,0 +1,171 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { buildRunRules, missingRules, parsePermissions, readPermissionFiles, readinessWarning, renderRulesJson } from "./build-allow-rules.js";
+
+const HOME = "/home/x/.tai-framework";
+const CLI = `npx --prefix ${HOME} tsx ${HOME}/src/hosts/cli.ts`;
+
+describe("build allow rules (TAI-649)", () => {
+    it("covers the commands a build uses and never allows merge, review or init", () => {
+        const { allow } = buildRunRules(HOME);
+        for (const sub of ["issue", "work", "git-pr create", "git-pr check"]) assert.ok(allow.includes(`Bash(${CLI} ${sub} *)`), sub);
+        assert.ok(allow.includes("Bash(git push -u origin *)"));
+        for (const rule of allow) assert.doesNotMatch(rule, /git-pr merge|git-pr review|\binit\b/);
+    });
+
+    it("refuses a force push and the merge, review and init commands by deny entries", () => {
+        const { deny } = buildRunRules(HOME);
+        assert.ok(deny.includes("Bash(git push *--force*)"));
+        assert.ok(deny.includes(`Bash(${CLI} git-pr merge *)`));
+        assert.ok(deny.includes(`Bash(${CLI} git-pr review *)`));
+        assert.ok(deny.includes(`Bash(${CLI} init *)`));
+    });
+
+    // The same reading of `*` the module uses: any characters, spaces included.
+    const matches = (rule: string, command: string): boolean => new RegExp(`^${rule.replace(/^Bash\(|\)$/g, "").split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "s").test(command);
+
+    it("refuses merge, review and init under every persona name after --as and --as=, never with a wildcard (PR 27 review)", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const sub of ["git-pr merge", "git-pr review", "init"]) {
+            for (const name of ["developer", "dev", "reviewer", "cr", "pm", "tester"]) {
+                assert.ok(deny.includes(`Bash(${CLI} --as ${name} ${sub} *)`), `--as ${name} ${sub}`);
+                assert.ok(deny.includes(`Bash(${CLI} --as=${name} ${sub} *)`), `--as=${name} ${sub}`);
+            }
+        }
+        assert.ok(!deny.some((r) => r.includes("--as *") || r.includes("--as=*")), "no wildcard stands in for the persona");
+        assert.ok(deny.some((r) => matches(r, `${CLI} --as reviewer git-pr merge 5`)), "a merge as a persona is refused");
+        assert.ok(deny.some((r) => matches(r, `${CLI} --as=cr init run`)), "init as a persona is refused");
+    });
+
+    it("does not refuse a build's own ticket and PR commands whose text mentions init, a merge or a review (PR 27 review)", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const command of [
+            `${CLI} --as developer issue comment TAI-1 "Handoff: do not run init yet"`,
+            `${CLI} --as developer issue create TAIT dev "git-pr merge docs" description="a git-pr review note"`,
+            `${CLI} git-pr create TAI-2 o/r b main "title" "what init and git-pr merge do"`,
+            `${CLI} --as=developer git-pr create TAI-2 o/r b main "title" "mentions git-pr review"`,
+        ]) assert.ok(!deny.some((r) => matches(r, command)), command);
+    });
+
+    it("names the project's own personas in the deny entries too", () => {
+        const { deny } = buildRunRules(HOME, null, ["release-captain"]);
+        assert.ok(deny.includes(`Bash(${CLI} --as release-captain git-pr merge *)`));
+        assert.ok(deny.includes(`Bash(${CLI} --as=release-captain init *)`));
+    });
+
+    it("reports a deny that names only the bare spelling, and counts one that spans every persona as covering", () => {
+        const bareOnly = { allow: [], deny: [`Bash(${CLI} git-pr merge *)`, `Bash(${CLI} git-pr review *)`, `Bash(${CLI} init *)`] };
+        const gaps = missingRules(buildRunRules(HOME), bareOnly).deny;
+        assert.ok(gaps.includes(`Bash(${CLI} --as developer git-pr merge *)`), "a bare-only deny is not enough");
+        const spanning = missingRules(buildRunRules(HOME), { allow: [], deny: [`Bash(${CLI} *git-pr merge*)`, `Bash(${CLI} *git-pr review*)`, `Bash(${CLI} *init*)`] }).deny;
+        assert.ok(!spanning.some((r) => r.includes("git-pr merge")), "a deny that spans the persona flag covers every spelling");
+    });
+
+    it("does not count a narrower rule as covering one with a wildcard in the middle (PR 27 review)", () => {
+        const required = { allow: [], deny: ["Bash(git push *--force*)"] };
+        assert.deepEqual(missingRules(required, { allow: [], deny: ["Bash(git push --force*)"] }).deny, ["Bash(git push *--force*)"], "git push origin --force would get through");
+        assert.deepEqual(missingRules(required, { allow: [], deny: ["Bash(git push *--force*)"] }).deny, []);
+        assert.deepEqual(missingRules(required, { allow: [], deny: ["Bash(git push *)"] }).deny, [], "a wider deny covers it");
+    });
+
+    it("splits a compound check command outside quotes only, and on & and newlines too (PR 27 review)", () => {
+        const parts = (c: string): string[] => buildRunRules(HOME, c).allow.filter((r) => !r.includes("cli.ts") && !/^Bash\(git /.test(r)).map((r) => r.slice(5, -1));
+        assert.deepEqual(parts('npm test -- --grep "a|b"'), ['npm test -- --grep "a|b"'], "a | inside quotes stays");
+        assert.deepEqual(parts("npm run a; npm run b"), ["npm run a", "npm run b"]);
+        assert.deepEqual(parts("make build & make test"), ["make build", "make test"], "a lone & separates");
+        assert.deepEqual(parts("npm run a\nnpm run b"), ["npm run a", "npm run b"], "a newline separates");
+        assert.deepEqual(parts("npm test 2>&1 | tee out.log"), ["npm test 2>&1", "tee out.log"], "the & of a redirect stays");
+        assert.deepEqual(parts("npm run 'a && b'"), ["npm run 'a && b'"]);
+    });
+
+    it("also refuses the destructive git forms: a --delete push, a branch delete, a checkout that discards work", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const rule of ["git push *--delete*", "git push -uf*", "git branch -D*", "git branch -d*", "git branch --delete*", "git branch -f*", "git branch --force*", "git branch -M*", "git checkout -- *", "git checkout ."]) assert.ok(deny.includes(`Bash(${rule})`), rule);
+    });
+
+    it("counts the older Bash(cmd:*) prefix form as covering, and does not let it match a longer word", () => {
+        const required = { allow: ["Bash(git status*)", "Bash(git add *)"], deny: [] };
+        assert.deepEqual(missingRules(required, { allow: ["Bash(git status:*)", "Bash(git add:*)"], deny: [] }), { allow: [], deny: [] });
+        const wrongWord = missingRules({ allow: ["Bash(git status *)"], deny: [] }, { allow: ["Bash(git statusx:*)"], deny: [] });
+        assert.deepEqual(wrongWord.allow, ["Bash(git status *)"], "git statusx is not git status");
+    });
+
+    it("allows the project's check command as it is written, and only when there is one", () => {
+        assert.ok(buildRunRules(HOME, "npm test").allow.includes("Bash(npm test)"));
+        assert.ok(!buildRunRules(HOME, null).allow.some((r) => r.includes("npm")));
+    });
+
+    it("allows each command of a compound check command on its own, since Claude Code matches the parts separately (PR 27 review)", () => {
+        const { allow } = buildRunRules(HOME, "npm run typecheck && npm run lint && npm test");
+        for (const part of ["npm run typecheck", "npm run lint", "npm test"]) assert.ok(allow.includes(`Bash(${part})`), part);
+        assert.ok(!allow.some((r) => r.includes("&&")), "no rule holds the whole chain");
+        const mixed = buildRunRules(HOME, "make build; make test | tee out.log || true").allow;
+        for (const part of ["make build", "make test", "tee out.log", "true"]) assert.ok(mixed.includes(`Bash(${part})`), part);
+        assert.equal(buildRunRules(HOME, "npm test && npm test").allow.filter((r) => r === "Bash(npm test)").length, 1, "a repeated part is listed once");
+    });
+
+    it("also refuses a push to main or master, --mirror and --prune, and a forced or resetting checkout or switch (PR 27 review)", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const rule of [
+            "git push *--mirror*", "git push *--prune*", "git push origin main", "git push origin main *", "git push -u origin master", "git push *:main",
+            "git checkout -f*", "git checkout *--force*", "git checkout -B*", "git switch -f*", "git switch *--discard-changes*", "git switch -C*",
+        ]) assert.ok(deny.includes(`Bash(${rule})`), rule);
+        assert.ok(!deny.some((r) => r === "Bash(git push origin *)"), "pushing a branch to origin is still allowed");
+    });
+
+    it("reports an allow entry that a deny rule of the person's own refuses, since a deny beats an allow (PR 27 review)", () => {
+        const rules = buildRunRules(HOME);
+        const have = { allow: rules.allow, deny: [...rules.deny, "Bash(git push *)"] };
+        const gaps = missingRules(rules, have).allow;
+        assert.ok(gaps.includes("Bash(git push origin *)") && gaps.includes("Bash(git push -u origin *)"));
+        assert.ok(!gaps.includes("Bash(git status*)"), "commands the deny does not touch stay covered");
+        assert.match(readinessWarning({ allow: gaps, deny: [] }, true)!, /or a deny rule of yours refuses/);
+    });
+
+    it("reports nothing missing for the full set, and counts a broader rule the person wrote as covering", () => {
+        const rules = buildRunRules(HOME, "npm test");
+        assert.deepEqual(missingRules(rules, rules), { allow: [], deny: [] });
+        const broad = { allow: [`Bash(${CLI} *)`, "Bash(git *)", "Bash(npm *)"], deny: rules.deny };
+        assert.deepEqual(missingRules(rules, broad).allow, []);
+    });
+
+    it("lists what is missing, and the deny entries nothing provides", () => {
+        const gaps = missingRules(buildRunRules(HOME), { allow: [`Bash(${CLI} issue *)`], deny: [] });
+        assert.ok(gaps.allow.includes(`Bash(${CLI} git-pr create *)`));
+        assert.ok(!gaps.allow.includes(`Bash(${CLI} issue *)`));
+        assert.ok(gaps.deny.includes("Bash(git push *--force*)"));
+    });
+
+    it("warns plainly about the gaps and a missing check command, and is silent when all is covered", () => {
+        const gaps = missingRules(buildRunRules(HOME), { allow: [], deny: [] });
+        const text = readinessWarning(gaps, false)!;
+        assert.match(text, /will stop at the first one/);
+        assert.match(text, /force a push, delete a branch, or reach a merge/);
+        assert.match(text, /TAI_CHECK_COMMAND is not set/);
+        assert.match(text, /TAI does not write it/);
+        assert.equal(readinessWarning({ allow: [], deny: [] }, true), null);
+    });
+
+    it("renders a permissions block the person can paste", () => {
+        const parsed = JSON.parse(renderRulesJson(buildRunRules(HOME))) as { permissions: { allow: string[]; deny: string[] } };
+        assert.ok(parsed.permissions.allow.length > 0 && parsed.permissions.deny.length > 0);
+    });
+
+    it("reads allow and deny from the project and user settings files, and ignores a file that is not JSON", async () => {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-rules-"));
+        try {
+            await mkdir(path.join(dir, "proj", ".claude"), { recursive: true });
+            await mkdir(path.join(dir, "home", ".claude"), { recursive: true });
+            await writeFile(path.join(dir, "proj", ".claude", "settings.local.json"), JSON.stringify({ permissions: { allow: ["Bash(a)"], deny: ["Bash(d)"] } }));
+            await writeFile(path.join(dir, "home", ".claude", "settings.json"), "not json");
+            assert.deepEqual(await readPermissionFiles(path.join(dir, "proj"), path.join(dir, "home")), { allow: ["Bash(a)"], deny: ["Bash(d)"] });
+            assert.deepEqual(parsePermissions(null), { allow: [], deny: [] });
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    });
+});
