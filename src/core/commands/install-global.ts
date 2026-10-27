@@ -393,6 +393,11 @@ function initSkillBody(taiHome: string): string {
         "refreshed skill files in a running session — after an install/refresh, tell the human to " +
         "quit and restart the Gemini process (`/clear` is not enough), and treat an odd Gemini " +
         "result right after an update as a possibly stale skill before calling it a real gap.**\n\n" +
+        "**Short commands (optional, TAI-699):** the long `npx --prefix ... cli.ts` form has short ones, `tai <command>`, `tai-settings` and " +
+        "`tai-do-dev-tasks`, for the human to type in a plain terminal. Offer them once, and never install them yourself: tell the human to run " +
+        `\`${taiHome}/bin/tai-link\` (it links them into \`~/.local/bin\`, or into a directory they name on their path, never replaces a file that ` +
+        `is not its own, and \`${taiHome}/bin/tai-link --remove\` takes them off). Each takes \`--project <path>\` or \`TAI_PROJECT\` and otherwise ` +
+        "runs from the current directory. You keep using the long form.\n\n" +
         "**Target-project setup (TAI-116 piece 3, TAI-130, TAI-368):** once the bootstrap above is " +
         "done, check whether the CURRENT project (cwd) still needs onboarding:\n\n" +
         "```bash\n" +

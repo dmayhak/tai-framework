@@ -164,6 +164,31 @@ there's nothing to run *before* this step. Once it's done, those commands exist 
 future session, in every project, on this machine — no re-bootstrap needed, and no
 separate install per project.
 
+### Short commands (optional)
+
+Every TAI command is `npx --prefix ~/.tai-framework tsx ~/.tai-framework/src/hosts/cli.ts <command>`, run from the
+project's directory. `bin/tai` is the short form, and `bin/tai-link` puts it on your path. It is a plain shell script in this
+repo; nothing runs it for you:
+
+```bash
+~/.tai-framework/bin/tai-link              # links tai, tai-settings and tai-do-dev-tasks into ~/.local/bin
+~/.tai-framework/bin/tai-link /some/dir    # ...or into a directory on your path that you name
+~/.tai-framework/bin/tai-link --remove     # takes them off again (only links that point at this install)
+```
+
+Then, from a project directory:
+
+```bash
+tai issue get TAI-12                       # = the long form with the same arguments
+tai-settings set dev-yolo true             # = tai settings set dev-yolo true
+tai-do-dev-tasks dryrun=true               # = tai do-dev-tasks dryrun=true
+tai --project ~/work/shop issue get SHOP-3 # run against another project without cd
+```
+
+`--project <path>` (first argument) or `TAI_PROJECT` names the project; otherwise the current directory is used. The command runs from
+that directory, so the project's `.env` is read as it is today. An explicit path must hold a `.env` or a `.tai` directory, or it is
+refused. Arguments, spaces and quotes are passed through unchanged, and so is the exit code. It needs bash and a `readlink` that takes `-f` (Linux and WSL have one; macOS has it from 12.3, or install coreutils), and says so when it does not find one. `/tai-init` offers this once; an AI session keeps using the long form.
+
 ## Updating TAI
 
 TAI is a normal git clone, so updating it is pulling and re-running the installer:

@@ -111,7 +111,7 @@ describe("DEV-YOLO for one run (TAI-693)", () => {
             await assert.rejects(allowYoloForOneRun(make({ attest }), true), /Autonomy admins list is empty/);
             await changeAdmin(make(), "add", "del@mayhak.com");
             await assert.rejects(allowYoloForOneRun(make({ actingPersona: "developer", attest }), true), /DEV-YOLO cannot be turned on for a run while acting as a persona/);
-            await assert.rejects(allowYoloForOneRun(make({ aiSession: true, attest }), true), /DEV-YOLO cannot be turned on for a run from an AI session\. Run `do-dev-tasks yolo=true` yourself/);
+            await assert.rejects(allowYoloForOneRun(make({ aiSession: true, attest }), true), /DEV-YOLO cannot be turned on for a run from an AI session\. Run `tai-do-dev-tasks yolo=true` yourself/);
             await assert.rejects(allowYoloForOneRun(make({ email: "sam@mayhak.com", attest }), true), /not on the Autonomy admins list/);
             assert.deepEqual(seen, []);
             assert.match(await showSettings(make()), /\*\*dev-yolo\*\*: false \(default\)/);

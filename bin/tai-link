@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# TAI-699: put the short commands on the path, or take them off again. Never run by anything else: the person runs it.
+#
+#   tai-link [dir]            links tai, tai-settings and tai-do-dev-tasks into dir (default ~/.local/bin)
+#   tai-link --remove [dir]   removes those links, and only those that point at this install (--remove may come after the dir)
+# Needs bash and a readlink that takes -f.
+#
+# It never replaces a file or a link of someone else's, and says what it did.
+set -eu
+
+real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || real=""
+[ -n "$real" ] || { echo "tai-link: needs a readlink that supports -f (GNU coreutils; on macOS before 12.3 install coreutils)" >&2; exit 2; }
+tai="$(dirname "$real")/tai"
+remove=0
+dir=""
+for arg in "$@"; do
+    case "$arg" in
+        --remove) remove=1 ;;
+        -*) echo "tai-link: unknown option $arg (usage: tai-link [--remove] [dir])" >&2; exit 2 ;;
+        *)
+            [ -z "$dir" ] || { echo "tai-link: one directory only (usage: tai-link [--remove] [dir])" >&2; exit 2; }
+            dir="$arg"
+            ;;
+    esac
+done
+dir="${dir:-$HOME/.local/bin}"
+names="tai tai-settings tai-do-dev-tasks"
+
+[ -d "$dir" ] || { echo "tai-link: $dir is not a directory (make it, or pass another one that is on your path)" >&2; exit 2; }
+
+if [ "$remove" = 1 ]; then
+    for n in $names; do
+        if [ -L "$dir/$n" ] && [ "$(readlink -f "$dir/$n")" = "$(readlink -f "$tai")" ]; then
+            rm "$dir/$n"
+            echo "removed $dir/$n"
+        elif [ -e "$dir/$n" ] || [ -L "$dir/$n" ]; then
+            echo "left $dir/$n: it is not a link to this install"
+        fi
+    done
+    exit 0
+fi
+
+status=0
+for n in $names; do
+    if [ -L "$dir/$n" ] && [ "$(readlink -f "$dir/$n")" = "$(readlink -f "$tai")" ]; then
+        echo "already linked $dir/$n"
+    elif [ -e "$dir/$n" ] || [ -L "$dir/$n" ]; then
+        echo "tai-link: $dir/$n already exists and is not a link to this install; not touching it" >&2
+        status=1
+    else
+        ln -s "$tai" "$dir/$n"
+        echo "linked $dir/$n"
+    fi
+done
+case ":$PATH:" in *":$dir:"*) ;; *) echo "note: $dir is not on your PATH" ;; esac
+exit $status

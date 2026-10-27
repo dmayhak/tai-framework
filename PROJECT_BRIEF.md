@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-27 (rev 146). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-27 (rev 147). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1215,6 +1215,7 @@ comment's content.
   rules are shown first and written only on a yes; an existing file keeps every other setting and rule, nothing
   is added twice, and a file that is not valid JSON is left alone (`core/commands/claude-allow-rule.ts`). It
   is written through a temporary file and a rename, and is not a recorded init step. The file is personal (the rule names this machine's TAI path), not committed.
+- **Short commands for a person in a terminal.** `bin/tai` in the repo is the short form of `npx --prefix <TAI home> tsx <TAI home>/src/hosts/cli.ts`: `tai <command>`, and, linked under those names, `tai-settings` and `tai-do-dev-tasks`. `--project <path>` or `TAI_PROJECT` picks the project (it must hold a `.env` or a `.tai`), otherwise the current directory; it runs from there so the project's `.env` is read. `bin/tai-link [dir]` and `bin/tai-link --remove` add and take off the links, and only a person runs them (`/tai-init` offers them, the README describes them). An AI session keeps the long form. They need bash and a `readlink` that takes `-f`, and say so when it is missing.
 - **Settings are a typed `Settings` page, shown and changed with `tai-settings`.** The page sits in the `Config`
   folder and is read through the DocStore like `Personas` and `PR Reviewers`, so both backends behave the same.
   Its table holds per-user values keyed by email; its `Autonomy admins` list names the humans who may change an
