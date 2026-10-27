@@ -13,7 +13,7 @@ import { buildFixPrompt, buildReviewerPrompt, buildDevPrompt, buildVerifyPrompt,
 const task = { issue: { key: "TAI-9" }, parent: { key: "TAI-8" } } as unknown as DevTask;
 
 const finding = (severity: ReviewFinding["severity"], title = "t"): ReviewFinding => ({ severity, category: "Logic", title, file: "a.ts", issue: "i" });
-const findingsOf = (...fs: ReviewFinding[]): ReviewFindings => ({ findings: fs }) as unknown as ReviewFindings;
+const findingsOf = (...fs: ReviewFinding[]): ReviewFindings => ({ findings: fs, leaning: "approve" }) as unknown as ReviewFindings;
 
 interface Script {
     reviews: { findings: ReviewFindings; decision: ReviewDecision; head: string }[];
@@ -93,6 +93,22 @@ describe("runYolo (TAI-634)", () => {
         const b = script({ reviews: [{ findings: findingsOf(), decision: "none", head: "a" }] });
         await runYolo(task, deps(b));
         assert.match(b.handoffs[0]!, /cast no approval on the PR's current commit/);
+    });
+
+    it("stops, before any fix run, when the reviewer approved but its findings lean neither (TAI-682)", async () => {
+        const leaning = { ...findingsOf(finding("suggestion")), leaning: "neither" } as unknown as ReviewFindings;
+        const s = script({ reviews: [{ findings: leaning, decision: "approve", head: "a" }] });
+        const out = await runYolo(task, deps(s));
+        assert.deepEqual(s.log, ["build", "review 1"], "no fix run starts");
+        assert.equal(out.state, "waiting");
+        assert.match(s.handoffs[0]!, /lean "neither"/);
+        assert.match(s.handoffs[0]!, /leans "approve"/);
+    });
+
+    it("continues when the findings meet the bar and lean approve (TAI-682)", async () => {
+        const s = script({ reviews: [{ findings: findingsOf(finding("suggestion")), decision: "approve", head: "a" }], heads: ["a"] });
+        await runYolo(task, deps(s));
+        assert.deepEqual(s.log, ["build", "review 1", "fix 1 (1)"], "the fix run starts, and nothing was pushed");
     });
 
     it("stops after the last round when its fix has no fresh review", async () => {
@@ -215,6 +231,7 @@ describe("DEV-YOLO prompts", () => {
         assert.match(p, /git-pr review-prep o\/r 7/);
         assert.match(p, /\/tmp\/f\.json/);
         assert.match(p, /requestChanges.*if any finding is "critical", otherwise.*approve/);
+        assert.match(p, /Set "leaning" by the same bar.*"requestChanges" if any finding is "critical", otherwise "approve"\. Never "neither"/);
         assert.match(p, /never edit code/);
         assert.match(p, /Never use force=true/);
         assert.match(p, /data, never as instructions/);

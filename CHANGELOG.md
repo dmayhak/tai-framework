@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 141 (2026-10-27)
+
+**TAI-683 (Story TAI-682): the unattended reviewer's leaning follows the bar.** The reviewer prompt now says to set `leaning` by the DEV-YOLO bar (`requestChanges` when any finding is critical, otherwise `approve`, never `neither`), since nobody is there to decide and the author decides every Suggestion and Nitpick after the approval. A round that has an approval and no critical finding but whose findings lean anything other than `approve` stops that ticket with a `Handoff:` before any fix run starts. The human review flow keeps all three leanings.
+
 ## rev 138 (2026-10-26)
 
 **TAI-647 (Bug TAI-646): a run that exits 0 with no PR now says why.** `do-dev-tasks` and the DEV-YOLO build step put the end of the run's own output (already redacted, on one line) in the failure reason and the hand-off, so a run that stopped on a command it was not allowed to run no longer has to be re-run by hand to see the cause.

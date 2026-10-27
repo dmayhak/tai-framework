@@ -111,6 +111,10 @@ export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOut
             if (decision !== "approve") {
                 return await say(`The PR is open: ${prUrl}. Review round ${round} of ${deps.rounds}.`, "the reviewer cast no approval on the PR's current commit.", "review the PR by hand.");
             }
+            // The bar is the whole rule here: no critical finding means approve. A leaning of "neither" offers a hold this flow does not have.
+            if (findings.leaning !== "approve") {
+                return await say(`The PR is open: ${prUrl}. Review round ${round} of ${deps.rounds}.`, `the reviewer approved, but its findings lean "${findings.leaning}", and with no finding above Suggestion an unattended review leans "approve".`, "read the review on the PR and decide.");
+            }
             const open = findings.findings.filter((f) => f.severity === "suggestion" || f.severity === "nitpick");
             if (open.length > 0) {
                 const before = reviewed.review.head;
