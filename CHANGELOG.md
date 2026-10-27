@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 137 (2026-10-26)
+
+**TAI-667 (Bug TAI-666): wording from the PR 24 review.** The DEV-YOLO dirty-tree stop lists the changed files once instead of repeating the start-of-run message, and the comment above the merge call's catch matches the hand-off wording.
+
 ## rev 136 (2026-10-26)
 
 **TAI-665 (Bug TAI-664): DEV-YOLO finish follow-up from the PR 23 review.** A `Handoff:` after the merge goes on the parent Story or Bug and says what the Dev ticket did, since the Dev ticket is Done by then and drops out of the open work. The hand-off before the merge no longer says the PR is open. A dirty working tree is found before the merge (`assertCleanTree`), not after it. PR 24 review: the hand-off says the Dev ticket is Done only once it really reached Done; if the move to Done fails, the hand-off goes on the Dev ticket and says it is not Done.
