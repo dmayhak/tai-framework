@@ -109,7 +109,6 @@ import {
     renderFindingsPreview,
     partitionInlineFindings,
     renderInlineComment,
-    type ReviewFinding,
 } from "../core/git/review-findings.js";
 import { listProjectPersonaIds, loadPersonaConfig, resolveActingPersonaId, taiCliCommand, taiInstallRoot } from "../core/persona/config.js";
 import { describeTaiInstall, renderInstallWarning } from "../core/git/install-state.js";
@@ -1926,15 +1925,15 @@ async function main(): Promise<void> {
         }
 
         // TAI-209/210 ADR: the step-4 action, run only once the human has said to post.
-        // TAI-207: `critical`-severity findings with a `line` now post as real inline PR
+        // TAI-207: `critical`-severity findings with a `line` also post as real inline PR
         // comments (via GitHost.addInlineComment) FIRST, then the summary comment posts via
-        // the same general-comment path as `comment` above -- renderReviewFindings already
-        // excludes whatever went inline from the summary's own severity sections (a one-line
-        // tally stands in for them instead), same split reviewd's own commenter.py makes.
+        // the same general-comment path as `comment` above. TAI-678: the summary lists every
+        // finding in full, the inline ones included, so a person reading it sees the most
+        // serious findings in one place and a failed inline post loses nothing.
         // Inline posting is best-effort per finding (mirrors reviewd's own
         // catch-log-and-continue posture in _post_review_impl): a single bad anchor (e.g. a
-        // finding's `line` isn't actually part of the diff -- a real, expected Bitbucket
-        // rejection, not a connectivity fault) shouldn't block the summary comment, which is
+        // finding's `line` isn't actually part of the diff -- a real, expected rejection by the
+        // host, not a connectivity fault) shouldn't block the summary comment, which is
         // the one artifact every reviewer actually depends on seeing.
         if (action === "comment-findings") {
             const [repoArg, ...gitArgs] = actionArgs;
@@ -1955,9 +1954,7 @@ async function main(): Promise<void> {
             // The PR's head now: the only thing that can show a push made after the review was prepared.
             const liveCommit = (await gitHost.getPullRequest(repo, prId))?.sourceCommit;
 
-            const { inline: eligible, summary } = partitionInlineFindings(findings.findings);
-            const posted: ReviewFinding[] = [];
-            const failed: ReviewFinding[] = [];
+            const { inline: eligible } = partitionInlineFindings(findings.findings);
             const inlineFailures: string[] = [];
             for (const f of eligible) {
                 try {
@@ -1966,13 +1963,9 @@ async function main(): Promise<void> {
                         line: f.line!,
                         body: stampComment(renderInlineComment(f), actingPersonaOf(config)),
                     });
-                    posted.push(f);
                 } catch (err) {
-                    // A failed inline post (e.g. `line` isn't actually part of the diff --
-                    // a real Bitbucket rejection, not a connectivity fault) falls back into
-                    // the summary below rather than being silently dropped -- it's still
-                    // eligible, just not actually posted anywhere yet.
-                    failed.push(f);
+                    // A failed inline post (e.g. `line` isn't actually part of the diff) never blocks the
+                    // summary, which lists the finding in full anyway; it is reported to the person here.
                     inlineFailures.push(`${f.file}:${f.line} (${f.title}) — ${err instanceof Error ? err.message : String(err)}`);
                 }
             }
@@ -1980,10 +1973,10 @@ async function main(): Promise<void> {
             const comment = await gitHost.addPullRequestComment(
                 repo,
                 prId,
-                stampComment(renderReviewFindings(findings, { inline: posted, summary: [...summary, ...failed] }, manifest, liveCommit), actingPersonaOf(config))
+                stampComment(renderReviewFindings(findings, manifest, liveCommit), actingPersonaOf(config))
             );
             const failureNote = inlineFailures.length > 0
-                ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- fell back into the summary above instead.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
+                ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- still listed in the summary above.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
                 : "";
             console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}${failureNote}`);
             return;

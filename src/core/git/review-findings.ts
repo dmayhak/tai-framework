@@ -334,12 +334,9 @@ export function isInlineEligible(f: ReviewFinding): boolean {
 }
 
 /**
- * Splits `findings` into the ones that get posted as inline PR comments vs. the ones that
- * stay in the summary comment (TAI-207/209: "mirrors reviewd's inline_comments_for
- * pattern") — shared by `renderReviewFindings` (so the preview accurately reflects what
- * `comment-findings` will actually do) and `comment-findings` itself (`cli.ts`), which needs
- * the raw `ReviewFinding`s, not just rendered text, to call `GitHost.addInlineComment` per
- * finding.
+ * Splits `findings` into the ones that get posted as inline PR comments (`comment-findings`, `cli.ts`, which needs the raw
+ * `ReviewFinding`s to call `GitHost.addInlineComment` per finding) and the rest. Posting inline does not take a finding out
+ * of the review text: every finding, critical ones included, is listed in full in its severity section (TAI-678).
  */
 export function partitionInlineFindings(findings: readonly ReviewFinding[]): {
     readonly inline: readonly ReviewFinding[];
@@ -363,29 +360,6 @@ export function renderInlineComment(f: ReviewFinding): string {
     return parts.join("\n\n");
 }
 
-const MAX_TALLY_DOTS = 3;
-
-/**
- * Compact emoji tally of `inline` findings for the summary comment, e.g. "🔴🔴🔴+2 — posted
- * as inline comments" — same shape reviewd's `_format_inline_tally` uses, so a human sees
- * at a glance that SOME findings were pulled out of the summary and posted inline instead,
- * rather than the summary silently having fewer findings than expected.
- */
-function renderInlineTally(inline: readonly ReviewFinding[]): string {
-    const counts = new Map<FindingSeverity, number>();
-    for (const f of inline) counts.set(f.severity, (counts.get(f.severity) ?? 0) + 1);
-
-    const parts: string[] = [];
-    for (const severity of SEVERITY_ORDER) {
-        const count = counts.get(severity) ?? 0;
-        if (count === 0) continue;
-        const shown = Math.min(count, MAX_TALLY_DOTS);
-        const overflow = count > MAX_TALLY_DOTS ? `+${count - MAX_TALLY_DOTS}` : "";
-        parts.push(SEVERITY_EMOJI[severity].repeat(shown) + overflow);
-    }
-    return `${parts.join(" ")} — posted as inline comments`;
-}
-
 /**
  * Deterministically renders `ReviewFindings` to markdown — grouped by severity, same shape
  * reviewd's own `commenter.py` uses (severity sections, per-finding file:line, bottom-line
@@ -393,35 +367,15 @@ function renderInlineTally(inline: readonly ReviewFinding[]): string {
  * (preview) and `comment-findings` (post) both call this rather than the model authoring
  * the write-up itself (ADR Decision §2).
  *
- * TAI-207: inline-eligible findings (`partitionInlineFindings`) are excluded from the
- * severity sections below and replaced with a one-line tally — same split reviewd's own
- * `_format_summary_comment` makes (`summary_findings = findings not in inline_ids`) — so
- * this rendering accurately previews what `comment-findings` will actually post where, not
- * just what the summary comment alone will contain.
- *
- * `partition` defaults to the eligibility-based split (correct for `render-findings`'
- * preview, where nothing has actually been posted anywhere yet). `comment-findings`
- * (`cli.ts`) passes an EXPLICIT partition instead, computed from what actually succeeded
- * after attempting each inline post — a finding whose inline post failed falls back into
- * `summary` there rather than vanishing (it's eligible, but not actually posted, so it must
- * not be excluded from the one place it's still visible).
+ * Every finding is listed in full under its severity, critical ones first beside the red dot. A critical finding that has a
+ * line is also posted as an inline PR comment (TAI-207), which does not remove it from here: a person reading the review
+ * sees the most serious findings in one place, and a failed inline post loses nothing (TAI-678).
  */
-export function renderReviewFindings(
-    findings: ReviewFindings,
-    partition: {
-        readonly inline: readonly ReviewFinding[];
-        readonly summary: readonly ReviewFinding[];
-    } = partitionInlineFindings(findings.findings),
-    manifest: ReviewManifest | null = null,
-    liveCommit?: string | null
-): string {
+export function renderReviewFindings(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string | null): string {
     const lines: string[] = ["## Review", "", findings.overview, "", ...renderCoverage(findings.coverage, coverageNotes(findings, manifest, liveCommit)), ""];
 
-    const { inline, summary } = partition;
-    if (inline.length > 0) lines.push(renderInlineTally(inline), "");
-
     const grouped = new Map<FindingSeverity, ReviewFinding[]>();
-    for (const f of summary) {
+    for (const f of findings.findings) {
         const bucket = grouped.get(f.severity) ?? [];
         bucket.push(f);
         grouped.set(f.severity, bucket);
@@ -476,18 +430,7 @@ export const SHOW_THE_HUMAN_REMINDER =
 
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
 export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string | null): string {
-    return `${renderReviewFindings(findings, undefined, manifest, liveCommit)}${renderInlinePreview(findings)}\n\n${renderFindingsNextSteps(findings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`;
-}
-
-/**
- * TAI-644: the findings `comment-findings` will post as inline PR comments, in full. The review text leaves them out
- * (a tally stands in for them), which is right on the PR, where each sits on its own line, but in this preview it hid
- * the most serious findings from the person deciding what to post. Preview only: it is never part of what is posted.
- */
-function renderInlinePreview(findings: ReviewFindings): string {
-    const { inline } = partitionInlineFindings(findings.findings);
-    if (inline.length === 0) return "";
-    return ["", "", "---", `### Will be posted inline (${inline.length}), shown here in full`, "", ...inline.flatMap((f) => [renderFinding(f), ""])].join("\n").trimEnd();
+    return `${renderReviewFindings(findings, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`;
 }
 
 /**

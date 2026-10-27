@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 140 (2026-10-27)
+
+**TAI-679 (Story TAI-678): review findings list the critical ones in full, at the top.** `render-findings` and the summary comment `comment-findings` posts now list every finding, critical ones included, in full under its severity heading, so the red section at the top shows the most serious findings. The one-line tally ("posted as inline comments") and the preview's separate "Will be posted inline" block (TAI-644/645) are gone. A critical finding that has a line is still also posted as an inline comment, and a failed inline post loses nothing because the summary already holds the finding; the failure is still reported to the person running the command. `renderReviewFindings` no longer takes a partition argument.
+
 ## rev 138 (2026-10-26)
 
 **TAI-647 (Bug TAI-646): a run that exits 0 with no PR now says why.** `do-dev-tasks` and the DEV-YOLO build step put the end of the run's own output (already redacted, on one line) in the failure reason and the hand-off, so a run that stopped on a command it was not allowed to run no longer has to be re-run by hand to see the cause.
