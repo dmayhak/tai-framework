@@ -123,6 +123,9 @@ describe("runYolo (TAI-634)", () => {
         const none = script();
         await runYolo(task, deps(none, { findPullRequest: async () => ({ prUrl: null, checkRecorded: null }) }));
         assert.match(none.handoffs[0]!, /no open PR/);
+        const said = script();
+        await runYolo(task, deps(said, { build: async () => ({ ok: true, summary: "the command needs approval" }), findPullRequest: async () => ({ prUrl: null, checkRecorded: null }) }));
+        assert.match(said.handoffs[0]!, /no open PR[\s\S]*needs approval/);
         const nocheck = script();
         await runYolo(task, deps(nocheck, { findPullRequest: async () => ({ prUrl: "u", checkRecorded: false }) }));
         assert.match(nocheck.handoffs[0]!, /no check result/);

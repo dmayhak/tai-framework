@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 138 (2026-10-26)
+
+**TAI-647 (Bug TAI-646): a run that exits 0 with no PR now says why.** `do-dev-tasks` and the DEV-YOLO build step put the end of the run's own output (already redacted, on one line) in the failure reason and the hand-off, so a run that stopped on a command it was not allowed to run no longer has to be re-run by hand to see the cause.
+
 ## rev 137 (2026-10-26)
 
 **TAI-667 (Bug TAI-666): wording from the PR 24 review.** The DEV-YOLO dirty-tree stop lists the changed files once instead of repeating the start-of-run message, and the comment above the merge call's catch matches the hand-off wording.

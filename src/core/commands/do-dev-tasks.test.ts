@@ -11,7 +11,7 @@ import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { parseDevTasksArgs } from "./do-dev-tasks.js";
+import { noPrReason, parseDevTasksArgs } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
@@ -124,6 +124,19 @@ describe("runDevTasks (TAI-633)", () => {
         assert.equal(d.handoffs.length, 1);
         assert.equal(d.handoffs[0]![0], "TAI-10");
         assert.match(d.handoffs[0]![1], /^Handoff: .*tests failed/s);
+    });
+
+    it("a run that exits cleanly with no PR reports the end of its own output in the reason and the hand-off", async () => {
+        const d = deps({
+            build: async () => ({ ok: true, summary: "I could not run npm test: the command needs approval." }),
+            inspect: async () => ({ prUrl: null, checkRecorded: null }),
+        });
+        const r = await runDevTasks([task("TAI-10")], d);
+        assert.match((r[0]!.outcome as { reason: string }).reason, /no open PR[\s\S]*needs approval/);
+        assert.match(d.handoffs[0]![1], /needs approval/);
+        assert.doesNotMatch(noPrReason("first\nsecond"), /\n/, "one line, so the report bullet stays whole");
+        assert.match(noPrReason("first\nsecond"), /first \/ second/);
+        assert.equal(noPrReason("  \n"), "The run finished but no open PR for this ticket was found.");
     });
 
     it("fails a ticket whose run left no open PR, and one whose tree is not clean", async () => {
