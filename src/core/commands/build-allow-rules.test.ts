@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { buildRunRules, missingRules, parsePermissions, readPermissionFiles, readinessWarning, renderRulesJson } from "./build-allow-rules.js";
+import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, buildVerifyPrompt } from "./headless-claude.js";
+import { buildRunRules, commandVerdict, missingRules, parsePermissions, readPermissionFiles, readinessWarning, renderRulesJson } from "./build-allow-rules.js";
 
 const HOME = "/home/x/.tai-framework";
 const CLI = `npx --prefix ${HOME} tsx ${HOME}/src/hosts/cli.ts`;
@@ -84,7 +85,7 @@ describe("build allow rules (TAI-649)", () => {
 
     it("also refuses the destructive git forms: a --delete push, a branch delete, a checkout that discards work", () => {
         const { deny } = buildRunRules(HOME);
-        for (const rule of ["git push *--delete*", "git push -uf*", "git branch -D*", "git branch -d*", "git branch --delete*", "git branch -f*", "git branch --force*", "git branch -M*", "git checkout -- *", "git checkout ."]) assert.ok(deny.includes(`Bash(${rule})`), rule);
+        for (const rule of ["git push *--delete*", "git push -uf*", "git branch -D*", "git branch -d*", "git branch --delete*", "git branch -f*", "git branch --force*", "git branch -M*", "git checkout *-- *", "git checkout .", "git checkout ./*"]) assert.ok(deny.includes(`Bash(${rule})`), rule);
     });
 
     it("counts the older Bash(cmd:*) prefix form as covering, and does not let it match a longer word", () => {
@@ -167,5 +168,53 @@ describe("build allow rules (TAI-649)", () => {
         } finally {
             await rm(dir, { recursive: true, force: true });
         }
+    });
+
+    it("refuses a checkout that discards a file's changes, with a commit before the --, and a checkout of . or ./ (TAI-685)", () => {
+        const rules = buildRunRules(HOME);
+        for (const c of ["git checkout -- src", "git checkout HEAD -- src", "git checkout origin/main -- .", "git checkout .", "git checkout ./", "git checkout ./src"]) assert.equal(commandVerdict(rules, c), "refused", c);
+        for (const c of ["git checkout TAI-9-x", "git checkout -b TAI-9-x", "git switch TAI-9-x"]) assert.equal(commandVerdict(rules, c), "allowed", c);
+    });
+});
+
+describe("rules for a DEV-YOLO run (TAI-685)", () => {
+    const yolo = buildRunRules(HOME, "npm test", [], true);
+    const build = buildRunRules(HOME, "npm test");
+
+    it("allows the reviewer, fix and verify commands and does not deny git-pr review, but still denies merge and init", () => {
+        for (const sub of ["git-pr review-prep", "git-pr render-findings", "git-pr comment-findings", "git-pr comment", "git-pr review", "verify", "--as tester issue"]) assert.ok(yolo.allow.includes(`Bash(${CLI} ${sub} *)`), sub);
+        assert.ok(!yolo.deny.some((r) => r.includes("git-pr review")), "no deny names git-pr review");
+        assert.ok(yolo.deny.includes(`Bash(${CLI} git-pr merge *)`));
+        assert.ok(yolo.deny.includes(`Bash(${CLI} --as reviewer git-pr merge *)`));
+        assert.ok(yolo.deny.includes(`Bash(${CLI} init *)`));
+        assert.ok(yolo.deny.includes("Bash(git push *--force*)"), "the git denies are the same");
+    });
+
+    it("leaves the build-only set as it was: git-pr review denied, none of the YOLO commands allowed", () => {
+        assert.ok(build.deny.includes(`Bash(${CLI} git-pr review *)`));
+        assert.ok(!build.allow.some((r) => /review-prep|render-findings|comment-findings|verify|--as tester/.test(r)));
+    });
+
+    it("never refuses a command a DEV-YOLO run makes, and lists each of them as allowed", () => {
+        const prompts = [
+            buildDevPrompt("TAI-9", CLI),
+            buildReviewerPrompt({ repo: "o/r", prId: "7", cli: CLI, findingsPath: "/x/.tai/f.json", storyKey: "TAI-5", criteria: ["AC-1: x"] }),
+            buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "TAI-8-x", cli: CLI, findings: [] }),
+            buildVerifyPrompt({ key: "TAI-8", cli: CLI }),
+        ];
+        const commands = prompts.flatMap((p) => [...p.matchAll(/`([^`]*cli\.ts[^`]*)`/g)].map((m) => m[1]!.replace(/ \.\.\.$/, "").replace(/"\.\.\."/g, '"x"')).map((c) => `${c} x`));
+        assert.ok(commands.length >= 10, `found the commands in the prompts, each given an argument as a real run gives it (${commands.length})`);
+        for (const c of commands) assert.equal(commandVerdict(yolo, c), "allowed", c);
+        for (const c of [`${CLI} --as tester issue comment TAI-8 "Verified: x"`, `${CLI} git-pr review o/r 7 approve`]) assert.equal(commandVerdict(yolo, c), "allowed", c);
+        for (const c of [`${CLI} git-pr merge TAI-9 o/r 7`, `${CLI} --as developer git-pr merge TAI-9 o/r 7`, `${CLI} init run`]) assert.equal(commandVerdict(yolo, c), "refused", c);
+    });
+
+    it("words the pre-run warning for the mode: a YOLO run is not told a review is reachable", () => {
+        const gaps = { allow: [], deny: [`Bash(${CLI} git-pr merge *)`] };
+        assert.match(readinessWarning(gaps, true, true)!, /reach a merge or init:/);
+        assert.match(readinessWarning(gaps, true)!, /reach a merge, a review or init:/);
+        const missing = missingRules(yolo, { allow: [], deny: [] });
+        assert.ok(!missing.deny.some((r) => r.includes("git-pr review")), "a YOLO run is never told to deny git-pr review");
+        assert.ok(missing.allow.some((r) => r.includes("review-prep")));
     });
 });

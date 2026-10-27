@@ -656,6 +656,11 @@ function doDevTasksSkillBody(taiHome: string): string {
         "```bash\n" +
         `npx --prefix ${taiHome} tsx ${taiHome}/src/hosts/cli.ts do-dev-tasks\n` +
         "```\n\n" +
+        "Before the first run it checks the project's Claude Code settings against the rules an unattended run needs and prints, " +
+        "without blocking, what is not allowed, what nothing refuses (a force push, a branch delete, `git-pr merge`, `init`) and whether " +
+        "`TAI_CHECK_COMMAND` is set. Show the human that warning verbatim. `do-dev-tasks rules` prints the rule set (the larger one when " +
+        "`DEV-YOLO` is on, which also allows the reviewer, fix and verify commands); the human adds it to their own `.claude/settings.local.json`. " +
+        "Never write that file or those rules yourself.\n\n" +
         "Show the human its closing report: what was done for each ticket, what failed, what was skipped, and what waits for a person. " +
         "If `DEV-YOLO` is on it says so, and says whether the full run is available; never turn the setting on yourself.\n"
     );

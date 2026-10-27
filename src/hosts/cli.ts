@@ -2282,11 +2282,16 @@ async function main(): Promise<void> {
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
+        const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
         if (arg === "rules") {
+            const yoloRules = await devYoloOn();
             console.log(
-                "The Claude Code rules an unattended Dev build needs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
-                    "They leave out git-pr merge, git-pr review and init, and refuse a force push.\n\n" +
-                    renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config)))
+                (yoloRules
+                    ? "The Claude Code rules an unattended DEV-YOLO run needs (dev-yolo is on): the build, and the review, fix and verify runs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
+                      "They leave out git-pr merge and init, and refuse a force push. git-pr review is allowed, since the reviewer run records its own decision with it.\n\n"
+                    : "The Claude Code rules an unattended Dev build needs (dev-yolo is off). Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
+                      "They leave out git-pr merge, git-pr review and init, and refuse a force push. With dev-yolo on, `do-dev-tasks rules` prints a larger set.\n\n") +
+                    renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yoloRules))
             );
             return;
         }
@@ -2314,7 +2319,7 @@ async function main(): Promise<void> {
                     : {}),
             });
         const found = await find();
-        const yolo = (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
+        const yolo = await devYoloOn();
         if (dryRun) {
             console.log(renderDevTasksReport(found, null, { yolo, openPullRequestsChecked: gitDeps !== undefined }));
             return;
@@ -2328,7 +2333,7 @@ async function main(): Promise<void> {
         const cli = cliCommand(taiHome);
         const timeoutMs = devRunTimeoutMs();
         // TAI-649: say plainly, before any run starts, when the rules do not cover the build (nothing is blocked).
-        const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config)), await readPermissionFiles(process.cwd())), checkConfigured);
+        const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yolo), await readPermissionFiles(process.cwd())), checkConfigured, yolo);
         if (readiness) console.log(`${readiness}\n`);
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         stopRunsOnInterrupt();

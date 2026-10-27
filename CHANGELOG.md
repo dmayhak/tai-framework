@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 144 (2026-10-27)
+
+**TAI-685 (Story TAI-684): the rule set and warning for a DEV-YOLO run, and the PR 27 review leftovers.** With `dev-yolo` on, `do-dev-tasks rules` and the pre-run warning use a larger set: the reviewer, fix and verify commands are allowed, `git-pr review` is no longer denied (a person who added that deny would have stopped every ticket at the reviewer's own decision), and the warning no longer lists a review as something to refuse; `git-pr merge` and `init` stay denied. `rules` says which set it prints. A test builds the four unattended prompts, takes the commands they name and checks that no deny refuses one and that the allow set covers each (`commandVerdict`). The checkout deny is widened to `git checkout *-- *` and `git checkout ./*`, so `HEAD -- src`, `origin/main -- .` and `./` are refused. The `/tai-do-dev-tasks` skill text describes `rules` and the warning, and the module comment records combined short flags on a branch delete (`git branch -vD x`, `-rD`, `-fd`) as an accepted limit.
+
 ## rev 143 (2026-10-27)
 
 **TAI-691 (Story TAI-690): the unattended reviewer checks the change against the Story's acceptance criteria.** The DEV-YOLO wiring reads the Story's numbered `AC-n` lines and `buildReviewerPrompt` puts them in the reviewer's prompt as data. A criterion the diff does not meet is a critical finding that names it, so the run stops for a person before any fix or merge; one that needs a live run to judge goes in `notChecked`. A Story with no criteria, or whose criteria cannot be read, reviews as before and the prompt tells the reviewer to say so in `notChecked`. Found in the first live DEV-YOLO trial, where the reviewer approved without being told the criteria and only the later Tester run looked at them.

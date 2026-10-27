@@ -48,6 +48,15 @@ describe("renderGlobalSkillFiles", () => {
         }
     });
 
+    test("the tai-do-dev-tasks skill describes `rules` and the pre-run warning, and never writes the rules itself (TAI-685)", () => {
+        for (const host of [".claude", ".gemini"]) {
+            const skill = files.find((f) => f.relativePath === `${host}/skills/tai-do-dev-tasks/SKILL.md`)!;
+            assert.match(skill.content, /`do-dev-tasks rules` prints the rule set/);
+            assert.match(skill.content, /Show the human that warning verbatim/);
+            assert.match(skill.content, /Never write that file or those rules yourself/);
+        }
+    });
+
     test("the tai-retro skill runs retro [EPIC-KEY | since=<date>], acts as Perry, shows the briefing first and writes nothing itself (TAI-491)", () => {
         for (const host of [".claude", ".gemini"]) {
             const retro = files.find((f) => f.relativePath === `${host}/skills/tai-retro/SKILL.md`)!;
