@@ -25,22 +25,66 @@ describe("build allow rules (TAI-649)", () => {
         assert.ok(deny.includes(`Bash(${CLI} init *)`));
     });
 
-    it("refuses merge, review and init in the --as spellings too, because * spans spaces (PR 27 review)", () => {
+    // The same reading of `*` the module uses: any characters, spaces included.
+    const matches = (rule: string, command: string): boolean => new RegExp(`^${rule.replace(/^Bash\(|\)$/g, "").split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "s").test(command);
+
+    it("refuses merge, review and init under every persona name after --as and --as=, never with a wildcard (PR 27 review)", () => {
         const { deny } = buildRunRules(HOME);
         for (const sub of ["git-pr merge", "git-pr review", "init"]) {
-            assert.ok(deny.includes(`Bash(${CLI} --as * ${sub} *)`), `--as <persona> ${sub}`);
-            assert.ok(deny.includes(`Bash(${CLI} --as=* ${sub} *)`), `--as=<persona> ${sub}`);
+            for (const name of ["developer", "dev", "reviewer", "cr", "pm", "tester"]) {
+                assert.ok(deny.includes(`Bash(${CLI} --as ${name} ${sub} *)`), `--as ${name} ${sub}`);
+                assert.ok(deny.includes(`Bash(${CLI} --as=${name} ${sub} *)`), `--as=${name} ${sub}`);
+            }
         }
+        assert.ok(!deny.some((r) => r.includes("--as *") || r.includes("--as=*")), "no wildcard stands in for the persona");
+        assert.ok(deny.some((r) => matches(r, `${CLI} --as reviewer git-pr merge 5`)), "a merge as a persona is refused");
+        assert.ok(deny.some((r) => matches(r, `${CLI} --as=cr init run`)), "init as a persona is refused");
+    });
+
+    it("does not refuse a build's own ticket and PR commands whose text mentions init, a merge or a review (PR 27 review)", () => {
+        const { deny } = buildRunRules(HOME);
+        for (const command of [
+            `${CLI} --as developer issue comment TAI-1 "Handoff: do not run init yet"`,
+            `${CLI} --as developer issue create TAIT dev "git-pr merge docs" description="a git-pr review note"`,
+            `${CLI} git-pr create TAI-2 o/r b main "title" "what init and git-pr merge do"`,
+            `${CLI} --as=developer git-pr create TAI-2 o/r b main "title" "mentions git-pr review"`,
+        ]) assert.ok(!deny.some((r) => matches(r, command)), command);
+    });
+
+    it("names the project's own personas in the deny entries too", () => {
+        const { deny } = buildRunRules(HOME, null, ["release-captain"]);
+        assert.ok(deny.includes(`Bash(${CLI} --as release-captain git-pr merge *)`));
+        assert.ok(deny.includes(`Bash(${CLI} --as=release-captain init *)`));
+    });
+
+    it("reports a deny that names only the bare spelling, and counts one that spans every persona as covering", () => {
         const bareOnly = { allow: [], deny: [`Bash(${CLI} git-pr merge *)`, `Bash(${CLI} git-pr review *)`, `Bash(${CLI} init *)`] };
         const gaps = missingRules(buildRunRules(HOME), bareOnly).deny;
-        assert.ok(gaps.includes(`Bash(${CLI} --as * git-pr merge *)`), "a bare-only deny is not enough");
-        const covered = missingRules(buildRunRules(HOME), { allow: [], deny: [`Bash(${CLI} *git-pr merge*)`, `Bash(${CLI} *git-pr review*)`, `Bash(${CLI} *init*)`] }).deny;
-        assert.ok(!covered.some((r) => r.includes("git-pr merge")), "a deny that spans the persona flag covers every spelling");
+        assert.ok(gaps.includes(`Bash(${CLI} --as developer git-pr merge *)`), "a bare-only deny is not enough");
+        const spanning = missingRules(buildRunRules(HOME), { allow: [], deny: [`Bash(${CLI} *git-pr merge*)`, `Bash(${CLI} *git-pr review*)`, `Bash(${CLI} *init*)`] }).deny;
+        assert.ok(!spanning.some((r) => r.includes("git-pr merge")), "a deny that spans the persona flag covers every spelling");
+    });
+
+    it("does not count a narrower rule as covering one with a wildcard in the middle (PR 27 review)", () => {
+        const required = { allow: [], deny: ["Bash(git push *--force*)"] };
+        assert.deepEqual(missingRules(required, { allow: [], deny: ["Bash(git push --force*)"] }).deny, ["Bash(git push *--force*)"], "git push origin --force would get through");
+        assert.deepEqual(missingRules(required, { allow: [], deny: ["Bash(git push *--force*)"] }).deny, []);
+        assert.deepEqual(missingRules(required, { allow: [], deny: ["Bash(git push *)"] }).deny, [], "a wider deny covers it");
+    });
+
+    it("splits a compound check command outside quotes only, and on & and newlines too (PR 27 review)", () => {
+        const parts = (c: string): string[] => buildRunRules(HOME, c).allow.filter((r) => !r.includes("cli.ts") && !/^Bash\(git /.test(r)).map((r) => r.slice(5, -1));
+        assert.deepEqual(parts('npm test -- --grep "a|b"'), ['npm test -- --grep "a|b"'], "a | inside quotes stays");
+        assert.deepEqual(parts("npm run a; npm run b"), ["npm run a", "npm run b"]);
+        assert.deepEqual(parts("make build & make test"), ["make build", "make test"], "a lone & separates");
+        assert.deepEqual(parts("npm run a\nnpm run b"), ["npm run a", "npm run b"], "a newline separates");
+        assert.deepEqual(parts("npm test 2>&1 | tee out.log"), ["npm test 2>&1", "tee out.log"], "the & of a redirect stays");
+        assert.deepEqual(parts("npm run 'a && b'"), ["npm run 'a && b'"]);
     });
 
     it("also refuses the destructive git forms: a --delete push, a branch delete, a checkout that discards work", () => {
         const { deny } = buildRunRules(HOME);
-        for (const rule of ["git push *--delete*", "git branch -D*", "git branch -d*", "git branch --delete*", "git checkout -- *", "git checkout ."]) assert.ok(deny.includes(`Bash(${rule})`), rule);
+        for (const rule of ["git push *--delete*", "git push -uf*", "git branch -D*", "git branch -d*", "git branch --delete*", "git branch -f*", "git branch --force*", "git branch -M*", "git checkout -- *", "git checkout ."]) assert.ok(deny.includes(`Bash(${rule})`), rule);
     });
 
     it("counts the older Bash(cmd:*) prefix form as covering, and does not let it match a longer word", () => {

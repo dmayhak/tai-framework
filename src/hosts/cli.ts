@@ -321,6 +321,18 @@ function withCachingWorkTracker(backend: StorageBackend, taiRoot: string, projec
     return { ...backend, workTracker: new CachingWorkTracker(backend.workTracker, taiRoot, projectKey) };
 }
 
+/**
+ * The project's own persona ids, for the rules an unattended build needs (TAI-649): a deny that spells out every `--as` name
+ * has to know them. A personas page that cannot be read leaves the built-in names only, never a failed command.
+ */
+async function projectPersonaIdsOrNone(config: ResolvedConfig): Promise<string[]> {
+    try {
+        return await listProjectPersonaIds(config.backend.docStore, { spaceKey: config.spaceKey });
+    } catch {
+        return [];
+    }
+}
+
 async function resolveConfig(): Promise<ResolvedConfig> {
     const taiRoot = process.env["TAI_ROOT"] ?? ".tai";
     const projectKey = requireEnv("TAI_PROJECT_KEY");
@@ -2281,7 +2293,7 @@ async function main(): Promise<void> {
             console.log(
                 "The Claude Code rules an unattended Dev build needs. Add them to this project's .claude/settings.local.json yourself; TAI does not write them.\n" +
                     "They leave out git-pr merge, git-pr review and init, and refuse a force push.\n\n" +
-                    renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv()))
+                    renderRulesJson(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config)))
             );
             return;
         }
@@ -2323,7 +2335,7 @@ async function main(): Promise<void> {
         const cli = cliCommand(taiHome);
         const timeoutMs = devRunTimeoutMs();
         // TAI-649: say plainly, before any run starts, when the rules do not cover the build (nothing is blocked).
-        const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv()), await readPermissionFiles(process.cwd())), checkConfigured);
+        const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config)), await readPermissionFiles(process.cwd())), checkConfigured);
         if (readiness) console.log(`${readiness}\n`);
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         stopRunsOnInterrupt();

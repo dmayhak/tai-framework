@@ -14,7 +14,10 @@
  * `--prune` push, a branch delete, a forced or resetting checkout or switch, a checkout that discards the working tree) and a
  * push to `main` or `master`. A push to the default branch under another name, or by a refspec such as `HEAD:refs/heads/main`,
  * is not refused. The allow side names `--as developer` and not `--as=developer`, since the prompts TAI writes use the space
- * form. And the check reads only the settings files under the directory the command runs from and the user's own, so a headless
+ * form. Combined short flags on a push are denied only as `-uf` and `-f*`, not in every combination. The deny entries spell out
+ * every persona name `--as` takes (the built-in ids, their short names and the project's own, when its personas page can be
+ * read) and never a `*`, since a `*` spans spaces and `--as * init *` would refuse any command that merely contains the word.
+ * And the check reads only the settings files under the directory the command runs from and the user's own, so a headless
  * run started elsewhere, managed settings and `ask` rules can judge differently than the warning says. A person's own deny
  * rule that refuses a required command is read, since a deny beats an allow.
  */
@@ -23,6 +26,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { personaSpellings } from "./claude-allow-rule.js";
 import { cliCommand } from "./headless-claude.js";
 
 export interface BuildRules {
@@ -63,9 +67,13 @@ const GIT_DENY: readonly string[] = [
     "git push *--mirror*",
     "git push *--prune*",
     ...["main", "master"].flatMap((b) => [`git push origin ${b}`, `git push origin ${b} *`, `git push -u origin ${b}`, `git push -u origin ${b} *`, `git push *:${b}`]),
+    "git push -uf*",
     "git branch -D*",
     "git branch -d*",
     "git branch --delete*",
+    "git branch -f*",
+    "git branch --force*",
+    "git branch -M*",
     "git checkout -f*",
     "git checkout *--force*",
     "git checkout -B*",
@@ -80,24 +88,52 @@ const GIT_DENY: readonly string[] = [
 const NEVER_SUBCOMMANDS: readonly string[] = ["git-pr merge", "git-pr review", "init"];
 
 /**
- * Every spelling of the CLI that reaches `sub`: bare, `--as <persona>` and `--as=<persona>`. A `*` spans spaces, so a deny
- * written only for the bare spelling does not match `--as developer git-pr merge` (see `claude-allow-rule.ts`).
+ * Every spelling of the CLI that reaches `sub`: bare, then each persona name after `--as` and after `--as=`. A persona is
+ * spelled out, never a `*`: a `*` spans spaces, so `--as * init *` would also match `--as developer issue comment ... "run
+ * init" ...` and refuse a build's own ticket commands (see `claude-allow-rule.ts`).
  */
-function denySpellings(cli: string, sub: string): string[] {
-    return [`Bash(${cli} ${sub} *)`, `Bash(${cli} --as * ${sub} *)`, `Bash(${cli} --as=* ${sub} *)`];
+function denySpellings(cli: string, sub: string, names: readonly string[]): string[] {
+    return [`Bash(${cli} ${sub} *)`, ...names.flatMap((n) => [`Bash(${cli} --as ${n} ${sub} *)`, `Bash(${cli} --as=${n} ${sub} *)`])];
 }
 
 /**
- * The commands inside a check command. Claude Code matches each part of a compound command (split on `&&`, `||`, `;` and `|`)
- * against the rules on its own, so a rule that holds the whole chain would match none of its parts. A `*` in a part is read
- * as a wildcard.
+ * The commands inside a compound command: split on `&&`, `||`, `;`, `|`, a lone `&` and a newline, but not inside quotes or
+ * after a backslash, and not at the `&` of a redirect (`2>&1`, `&>`). Claude Code matches each part against the rules on its
+ * own, so a rule that holds the whole chain would match none of them. A `*` in a part is read as a wildcard.
  */
-function checkCommandParts(checkCommand: string): string[] {
-    return [...new Set(checkCommand.split(/\s*(?:&&|\|\||;|\|)\s*/).map((p) => p.trim()).filter(Boolean))];
+function splitCompound(command: string): string[] {
+    const parts: string[] = [];
+    let current = "";
+    let quote: string | null = null;
+    for (let i = 0; i < command.length; i++) {
+        const c = command[i]!;
+        if (quote) {
+            current += c;
+            if (c === "\\" && quote === '"' && i + 1 < command.length) current += command[++i]!;
+            else if (c === quote) quote = null;
+            continue;
+        }
+        if (c === '"' || c === "'") {
+            quote = c;
+            current += c;
+        } else if (c === "\\" && i + 1 < command.length) {
+            current += c + command[++i]!;
+        } else if ((c === "&" && (current.endsWith(">") || command[i + 1] === ">")) || (c === "|" && current.endsWith(">"))) {
+            current += c;
+        } else if (c === "&" || c === "|" || c === ";" || c === "\n") {
+            parts.push(current);
+            current = "";
+            if ((c === "&" || c === "|") && command[i + 1] === c) i++;
+        } else {
+            current += c;
+        }
+    }
+    parts.push(current);
+    return [...new Set(parts.map((p) => p.trim()).filter(Boolean))];
 }
 
-/** The rules for the install at `taiHome`; `checkCommand` is the project's `TAI_CHECK_COMMAND`, each command in it allowed as it is written. */
-export function buildRunRules(taiHome: string, checkCommand: string | null = null): BuildRules {
+/** The rules for the install at `taiHome`; `checkCommand` is the project's `TAI_CHECK_COMMAND`, each command in it allowed as it is written; `extraPersonaIds` are the project's own personas. */
+export function buildRunRules(taiHome: string, checkCommand: string | null = null, extraPersonaIds: readonly string[] = []): BuildRules {
     const cli = cliCommand(taiHome);
     const allow: string[] = [];
     for (const sub of BUILD_SUBCOMMANDS) {
@@ -105,9 +141,10 @@ export function buildRunRules(taiHome: string, checkCommand: string | null = nul
         allow.push(`Bash(${cli} --as developer ${sub} *)`);
     }
     for (const g of GIT_ALLOW) allow.push(`Bash(${g})`);
-    if (checkCommand) for (const part of checkCommandParts(checkCommand)) allow.push(`Bash(${part})`);
+    if (checkCommand) for (const part of splitCompound(checkCommand)) allow.push(`Bash(${part})`);
     const deny = GIT_DENY.map((g) => `Bash(${g})`);
-    for (const sub of NEVER_SUBCOMMANDS) deny.push(...denySpellings(cli, sub));
+    const names = personaSpellings(extraPersonaIds);
+    for (const sub of NEVER_SUBCOMMANDS) deny.push(...denySpellings(cli, sub, names));
     return { allow, deny };
 }
 
@@ -134,18 +171,36 @@ function globMatches(pattern: string, command: string): boolean {
     return new RegExp(prefixForm ? `^${source}(?: .*)?$` : `^${source}$`, "s").test(command);
 }
 
-/** A required entry is covered when some entry the project has matches the command the required one stands for. */
+/**
+ * The commands a required pattern stands for: each `*` filled with nothing, or with one more word. A rule covers the
+ * pattern only when it matches all of them, so a narrower rule (`git push --force*` against `git push *--force*`) is not
+ * mistaken for it.
+ */
+function instances(pattern: string): string[] {
+    const parts = pattern.split("*");
+    let out = [parts[0]!];
+    for (let i = 1; i < parts.length; i++) {
+        const before = parts[i - 1]!;
+        const atEnd = i === parts.length - 1 && parts[i] === "";
+        const spaced = before === "" || before.endsWith(" ");
+        const fills = atEnd ? (spaced ? ["", "x"] : ["", " x"]) : spaced ? ["", "x "] : ["", "x"];
+        out = out.flatMap((o) => fills.map((f) => `${o}${f}${parts[i]}`));
+    }
+    return out;
+}
+
+/** A required entry is covered when one entry the project has matches every command the required one stands for. */
 function covered(required: string, have: readonly string[]): boolean {
     const pattern = bashPattern(required);
     if (pattern === null) return true;
-    const sample = pattern.replaceAll("*", "");
+    const all = instances(pattern);
     return have.some((h) => {
         const p = bashPattern(h);
-        return p !== null && globMatches(p, sample);
+        return p !== null && all.every((c) => globMatches(p, c));
     });
 }
 
-/** A required allow entry is refused when a deny entry the project has matches the command it stands for: a deny beats an allow. */
+/** A required allow entry is refused when a deny entry the project has matches its plain form (each `*` left empty): a deny beats an allow. */
 function refused(required: string, deny: readonly string[]): boolean {
     const pattern = bashPattern(required);
     if (pattern === null) return false;
