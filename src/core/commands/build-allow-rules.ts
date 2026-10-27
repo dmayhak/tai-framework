@@ -8,13 +8,24 @@
  * What it never allows: `git-pr merge`, `git-pr review` and `init` (ADR decision 9: permission to merge is a separate
  * opt-in), and a force push. The deny entries make a force push refuse even where a broader rule would let it through.
  *
+ * With the `dev-yolo` setting on (TAI-685), the set is for the whole unattended flow, not the build alone: the reviewer run
+ * records its own decision with `git-pr review`, and the fix and verify runs read and comment on the PR and the Story. So
+ * `YOLO_SUBCOMMANDS` and `--as tester issue` are allowed, and `git-pr review` is not denied (a deny beats an allow, and
+ * would stop every ticket at review). `git-pr merge` and `init` stay denied: the merge is made by TAI itself, in process,
+ * after the gate, never by a Claude run. The rules live in one settings file, so a build run in YOLO mode can also call
+ * `git-pr review`; what keeps it from approving its own PR is the reviewer account (a different GitHub identity, with its
+ * token given only to the reviewer run), not these rules.
+ *
  * Limits, accepted. The allow set is narrow in the commands it names, not in every argument: `issue *` allows an
  * `issue transition` to any state (a build moves its own ticket), and `git checkout *`, `git switch *` and `git push origin *`
  * allow what the deny entries do not take back. Those are the destructive forms (a force push, a `--delete`, `--mirror` or
  * `--prune` push, a branch delete, a forced or resetting checkout or switch, a checkout that discards the working tree) and a
  * push to `main` or `master`. A push to the default branch under another name, or by a refspec such as `HEAD:refs/heads/main`,
  * is not refused. The allow side names `--as developer` and not `--as=developer`, since the prompts TAI writes use the space
- * form. Combined short flags on a push are denied only as `-uf` and `-f*`, not in every combination. The deny entries spell out
+ * form. Combined short flags on a push are denied only as `-uf` and `-f*`, not in every combination, and on a branch delete
+ * only as `-D`, `-d`, `-f` and `-M` at the start (`git branch -vD x`, `-rD` and `-fd` reach a delete or a force and are not
+ * refused). A checkout that discards a file's changes is refused in its `-- <path>` forms (any commit before the `--`) and
+ * `.` or `./...`, not in every spelling. The deny entries spell out
  * every persona name `--as` takes (the built-in ids, their short names and the project's own, when its personas page can be
  * read) and never a `*`, since a `*` spans spaces and `--as * init *` would refuse any command that merely contains the word.
  * And the check reads only the settings files under the directory the command runs from and the user's own, so a headless
@@ -36,6 +47,9 @@ export interface BuildRules {
 
 /** TAI subcommands a build uses: the ticket, its briefing, the PR and the recorded check. */
 const BUILD_SUBCOMMANDS: readonly string[] = ["issue", "work", "page", "git-pr create", "git-pr check", "git-pr comments"];
+
+/** What the unattended review, fix and verify runs add to a build (TAI-685): the reviewer's findings and decision, PR comments, and the Tester's verification. */
+const YOLO_SUBCOMMANDS: readonly string[] = ["git-pr review-prep", "git-pr render-findings", "git-pr comment-findings", "git-pr comment", "git-pr review", "verify", "--as tester issue"];
 
 /** Git commands a build uses. Pushing is limited to `origin`; the deny entries below take the force forms back out. */
 const GIT_ALLOW: readonly string[] = [
@@ -80,12 +94,16 @@ const GIT_DENY: readonly string[] = [
     "git switch -f*",
     "git switch *--discard-changes*",
     "git switch -C*",
-    "git checkout -- *",
+    "git checkout *-- *",
     "git checkout .",
+    "git checkout ./*",
 ];
 
 /** The TAI commands a build must never reach, however they are spelled (see `denySpellings`). */
 const NEVER_SUBCOMMANDS: readonly string[] = ["git-pr merge", "git-pr review", "init"];
+
+/** What stays denied under DEV-YOLO: the reviewer run must be able to record its decision, and TAI merges in process. */
+const NEVER_SUBCOMMANDS_YOLO: readonly string[] = NEVER_SUBCOMMANDS.filter((sub) => sub !== "git-pr review");
 
 /**
  * Every spelling of the CLI that reaches `sub`: bare, then each persona name after `--as` and after `--as=`. A persona is
@@ -132,19 +150,23 @@ function splitCompound(command: string): string[] {
     return [...new Set(parts.map((p) => p.trim()).filter(Boolean))];
 }
 
-/** The rules for the install at `taiHome`; `checkCommand` is the project's `TAI_CHECK_COMMAND`, each command in it allowed as it is written; `extraPersonaIds` are the project's own personas. */
-export function buildRunRules(taiHome: string, checkCommand: string | null = null, extraPersonaIds: readonly string[] = []): BuildRules {
+/**
+ * The rules for the install at `taiHome`; `checkCommand` is the project's `TAI_CHECK_COMMAND`, each command in it allowed as it is written;
+ * `extraPersonaIds` are the project's own personas; `yolo` is the `dev-yolo` setting (the review, fix and verify runs' commands too).
+ */
+export function buildRunRules(taiHome: string, checkCommand: string | null = null, extraPersonaIds: readonly string[] = [], yolo = false): BuildRules {
     const cli = cliCommand(taiHome);
     const allow: string[] = [];
     for (const sub of BUILD_SUBCOMMANDS) {
         allow.push(`Bash(${cli} ${sub} *)`);
         allow.push(`Bash(${cli} --as developer ${sub} *)`);
     }
+    if (yolo) for (const sub of YOLO_SUBCOMMANDS) allow.push(`Bash(${cli} ${sub} *)`);
     for (const g of GIT_ALLOW) allow.push(`Bash(${g})`);
     if (checkCommand) for (const part of splitCompound(checkCommand)) allow.push(`Bash(${part})`);
     const deny = GIT_DENY.map((g) => `Bash(${g})`);
     const names = personaSpellings(extraPersonaIds);
-    for (const sub of NEVER_SUBCOMMANDS) deny.push(...denySpellings(cli, sub, names));
+    for (const sub of yolo ? NEVER_SUBCOMMANDS_YOLO : NEVER_SUBCOMMANDS) deny.push(...denySpellings(cli, sub, names));
     return { allow, deny };
 }
 
@@ -211,6 +233,18 @@ function refused(required: string, deny: readonly string[]): boolean {
     });
 }
 
+/**
+ * Whether the rules allow or refuse one concrete command: `refused` when a deny entry matches (a deny beats an allow), `allowed`
+ * when an allow entry matches, else `unlisted`. For tests that a set of commands a run makes is never refused.
+ */
+export function commandVerdict(rules: BuildRules, command: string): "refused" | "allowed" | "unlisted" {
+    const hit = (list: readonly string[]): boolean => list.some((e) => {
+        const p = bashPattern(e);
+        return p !== null && globMatches(p, command);
+    });
+    return hit(rules.deny) ? "refused" : hit(rules.allow) ? "allowed" : "unlisted";
+}
+
 export interface RuleGaps {
     readonly allow: readonly string[];
     readonly deny: readonly string[];
@@ -261,20 +295,20 @@ export async function readPermissionFiles(cwd: string, home: string = os.homedir
 }
 
 /** What to tell the person before a run starts, or `null` when the rules cover the build. Plain lines, nothing blocked. */
-export function readinessWarning(gaps: RuleGaps, checkConfigured: boolean): string | null {
+export function readinessWarning(gaps: RuleGaps, checkConfigured: boolean, yolo = false): string | null {
     const lines: string[] = [];
     if (gaps.allow.length > 0) {
         lines.push(`This project's Claude Code rules do not allow (or a deny rule of yours refuses) ${gaps.allow.length} command${gaps.allow.length === 1 ? "" : "s"} an unattended build uses, so a run will stop at the first one:`);
         lines.push(...gaps.allow.map((r) => `  ${r}`));
     }
     if (gaps.deny.length > 0) {
-        lines.push(`Nothing refuses ${gaps.deny.length === 1 ? "this" : "these"}, so a run could force a push, delete a branch, or reach a merge, a review or init:`);
+        lines.push(`Nothing refuses ${gaps.deny.length === 1 ? "this" : "these"}, so a run could force a push, delete a branch, or reach ${yolo ? "a merge or init" : "a merge, a review or init"}:`);
         lines.push(...gaps.deny.map((r) => `  ${r}`));
     }
     if (!checkConfigured) {
         lines.push("TAI_CHECK_COMMAND is not set, so a run has no check to record and the merge gate will not pass.");
     }
     if (lines.length === 0) return null;
-    lines.push("Run `do-dev-tasks rules` to see the narrow rule set, and add it to your own .claude/settings.local.json yourself. TAI does not write it.");
+    lines.push(`Run \`do-dev-tasks rules\` to see the ${yolo ? "rule set for a DEV-YOLO run" : "narrow rule set"}, and add it to your own .claude/settings.local.json yourself. TAI does not write it.`);
     return lines.join("\n");
 }
