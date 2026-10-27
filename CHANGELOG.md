@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 139 (2026-10-27)
+
+**TAI-649 (Story TAI-648): the rules an unattended Dev build needs.** `core/commands/build-allow-rules.ts` names the narrow Claude Code allow set a build uses and the deny entries that keep out a force push, `git-pr merge`, `git-pr review` and `init`. `do-dev-tasks rules` prints it for the person to add themselves; before the first run `do-dev-tasks` checks the project's and the user's settings files against it and says plainly what is missing, what nothing refuses, and when `TAI_CHECK_COMMAND` is not set. Nothing is written or blocked.
+
 ## rev 138 (2026-10-26)
 
 **TAI-647 (Bug TAI-646): a run that exits 0 with no PR now says why.** `do-dev-tasks` and the DEV-YOLO build step put the end of the run's own output (already redacted, on one line) in the failure reason and the hand-off, so a run that stopped on a command it was not allowed to run no longer has to be re-run by hand to see the cause.
