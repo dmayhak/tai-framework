@@ -30,12 +30,12 @@ const FINDINGS = (sev: string): string =>
         leaningReason: "fine",
     });
 
-async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string; before?: PullRequestActivity[] } = {}): Promise<void> {
+async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string; before?: PullRequestActivity[]; storyDescription?: string } = {}): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-yolo-wire-"));
     try {
         const backend = createFilesystemBackend(dir, ME);
         const mk = (o: Record<string, unknown>) => backend.workTracker.createIssue({ projectKey: "TAI", persona: Persona.Developer, summary: "s", ...o } as never);
-        const story = await mk({ issueType: StoryType.Story });
+        const story = await mk({ issueType: StoryType.Story, ...(over.storyDescription !== undefined ? { description: over.storyDescription } : {}) });
         const dev = await mk({ issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
         await backend.docStore.createPage({ spaceKey: "TAIT", title: "PR Reviewers", content: REVIEWERS });
         const taiDir = path.join(dir, ".tai");
@@ -133,6 +133,33 @@ describe("yoloRun wiring (TAI-634)", () => {
                 },
             }
         );
+    });
+
+    it("gives the reviewer the Story's numbered criteria, and says so when there are none (TAI-691)", async () => {
+        const reviewerPrompt = async (storyDescription: string | undefined): Promise<string> => {
+            let seen = "";
+            await world(
+                async ({ wiring, task }) => {
+                    await yoloRun({ ...wiring, afterApproved: async () => ({ state: "handed-on", note: "merged" }) })(task);
+                },
+                {
+                    ...(storyDescription !== undefined ? { storyDescription } : {}),
+                    runClaude: async (prompt) => {
+                        const file = /to (\S+findings\.json)/.exec(prompt)?.[1];
+                        if (file) {
+                            seen = prompt;
+                            await writeFile(file, FINDINGS(""));
+                        }
+                        return { ok: true, summary: "" };
+                    },
+                }
+            );
+            return seen;
+        };
+        const withCriteria = await reviewerPrompt("Intro.\n\nAC-1: the report lists it.\nAC-2: a test covers it.");
+        assert.match(withCriteria, /AC-1: the report lists it\.\nAC-2: a test covers it\./);
+        assert.match(withCriteria, /does not meet is a "critical" finding/);
+        assert.match(await reviewerPrompt("No criteria here."), /has no numbered acceptance criteria: review the diff as usual/);
     });
 
     it("stops with a hand-off when the reviewer left no findings file", () =>
