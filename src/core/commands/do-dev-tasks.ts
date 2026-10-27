@@ -335,7 +335,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         out.push("", "## Waiting for a person", "");
         const waitingLines = [
             ...(waiting.length ? [`- Review, approval and merge of the PRs for ${waiting.join(", ")}.`] : []),
-            ...waitingOnPerson.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason} (hand-off left on the ticket)`),
+            ...waitingOnPerson.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason}`),
         ];
         out.push(...(waitingLines.length ? waitingLines : ["Nothing."]));
     }

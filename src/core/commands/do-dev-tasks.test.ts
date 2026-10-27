@@ -249,6 +249,7 @@ describe("renderDevTasksReport (TAI-633)", () => {
         assert.match(text, /## Waiting for a person[\s\S]*PRs for TAI-10[\s\S]*TAI-12.*needs a person: TAI-1 has a Database change/);
         assert.match(text, /## Failed \(1\)[\s\S]*TAI-13/);
         assert.doesNotMatch(text, /Not run/);
+        assert.doesNotMatch(text, /TAI-12[^\n]*hand-off left/, "a stop does not always leave a hand-off on the ticket, so the line does not claim one");
         assert.doesNotMatch(text.split("## Waiting for a person")[0]!, /TAI-12/);
     });
 
