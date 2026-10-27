@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 143 (2026-10-27)
+
+**TAI-691 (Story TAI-690): the unattended reviewer checks the change against the Story's acceptance criteria.** The DEV-YOLO wiring reads the Story's numbered `AC-n` lines and `buildReviewerPrompt` puts them in the reviewer's prompt as data. A criterion the diff does not meet is a critical finding that names it, so the run stops for a person before any fix or merge; one that needs a live run to judge goes in `notChecked`. A Story with no criteria, or whose criteria cannot be read, reviews as before and the prompt tells the reviewer to say so in `notChecked`. Found in the first live DEV-YOLO trial, where the reviewer approved without being told the criteria and only the later Tester run looked at them.
+
 ## rev 142 (2026-10-27)
 
 **TAI-689 (Bug TAI-688): the `do-dev-tasks` report puts each outcome where it belongs.** A ticket DEV-YOLO ran to the end (merged, verified, Story closed) is listed under Done with what was done, and a ticket it stopped for a person is listed under "Waiting for a person" with the reason; both used to sit under a "Not run" section, so a finished run showed `Done (0)`. The "Not run" section is gone. A ticket with a PR opened and awaiting review is listed as before. Found in the first live DEV-YOLO trial on TAIT.

@@ -10,6 +10,7 @@ import path from "node:path";
 import type { DocStore, WorkTracker } from "../storage/interface.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isEligibleReviewer, loadPrReviewers } from "../git/pr-reviewers.js";
+import { acceptanceCriteria } from "../storage/verification.js";
 import { parseReviewFindings, sameCommitHash } from "../git/review-findings.js";
 import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, buildVerifyPrompt, runHeadlessClaude, type HeadlessRunOptions, type HeadlessRunResult } from "./headless-claude.js";
 import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask, type DevTaskOutcome } from "./do-dev-tasks.js";
@@ -120,8 +121,10 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
             await mkdir(w.taiDir, { recursive: true });
             const dir = await mkdtemp(path.join(w.taiDir, "yolo-review-"));
             const findingsPath = path.join(dir, "findings.json");
+            // The Story's numbered criteria go into the prompt; a Story that cannot be read reviews as before, and the prompt says so.
+            const criteria = await w.workTracker.getIssue(task.parent.key).then((story) => (story ? acceptanceCriteria(story.description) : null), () => null);
             try {
-                const ran = await run(buildReviewerPrompt({ repo: pr.repo, prId: String(pr.id), cli: w.cli, findingsPath }), {
+                const ran = await run(buildReviewerPrompt({ repo: pr.repo, prId: String(pr.id), cli: w.cli, findingsPath, storyKey: task.parent.key, criteria }), {
                     cwd: w.cwd,
                     timeoutMs: w.timeoutMs,
                     // Only the git host identity is the reviewer's; the tracker and page reads stay on the person's own Jira email and token, a pair that matches.
