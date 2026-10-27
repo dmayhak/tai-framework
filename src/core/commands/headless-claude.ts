@@ -83,7 +83,7 @@ export function buildReviewerPrompt(input: { readonly repo: string; readonly prI
         "",
         "Steps, in order:",
         `1. Run \`${cli} git-pr review-prep ${repo} ${prId}\` and read all of its output. Follow its instructions for reading the diff and for the structure of your findings (steps 1 and 2 there), including its coverage rules.`,
-        `2. Write your findings as the JSON object that output describes to ${findingsPath}. Use severity "critical" only for a defect that must be fixed before this can merge; a real but non-blocking point is "suggestion", a small point is "nitpick".`,
+        `2. Write your findings as the JSON object that output describes to ${findingsPath}. Use severity "critical" only for a defect that must be fixed before this can merge; a real but non-blocking point is "suggestion", a small point is "nitpick". Set "leaning" by the same bar, not by judgement: "requestChanges" if any finding is "critical", otherwise "approve". Never "neither": nobody is here to decide, and the author decides every Suggestion and Nitpick after your approval.`,
         `3. Run \`${cli} git-pr render-findings @${findingsPath}\`, then \`${cli} git-pr comment-findings ${repo} ${prId} @${findingsPath}\`. Do not stop to wait for anyone after rendering: this run has no one to ask.`,
         `4. Record your decision: \`${cli} git-pr review ${repo} ${prId} requestChanges\` if any finding is "critical", otherwise \`${cli} git-pr review ${repo} ${prId} approve\`.`,
         "",

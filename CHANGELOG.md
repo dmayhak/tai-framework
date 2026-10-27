@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 141 (2026-10-27)
+
+**TAI-683 (Story TAI-682): the unattended reviewer's leaning follows the bar.** The reviewer prompt now says to set `leaning` by the DEV-YOLO bar (`requestChanges` when any finding is critical, otherwise `approve`, never `neither`), since nobody is there to decide and the author decides every Suggestion and Nitpick after the approval. A round that has an approval and no critical finding but whose findings lean anything other than `approve` stops that ticket with a `Handoff:` before any fix run starts. The human review flow keeps all three leanings. The stop reason for an approval whose findings lean `requestChanges` says the review contradicts itself, apart from the `neither` wording.
+
 ## rev 140 (2026-10-27)
 
 **TAI-679 (Story TAI-678): review findings list the critical ones in full, at the top.** `render-findings` and the summary comment `comment-findings` posts now list every finding, critical ones included, in full under its severity heading, so the red section at the top shows the most serious findings. The one-line tally ("posted as inline comments") and the preview's separate "Will be posted inline" block (TAI-644/645) are gone. A critical finding that has a line is still also posted as an inline comment, and a failed inline post loses nothing because the summary already holds the finding; the failure is still reported to the person running the command. `renderReviewFindings` no longer takes a partition argument. The Code Reviewer persona's note on inline comments says the summary lists those findings too.
