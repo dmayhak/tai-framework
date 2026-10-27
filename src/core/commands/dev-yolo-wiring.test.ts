@@ -162,6 +162,28 @@ describe("yoloRun wiring (TAI-634)", () => {
         assert.match(await reviewerPrompt("No criteria here."), /has no numbered acceptance criteria: review the diff as usual/);
     });
 
+    it("tells the reviewer the criteria could not be read when the Story comes back empty (PR 31 review)", () => {
+        let seen = "";
+        return world(
+            async ({ wiring, task }) => {
+                const getIssue = wiring.workTracker.getIssue.bind(wiring.workTracker);
+                const tracker = { ...wiring.workTracker, getIssue: async (key: string) => (key === task.parent.key ? null : getIssue(key as never)) } as unknown as YoloWiring["workTracker"];
+                await yoloRun({ ...wiring, workTracker: tracker, afterApproved: async () => ({ state: "handed-on", note: "merged" }) })(task);
+                assert.match(seen, /acceptance criteria could not be read: review the diff as usual/);
+            },
+            {
+                runClaude: async (prompt) => {
+                    const file = /to (\S+findings\.json)/.exec(prompt)?.[1];
+                    if (file) {
+                        seen = prompt;
+                        await writeFile(file, FINDINGS(""));
+                    }
+                    return { ok: true, summary: "" };
+                },
+            }
+        );
+    });
+
     it("stops with a hand-off when the reviewer left no findings file", () =>
         world(async ({ wiring, task, handoffs }) => {
             const out = await yoloRun(wiring)(task);

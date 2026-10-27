@@ -122,7 +122,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
             const dir = await mkdtemp(path.join(w.taiDir, "yolo-review-"));
             const findingsPath = path.join(dir, "findings.json");
             // The Story's numbered criteria go into the prompt; a Story that cannot be read reviews as before, and the prompt says so.
-            const criteria = await w.workTracker.getIssue(task.parent.key).then((story) => acceptanceCriteria(story?.description), () => null);
+            const criteria = await w.workTracker.getIssue(task.parent.key).then((story) => (story ? acceptanceCriteria(story.description) : null), () => null);
             try {
                 const ran = await run(buildReviewerPrompt({ repo: pr.repo, prId: String(pr.id), cli: w.cli, findingsPath, storyKey: task.parent.key, criteria }), {
                     cwd: w.cwd,
