@@ -2385,7 +2385,7 @@ async function main(): Promise<void> {
         const found = await find();
         // TAI-695: `only=<KEY>` that cannot be worked is refused here, before the yolo guards or any run, saying why.
         if (only) {
-            const refusal = await onlyRefusal(found, only, { workTracker: config.backend.workTracker, currentHuman: config.currentHuman });
+            const refusal = await onlyRefusal(found, only, { workTracker: config.backend.workTracker, currentHuman: config.currentHuman, projectKey: config.projectKey });
             if (refusal) throw new Error(refusal);
         }
         // TAI-693: `yolo=true|false` sets DEV-YOLO for this run only and never writes the setting. Turning it on passes the checks the

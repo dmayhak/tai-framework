@@ -706,7 +706,7 @@ describe("do-dev-tasks only=<KEY> (TAI-695)", () => {
             const found = await onlyOf(wt, b.key);
             assert.deepEqual(found.tasks.map((t) => t.issue.key), [b.key]);
             assert.deepEqual(found.skipped.map((x) => [x.issue.key, x.reason]), [[a.key, `not selected (only=${b.key})`]]);
-            assert.equal(await onlyRefusal(found, b.key, { workTracker: wt, currentHuman: ME }), null);
+            assert.equal(await onlyRefusal(found, b.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }), null);
         });
     });
 
@@ -734,11 +734,20 @@ describe("do-dev-tasks only=<KEY> (TAI-695)", () => {
             const doneStory = await mk(wt, { issueType: StoryType.Story });
             const done = await mk(wt, { issueType: SubtaskType.Dev, parentKey: doneStory.key, assignee: ME });
             await wt.transition(done.key, Status.Done);
-            const refusal = async (key: string) => onlyRefusal(await onlyOf(wt, key), key as never, { workTracker: wt, currentHuman: ME });
+            const refusal = async (key: string) => onlyRefusal(await onlyOf(wt, key), key as never, { workTracker: wt, currentHuman: ME, projectKey: "TAI" });
             assert.match((await refusal("TAI-999"))!, /TAI-999 was not found/);
             assert.match((await refusal(story.key))!, new RegExp(`${story.key} is a ${StoryType.Story}, not a Dev subtask`));
             assert.match((await refusal(theirs.key))!, new RegExp(`${theirs.key} is not assigned to you`));
             assert.match((await refusal(done.key))!, new RegExp(`${done.key} is Done; only an In Progress or To Do Dev subtask`));
+        });
+    });
+
+    it("does not call an eligible-looking ticket the search did not return a wrong status (PR 37 review)", async () => {
+        await withTracker(async (wt) => {
+            const { a } = await twoTickets(wt);
+            const msg = await onlyRefusal({ tasks: [], skipped: [] }, a.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" });
+            assert.match(msg!, new RegExp(`${a.key} is not among your To Do and In Progress Dev subtasks in this project \\(TAI\\)`));
+            assert.doesNotMatch(msg!, /only an In Progress or To Do/);
         });
     });
 
@@ -749,7 +758,7 @@ describe("do-dev-tasks only=<KEY> (TAI-695)", () => {
             const held = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
             await wt.transition(held.key, Status.ToDo);
             let found = await onlyOf(wt, held.key);
-            assert.match((await onlyRefusal(found, held.key, { workTracker: wt, currentHuman: ME }))!, new RegExp(`${held.key} cannot be worked now: precedence holds it until ${design.key}`));
+            assert.match((await onlyRefusal(found, held.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }))!, new RegExp(`${held.key} cannot be worked now: precedence holds it until ${design.key}`));
 
             const blocker = await mk(wt, { issueType: StoryType.Story });
             const story2 = await mk(wt, { issueType: StoryType.Story });
@@ -757,13 +766,13 @@ describe("do-dev-tasks only=<KEY> (TAI-695)", () => {
             const blocked = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story2.key, assignee: ME });
             await wt.transition(blocked.key, Status.ToDo);
             found = await onlyOf(wt, blocked.key);
-            assert.match((await onlyRefusal(found, blocked.key, { workTracker: wt, currentHuman: ME }))!, new RegExp(`${blocker.key} must finish first`));
+            assert.match((await onlyRefusal(found, blocked.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }))!, new RegExp(`${blocker.key} must finish first`));
 
             const story3 = await mk(wt, { issueType: StoryType.Story });
             const hasPr = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story3.key, assignee: ME });
             await wt.transition(hasPr.key, Status.InProgress);
             found = await findDevTasks({ workTracker: wt, projectKey: "TAI", currentHuman: ME, only: hasPr.key, openPullRequests: async () => () => "https://pr/9" });
-            assert.match((await onlyRefusal(found, hasPr.key, { workTracker: wt, currentHuman: ME }))!, /cannot be worked now: it has an open PR.*https:\/\/pr\/9/);
+            assert.match((await onlyRefusal(found, hasPr.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }))!, /cannot be worked now: it has an open PR.*https:\/\/pr\/9/);
         });
     });
 

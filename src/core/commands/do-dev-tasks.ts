@@ -155,7 +155,7 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
  * the ticket is not found, is not a Dev subtask, is not assigned to the person or is not To Do or In Progress, or `findDevTasks`
  * skipped it (precedence, a blocker, an open PR) and says why.
  */
-export async function onlyRefusal(found: FoundDevTasks, only: IssueKey, deps: Pick<FindDevTasksDeps, "workTracker" | "currentHuman">): Promise<string | null> {
+export async function onlyRefusal(found: FoundDevTasks, only: IssueKey, deps: Pick<FindDevTasksDeps, "workTracker" | "currentHuman" | "projectKey">): Promise<string | null> {
     if (found.tasks.some((t) => t.issue.key === only)) return null;
     const skipped = found.skipped.find((s) => s.issue.key === only);
     if (skipped) return `${only} cannot be worked now: ${skipped.reason}.`;
@@ -163,6 +163,7 @@ export async function onlyRefusal(found: FoundDevTasks, only: IssueKey, deps: Pi
     if (!issue) return `${only} was not found.`;
     if (issue.issueType !== SubtaskType.Dev) return `${only} is a ${issue.issueType}, not a Dev subtask.`;
     if (!issue.assignee || !deps.currentHuman || !sameHuman(issue.assignee, deps.currentHuman)) return `${only} is not assigned to you.`;
+    if (issue.status === Status.ToDo || issue.status === Status.InProgress) return `${only} is not among your To Do and In Progress Dev subtasks in this project (${deps.projectKey}).`;
     return `${only} is ${issue.status}; only an In Progress or To Do Dev subtask can be worked.`;
 }
 
