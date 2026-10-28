@@ -23,8 +23,16 @@ describe("tai-settings", () => {
         withStore(async (make) => {
             const out = await showSettings(make());
             assert.match(out, /No "Settings" page yet/);
-            assert.match(out, /\*\*dev-yolo\*\*: false \(default\)/);
+            assert.match(out, /dev-yolo +false \(default\)/);
             assert.match(out, /Autonomy admins: none yet/);
+        }));
+
+    it("prints plain text for a terminal: no markdown marks, one setting per block", () =>
+        withStore(async (make) => {
+            const out = await showSettings(make());
+            assert.doesNotMatch(out, /\*\*|^#|^_|^- /m);
+            assert.match(out, /^Settings for /);
+            assert.match(out, /dev-yolo +false \(default\)  \[autonomy: admins only\]\n +Let a Dev ticket/);
         }));
 
     it("refuses an autonomy change until the user is on the admins list, then allows it and says what changed", () =>
@@ -33,7 +41,7 @@ describe("tai-settings", () => {
             await changeAdmin(make(), "add", "del@mayhak.com");
             const out = await setSetting(make(), "DEV-YOLO", "on");
             assert.match(out, /dev-yolo for del@mayhak.com: false -> true/);
-            assert.match(await showSettings(make()), /\*\*dev-yolo\*\*: true \(default false\) \[autonomy\]/);
+            assert.match(await showSettings(make()), /dev-yolo +true \(default false\)/);
             assert.match(await setSetting(make(), "dev-yolo", "true"), /already true/);
         }));
 
@@ -42,7 +50,7 @@ describe("tai-settings", () => {
             await changeAdmin(make(), "add", "del@mayhak.com");
             await assert.rejects(setSetting(make(), "review-rounds", "99"), /1 to 10/);
             await assert.rejects(setSetting(make(), "nope", "1"), /Unknown setting "nope"/);
-            assert.match(await showSettings(make()), /review-rounds\*\*: 4 \(default\)/);
+            assert.match(await showSettings(make()), /review-rounds +4 \(default\)/);
         }));
 
     it("refuses an autonomy change from an acting persona, an AI session, or a human not on the list", () =>
@@ -51,7 +59,7 @@ describe("tai-settings", () => {
             await assert.rejects(setSetting(make({ actingPersona: "developer" }), "dev-yolo", "true"), /acting as a persona/);
             await assert.rejects(setSetting(make({ aiSession: true }), "dev-yolo", "true"), /AI session/);
             await assert.rejects(setSetting(make({ email: "sam@mayhak.com" }), "dev-yolo", "true"), /not on the Autonomy admins list/);
-            assert.match(await showSettings(make()), /\*\*dev-yolo\*\*: false \(default\)/);
+            assert.match(await showSettings(make()), /dev-yolo +false \(default\)/);
         }));
 
     it("seeds the admins list with the caller only, and only a listed admin can edit it", () =>
@@ -93,7 +101,7 @@ describe("DEV-YOLO for one run (TAI-693)", () => {
             const seen: string[] = [];
             await allowYoloForOneRun(make({ attest: async (e, k, v) => void seen.push(`${e} ${k} ${v}`) }), true);
             assert.deepEqual(seen, ["del@mayhak.com dev-yolo-once true"]);
-            assert.match(await showSettings(make()), /\*\*dev-yolo\*\*: false \(default\)/);
+            assert.match(await showSettings(make()), /dev-yolo +false \(default\)/);
         }));
 
     it("a check without record leaves no attestation (a dry run)", () =>
@@ -114,7 +122,7 @@ describe("DEV-YOLO for one run (TAI-693)", () => {
             await assert.rejects(allowYoloForOneRun(make({ aiSession: true, attest }), true), /DEV-YOLO cannot be turned on for a run from an AI session\. Run `tai-do-dev-tasks yolo=true` yourself/);
             await assert.rejects(allowYoloForOneRun(make({ email: "sam@mayhak.com", attest }), true), /not on the Autonomy admins list/);
             assert.deepEqual(seen, []);
-            assert.match(await showSettings(make()), /\*\*dev-yolo\*\*: false \(default\)/);
+            assert.match(await showSettings(make()), /dev-yolo +false \(default\)/);
         }));
 });
 

@@ -118,17 +118,21 @@ export async function allowYoloForOneRun(ctx: SettingsContext, record: boolean):
 export async function showSettings(ctx: SettingsContext): Promise<string> {
     const { state, unknown, page } = await load(ctx);
     const email = ctx.email ?? "";
-    const lines = [`# Settings${ctx.email ? ` for ${ctx.email}` : ""}`, ""];
-    if (!page) lines.push(`_No "${SETTINGS_PAGE_TITLE}" page yet: showing the defaults. The first change creates it._`, "");
-    if (!ctx.email) lines.push("_No user is configured, so these are the defaults._", "");
-    for (const v of viewSettings(state, email)) {
+    // TAI-704: plain text for a terminal (no markdown marks): one setting per block, the name column aligned.
+    const lines = [`Settings for ${ctx.email ?? "(no user configured)"}`, ""];
+    if (!page) lines.push(`No "${SETTINGS_PAGE_TITLE}" page yet: showing the defaults. The first change creates it.`, "");
+    if (!ctx.email) lines.push("No user is configured, so these are the defaults.", "");
+    const views = viewSettings(state, email);
+    const width = Math.max(...views.map((v) => v.def.key.length));
+    for (const v of views) {
         lines.push(
-            `- **${v.def.key}**: ${v.value}${v.isDefault ? " (default)" : ` (default ${v.def.default})`}` +
-                `${v.def.autonomy ? " [autonomy]" : ""}`,
-            `  ${v.def.meaning}`
+            `  ${v.def.key.padEnd(width)}  ${v.value}${v.isDefault ? " (default)" : ` (default ${v.def.default})`}` +
+                `${v.def.autonomy ? "  [autonomy: admins only]" : ""}`,
+            `  ${" ".repeat(width)}  ${v.def.meaning}`,
+            ""
         );
     }
-    lines.push("", `Autonomy admins: ${state.admins.length ? state.admins.join(", ") : "none yet"}`);
+    lines.push(`Autonomy admins: ${state.admins.length ? state.admins.join(", ") : "none yet"}`, "", "Change one: tai-settings set <KEY> <VALUE>");
     if (unknown.length) lines.push("", `Ignored on the page (not a known setting or not a valid value): ${unknown.join(", ")}. They are left as written; edit the page to fix or remove them.`);
     return lines.join("\n");
 }
