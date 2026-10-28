@@ -71,7 +71,7 @@ const GIT_ALLOW: readonly string[] = [
 /**
  * What a build never does with git: a force push in any spelling (the flags, and a `+` before a refspec), a push with
  * `--delete`, `--mirror` or `--prune`, a push to `main` or `master`, a branch delete, a forced or resetting checkout or
- * switch, a checkout that discards work, and a forced `git rm` or `git mv` (`git rm` and `git mv` themselves are allowed, TAI-709; `-f` is refused in any position and as `-rf` or `-fr`, but a longer bundle such as `-rfq` is not, as with the branch-delete flags). A delete by refspec (`git push origin :branch`) is not refused: its pattern
+ * switch, a checkout that discards work, and a forced `git rm` or `git mv` (`git rm` and `git mv` themselves are allowed, TAI-709; `-f` is refused in any position and as `-rf` or `-fr`, but a bundle with the f after another letter (`-qrf`, `-nf`) is not, as with the branch-delete flags). A delete by refspec (`git push origin :branch`) is not refused: its pattern
  * would end in `:*`, which Claude Code reads as its older prefix form, so it cannot be written here.
  */
 const GIT_DENY: readonly string[] = [
