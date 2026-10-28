@@ -107,7 +107,7 @@ import {
     unrenderedDecisionRefusal,
     renderReviewFindings,
     renderFindingsPreview,
-    partitionInlineFindings,
+    selectInlineFindings,
     renderInlineComment,
 } from "../core/git/review-findings.js";
 import { listProjectPersonaIds, loadPersonaConfig, resolveActingPersonaId, taiCliCommand, taiInstallRoot } from "../core/persona/config.js";
@@ -2021,7 +2021,7 @@ async function main(): Promise<void> {
             // The PR's head now: the only thing that can show a push made after the review was prepared.
             const liveCommit = (await gitHost.getPullRequest(repo, prId))?.sourceCommit;
 
-            const { inline: eligible } = partitionInlineFindings(findings.findings);
+            const eligible = selectInlineFindings(findings.findings);
             const inlineFailures: string[] = [];
             for (const f of eligible) {
                 try {
