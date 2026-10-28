@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 149 (2026-10-28)
+
+**TAI-695 (Story TAI-694): `do-dev-tasks only=<DEV-KEY>` works one ticket.** `findDevTasks` takes `only`: every other ticket is skipped as "not selected (only=KEY)" without any lookups, and the chosen one goes through the same eligibility checks as before. `onlyRefusal` runs on the first look, before the yolo guards or any run, and refuses a key that was not found, is not a Dev subtask, is not assigned to the person, is not To Do or In Progress, or that the list skipped (precedence, an open blocker, an open PR), naming the reason. `parseDevTasksArgs` accepts one `only=` with a key of the form `TAI-12`; an empty, malformed or second one is refused like any mistyped argument. The report says which ticket was selected. After `rules`, `only=` is accepted and changes nothing, since the rule set does not depend on the ticket. `yolo=` works with it as before.
+
 ## rev 148 (2026-10-28)
 
 **TAI-705 (Story TAI-704): readable help for `tai` and `tai settings`.** `tai` with no command (or an unknown one) prints `renderUsage()`: commands grouped as Work, Planning, Tickets/pages/PRs and Setup, one per line, each with a short description; it now includes `verify`, which the old one-line usage had dropped. A test fails when a subcommand the CLI dispatches is missing from it. `tai settings` prints plain text for a terminal (no markdown marks), one setting per block with the name column aligned, and ends with how to change one. The per-command `Usage:` errors are unchanged, except that the `page` unknown-action error now lists `file` and `loose` too. A bare `tai`, `help`, `--help` or `-h` prints the help to stdout and exits 0 before any project config is read (so it works anywhere and pipes); an unknown command still throws it (stderr, exit 1).

@@ -11,7 +11,7 @@ import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
 import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { noPrReason, parseDevTasksArgs, resolveYolo } from "./do-dev-tasks.js";
+import { noPrReason, onlyRefusal, parseDevTasksArgs, resolveYolo } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
@@ -597,15 +597,15 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.deepEqual(parseDevTasksArgs(["yolo=true"]), { dryRun: false, yolo: true });
         assert.deepEqual(parseDevTasksArgs(["yolo=false"]), { dryRun: false, yolo: false });
         assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
-        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true and yolo=false/);
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false and only=<DEV-KEY>/);
         assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
     });
 
     it("after rules only yolo= is taken, so rules dryrun=true is refused (TAI-700)", () => {
         assert.deepEqual(parseDevTasksArgs([undefined], { rules: true }), { dryRun: false });
         assert.deepEqual(parseDevTasksArgs(["yolo=true"], { rules: true }), { dryRun: false, yolo: true });
-        assert.throws(() => parseDevTasksArgs(["dryrun=true"], { rules: true }), /rules takes only yolo=true and yolo=false \(got: dryrun=true\)/);
-        assert.throws(() => parseDevTasksArgs(["foo"], { rules: true }), /rules takes only yolo=true and yolo=false/);
+        assert.throws(() => parseDevTasksArgs(["dryrun=true"], { rules: true }), /rules takes only yolo=true, yolo=false and only=<DEV-KEY> \(got: dryrun=true\)/);
+        assert.throws(() => parseDevTasksArgs(["foo"], { rules: true }), /rules takes only yolo=true, yolo=false and only=<DEV-KEY>/);
     });
 
     it("resolveYolo: the argument wins in both directions and the setting is read only when there is none (TAI-700, TAI-692 AC-5)", async () => {
@@ -670,5 +670,119 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         } finally {
             await stuck.cleanup();
         }
+    });
+});
+
+describe("do-dev-tasks only=<KEY> (TAI-695)", () => {
+    const onlyOf = (wt: WorkTracker, only: string) => findDevTasks({ workTracker: wt, projectKey: "TAI", currentHuman: ME, only: only as never });
+    const twoTickets = async (wt: WorkTracker) => {
+        const story = await mk(wt, { issueType: StoryType.Story });
+        const a = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+        const story2 = await mk(wt, { issueType: StoryType.Story });
+        const b = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story2.key, assignee: ME });
+        await wt.transition(a.key, Status.ToDo);
+        await wt.transition(b.key, Status.ToDo);
+        return { story, a, b };
+    };
+
+    it("parses only=<KEY> alone and with dryrun= and yolo=, and refuses an empty, malformed or second one (AC-4)", () => {
+        assert.deepEqual(parseDevTasksArgs(["only=TAI-12"]), { dryRun: false, only: "TAI-12" });
+        assert.deepEqual(parseDevTasksArgs(["dryrun=true", "only=TAI-12", "yolo=false"]), { dryRun: true, yolo: false, only: "TAI-12" });
+        assert.deepEqual(parseDevTasksArgs(["only=TAI-12", "yolo=true"]), { dryRun: false, yolo: true, only: "TAI-12" });
+        assert.throws(() => parseDevTasksArgs(["only="]), /only= takes one ticket key such as TAI-12 \(got: nothing\)/);
+        for (const bad of ["only=tai-12", "only=TAI12", "only=TAI-1 TAI-2", "only=12", "only=TAI-1,TAI-2"]) assert.throws(() => parseDevTasksArgs([bad]), /only= takes one ticket key/, bad);
+        assert.throws(() => parseDevTasksArgs(["only=TAI-1", "only=TAI-2"]), /only one only=<DEV-KEY>/);
+        assert.throws(() => parseDevTasksArgs(["only", "yolo=true"]), /takes only dryrun=true/);
+    });
+
+    it("after rules, only= is accepted and changes nothing (AC-1)", () => {
+        assert.deepEqual(parseDevTasksArgs(["only=TAI-12", "yolo=true"], { rules: true }), { dryRun: false, yolo: true, only: "TAI-12" });
+        assert.throws(() => parseDevTasksArgs(["only=TAI-1", "only=TAI-2"], { rules: true }), /only one only=/);
+    });
+
+    it("works that ticket alone and lists every other ticket as not selected (AC-1)", async () => {
+        await withTracker(async (wt) => {
+            const { a, b } = await twoTickets(wt);
+            const found = await onlyOf(wt, b.key);
+            assert.deepEqual(found.tasks.map((t) => t.issue.key), [b.key]);
+            assert.deepEqual(found.skipped.map((x) => [x.issue.key, x.reason]), [[a.key, `not selected (only=${b.key})`]]);
+            assert.equal(await onlyRefusal(found, b.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }), null);
+        });
+    });
+
+    it("names the one ticket in the report and says the rest were not selected, with either yolo value (AC-3)", async () => {
+        await withTracker(async (wt) => {
+            const { a, b } = await twoTickets(wt);
+            const found = await onlyOf(wt, b.key);
+            for (const yolo of [true, false]) {
+                const out = renderDevTasksReport(found, null, { yolo, yoloThisRunOnly: true, only: b.key });
+                assert.match(out, new RegExp(`DEV-YOLO is ${yolo ? "on" : "off"} for this run only`));
+                assert.match(out, new RegExp(`Only ${b.key} was selected \\(only=${b.key}\\)`));
+                assert.match(out, new RegExp(`## Would work \\(1\\)[\\s\\S]*${b.key}`));
+                assert.match(out, new RegExp(`${a.key}[^\\n]*not selected`));
+            }
+            assert.doesNotMatch(renderDevTasksReport(await find(wt), null, { yolo: false }), /Only .* was selected/);
+        });
+    });
+
+    it("refuses a key that is not found, not a Dev subtask, not mine, or not To Do or In Progress, saying why (AC-2)", async () => {
+        await withTracker(async (wt) => {
+            const { story } = await twoTickets(wt);
+            const theirsStory = await mk(wt, { issueType: StoryType.Story });
+            const theirs = await mk(wt, { issueType: SubtaskType.Dev, parentKey: theirsStory.key, assignee: OTHER });
+            await wt.transition(theirs.key, Status.ToDo);
+            const doneStory = await mk(wt, { issueType: StoryType.Story });
+            const done = await mk(wt, { issueType: SubtaskType.Dev, parentKey: doneStory.key, assignee: ME });
+            await wt.transition(done.key, Status.Done);
+            const refusal = async (key: string) => onlyRefusal(await onlyOf(wt, key), key as never, { workTracker: wt, currentHuman: ME, projectKey: "TAI" });
+            assert.match((await refusal("TAI-999"))!, /TAI-999 was not found/);
+            assert.match((await refusal(story.key))!, new RegExp(`${story.key} is a ${StoryType.Story}, not a Dev subtask`));
+            assert.match((await refusal(theirs.key))!, new RegExp(`${theirs.key} is not assigned to you`));
+            assert.match((await refusal(done.key))!, new RegExp(`${done.key} is Done; only an In Progress or To Do Dev subtask`));
+        });
+    });
+
+    it("does not call an eligible-looking ticket the search did not return a wrong status (AC-2)", async () => {
+        await withTracker(async (wt) => {
+            const { a } = await twoTickets(wt);
+            const msg = await onlyRefusal({ tasks: [], skipped: [] }, a.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" });
+            assert.match(msg!, new RegExp(`${a.key} is not among your To Do and In Progress Dev subtasks in this project \\(TAI\\)`));
+            assert.doesNotMatch(msg!, /only an In Progress or To Do/);
+        });
+    });
+
+    it("refuses a ticket precedence or a blocker holds, or that already has an open PR, with the reason the list gives (AC-2)", async () => {
+        await withTracker(async (wt) => {
+            const story = await mk(wt, { issueType: StoryType.Story });
+            const design = await mk(wt, { issueType: SubtaskType.ArchitectureDesign, parentKey: story.key, persona: Persona.Architect });
+            const held = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            await wt.transition(held.key, Status.ToDo);
+            let found = await onlyOf(wt, held.key);
+            assert.match((await onlyRefusal(found, held.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }))!, new RegExp(`${held.key} cannot be worked now: precedence holds it until ${design.key}`));
+
+            const blocker = await mk(wt, { issueType: StoryType.Story });
+            const story2 = await mk(wt, { issueType: StoryType.Story });
+            await wt.createLink(story2.key, DependencyRelation.DependsOn, blocker.key);
+            const blocked = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story2.key, assignee: ME });
+            await wt.transition(blocked.key, Status.ToDo);
+            found = await onlyOf(wt, blocked.key);
+            assert.match((await onlyRefusal(found, blocked.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }))!, new RegExp(`${blocker.key} must finish first`));
+
+            const story3 = await mk(wt, { issueType: StoryType.Story });
+            const hasPr = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story3.key, assignee: ME });
+            await wt.transition(hasPr.key, Status.InProgress);
+            found = await findDevTasks({ workTracker: wt, projectKey: "TAI", currentHuman: ME, only: hasPr.key, openPullRequests: async () => () => "https://pr/9" });
+            assert.match((await onlyRefusal(found, hasPr.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }))!, /cannot be worked now: it has an open PR.*https:\/\/pr\/9/);
+        });
+    });
+
+    it("a run with only= attempts that ticket and no other, across the looks after it (AC-1)", async () => {
+        await withTracker(async (wt) => {
+            const { a, b } = await twoTickets(wt);
+            const d = deps();
+            const { results } = await workDevTasks(() => onlyOf(wt, b.key), d);
+            assert.deepEqual(results.map((r) => r.task.issue.key), [b.key]);
+            assert.ok(!d.calls.join("\n").includes(a.key));
+        });
     });
 });
