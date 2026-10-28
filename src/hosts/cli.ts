@@ -1539,10 +1539,64 @@ export function renderInitStatus(state: InitState, projectContext?: ProjectConte
     return lines.join("\n");
 }
 
+// TAI-704: the help printed for `tai` with no (or an unknown) command: one command per line, grouped,
+// each with a short "what it does". `cli.test.ts` checks every dispatched subcommand is listed.
+export function isHelpRequest(subcommand: string | undefined): boolean {
+    return subcommand === undefined || subcommand === "help" || subcommand === "--help" || subcommand === "-h";
+}
+
+export function renderUsage(): string {
+    return [
+        "Usage: tai <command> [args]",
+        "",
+        "Work",
+        "  work <ISSUE-KEY>             Load a ticket's briefing and hand it to its persona",
+        "  ready [persona]              Show what's ready to work on",
+        "  do-dev-tasks [dryrun=true] [yolo=true|false]",
+        "                               Run the ready Dev tasks unattended (DEV-YOLO)",
+        "  do-dev-tasks rules [yolo=true|false]",
+        "                               Print the permission rules those runs use",
+        "  verify <STORY-KEY>           Check a Story's work against its acceptance criteria",
+        "  pr-ready                     List PRs ready to review or merge",
+        "",
+        "Planning",
+        "  kickoff [INITIATIVE]         Start a project or initiative",
+        "  groom [EPIC-KEY]             Backlog grooming session",
+        "  retro [EPIC-KEY | since=<date>]",
+        "                               Retrospective over a window",
+        "  change [EPIC-KEY] [statement]",
+        "                               Course-correct after a scope change",
+        "",
+        "Tickets, pages, PRs",
+        "  issue create|transition|comment|link|search|get ...",
+        "                               Create and change tickets",
+        "  page create|link|get|update|file|loose ...",
+        "                               Create and file Confluence pages",
+        "  git-pr create|review|merge ...",
+        "                               Open, review and merge pull requests",
+        "  link-precedence <STORY-KEY>  Show or set a Story's ordering links",
+        "  doc snapshot-living-doc ...  Snapshot a living doc",
+        "",
+        "Setup",
+        "  settings [set <KEY> <VALUE> | admins add|remove <EMAIL>]",
+        "                               Show or change project settings",
+        "  install-global [TAI-HOME]    Install or refresh the global skills",
+        "  init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md",
+        "                               Onboard a project to TAI",
+    ].join("\n");
+}
+
 async function main(): Promise<void> {
     loadDotEnv();
     const { actingPersona, args } = extractActingPersona(process.argv.slice(2));
     const [subcommand, arg, ...rest] = args;
+
+    // TAI-705: a bare `tai`, `help`, `--help` or `-h` is a request for the help, not an error: print it to stdout and
+    // exit 0 (so `tai | less` works), before any project config is needed. An unknown command still throws it.
+    if (isHelpRequest(subcommand)) {
+        console.log(renderUsage());
+        return;
+    }
 
     // TAI-126: install-global runs before resolveConfig() -- it's a bootstrap step for
     // TAI itself (writing global skill files), not a project-scoped operation, so it must
@@ -3123,14 +3177,10 @@ async function main(): Promise<void> {
             return;
         }
 
-        throw new Error(`Unknown page action "${action}" -- expected "create", "link", "get", or "update".`);
+        throw new Error(`Unknown page action "${action}" -- expected "create", "link", "get", "update", "file", or "loose".`);
     }
 
-    throw new Error(
-        `Usage: work <ISSUE-KEY> | groom [EPIC-KEY] | kickoff [INITIATIVE] | retro [EPIC-KEY | since=<date>] | change [EPIC-KEY] [statement] | ready [persona] | do-dev-tasks [dryrun=true] [yolo=true|false] | do-dev-tasks rules [yolo=true|false] | settings [set <KEY> <VALUE> | admins add|remove <EMAIL>] | pr-ready | link-precedence <STORY-KEY> | git-pr create|review|merge ... ` +
-            `| issue create|transition|comment|link|search|get ... | page create|link|get|update|file|loose ... | doc snapshot-living-doc ... ` +
-            `| install-global [TAI-HOME] | init status|run|jira|confluence|bitbucket|github|env|claude-md|gemini-md`
-    );
+    throw new Error(renderUsage());
 }
 
 // TAI-268: guarded so `cli.test.ts` can import this module's own pure helper functions

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
@@ -45,6 +46,8 @@ import {
     renderMergeRefused,
     actingHumanLabel,
     unlinkIssues,
+    isHelpRequest,
+    renderUsage,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 import type { InitState } from "../core/commands/target-init.js";
@@ -1257,5 +1260,28 @@ describe("unlinkIssues (issue unlink)", () => {
         const { calls, workTracker } = trackerRemoving(true);
         await assert.rejects(unlinkIssues(workTracker, "blocks", "TAI-1", "TAI-2"), /Unknown relation "blocks"/);
         assert.deepEqual(calls, []);
+    });
+});
+
+describe("renderUsage (TAI-704)", () => {
+    it("treats no command, help, --help and -h as a request for the help, and nothing else", () => {
+        for (const ok of [undefined, "help", "--help", "-h"]) assert.equal(isHelpRequest(ok), true, String(ok));
+        for (const no of ["work", "helpp", "--project", ""]) assert.equal(isHelpRequest(no), false, no);
+    });
+
+    it("puts each command on its own line, grouped, with a short description", () => {
+        const out = renderUsage();
+        assert.match(out, /^Usage: tai <command> \[args\]/);
+        for (const group of ["Work", "Planning", "Tickets, pages, PRs", "Setup"]) assert.match(out, new RegExp(`^${group}$`, "m"));
+        assert.match(out, /^ {2}verify <STORY-KEY> +Check a Story's work/m);
+        assert.ok(out.split("\n").every((l) => l.length <= 100), "no line is long enough to wrap in a terminal");
+    });
+
+    it("lists every subcommand the CLI dispatches", () => {
+        const source = readFileSync(new URL("./cli.ts", import.meta.url), "utf8");
+        const dispatched = [...source.matchAll(/if \(subcommand === "([a-z-]+)"\)/g)].map((m) => m[1]);
+        assert.ok(dispatched.length >= 15, "found the dispatch branches");
+        const out = renderUsage();
+        for (const name of dispatched) assert.match(out, new RegExp(`^  ${name}[ \\n]`, "m"), `${name} is missing from the help`);
     });
 });
