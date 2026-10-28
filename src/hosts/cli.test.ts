@@ -1267,7 +1267,7 @@ describe("renderUsage (TAI-704)", () => {
         const out = renderUsage();
         assert.match(out, /^Usage: tai <command> \[args\]/);
         for (const group of ["Work", "Planning", "Tickets, pages, PRs", "Setup"]) assert.match(out, new RegExp(`^${group}$`, "m"));
-        assert.match(out, /^  verify <STORY-KEY> +Check a Story's work/m);
+        assert.match(out, /^ {2}verify <STORY-KEY> +Check a Story's work/m);
         assert.ok(out.split("\n").every((l) => l.length <= 100), "no line is long enough to wrap in a terminal");
     });
 
