@@ -170,6 +170,24 @@ describe("build allow rules (TAI-649)", () => {
         }
     });
 
+    it("allows git rm and git mv in both sets, and refuses their forced forms and the other destructive git still (TAI-709)", () => {
+        for (const rules of [buildRunRules(HOME), buildRunRules(HOME, null, [], true)]) {
+            assert.ok(rules.allow.includes("Bash(git rm *)") && rules.allow.includes("Bash(git mv *)"));
+            for (const c of ["git rm README.md", "git rm --cached notes.txt", "git rm -r old/", "git mv a.txt b.txt", "git rm src/fix.ts"]) assert.equal(commandVerdict(rules, c), "allowed", c);
+            for (const c of ["git rm -f README.md", "git rm --force README.md", "git mv -f a b", "git mv a b --force", "git rm a -f", "git rm -r -f d", "git rm -rf d", "git rm -fr d", "git rm d -rf", "git mv a b -f"]) assert.equal(commandVerdict(rules, c), "refused", c);
+            assert.equal(commandVerdict(rules, "git rm -r old/file"), "allowed", "a path containing an f is not a force flag");
+            for (const c of ["git push --force origin x", "git branch -D x", "git checkout -- src", "git checkout ."]) assert.equal(commandVerdict(rules, c), "refused", c);
+        }
+    });
+
+    it("the readiness warning names git rm and git mv when a project's settings lack them (TAI-709)", () => {
+        const rules = buildRunRules(HOME);
+        const have = { allow: rules.allow.filter((r) => !r.includes("git rm") && !r.includes("git mv")), deny: rules.deny };
+        const gaps = missingRules(rules, have);
+        assert.deepEqual(gaps.allow, ["Bash(git rm *)", "Bash(git mv *)"]);
+        assert.match(readinessWarning(gaps, true, false)!, /git rm \*[\s\S]*git mv \*/);
+    });
+
     it("refuses a checkout that discards a file's changes, with a commit before the --, and a checkout of . or ./ (TAI-685)", () => {
         const rules = buildRunRules(HOME);
         for (const c of ["git checkout -- src", "git checkout HEAD -- src", "git checkout origin/main -- .", "git checkout .", "git checkout ./", "git checkout ./src"]) assert.equal(commandVerdict(rules, c), "refused", c);

@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 150 (2026-10-28)
+
+**TAI-709 (Story TAI-708): `git rm` and `git mv` in the build and YOLO rule sets.** Found in the YOLO trial B (TAIT-2030): the unattended run asked to delete `README.md`, the permission system refused `git rm README.md`, nobody was there to approve it and the ticket stopped. `git rm *` and `git mv *` are now allowed in both sets (git keeps the file, so they are recoverable), and the forced forms (`-f` in any position, `--force`, and `-rf` or `-fr`, which discard uncommitted changes or overwrite) are refused like a forced checkout; a bundle with the f after another letter (`-qrf`, `-nf`) is an accepted limit, as with the branch-delete flags (a glob that caught it would also refuse `git rm -r old/file`). A project that already has the rules gets the readiness warning naming the new ones until it adds them.
+
 ## rev 149 (2026-10-28)
 
 **TAI-695 (Story TAI-694): `do-dev-tasks only=<DEV-KEY>` works one ticket.** `findDevTasks` takes `only`: every other ticket is skipped as "not selected (only=KEY)" without any lookups, and the chosen one goes through the same eligibility checks as before. `onlyRefusal` runs on the first look, before the yolo guards or any run, and refuses a key that was not found, is not a Dev subtask, is not assigned to the person, is not To Do or In Progress, or that the list skipped (precedence, an open blocker, an open PR), naming the reason. `parseDevTasksArgs` accepts one `only=` with a key of the form `TAI-12`; an empty, malformed or second one is refused like any mistyped argument. The report says which ticket was selected. After `rules`, `only=` is accepted and changes nothing, since the rule set does not depend on the ticket. `yolo=` works with it as before.
