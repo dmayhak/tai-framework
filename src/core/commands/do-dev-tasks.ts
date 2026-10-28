@@ -82,6 +82,8 @@ export interface FindDevTasksDeps {
     /** Called once at the start of each look; returns the open PR URL for a ticket, when it has one. A ticket with its PR
      *  already open is waiting for review and is not built again. */
     readonly openPullRequests?: () => Promise<(issue: Issue) => string | null>;
+    /** `only=<KEY>` (TAI-695): work this one ticket. Every other ticket is listed as skipped, "not selected". */
+    readonly only?: IssueKey;
 }
 
 /**
@@ -106,6 +108,10 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
     const skipped: SkippedDevTask[] = [];
     const siblingsOf = new Map<IssueKey, readonly Issue[]>();
     for (const issue of mine) {
+        if (deps.only && issue.key !== deps.only) {
+            skipped.push({ issue, reason: `not selected (only=${deps.only})` });
+            continue;
+        }
         if (!issue.parentKey) {
             skipped.push({ issue, reason: "it has no parent Story or Bug" });
             continue;
@@ -142,6 +148,22 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
     }
     tasks.sort((a, b) => priorityRank(a.issue.priority) - priorityRank(b.issue.priority) || a.issue.key.localeCompare(b.issue.key));
     return { tasks, skipped };
+}
+
+/**
+ * Why `only=<KEY>` cannot be worked (TAI-695), or null when `found` has it to work. Run on the first look, before anything starts:
+ * the ticket is not found, is not a Dev subtask, is not assigned to the person or is not To Do or In Progress, or `findDevTasks`
+ * skipped it (precedence, a blocker, an open PR) and says why.
+ */
+export async function onlyRefusal(found: FoundDevTasks, only: IssueKey, deps: Pick<FindDevTasksDeps, "workTracker" | "currentHuman">): Promise<string | null> {
+    if (found.tasks.some((t) => t.issue.key === only)) return null;
+    const skipped = found.skipped.find((s) => s.issue.key === only);
+    if (skipped) return `${only} cannot be worked now: ${skipped.reason}.`;
+    const issue = await deps.workTracker.getIssue(only);
+    if (!issue) return `${only} was not found.`;
+    if (issue.issueType !== SubtaskType.Dev) return `${only} is a ${issue.issueType}, not a Dev subtask.`;
+    if (!issue.assignee || !deps.currentHuman || !sameHuman(issue.assignee, deps.currentHuman)) return `${only} is not assigned to you.`;
+    return `${only} is ${issue.status}; only an In Progress or To Do Dev subtask can be worked.`;
 }
 
 export type DevTaskOutcome =
@@ -294,9 +316,10 @@ function waitingNote(skipped: SkippedDevTask, worked: ReadonlySet<IssueKey>): st
     return mine.length ? ` Waiting on ${mine.join(", ")}, which this run worked on: it starts once that is merged and done.` : "";
 }
 
-export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean; readonly yoloThisRunOnly?: boolean }): string {
+export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean; readonly yoloThisRunOnly?: boolean; readonly only?: IssueKey }): string {
     const worked = new Set((results ?? []).flatMap((r) => [r.task.issue.key, r.task.parent.key]));
     const out = ["# Do all dev tasks", "", `DEV-YOLO is ${options.yolo ? "on" : "off"}${options.yoloThisRunOnly ? " for this run only (yolo=" + options.yolo + "); the stored setting is unchanged" : ""}.`, ""];
+    if (options.only) out.push(`Only ${options.only} was selected (only=${options.only}); every other ticket is listed under Skipped as not selected.`, "");
     if (results === null) {
         if (options.openPullRequestsChecked === false) {
             out.push("_The git host is not configured here, so a ticket that already has an open PR could not be left out of this list._", "");
@@ -348,15 +371,29 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 }
 
 /**
- * The command's arguments: `dryrun=true`, and `yolo=true` or `yolo=false` for this run only (TAI-693). Anything else is refused,
- * because a mistyped flag must not start real builds. After `rules` (which prints a rule set and runs nothing) only `yolo=` is taken.
+ * The command's arguments: `dryrun=true`, `yolo=true` or `yolo=false` for this run only (TAI-693), and `only=<DEV-KEY>` to work one
+ * ticket (TAI-695). Anything else is refused, because a mistyped flag must not start real builds. After `rules` (which prints a rule set
+ * and runs nothing) only `yolo=` is taken, and `only=` is accepted and has no effect, since the set does not depend on the ticket.
  */
-export function parseDevTasksArgs(args: readonly (string | undefined)[], options: { readonly rules?: boolean } = {}): { readonly dryRun: boolean; readonly yolo?: boolean } {
+export function parseDevTasksArgs(
+    args: readonly (string | undefined)[],
+    options: { readonly rules?: boolean } = {}
+): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
-    const unknown = given.filter((a) => !known.includes(a));
+    const onlyArgs = given.filter((a) => a.startsWith("only="));
+    const unknown = given.filter((a) => !known.includes(a) && !a.startsWith("only="));
     if (unknown.length > 0) {
-        throw new Error(`do-dev-tasks ${options.rules ? "rules takes only yolo=true and yolo=false" : "takes only dryrun=true, yolo=true and yolo=false"} (got: ${unknown.join(" ")}).`);
+        throw new Error(
+            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false and only=<DEV-KEY>"} (got: ${unknown.join(" ")}).`
+        );
+    }
+    if (onlyArgs.length > 1) throw new Error(`do-dev-tasks takes only one only=<DEV-KEY> (got: ${onlyArgs.join(" ")}).`);
+    let only: IssueKey | undefined;
+    if (onlyArgs.length === 1) {
+        const value = onlyArgs[0]!.slice("only=".length);
+        if (!/^[A-Z][A-Z0-9]*-[0-9]+$/.test(value)) throw new Error(`only= takes one ticket key such as TAI-12 (got: ${value === "" ? "nothing" : value}).`);
+        only = value as IssueKey;
     }
     const wantsOn = given.includes("yolo=true");
     const wantsOff = given.includes("yolo=false");
@@ -364,7 +401,7 @@ export function parseDevTasksArgs(args: readonly (string | undefined)[], options
     let yolo: boolean | undefined;
     if (wantsOn) yolo = true;
     else if (wantsOff) yolo = false;
-    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }) };
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }) };
 }
 
 /**
