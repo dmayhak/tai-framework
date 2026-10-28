@@ -62,6 +62,8 @@ const GIT_ALLOW: readonly string[] = [
     "git switch *",
     "git add *",
     "git commit *",
+    "git rm *",
+    "git mv *",
     "git push -u origin *",
     "git push origin *",
 ];
@@ -69,7 +71,7 @@ const GIT_ALLOW: readonly string[] = [
 /**
  * What a build never does with git: a force push in any spelling (the flags, and a `+` before a refspec), a push with
  * `--delete`, `--mirror` or `--prune`, a push to `main` or `master`, a branch delete, a forced or resetting checkout or
- * switch, and a checkout that discards work. A delete by refspec (`git push origin :branch`) is not refused: its pattern
+ * switch, a checkout that discards work, and a forced `git rm` or `git mv` (`git rm` and `git mv` themselves are allowed, TAI-709). A delete by refspec (`git push origin :branch`) is not refused: its pattern
  * would end in `:*`, which Claude Code reads as its older prefix form, so it cannot be written here.
  */
 const GIT_DENY: readonly string[] = [
@@ -97,6 +99,10 @@ const GIT_DENY: readonly string[] = [
     "git checkout *-- *",
     "git checkout .",
     "git checkout ./*",
+    "git rm -f*",
+    "git rm *--force*",
+    "git mv -f*",
+    "git mv *--force*",
 ];
 
 /** The TAI commands a build must never reach, however they are spelled (see `denySpellings`). */
