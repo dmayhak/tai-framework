@@ -4,7 +4,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 ## rev 148 (2026-10-28)
 
-**TAI-705 (Story TAI-704): readable help for `tai` and `tai settings`.** `tai` with no command (or an unknown one) prints `renderUsage()`: commands grouped as Work, Planning, Tickets/pages/PRs and Setup, one per line, each with a short description; it now includes `verify`, which the old one-line usage had dropped. A test fails when a subcommand the CLI dispatches is missing from it. `tai settings` prints plain text for a terminal (no markdown marks), one setting per block with the name column aligned, and ends with how to change one. The per-command `Usage:` errors are unchanged.
+**TAI-705 (Story TAI-704): readable help for `tai` and `tai settings`.** `tai` with no command (or an unknown one) prints `renderUsage()`: commands grouped as Work, Planning, Tickets/pages/PRs and Setup, one per line, each with a short description; it now includes `verify`, which the old one-line usage had dropped. A test fails when a subcommand the CLI dispatches is missing from it. `tai settings` prints plain text for a terminal (no markdown marks), one setting per block with the name column aligned, and ends with how to change one. The per-command `Usage:` errors are unchanged, except that the `page` unknown-action error now lists `file` and `loose` too. A bare `tai`, `help`, `--help` or `-h` prints the help to stdout and exits 0 before any project config is read (so it works anywhere and pipes); an unknown command still throws it (stderr, exit 1).
 
 ## rev 147 (2026-10-27)
 

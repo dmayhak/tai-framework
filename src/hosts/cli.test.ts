@@ -46,6 +46,7 @@ import {
     renderMergeRefused,
     actingHumanLabel,
     unlinkIssues,
+    isHelpRequest,
     renderUsage,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
@@ -1263,6 +1264,11 @@ describe("unlinkIssues (issue unlink)", () => {
 });
 
 describe("renderUsage (TAI-704)", () => {
+    it("treats no command, help, --help and -h as a request for the help, and nothing else", () => {
+        for (const ok of [undefined, "help", "--help", "-h"]) assert.equal(isHelpRequest(ok), true, String(ok));
+        for (const no of ["work", "helpp", "--project", ""]) assert.equal(isHelpRequest(no), false, no);
+    });
+
     it("puts each command on its own line, grouped, with a short description", () => {
         const out = renderUsage();
         assert.match(out, /^Usage: tai <command> \[args\]/);

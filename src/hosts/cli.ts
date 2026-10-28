@@ -1541,6 +1541,10 @@ export function renderInitStatus(state: InitState, projectContext?: ProjectConte
 
 // TAI-704: the help printed for `tai` with no (or an unknown) command: one command per line, grouped,
 // each with a short "what it does". `cli.test.ts` checks every dispatched subcommand is listed.
+export function isHelpRequest(subcommand: string | undefined): boolean {
+    return subcommand === undefined || subcommand === "help" || subcommand === "--help" || subcommand === "-h";
+}
+
 export function renderUsage(): string {
     return [
         "Usage: tai <command> [args]",
@@ -1586,6 +1590,13 @@ async function main(): Promise<void> {
     loadDotEnv();
     const { actingPersona, args } = extractActingPersona(process.argv.slice(2));
     const [subcommand, arg, ...rest] = args;
+
+    // TAI-705: a bare `tai`, `help`, `--help` or `-h` is a request for the help, not an error: print it to stdout and
+    // exit 0 (so `tai | less` works), before any project config is needed. An unknown command still throws it.
+    if (isHelpRequest(subcommand)) {
+        console.log(renderUsage());
+        return;
+    }
 
     // TAI-126: install-global runs before resolveConfig() -- it's a bootstrap step for
     // TAI itself (writing global skill files), not a project-scoped operation, so it must
@@ -3166,7 +3177,7 @@ async function main(): Promise<void> {
             return;
         }
 
-        throw new Error(`Unknown page action "${action}" -- expected "create", "link", "get", or "update".`);
+        throw new Error(`Unknown page action "${action}" -- expected "create", "link", "get", "update", "file", or "loose".`);
     }
 
     throw new Error(renderUsage());
