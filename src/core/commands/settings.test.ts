@@ -33,6 +33,7 @@ describe("tai-settings", () => {
             assert.doesNotMatch(out, /\*\*|^#|^_|^- /m);
             assert.match(out, /^Settings for /);
             assert.match(out, /dev-yolo +false \(default\) {2}\[autonomy: admins only\]\n +Let a Dev ticket/);
+            assert.match(out, /Change one: tai settings set <KEY> <VALUE>/);
         }));
 
     it("refuses an autonomy change until the user is on the admins list, then allows it and says what changed", () =>

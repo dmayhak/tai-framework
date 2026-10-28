@@ -132,7 +132,7 @@ export async function showSettings(ctx: SettingsContext): Promise<string> {
             ""
         );
     }
-    lines.push(`Autonomy admins: ${state.admins.length ? state.admins.join(", ") : "none yet"}`, "", "Change one: tai-settings set <KEY> <VALUE>");
+    lines.push(`Autonomy admins: ${state.admins.length ? state.admins.join(", ") : "none yet"}`, "", "Change one: tai settings set <KEY> <VALUE>");
     if (unknown.length) lines.push("", `Ignored on the page (not a known setting or not a valid value): ${unknown.join(", ")}. They are left as written; edit the page to fix or remove them.`);
     return lines.join("\n");
 }
