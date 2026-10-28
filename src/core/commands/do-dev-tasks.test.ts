@@ -742,7 +742,7 @@ describe("do-dev-tasks only=<KEY> (TAI-695)", () => {
         });
     });
 
-    it("does not call an eligible-looking ticket the search did not return a wrong status (PR 37 review)", async () => {
+    it("does not call an eligible-looking ticket the search did not return a wrong status (AC-2)", async () => {
         await withTracker(async (wt) => {
             const { a } = await twoTickets(wt);
             const msg = await onlyRefusal({ tasks: [], skipped: [] }, a.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" });
