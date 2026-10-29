@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 152 (2026-10-29)
+
+**TAI-723 (Story TAI-722): the readiness warning names a command the project's rules file tells a run to use that `TAI_CHECK_COMMAND` does not allow.** Found on the first real DEV-YOLO build (TAI-687): `project-context.md` named the offline test command as an `env -u TAI_TEST_JIRA_... npm test` form, the clone's `TAI_CHECK_COMMAND` ended in plain `npm test`, so the rules allowed one and the run used the other, asked for an approval nobody could give and stopped. The rule sets already allow each command of `TAI_CHECK_COMMAND` exactly as written, so that stays the single source; no new setting. `core/commands/build-allow-rules.ts` now reads the commands from the rules file's test, lint and type-check bullets (`- Offline test suite: `cmd``) and `readinessWarning` lists any part the run's rules do not allow, telling the person to make `TAI_CHECK_COMMAND` name the same commands. Nothing is blocked.
+
 ## rev 151 (2026-10-28)
 
 **TAI-721 (Bug TAI-720): the reviewer-token environment test no longer depends on `GITHUB_TOKEN`.** The `dev-yolo.test.ts` test "a run does not see the reviewer token in its environment…" built its expected output from the real `GITHUB_TOKEN`, but a run's output shows a token-named value as `***`, so with `GITHUB_TOKEN` set it failed and its failure message printed the raw token. An unattended build always has `GITHUB_TOKEN` (from the project's `.env`), so the test failed on every real YOLO build of this repo (found on TAI-687). The test now sets its own dummy `GITHUB_TOKEN` and restores the original, and checks the three cases (a token set, none set, a token given to a reviewer run). No assertion is built from a real environment value. The whole suite passes with a dummy `GITHUB_TOKEN`, `TAI_REVIEWER_GITHUB_TOKEN` and `TAI_REVIEWER_EMAIL` set; it was the only test that did not.

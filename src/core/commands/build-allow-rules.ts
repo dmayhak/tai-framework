@@ -257,6 +257,32 @@ export function commandVerdict(rules: BuildRules, command: string): "refused" | 
     return hit(rules.deny) ? "refused" : hit(rules.allow) ? "allowed" : "unlisted";
 }
 
+/**
+ * TAI-723: the commands the project's rules file names for its test, lint and type-check steps, one per bullet of the form
+ * `- Offline test suite: `npm test``. They are read from the file as written, so what a run is told to run is what is checked.
+ */
+export function documentedCheckCommands(projectContext: string | null): string[] {
+    if (!projectContext) return [];
+    const found: string[] = [];
+    for (const line of projectContext.split("\n")) {
+        const m = /^\s*[-*]\s+[^:`]*\b(?:test|tests|lint|type\s?check|check)\b[^:`]*:\s*`([^`]+)`/i.exec(line);
+        if (m) found.push(m[1]!.trim());
+    }
+    return found;
+}
+
+/**
+ * The parts of the documented commands that `rules` does not allow (a deny beats an allow), so a run that follows the file stops at an
+ * approval nobody can give. The fix is in `TAI_CHECK_COMMAND`, whose parts the rules allow as they are written.
+ */
+export function undocumentedCheckGaps(projectContext: string | null, rules: BuildRules): string[] {
+    const gaps: string[] = [];
+    for (const command of documentedCheckCommands(projectContext)) {
+        for (const part of splitCompound(command)) if (commandVerdict(rules, part) !== "allowed" && !gaps.includes(part)) gaps.push(part);
+    }
+    return gaps;
+}
+
 export interface RuleGaps {
     readonly allow: readonly string[];
     readonly deny: readonly string[];
@@ -307,8 +333,13 @@ export async function readPermissionFiles(cwd: string, home: string = os.homedir
 }
 
 /** What to tell the person before a run starts, or `null` when the rules cover the build. Plain lines, nothing blocked. */
-export function readinessWarning(gaps: RuleGaps, checkConfigured: boolean, yolo = false): string | null {
+export function readinessWarning(gaps: RuleGaps, checkConfigured: boolean, yolo = false, documentedGaps: readonly string[] = []): string | null {
     const lines: string[] = [];
+    if (documentedGaps.length > 0) {
+        lines.push(`The project's rules file names ${documentedGaps.length} command${documentedGaps.length === 1 ? "" : "s"} for a run to use that TAI_CHECK_COMMAND does not allow, so a run will stop at the first one:`);
+        lines.push(...documentedGaps.map((c) => `  ${c}`));
+        lines.push("Make TAI_CHECK_COMMAND name the same commands as the file (or change the file).");
+    }
     if (gaps.allow.length > 0) {
         lines.push(`This project's Claude Code rules do not allow (or a deny rule of yours refuses) ${gaps.allow.length} command${gaps.allow.length === 1 ? "" : "s"} an unattended build uses, so a run will stop at the first one:`);
         lines.push(...gaps.allow.map((r) => `  ${r}`));
