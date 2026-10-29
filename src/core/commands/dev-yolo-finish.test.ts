@@ -171,6 +171,21 @@ describe("finishApproved (TAI-634)", () => {
             assert.match(handoffs[0]!, /not merged by this run.*the merge was refused: head moved/s);
         }));
 
+    it("answers a conflict, with no hand-off, when it may be resolved; any other refusal, or a run that cannot resolve, stops as before (TAI-733)", async () => {
+        await world(async ({ deps, task, handoffs, pr }) => {
+            pr.mergeResult = { ok: false, reason: "Pull Request has merge conflicts" };
+            assert.deepEqual(await finishApproved({ ...deps, resolveConflicts: true })(task, "u"), { state: "conflict", reason: "Pull Request has merge conflicts" });
+            assert.deepEqual(handoffs, []);
+            pr.mergeResult = { ok: false, reason: "head moved" };
+            assert.equal((await finishApproved({ ...deps, resolveConflicts: true })(task, "u")).state, "waiting");
+        });
+        await world(async ({ deps, task, handoffs, pr }) => {
+            pr.mergeResult = { ok: false, reason: "Pull Request has merge conflicts" };
+            assert.equal((await finishApproved(deps)(task, "u")).state, "waiting");
+            assert.match(handoffs[0]!, /the merge was refused: Pull Request has merge conflicts/);
+        });
+    });
+
     it("says the PR merged when a later step stops: the checkout cannot be updated, or the verification run fails", async () => {
         await world(async ({ deps, task, handoffs }) => {
             await finishApproved({ ...deps, prepare: async () => { throw new Error("dirty tree"); } })(task, "u");

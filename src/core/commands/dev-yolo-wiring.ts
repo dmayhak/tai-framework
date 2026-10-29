@@ -12,7 +12,7 @@ import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isEligibleReviewer, loadPrReviewers } from "../git/pr-reviewers.js";
 import { acceptanceCriteria } from "../storage/verification.js";
 import { parseReviewFindings, sameCommitHash } from "../git/review-findings.js";
-import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, buildVerifyPrompt, runHeadlessClaude, type HeadlessRunOptions, type HeadlessRunResult } from "./headless-claude.js";
+import { buildConflictPrompt, buildDevPrompt, buildFixPrompt, buildReviewerPrompt, buildVerifyPrompt, runHeadlessClaude, type HeadlessRunOptions, type HeadlessRunResult } from "./headless-claude.js";
 import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask, type DevTaskOutcome } from "./do-dev-tasks.js";
 import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "./dev-yolo.js";
 import { yoloStopReasons } from "./yolo-checks.js";
@@ -166,6 +166,14 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
         },
         head: async (task) => liveHead(await pullRequest(task)),
         handoff: w.handoff,
+        ...(w.finish && !w.afterApproved
+            ? {
+                  resolveConflict: async (task) => {
+                      const pr = await pullRequest(task);
+                      return run(buildConflictPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, base: pr.destinationBranch, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
+                  },
+              }
+            : {}),
         ...(w.afterApproved
             ? { afterApproved: w.afterApproved }
             : w.finish
@@ -183,6 +191,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                         prepare: w.finish.prepare,
                         verify: (task) => run(buildVerifyPrompt({ key: task.parent.key, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
                         handoff: w.handoff,
+                        resolveConflicts: true,
                     }),
                 }
               : {}),

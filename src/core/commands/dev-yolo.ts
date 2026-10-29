@@ -22,6 +22,12 @@ export interface ReviewRound {
     readonly head: string;
 }
 
+/** The merge was refused because the PR conflicts with the default branch (TAI-733); the run may resolve it and ask for a fresh review. */
+export interface ConflictStop {
+    readonly state: "conflict";
+    readonly reason: string;
+}
+
 export interface YoloDeps {
     /** The most review-and-fix rounds before the run stops for a person (the `review-rounds` setting). */
     readonly rounds: number;
@@ -36,7 +42,12 @@ export interface YoloDeps {
     readonly head: (task: DevTask, prUrl: string) => Promise<string>;
     readonly handoff: (key: string, body: string) => Promise<void>;
     /** Part 3: the gated merge, verification and close of an approved PR. Without it the run ends at the approval. */
-    readonly afterApproved?: (task: DevTask, prUrl: string) => Promise<DevTaskOutcome>;
+    readonly afterApproved?: (task: DevTask, prUrl: string) => Promise<DevTaskOutcome | ConflictStop>;
+    /**
+     * TAI-733: brings the default branch into the PR's branch, resolves the conflicts that are mechanical and pushes. Pushes nothing when
+     * a conflict needs a person. With it, `afterApproved` may answer `conflict`; without it a conflict is a stop like any other refusal.
+     */
+    readonly resolveConflict?: (task: DevTask, prUrl: string) => Promise<{ readonly ok: boolean; readonly summary: string }>;
 }
 
 /** What a person reads on the ticket when the run stops. */
@@ -132,8 +143,23 @@ export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOut
                     continue;
                 }
             }
-            return deps.afterApproved
-                ? await deps.afterApproved(task, prUrl)
+            const finished = deps.afterApproved ? await deps.afterApproved(task, prUrl) : null;
+            if (finished && finished.state === "conflict") {
+                const stopped = `the PR conflicts with the default branch: ${finished.reason}`;
+                const where = `The PR is open: ${prUrl}. Review round ${round} of ${deps.rounds}.`;
+                if (!deps.resolveConflict) return await say(where, stopped, "resolve the conflict, then merge it through the gate.");
+                // The resolution is a push, so it needs its own fresh review; with no round left for one, a person takes it from here.
+                if (round === deps.rounds) return await say(where, `${stopped}. No review round is left for a resolution.`, "resolve the conflict and review the newest commit by hand.");
+                const before = await deps.head(task, prUrl);
+                const resolved = await deps.resolveConflict(task, prUrl);
+                if (!resolved.ok) return await say(where, `the PR conflicts with the default branch and the conflict could not be resolved: ${resolved.summary}`, "read the conflicting files named above, resolve them and run the ticket again.");
+                if ((await deps.head(task, prUrl)) === before) {
+                    return await say(where, `the PR conflicts with the default branch, the conflict was not resolved and nothing was pushed: ${resolved.summary}`, "read the conflicting files named above, resolve them and run the ticket again.");
+                }
+                continue;
+            }
+            return finished
+                ? finished
                 : await say(`The PR is open: ${prUrl}, reviewed and approved by the automated reviewer in ${round} round${round === 1 ? "" : "s"}.`, "the merge, verification and close are not in this version.", "merge the PR through the gate and run /tai-verify.");
         }
         return await say(`The PR is open: ${prUrl}.`, `${deps.rounds} review round${deps.rounds === 1 ? "" : "s"} used.`, "review the newest commit by hand.");
