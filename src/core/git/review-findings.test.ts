@@ -397,9 +397,9 @@ describe("a review is tied to a commit (TAI-527, from the review of PR 187)", ()
         assert.match(approvalOfUnpreparedCommit(manifest, "ffff00001111") ?? "", /^Not approved: the PR is now at commit ffff00001111, and `review-prep` last ran here for abc123def456\./);
     });
 
-    it("a review is refused once the PR is merged or closed, and allowed while it is open", () => {
+    it("a review is refused once the PR is merged or declined, and allowed while it is open", () => {
         assert.match(reviewOfClosedPullRequestRefusal("merged", "7", "review") ?? "", /^Not posted: PR 7 is merged/);
-        assert.match(reviewOfClosedPullRequestRefusal("closed", "7", "decision") ?? "", /^Not posted: PR 7 is closed/);
+        assert.match(reviewOfClosedPullRequestRefusal("declined", "7", "decision") ?? "", /^Not posted: PR 7 is declined/);
         assert.equal(reviewOfClosedPullRequestRefusal("open", "7", "review"), null);
     });
 

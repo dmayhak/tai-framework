@@ -446,7 +446,7 @@ export function reviewDecisionRefusal(decision: "approve" | "requestChanges", ma
     return decision === "approve" ? approvalOfUnpreparedCommit(manifest, liveCommit) : null;
 }
 
-/** A review or a decision is of a PR still open: on a merged or closed one it only adds a retrospective the merge did not wait for. */
+/** A review or a decision is of a PR still open: on a merged or declined one it only adds a retrospective the merge did not wait for. */
 export function reviewOfClosedPullRequestRefusal(state: string, prId: string, what: "review" | "decision"): string | null {
     if (state === "open") return null;
     return `Not posted: PR ${prId} is ${state}, so there is nothing left to ${what === "review" ? "review" : "decide"}. A ${what} cast now would come after the merge.`;
