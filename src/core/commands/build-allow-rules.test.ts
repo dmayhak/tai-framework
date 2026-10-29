@@ -180,6 +180,23 @@ describe("build allow rules (TAI-649)", () => {
         }
     });
 
+    it("lets a run rebase or merge a remote branch into its own and back out of a conflict, and refuses the rebase forms that run a command or rewrite elsewhere (TAI-725)", () => {
+        for (const rules of [buildRunRules(HOME), buildRunRules(HOME, null, [], true)]) {
+            for (const c of ["git rebase origin/main", "git merge origin/main", "git merge origin/main --no-edit", "git rebase origin/TAI-9-x", "git rebase --abort", "git merge --abort"]) assert.equal(commandVerdict(rules, c), "allowed", c);
+            for (const c of ["git rebase -i origin/main", "git rebase origin/main -i", "git rebase --interactive origin/main", "git rebase --onto origin/main a b", "git rebase origin/main --onto x", "git rebase --root origin/main", "git rebase origin/main --root", "git rebase -x 'rm -rf .' origin/main", "git rebase origin/main -x 'npm test'", "git rebase --exec 'x' origin/main", "git rebase origin/main --exec x"]) assert.equal(commandVerdict(rules, c), "refused", c);
+            for (const c of ["git rebase main", "git merge main", "git rebase --continue", "git rebase HEAD~3"]) assert.equal(commandVerdict(rules, c), "unlisted", c);
+            for (const c of ["git push --force origin x", "git push origin main"]) assert.equal(commandVerdict(rules, c), "refused", c);
+        }
+    });
+
+    it("the readiness warning names the rebase and merge rules when a project's settings lack them (TAI-725)", () => {
+        const rules = buildRunRules(HOME);
+        const have = { allow: rules.allow.filter((r) => !r.includes("git rebase") && !r.includes("git merge")), deny: rules.deny };
+        const gaps = missingRules(rules, have);
+        assert.deepEqual(gaps.allow, ["Bash(git rebase origin/*)", "Bash(git merge origin/*)", "Bash(git rebase --abort)", "Bash(git merge --abort)"]);
+        assert.match(readinessWarning(gaps, true, false)!, /git rebase origin\/\*[\s\S]*git merge origin\/\*/);
+    });
+
     it("the readiness warning names git rm and git mv when a project's settings lack them (TAI-709)", () => {
         const rules = buildRunRules(HOME);
         const have = { allow: rules.allow.filter((r) => !r.includes("git rm") && !r.includes("git mv")), deny: rules.deny };
