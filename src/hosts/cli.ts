@@ -1920,8 +1920,7 @@ async function main(): Promise<void> {
             // last ran here for an older one. A request for changes is always allowed.
             // Looked up only for an approval, so a request for changes never depends on this read succeeding.
             if (decision === "approve") {
-                const live = await gitHost.getPullRequest(repo, prId);
-                const refusal = live ? reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), live.sourceCommit) : null;
+                const refusal = reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), reviewed.sourceCommit);
                 if (refusal) throw new Error(refusal);
             }
             // TAI-575: once review-prep has run for this PR here, the findings must have been rendered before a decision.

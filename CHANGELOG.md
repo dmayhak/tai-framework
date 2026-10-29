@@ -4,7 +4,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 ## rev 154 (2026-10-29)
 
-**TAI-727 (Bug TAI-726): no review or approval is posted on a PR that has already merged.** On PR 40 (TAI-687) the unattended run merged, and a minute later the automated reviewer's account posted a second review and approval of the same commit. `git-pr review-prep` already refused a PR that was not open, but `git-pr review` and `git-pr comment-findings` did not, so a reviewer run that went on past the merge could still post. Both now read the PR live and refuse a merged or declined one (`reviewOfClosedPullRequestRefusal`). A test also shows that `runYolo` starts no review after the PR merged. The exact path of the late review on PR 40 was not reproduced; the refusal closes it wherever it came from.
+**TAI-727 (Bug TAI-726): no review or approval is posted on a PR that has already merged.** On PR 40 (TAI-687) the unattended run merged, and a minute later the automated reviewer's account posted a second review and approval of the same commit. `git-pr review-prep` already refused a PR that was not open, but `git-pr review` and `git-pr comment-findings` did not, so a reviewer run that went on past the merge could still post. Both now read the PR live and refuse a merged or declined one (`reviewOfClosedPullRequestRefusal`). A test also shows that `runYolo` starts no review after the PR merged. The exact path of the late review on PR 40 was not reproduced; the refusal narrows it to the gap between the live read and the post (the host offers no atomic guard), wherever the late review came from.
 
 ## rev 153 (2026-10-29)
 
