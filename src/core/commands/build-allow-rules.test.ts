@@ -258,6 +258,7 @@ describe("the commands the project's rules file names (TAI-723)", () => {
 
     it("ignores a bullet that says what not to do, and a label with none of the words", () => {
         const text = [
+            "## Commands",
             "- Never run the check: `rm -rf x`",
             "- Do not skip tests: `npm test --force`",
             "- Run the app with: `npm start`",
@@ -278,6 +279,20 @@ describe("the commands the project's rules file names (TAI-723)", () => {
         assert.equal(commandVerdict(rules, `${ENV_TEST} -- --force`), "unlisted");
         assert.equal(commandVerdict(rules, `${ENV_TEST}; rm -rf .`), "unlisted");
         assert.equal(commandVerdict(rules, "npm test"), "unlisted");
+    });
+
+    it("reads only the section about commands, and nothing when the file has none", () => {
+        const text = [
+            "## Conventions",
+            "- Check out the branch: `git checkout x`",
+            "- Test data lives in: `fixtures/`",
+            "## Build commands",
+            "- Tests: `npm test`",
+            "## Never",
+            "- Skip the check: `npm run skip`",
+        ].join("\n");
+        assert.deepEqual(documentedCheckCommands(text), ["npm test"]);
+        assert.deepEqual(documentedCheckCommands("- Tests: `npm test`"), []);
     });
 
     it("lists no documented command as a gap when TAI_CHECK_COMMAND is not set, since the 'not set' line already says so", () => {
