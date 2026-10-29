@@ -9,7 +9,7 @@ import {
     renderReviewFindings,
     renderFindingsNextSteps,
     renderFindingsPreview,
-    partitionInlineFindings,
+    selectInlineFindings,
     isInlineEligible,
     renderInlineComment,
     claimGivesHow,
@@ -169,7 +169,7 @@ describe("renderReviewFindings", () => {
     });
 });
 
-describe("isInlineEligible / partitionInlineFindings (TAI-207)", () => {
+describe("isInlineEligible / selectInlineFindings (TAI-207)", () => {
     it("a critical finding with a line is eligible", () => {
         assert.equal(isInlineEligible(validFindings.findings[0]!), true);
     });
@@ -183,10 +183,13 @@ describe("isInlineEligible / partitionInlineFindings (TAI-207)", () => {
         assert.equal(isInlineEligible({ ...validFindings.findings[0]!, severity: "suggestion" }), false);
     });
 
-    it("splits findings into inline vs. summary buckets, preserving relative order within each", () => {
-        const { inline, summary } = partitionInlineFindings(validFindings.findings);
-        assert.deepEqual(inline, [validFindings.findings[0]]);
-        assert.deepEqual(summary, [validFindings.findings[1]]);
+    it("selects only the inline-eligible findings, in their original order", () => {
+        assert.deepEqual(selectInlineFindings(validFindings.findings), [validFindings.findings[0]]);
+    });
+
+    it("selects nothing when no finding is a critical one with a line", () => {
+        const { line: _line, ...withoutLine } = validFindings.findings[0]!;
+        assert.deepEqual(selectInlineFindings([withoutLine, { ...validFindings.findings[0]!, severity: "suggestion" }]), []);
     });
 });
 

@@ -334,18 +334,12 @@ export function isInlineEligible(f: ReviewFinding): boolean {
 }
 
 /**
- * Splits `findings` into the ones that get posted as inline PR comments (`comment-findings`, `cli.ts`, which needs the raw
- * `ReviewFinding`s to call `GitHost.addInlineComment` per finding) and the rest. Posting inline does not take a finding out
+ * The findings that get posted as inline PR comments (`comment-findings`, `cli.ts`, which needs the raw `ReviewFinding`s
+ * to call `GitHost.addInlineComment` per finding), in their original order. Posting inline does not take a finding out
  * of the review text: every finding, critical ones included, is listed in full in its severity section (TAI-678).
  */
-export function partitionInlineFindings(findings: readonly ReviewFinding[]): {
-    readonly inline: readonly ReviewFinding[];
-    readonly summary: readonly ReviewFinding[];
-} {
-    const inline: ReviewFinding[] = [];
-    const summary: ReviewFinding[] = [];
-    for (const f of findings) (isInlineEligible(f) ? inline : summary).push(f);
-    return { inline, summary };
+export function selectInlineFindings(findings: readonly ReviewFinding[]): readonly ReviewFinding[] {
+    return findings.filter(isInlineEligible);
 }
 
 /**
