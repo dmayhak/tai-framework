@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { buildDevPrompt, buildFixPrompt, buildReviewerPrompt, buildVerifyPrompt } from "./headless-claude.js";
-import { buildRunRules, commandVerdict, missingRules, parsePermissions, readPermissionFiles, readinessWarning, renderRulesJson } from "./build-allow-rules.js";
+import { buildRunRules, commandVerdict, documentedCheckCommands, missingRules, parsePermissions, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "./build-allow-rules.js";
 
 const HOME = "/home/x/.tai-framework";
 const CLI = `npx --prefix ${HOME} tsx ${HOME}/src/hosts/cli.ts`;
@@ -236,5 +236,90 @@ describe("rules for a DEV-YOLO run (TAI-685)", () => {
         const missing = missingRules(yolo, { allow: [], deny: [] });
         assert.ok(!missing.deny.some((r) => r.includes("git-pr review")), "a YOLO run is never told to deny git-pr review");
         assert.ok(missing.allow.some((r) => r.includes("review-prep")));
+    });
+});
+
+describe("the commands the project's rules file names (TAI-723)", () => {
+    const ENV_TEST = "env -u TAI_TEST_JIRA_SITE_URL -u TAI_TEST_JIRA_EMAIL -u TAI_TEST_JIRA_API_TOKEN npm test";
+    const CONTEXT = [
+        "## Commands",
+        "",
+        `- Offline test suite: \`${ENV_TEST}\``,
+        "- Type check: `npm run typecheck`",
+        "- Lint: `npm run lint`",
+        "- All three pass before a PR is opened.",
+        "- Run the app with: `npm start`",
+    ].join("\n");
+
+    it("reads the test, lint and type-check commands from their bullets and nothing else", () => {
+        assert.deepEqual(documentedCheckCommands(CONTEXT), [ENV_TEST, "npm run typecheck", "npm run lint"]);
+        assert.deepEqual(documentedCheckCommands(null), []);
+    });
+
+    it("ignores a bullet that says what not to do, and a label with none of the words", () => {
+        const text = [
+            "## Commands",
+            "- Never run the check: `rm -rf x`",
+            "- Do not skip tests: `npm test --force`",
+            "- Run the app with: `npm start`",
+            "- Tests: `npm test`",
+            "- Lint (do not edit by hand): `npm run lint`",
+        ].join("\n");
+        assert.deepEqual(documentedCheckCommands(text), ["npm test"]);
+    });
+
+    it("finds nothing uncovered when TAI_CHECK_COMMAND names the documented commands, and allows the env -u form as written", () => {
+        const rules = buildRunRules(HOME, `npm run typecheck && npm run lint && ${ENV_TEST}`);
+        assert.deepEqual(undocumentedCheckGaps(CONTEXT, rules), []);
+        assert.equal(commandVerdict(rules, ENV_TEST), "allowed");
+    });
+
+    it("does not allow a variant of the documented command with another command appended or a flag changed", () => {
+        const rules = buildRunRules(HOME, `npm run typecheck && npm run lint && ${ENV_TEST}`);
+        assert.equal(commandVerdict(rules, `${ENV_TEST} -- --force`), "unlisted");
+        assert.equal(commandVerdict(rules, `${ENV_TEST}; rm -rf .`), "unlisted");
+        assert.equal(commandVerdict(rules, "npm test"), "unlisted");
+    });
+
+    it("reads only the section about commands, and nothing when the file has none", () => {
+        const text = [
+            "## Conventions",
+            "- Check out the branch: `git checkout x`",
+            "- Test data lives in: `fixtures/`",
+            "## Build commands",
+            "- Tests: `npm test`",
+            "## Never",
+            "- Skip the check: `npm run skip`",
+        ].join("\n");
+        assert.deepEqual(documentedCheckCommands(text), ["npm test"]);
+        assert.deepEqual(documentedCheckCommands("- Tests: `npm test`"), []);
+    });
+
+    it("keeps reading under a sub-heading of the commands section, and stops at the next heading of its own level", () => {
+        const text = [
+            "## Commands",
+            "- Lint: `npm run lint`",
+            "### Testing",
+            "- Tests (without network): `npm test`",
+            "## Conventions",
+            "- Tests: `npm run other`",
+        ].join("\n");
+        assert.deepEqual(documentedCheckCommands(text), ["npm run lint", "npm test"]);
+    });
+
+    it("lists no documented command as a gap when TAI_CHECK_COMMAND is not set, since the 'not set' line already says so", () => {
+        const rules = buildRunRules(HOME, null);
+        assert.ok(undocumentedCheckGaps(CONTEXT, rules).length > 0);
+        assert.deepEqual(undocumentedCheckGaps(CONTEXT, rules, false), []);
+    });
+
+    it("names the documented command that the check command lacks, in the readiness warning", () => {
+        const rules = buildRunRules(HOME, "npm run typecheck && npm run lint && npm test");
+        const gaps = undocumentedCheckGaps(CONTEXT, rules);
+        assert.deepEqual(gaps, [ENV_TEST]);
+        const text = readinessWarning({ allow: [], deny: [] }, true, true, gaps)!;
+        assert.match(text, /rules file names 1 command for a run to use that TAI_CHECK_COMMAND does not allow/);
+        assert.ok(text.includes(`  ${ENV_TEST}`));
+        assert.equal(readinessWarning({ allow: [], deny: [] }, true, true, []), null);
     });
 });

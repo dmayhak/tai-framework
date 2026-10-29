@@ -173,7 +173,7 @@ import { allowYoloForOneRun, showSettings, setSetting, changeAdmin, inAiSession,
 import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
-import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson } from "../core/commands/build-allow-rules.js";
+import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
 import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
@@ -2413,7 +2413,9 @@ async function main(): Promise<void> {
         const cli = cliCommand(taiHome);
         const timeoutMs = devRunTimeoutMs();
         // TAI-649: say plainly, before any run starts, when the rules do not cover the build (nothing is blocked).
-        const readiness = readinessWarning(missingRules(buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yolo), await readPermissionFiles(process.cwd())), checkConfigured, yolo);
+        const runRules = buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yolo);
+        const documentedGaps = undocumentedCheckGaps((await readProjectContext(process.cwd()))?.content ?? null, runRules, checkConfigured);
+        const readiness = readinessWarning(missingRules(runRules, await readPermissionFiles(process.cwd())), checkConfigured, yolo, documentedGaps);
         if (readiness) console.log(`${readiness}\n`);
         if (oneRun) await allowYoloForOneRun(settingsCtx, true);
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
