@@ -295,6 +295,18 @@ describe("the commands the project's rules file names (TAI-723)", () => {
         assert.deepEqual(documentedCheckCommands("- Tests: `npm test`"), []);
     });
 
+    it("keeps reading under a sub-heading of the commands section, and stops at the next heading of its own level", () => {
+        const text = [
+            "## Commands",
+            "- Lint: `npm run lint`",
+            "### Testing",
+            "- Tests (without network): `npm test`",
+            "## Conventions",
+            "- Tests: `npm run other`",
+        ].join("\n");
+        assert.deepEqual(documentedCheckCommands(text), ["npm run lint", "npm test"]);
+    });
+
     it("lists no documented command as a gap when TAI_CHECK_COMMAND is not set, since the 'not set' line already says so", () => {
         const rules = buildRunRules(HOME, null);
         assert.ok(undocumentedCheckGaps(CONTEXT, rules).length > 0);

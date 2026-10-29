@@ -260,20 +260,25 @@ export function commandVerdict(rules: BuildRules, command: string): "refused" | 
 /**
  * TAI-723: the commands the project's rules file names for its test, lint and type-check steps, one per bullet of the form
  * `- Offline test suite: `npm test`` under a heading with "command" in it. They are read from the file as written, so what a run is
- * told to run is what is checked.
+ * told to run is what is checked. Only the first backticked command of a bullet is read.
  */
 export function documentedCheckCommands(projectContext: string | null): string[] {
     if (!projectContext) return [];
     const found: string[] = [];
-    let inCommands = false;
+    // The level of the heading that opened the commands section, or null outside it; a deeper heading ("### Testing") stays inside.
+    let commandsLevel: number | null = null;
     for (const line of projectContext.split("\n")) {
         // Only the section about commands is read: "- Check out the branch: `git checkout x`" elsewhere is not a command to allow.
-        const heading = /^#{1,6}\s+(.*)$/.exec(line);
-        if (heading) inCommands = /command/i.test(heading[1]!);
-        if (!inCommands) continue;
+        const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+        if (heading) {
+            const level = heading[1]!.length;
+            if (/command/i.test(heading[2]!)) commandsLevel = level;
+            else if (commandsLevel !== null && level <= commandsLevel) commandsLevel = null;
+        }
+        if (commandsLevel === null) continue;
         const m = /^\s*[-*]\s+([^:`]*\b(?:test|tests|lint|type\s?check|check)\b[^:`]*):\s*`([^`]+)`/i.exec(line);
         // A bullet that says what not to do ("Never run the check: `rm -rf x`") names no command for a run to use.
-        if (m && !/\b(?:never|not|don'?t|do not|avoid|without)\b/i.test(m[1]!)) found.push(m[2]!.trim());
+        if (m && !/\b(?:never|don'?t|do not|avoid)\b/i.test(m[1]!)) found.push(m[2]!.trim());
     }
     return found;
 }
