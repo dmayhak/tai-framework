@@ -307,14 +307,24 @@ describe("the reviewer's credentials (TAI-634)", () => {
         const bin = path.join(dir, "claude");
         await writeFile(bin, '#!/bin/sh\necho "reviewer=[$TAI_REVIEWER_GITHUB_TOKEN] gh=[$GITHUB_TOKEN]"\n');
         await chmod(bin, 0o755);
+        // The test sets its own dummy tokens (and puts the original back), so it gives the same result whatever the environment holds,
+        // and no assertion is built from a real value that a failure message could print (TAI-721). A token-named value in a run's
+        // output is shown as `***`, so `gh=[***]` means the run saw a GITHUB_TOKEN and `gh=[]` means it saw none.
+        const originalGithubToken = process.env["GITHUB_TOKEN"];
         process.env["TAI_REVIEWER_GITHUB_TOKEN"] = "tok-reviewer-abcdef";
+        process.env["GITHUB_TOKEN"] = "tok-plain-98765432";
         try {
             const plain = await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin });
-            assert.equal(plain.summary, "reviewer=[] gh=[]".replace("gh=[]", `gh=[${process.env["GITHUB_TOKEN"] ?? ""}]`));
+            assert.equal(plain.summary, "reviewer=[] gh=[***]");
+            delete process.env["GITHUB_TOKEN"];
+            const none = await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin });
+            assert.equal(none.summary, "reviewer=[] gh=[]");
             const reviewer = await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin, env: { GITHUB_TOKEN: "tok-given-123456" } });
             assert.equal(reviewer.summary, "reviewer=[] gh=[***]");
         } finally {
             delete process.env["TAI_REVIEWER_GITHUB_TOKEN"];
+            if (originalGithubToken === undefined) delete process.env["GITHUB_TOKEN"];
+            else process.env["GITHUB_TOKEN"] = originalGithubToken;
             await rm(dir, { recursive: true, force: true });
         }
     });

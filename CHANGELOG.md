@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 151 (2026-10-28)
+
+**TAI-721 (Bug TAI-720): the reviewer-token environment test no longer depends on `GITHUB_TOKEN`.** The `dev-yolo.test.ts` test "a run does not see the reviewer token in its environment…" built its expected output from the real `GITHUB_TOKEN`, but a run's output shows a token-named value as `***`, so with `GITHUB_TOKEN` set it failed and its failure message printed the raw token. An unattended build always has `GITHUB_TOKEN` (from the project's `.env`), so the test failed on every real YOLO build of this repo (found on TAI-687). The test now sets its own dummy `GITHUB_TOKEN` and restores the original, and checks the three cases (a token set, none set, a token given to a reviewer run). No assertion is built from a real environment value. The whole suite passes with a dummy `GITHUB_TOKEN`, `TAI_REVIEWER_GITHUB_TOKEN` and `TAI_REVIEWER_EMAIL` set; it was the only test that did not.
+
 ## rev 150 (2026-10-28)
 
 **TAI-709 (Story TAI-708): `git rm` and `git mv` in the build and YOLO rule sets.** Found in the YOLO trial B (TAIT-2030): the unattended run asked to delete `README.md`, the permission system refused `git rm README.md`, nobody was there to approve it and the ticket stopped. `git rm *` and `git mv *` are now allowed in both sets (git keeps the file, so they are recoverable), and the forced forms (`-f` in any position, `--force`, and `-rf` or `-fr`, which discard uncommitted changes or overwrite) are refused like a forced checkout; a bundle with the f after another letter (`-qrf`, `-nf`) is an accepted limit, as with the branch-delete flags (a glob that caught it would also refuse `git rm -r old/file`). A project that already has the rules gets the readiness warning naming the new ones until it adds them.
