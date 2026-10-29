@@ -2,9 +2,13 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
-## rev 153 (2026-10-29)
+## rev 154 (2026-10-29)
 
 **TAI-727 (Bug TAI-726): no review or approval is posted on a PR that has already merged.** On PR 40 (TAI-687) the unattended run merged, and a minute later the automated reviewer's account posted a second review and approval of the same commit. `git-pr review-prep` already refused a PR that was not open, but `git-pr review` and `git-pr comment-findings` did not, so a reviewer run that went on past the merge could still post. Both now read the PR live and refuse a merged or declined one (`reviewOfClosedPullRequestRefusal`). A test also shows that `runYolo` starts no review after the PR merged. The exact path of the late review on PR 40 was not reproduced; the refusal closes it wherever it came from.
+
+## rev 153 (2026-10-29)
+
+**TAI-725 (Story TAI-724): a run can bring its own branch up to date with a remote branch.** Found on the first real DEV-YOLO build (TAI-687): the branch was behind `main` by the commit its tests needed, the run tried `git rebase`, the permission system refused it, nobody was there to approve and the ticket stopped. The build and YOLO rule sets now allow `git rebase origin/*`, `git merge origin/*` and the two `--abort` forms. The rebase forms that run a command or rewrite elsewhere are refused: `-i`/`--interactive`, `--onto`, `--root`, and `-x`/`--exec`; a deny beats the allow. `git rebase --continue` is not allowed (it can open an editor, which nobody is there to close), and a rebase of a branch already pushed fails at the push, which stays non-forced. A project that has the rules already gets the readiness warning naming the new ones until it adds them.
 
 ## rev 152 (2026-10-29)
 
