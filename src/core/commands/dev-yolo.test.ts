@@ -59,6 +59,18 @@ describe("runYolo (TAI-634)", () => {
         assert.deepEqual(s.handoffs, []);
     });
 
+    it("starts no review once the PR is merged, even with rounds and scripted reviews left", async () => {
+        const s = script({
+            reviews: [
+                { findings: findingsOf(), decision: "approve", head: "a" },
+                { findings: findingsOf(), decision: "approve", head: "a" },
+            ],
+        });
+        const out = await runYolo(task, deps(s, { afterApproved: async () => (s.log.push("merged"), { state: "handed-on", note: "merged" }) }));
+        assert.deepEqual(s.log, ["build", "review 1", "merged"]);
+        assert.equal(out.state, "handed-on");
+    });
+
     it("decides every Suggestion and Nitpick, and asks for a fresh review when the fix pushed", async () => {
         const s = script({
             reviews: [

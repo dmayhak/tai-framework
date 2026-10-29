@@ -102,6 +102,7 @@ import {
 import {
     parseReviewFindings,
     reviewDecisionRefusal,
+    reviewOfClosedPullRequestRefusal,
     hashFindings,
     unrenderedFindingsRefusal,
     unrenderedDecisionRefusal,
@@ -1910,6 +1911,11 @@ async function main(): Promise<void> {
 
             const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            // Never a decision after the merge (or a close): the PR is read live, so a run that outlives the merge posts nothing.
+            const reviewed = await gitHost.getPullRequest(repo, prId);
+            if (!reviewed) throw new Error(`PR ${prId} not found on ${repo}.`);
+            const closedDecision = reviewOfClosedPullRequestRefusal(reviewed.state, String(prId), "decision");
+            if (closedDecision) throw new Error(closedDecision);
             // TAI-527: an approval counts for the PR's current commit, so it is refused when review-prep
             // last ran here for an older one. A request for changes is always allowed.
             // Looked up only for an approval, so a request for changes never depends on this read succeeding.
@@ -2011,6 +2017,10 @@ async function main(): Promise<void> {
             const { prIdArg, findingsArg } = parseFindingsCommentArgs(gitArgs);
             const findings = parseReviewFindings(findingsArg);
             const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+            const reviewedPr = await gitHost.getPullRequest(repo, prId);
+            if (!reviewedPr) throw new Error(`PR ${prId} not found on ${repo}.`);
+            const closedReview = reviewOfClosedPullRequestRefusal(reviewedPr.state, String(prId), "review");
+            if (closedReview) throw new Error(closedReview);
             // TAI-527: a review is of one PR. Refuse to post findings written for another.
             const wrongPr = reviewOfMismatch(findings.reviewOf, repoArg, String(prId));
             if (wrongPr) throw new Error(wrongPr);

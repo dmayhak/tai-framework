@@ -446,6 +446,12 @@ export function reviewDecisionRefusal(decision: "approve" | "requestChanges", ma
     return decision === "approve" ? approvalOfUnpreparedCommit(manifest, liveCommit) : null;
 }
 
+/** A review or a decision is of a PR still open: on a merged or closed one it only adds a retrospective the merge did not wait for. */
+export function reviewOfClosedPullRequestRefusal(state: string, prId: string, what: "review" | "decision"): string | null {
+    if (state === "open") return null;
+    return `Not posted: PR ${prId} is ${state}, so there is nothing left to ${what === "review" ? "review" : "decide"}. A ${what} cast now would come after the merge.`;
+}
+
 // ---------- TAI-575: findings must have been rendered before they are posted or a decision is cast ----------
 
 /** A stable hash of what `render-findings` rendered: the findings by content, whatever the whitespace of the file they came in. */

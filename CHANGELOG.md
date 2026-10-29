@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 153 (2026-10-29)
+
+**TAI-727 (Bug TAI-726): no review or approval is posted on a PR that has already merged.** On PR 40 (TAI-687) the unattended run merged, and a minute later the automated reviewer's account posted a second review and approval of the same commit. `git-pr review-prep` already refused a PR that was not open, but `git-pr review` and `git-pr comment-findings` did not, so a reviewer run that went on past the merge could still post. Both now read the PR live and refuse a merged or closed one (`reviewOfClosedPullRequestRefusal`). A test also shows that `runYolo` starts no review after the PR merged. The exact path of the late review on PR 40 was not reproduced; the refusal closes it wherever it came from.
+
 ## rev 152 (2026-10-29)
 
 **TAI-723 (Story TAI-722): the readiness warning names a command the project's rules file tells a run to use that `TAI_CHECK_COMMAND` does not allow.** Found on the first real DEV-YOLO build (TAI-687): `project-context.md` named the offline test command as an `env -u TAI_TEST_JIRA_... npm test` form, the clone's `TAI_CHECK_COMMAND` ended in plain `npm test`, so the rules allowed one and the run used the other, asked for an approval nobody could give and stopped. The rule sets already allow each command of `TAI_CHECK_COMMAND` exactly as written, so that stays the single source; no new setting. `core/commands/build-allow-rules.ts` now reads the commands from the rules file's test, lint and type-check bullets (`- Offline test suite: `cmd``) under its commands heading and `readinessWarning` lists any part the run's rules do not allow, telling the person to make `TAI_CHECK_COMMAND` name the same commands. Nothing is blocked.
