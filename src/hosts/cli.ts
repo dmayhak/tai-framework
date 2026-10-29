@@ -2414,7 +2414,7 @@ async function main(): Promise<void> {
         const timeoutMs = devRunTimeoutMs();
         // TAI-649: say plainly, before any run starts, when the rules do not cover the build (nothing is blocked).
         const runRules = buildRunRules(taiHome, checkCommandFromEnv(), await projectPersonaIdsOrNone(config), yolo);
-        const documentedGaps = undocumentedCheckGaps((await readProjectContext(process.cwd()))?.content ?? null, runRules);
+        const documentedGaps = undocumentedCheckGaps((await readProjectContext(process.cwd()))?.content ?? null, runRules, checkConfigured);
         const readiness = readinessWarning(missingRules(runRules, await readPermissionFiles(process.cwd())), checkConfigured, yolo, documentedGaps);
         if (readiness) console.log(`${readiness}\n`);
         if (oneRun) await allowYoloForOneRun(settingsCtx, true);

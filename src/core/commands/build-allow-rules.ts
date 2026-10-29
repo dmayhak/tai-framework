@@ -265,8 +265,9 @@ export function documentedCheckCommands(projectContext: string | null): string[]
     if (!projectContext) return [];
     const found: string[] = [];
     for (const line of projectContext.split("\n")) {
-        const m = /^\s*[-*]\s+[^:`]*\b(?:test|tests|lint|type\s?check|check)\b[^:`]*:\s*`([^`]+)`/i.exec(line);
-        if (m) found.push(m[1]!.trim());
+        const m = /^\s*[-*]\s+([^:`]*\b(?:test|tests|lint|type\s?check|check)\b[^:`]*):\s*`([^`]+)`/i.exec(line);
+        // A bullet that says what not to do ("Never run the check: `rm -rf x`") names no command for a run to use.
+        if (m && !/\b(?:never|not|don'?t|do not|avoid|without)\b/i.test(m[1]!)) found.push(m[2]!.trim());
     }
     return found;
 }
@@ -275,7 +276,9 @@ export function documentedCheckCommands(projectContext: string | null): string[]
  * The parts of the documented commands that `rules` does not allow (a deny beats an allow), so a run that follows the file stops at an
  * approval nobody can give. The fix is in `TAI_CHECK_COMMAND`, whose parts the rules allow as they are written.
  */
-export function undocumentedCheckGaps(projectContext: string | null, rules: BuildRules): string[] {
+export function undocumentedCheckGaps(projectContext: string | null, rules: BuildRules, checkConfigured = true): string[] {
+    // With no TAI_CHECK_COMMAND every documented command would show as a gap, repeating the readiness warning's "not set" line.
+    if (!checkConfigured) return [];
     const gaps: string[] = [];
     for (const command of documentedCheckCommands(projectContext)) {
         for (const part of splitCompound(command)) if (commandVerdict(rules, part) !== "allowed" && !gaps.includes(part)) gaps.push(part);

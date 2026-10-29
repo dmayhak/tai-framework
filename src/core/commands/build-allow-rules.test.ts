@@ -256,6 +256,17 @@ describe("the commands the project's rules file names (TAI-723)", () => {
         assert.deepEqual(documentedCheckCommands(null), []);
     });
 
+    it("ignores a bullet that says what not to do, and a label with none of the words", () => {
+        const text = [
+            "- Never run the check: `rm -rf x`",
+            "- Do not skip tests: `npm test --force`",
+            "- Run the app with: `npm start`",
+            "- Tests: `npm test`",
+            "- Lint (do not edit by hand): `npm run lint`",
+        ].join("\n");
+        assert.deepEqual(documentedCheckCommands(text), ["npm test"]);
+    });
+
     it("finds nothing uncovered when TAI_CHECK_COMMAND names the documented commands, and allows the env -u form as written", () => {
         const rules = buildRunRules(HOME, `npm run typecheck && npm run lint && ${ENV_TEST}`);
         assert.deepEqual(undocumentedCheckGaps(CONTEXT, rules), []);
@@ -267,6 +278,12 @@ describe("the commands the project's rules file names (TAI-723)", () => {
         assert.equal(commandVerdict(rules, `${ENV_TEST} -- --force`), "unlisted");
         assert.equal(commandVerdict(rules, `${ENV_TEST}; rm -rf .`), "unlisted");
         assert.equal(commandVerdict(rules, "npm test"), "unlisted");
+    });
+
+    it("lists no documented command as a gap when TAI_CHECK_COMMAND is not set, since the 'not set' line already says so", () => {
+        const rules = buildRunRules(HOME, null);
+        assert.ok(undocumentedCheckGaps(CONTEXT, rules).length > 0);
+        assert.deepEqual(undocumentedCheckGaps(CONTEXT, rules, false), []);
     });
 
     it("names the documented command that the check command lacks, in the readiness warning", () => {
