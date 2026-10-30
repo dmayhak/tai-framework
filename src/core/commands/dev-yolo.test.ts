@@ -344,6 +344,7 @@ describe("DEV-YOLO prompts", () => {
     it("in the last round the fix prompt forbids changing code or pushing, and offers a ticket or a reason only (TAI-739)", () => {
         const p = buildFixPrompt({ ...fixInput, roundsLeft: 0 });
         assert.match(p, /last review round[^]*change no code and push nothing/);
+        assert.match(p, /a push would stop the ticket for a person, with no review of it/);
         assert.match(p, /make a new ticket \(for work worth doing\), or comment why not/);
         assert.match(p, /Nothing is committed or pushed in this round/);
         assert.doesNotMatch(p, /fix every finding that is right/);

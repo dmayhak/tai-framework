@@ -36,7 +36,7 @@ export interface YoloDeps {
     readonly findPullRequest: (task: DevTask) => Promise<{ readonly prUrl: string | null; readonly checkRecorded: boolean | null }>;
     /** A fresh Claude run as the automated reviewer. Fails (ok: false) when it produced no readable findings. */
     readonly review: (task: DevTask, prUrl: string, round: number) => Promise<{ readonly ok: true; readonly review: ReviewRound } | { readonly ok: false; readonly reason: string }>;
-    /** The building run decides each finding (do it now, new ticket, comment why not) and posts one line per finding. */
+    /** The building run decides each finding and posts one line per finding: a fix while a review round is left, otherwise a new ticket or a reason (TAI-739). */
     readonly fix: (task: DevTask, prUrl: string, findings: readonly ReviewFinding[], round: number) => Promise<{ readonly ok: boolean; readonly summary: string }>;
     /** The PR's head commit now. */
     readonly head: (task: DevTask, prUrl: string) => Promise<string>;

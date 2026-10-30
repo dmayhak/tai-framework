@@ -4,7 +4,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 ## rev 157 (2026-10-30)
 
-**TAI-739 (Story TAI-738): a DEV-YOLO fix run prefers fixing a finding while a review round is left.** The fix prompt listed three outcomes for each Suggestion and Nitpick (do it now, make a new ticket, comment why not) without ranking them, so an unattended run could file a ticket for something it could have fixed. `buildFixPrompt` now takes the rounds left after this fix (`rounds` minus the round just reviewed). With at least one left it asks for a fix as the default, a ticket only for work that does not belong in this change, and a comment only with a reason. In the last round a push gets no fresh review, so it tells the run to change no code and push nothing, and to use a ticket or a reason. The brief's DEV-YOLO paragraph says so.
+**TAI-739 (Story TAI-738): a DEV-YOLO fix run prefers fixing a finding while a review round is left.** The fix prompt listed three outcomes for each Suggestion and Nitpick (do it now, make a new ticket, comment why not) without ranking them, so an unattended run could file a ticket for something it could have fixed. `buildFixPrompt` now takes the rounds left after this fix (`rounds` minus the round just reviewed). With at least one left it asks for a fix as the default, a ticket only for work that does not belong in this change, and a comment only with a reason. In the last round a push gets no fresh review, so it tells the run to change no code and push nothing, and to use a ticket or a reason. The brief's DEV-YOLO paragraph says so, and so does the Developer persona, which the fix run acts as: it ranked the three outcomes equally and could have pulled the other way.
 
 ## rev 156 (2026-10-30)
 
