@@ -159,10 +159,10 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                 await rm(dir, { recursive: true, force: true });
             }
         },
-        fix: async (task, _prUrl, findings) => {
+        fix: async (task, _prUrl, findings, round) => {
             const pr = await pullRequest(task);
             const slim = findings.map((f) => ({ severity: f.severity, title: f.title, file: f.file, ...(f.line !== undefined ? { line: f.line } : {}), issue: f.issue }));
-            return run(buildFixPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, cli: w.cli, findings: slim }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
+            return run(buildFixPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, cli: w.cli, roundsLeft: w.rounds - round, findings: slim }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
         },
         head: async (task) => liveHead(await pullRequest(task)),
         handoff: w.handoff,

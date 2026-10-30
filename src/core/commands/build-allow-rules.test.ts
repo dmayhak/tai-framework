@@ -234,7 +234,7 @@ describe("rules for a DEV-YOLO run (TAI-685)", () => {
         const prompts = [
             buildDevPrompt("TAI-9", CLI),
             buildReviewerPrompt({ repo: "o/r", prId: "7", cli: CLI, findingsPath: "/x/.tai/f.json", storyKey: "TAI-5", criteria: ["AC-1: x"] }),
-            buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "TAI-8-x", cli: CLI, findings: [] }),
+            buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "TAI-8-x", cli: CLI, roundsLeft: 1, findings: [] }),
             buildVerifyPrompt({ key: "TAI-8", cli: CLI }),
         ];
         const commands = prompts.flatMap((p) => [...p.matchAll(/`([^`]*cli\.ts[^`]*)`/g)].map((m) => m[1]!.replace(/ \.\.\.$/, "").replace(/"\.\.\."/g, '"x"')).map((c) => `${c} x`));

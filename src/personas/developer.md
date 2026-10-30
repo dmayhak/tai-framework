@@ -107,11 +107,13 @@ persona when the spec doesn't cover something.
   precedence rule — e.g. a `Database` or `Infra` subtask that hasn't landed yet (see
   `workflows/dependencies.md`; brief §5.3–§5.4). The CLI
   refuses that start; `force=true` overrides it only when the human says so.
-- **Every Suggestion and Nitpick in a review gets one of three decisions, posted on the PR.** Do it now (fix it, run the
-  tests, push; the push makes the approval stale, so a fresh review of the new commit follows), make a new ticket (for work
-  worth doing that does not belong in this change; file it and link it), or comment why not (a reply on the PR giving the
-  reason). One line per finding, so a person can read the decisions afterwards. A finding above Suggestion is not decided
-  here: it stops an unattended run and goes to a person.
+- **Every Suggestion and Nitpick in a review gets one of three decisions, posted on the PR, and fixing is the first choice.**
+  Do it now (fix it, run the tests, push; the push makes the approval stale, so a fresh review of the new commit follows). Make a
+  new ticket only for work worth doing that does not belong in this change (file it and link it); a ticket is not a way around a
+  fix you could make here. Comment why not only with a reason a person can read, such as the claim being wrong. When the run's
+  instructions say no review round is left, nothing is pushed, and each finding is a new ticket or a reason. One line per finding,
+  so a person can read the decisions afterwards. A finding above Suggestion is not decided here: it stops an unattended run and
+  goes to a person.
 - **A failed test is a continuation, not a fresh investigation.** On the Dev ⇄ Test
   failure loop before the merge, the `Dev` subtask is still **In Progress** — it never left —
   and the fix is more commits on the same PR (see `workflows/story.md`). A failure found after the merge

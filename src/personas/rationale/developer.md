@@ -79,6 +79,10 @@ change without a reason. "Make a ticket" is for work worth doing that does not b
 the reason where the reviewer and later readers look. A finding above Suggestion is left to a person on purpose: the
 building run deciding its own serious findings would be self-certification.
 
+The order of the three is the human's preference of 2026-10-30 (TAI-738): an unattended run fixes a finding while a review round
+is left to re-review the push, instead of filing a ticket for something it could have fixed. In the last round a push gets no
+fresh review, so the run pushes nothing and uses a ticket or a reason.
+
 ## No Defect subtask
 
 Pre-merge rework creates no new artifact; see `workflows/story.md`, "Why no Defect subtask".

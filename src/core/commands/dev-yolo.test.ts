@@ -324,12 +324,31 @@ describe("DEV-YOLO prompts", () => {
         assert.match(buildReviewerPrompt({ ...base, criteria: null }), /acceptance criteria could not be read: review the diff as usual/);
         assert.doesNotMatch(buildReviewerPrompt(base), /acceptance criteria/);
     });
+    const fixInput = { key: "TAI-9", repo: "o/r", prId: "7", branch: "TAI-8-x", cli: "tai", findings: [{ severity: "nitpick", title: "Rename it", file: "a.ts", issue: "bad name" }] };
     it("the fix prompt lists the findings as data and asks for one line per finding on the PR", () => {
-        const p = buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "TAI-8-x", cli: "tai", findings: [{ severity: "nitpick", title: "Rename it", file: "a.ts", issue: "bad name" }] });
+        const p = buildFixPrompt({ ...fixInput, roundsLeft: 2 });
         assert.match(p, /"title": "Rename it"/);
-        assert.match(p, /do it now.*make a new ticket.*comment why not/);
         assert.match(p, /ONE comment on the PR.*one line per finding/);
         assert.match(p, /Do not approve, merge or close/);
+    });
+    it("with a review round left the fix prompt makes a fix the default, a ticket the exception, and says how many rounds are left (TAI-739)", () => {
+        const p = buildFixPrompt({ ...fixInput, roundsLeft: 2 });
+        assert.match(p, /fix every finding that is right, now/);
+        assert.match(p, /a fix is the default and a ticket is not a way around it/);
+        assert.match(p, /Make a new ticket only for work worth doing that does not belong in this change/);
+        assert.match(p, /Comment why not only with a reason a person can read/);
+        assert.match(p, /2 review rounds are left/);
+        assert.match(buildFixPrompt({ ...fixInput, roundsLeft: 1 }), /1 review round is left/);
+        assert.match(p, /If you changed code: commit, push, and record the check/);
+    });
+    it("in the last round the fix prompt forbids changing code or pushing, and offers a ticket or a reason only (TAI-739)", () => {
+        const p = buildFixPrompt({ ...fixInput, roundsLeft: 0 });
+        assert.match(p, /last review round[^]*change no code and push nothing/);
+        assert.match(p, /a push would stop the ticket for a person, with no review of it/);
+        assert.match(p, /make a new ticket \(for work worth doing\), or comment why not/);
+        assert.match(p, /Nothing is committed or pushed in this round/);
+        assert.doesNotMatch(p, /fix every finding that is right/);
+        assert.doesNotMatch(p, /If you changed code: commit, push/);
     });
     it("the build prompt keeps the run out of .tai/", () => {
         assert.match(buildDevPrompt("TAI-9", "tai"), /\.tai\//);
@@ -347,7 +366,7 @@ describe("DEV-YOLO prompts", () => {
     });
     it("the reviewer prompt carves its findings file out of the rule about .tai/, and the other prompts do not", () => {
         assert.match(buildReviewerPrompt({ repo: "o/r", prId: "7", cli: "tai", findingsPath: "/x/.tai/f.json" }), /yourself \(the TAI commands write there\), except the findings file named in step 2/);
-        assert.doesNotMatch(buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "b", cli: "tai", findings: [] }), /except the findings file/);
+        assert.doesNotMatch(buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "b", cli: "tai", roundsLeft: 1, findings: [] }), /except the findings file/);
     });
 });
 

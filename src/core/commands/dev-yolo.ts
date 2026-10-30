@@ -36,7 +36,7 @@ export interface YoloDeps {
     readonly findPullRequest: (task: DevTask) => Promise<{ readonly prUrl: string | null; readonly checkRecorded: boolean | null }>;
     /** A fresh Claude run as the automated reviewer. Fails (ok: false) when it produced no readable findings. */
     readonly review: (task: DevTask, prUrl: string, round: number) => Promise<{ readonly ok: true; readonly review: ReviewRound } | { readonly ok: false; readonly reason: string }>;
-    /** The building run decides each finding (do it now, new ticket, comment why not) and posts one line per finding. */
+    /** The building run decides each finding and posts one line per finding: a fix while a review round is left, otherwise a new ticket or a reason (TAI-739). */
     readonly fix: (task: DevTask, prUrl: string, findings: readonly ReviewFinding[], round: number) => Promise<{ readonly ok: boolean; readonly summary: string }>;
     /** The PR's head commit now. */
     readonly head: (task: DevTask, prUrl: string) => Promise<string>;
@@ -148,7 +148,7 @@ export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOut
                 const stopped = `the PR conflicts with the default branch: ${finished.reason}`;
                 const where = `The PR is open: ${prUrl}. Review round ${round} of ${deps.rounds}.`;
                 if (!deps.resolveConflict) return await say(where, stopped, "resolve the conflict, then merge it through the gate.");
-                // The resolution is a push, so it needs its own fresh review; with no round left for one, a person takes it from here.
+                // The resolution is a push, so it needs its own fresh review; with no round left for one, a person takes it from here. The fix prompt (`buildFixPrompt`) has the same rule for a fix push.
                 if (round === deps.rounds) return await say(where, `${stopped}. No review round is left for a resolution.`, "resolve the conflict and review the newest commit by hand.");
                 const before = await deps.head(task, prUrl);
                 const resolved = await deps.resolveConflict(task, prUrl);

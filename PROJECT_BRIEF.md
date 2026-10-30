@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-30 (rev 156). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-30 (rev 157). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1250,7 +1250,7 @@ comment's content.
   and nothing is prepared or built. Then `core/commands/dev-yolo.ts` runs it: the build run, then up to `review-rounds`
   rounds of a fresh Claude run as the Code Reviewer (started with `TAI_REVIEWER_GITHUB_TOKEN` and `TAI_REVIEWER_EMAIL`, so it posts
   from its own git host account, while its tracker and page reads stay on the person's own Jira email and token; `TAI_REVIEWER_EMAIL` only names its row on `PR Reviewers`, which must carry the account's GitHub login; it posts its findings and casts its own decision, and a decision it cast on that commit in an earlier run does not count: the run must add one; the gate asks the git host whose token that is and refuses the person's own account or one the page lists differently, and only that account's decisions count, while a request for changes from anyone is a stop) and a Developer run that decides every Suggestion
-  and Nitpick (do it now, make a new ticket, or comment why not) and posts one line per finding on the PR. Any finding
+  and Nitpick and posts one line per finding on the PR. While a review round is left to re-review a push, a finding that is right is fixed, and a new ticket is only for work that does not belong in this change; a comment why not needs a reason, such as the reviewer being wrong. In the last round a push would get no fresh review, so the run changes no code and decides each finding as a new ticket or a reason. Any finding
   above Suggestion, a request for changes, no approval on the PR's current commit, an approval whose findings do not lean `approve` (the unattended reviewer sets its `leaning` by the same bar, `requestChanges` on a critical finding and `approve` otherwise, never `neither`); the reviewer is also given the Story's numbered acceptance criteria as data, and a criterion the change does not meet is a critical finding, so the run stops for a person (a Story with no criteria, or whose criteria cannot be read, reviews as before and the review says so), a failed run, or the last round ending
   in a push with no fresh review stops that ticket with a `Handoff:` for a person and the batch goes on. The findings must name the PR's current commit, and the PR must not move during the review. `git-pr review` and `git-pr comment-findings` refuse a PR that is merged or closed (as `review-prep` does), so a reviewer run that outlives the merge posts no second review or approval. A fix that pushed
   needs a fresh review; one that pushed nothing keeps the approval. An approved PR is then merged by `core/commands/dev-yolo-finish.ts`: only through the same gate as `git-pr merge`
