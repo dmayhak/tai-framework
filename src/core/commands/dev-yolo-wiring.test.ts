@@ -351,7 +351,7 @@ describe("yoloRun wiring (TAI-634)", () => {
             async ({ wiring, task, handoffs }) => {
                 const out = await yoloRun({ ...wiring, finish: FINISH })(task);
                 assert.equal(out.state, "waiting");
-                assert.match(handoffs[0]!, /could not be resolved[^]*timed out in the middle of the merge/);
+                assert.match(handoffs[0]!, /the conflict could not be resolved[^]*timed out in the middle of the merge/);
             },
             { approved: true, mergeResult: conflictRefusal, runClaude: dying }
         );
