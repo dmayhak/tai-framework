@@ -156,7 +156,7 @@ export function buildConflictPrompt(input: { readonly key: string; readonly repo
         `4. Run the project's checks until they pass, commit the merge, push it, and record the check on the new commit with \`${cli} git-pr check ${repo} ${prId}\` (the merge gate needs it).`,
         `5. Post ONE comment on the PR with \`${cli} git-pr comment ${repo} ${prId} "..."\`, starting with the line \`Conflict resolution:\`, then one line per conflicted file saying how you resolved it. A reviewer reads this to check the resolution.`,
         "",
-        "Stop after step 5. Do not approve, merge or close anything, never force a push, and change nothing outside the conflicted files.",
+        "Stop after step 5. Do not approve, merge or close anything, never force a push, and change nothing outside the conflicted files except a number the conflict forces you to renumber (a CHANGELOG revision named in another file, for example).",
         dataRule(),
         "If you cannot finish, post a Handoff: comment on the ticket saying where you stopped and why, and end.",
     ].join("\n");

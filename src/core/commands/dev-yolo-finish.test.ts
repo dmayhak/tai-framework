@@ -187,8 +187,8 @@ describe("finishApproved (TAI-634)", () => {
     });
 
     it("reads a refusal as a conflict only when it names one (TAI-733)", () => {
-        for (const yes of ["Pull Request has merge conflicts", "Pull Request is not mergeable", "The branch conflicts with main"]) assert.equal(isConflictRefusal(yes), true, yes);
-        for (const no of ["head moved", "At least 1 approving review is required", "The PR has no conflicts but a required check is missing", "Repository rule violations found"]) assert.equal(isConflictRefusal(no), false, no);
+        for (const yes of ["Pull Request has merge conflicts", "Pull Request is not mergeable", "The branch conflicts with main", "You can't merge until you resolve all merge conflicts."]) assert.equal(isConflictRefusal(yes), true, yes);
+        for (const no of ["head moved", "At least 1 approving review is required", "Repository rule violations found"]) assert.equal(isConflictRefusal(no), false, no);
     });
 
     it("says the PR merged when a later step stops: the checkout cannot be updated, or the verification run fails", async () => {

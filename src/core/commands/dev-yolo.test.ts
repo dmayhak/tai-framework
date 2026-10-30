@@ -97,6 +97,16 @@ describe("runYolo (TAI-634)", () => {
             }
         });
 
+        it("says a commit was pushed when a resolution failed after pushing, and that the refusal may not be a conflict when nothing was pushed", async () => {
+            const pushed = script({ reviews: [approved(), approved()], heads: ["a", "b"] });
+            const out = await runYolo(task, deps(pushed, { afterApproved: async () => conflict, resolveConflict: async () => ({ ok: false, summary: "the checks failed" }) }));
+            assert.equal(out.state, "waiting");
+            assert.match(pushed.handoffs[0]!, /a commit was pushed before it stopped[\s\S]*the checks failed/);
+            const nothing = script({ reviews: [approved(), approved()], heads: ["a", "a"] });
+            await runYolo(task, deps(nothing, { afterApproved: async () => ({ state: "conflict", reason: "Pull Request is not mergeable" }), resolveConflict: async () => ({ ok: true, summary: "already up to date" }) }));
+            assert.match(nothing.handoffs[0]!, /nothing was pushed \(the refusal was "Pull Request is not mergeable", which may not be a conflict\)/);
+        });
+
         it("stops, without resolving, when no review round is left for the resolution, or when nothing can resolve", async () => {
             const s = script({ reviews: [approved()] });
             let resolved = false;

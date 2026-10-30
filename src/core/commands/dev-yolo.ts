@@ -152,9 +152,15 @@ export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOut
                 if (round === deps.rounds) return await say(where, `${stopped}. No review round is left for a resolution.`, "resolve the conflict and review the newest commit by hand.");
                 const before = await deps.head(task, prUrl);
                 const resolved = await deps.resolveConflict(task, prUrl);
-                if (!resolved.ok) return await say(where, `the PR conflicts with the default branch and the conflict could not be resolved: ${resolved.summary}`, "read the conflicting files named above, resolve them and run the ticket again.");
-                if ((await deps.head(task, prUrl)) === before) {
-                    return await say(where, `the PR conflicts with the default branch, the conflict was not resolved and nothing was pushed: ${resolved.summary}`, "read the conflicting files named above, resolve them and run the ticket again.");
+                const moved = (await deps.head(task, prUrl)) !== before;
+                const next = "read the conflicting files named above, resolve them and run the ticket again.";
+                // The head is read first: a resolution that failed after pushing has still changed what is on the PR.
+                if (!resolved.ok) {
+                    return await say(where, `the PR conflicts with the default branch and the conflict could not be resolved${moved ? " (a commit was pushed before it stopped, so review the newest commit)" : ""}: ${resolved.summary}`, next);
+                }
+                if (!moved) {
+                    // The host's "not mergeable" is also what a refusal for another reason can say, so the refusal is repeated here.
+                    return await say(where, `the PR conflicts with the default branch, the conflict was not resolved and nothing was pushed (the refusal was "${finished.reason}", which may not be a conflict): ${resolved.summary}`, next);
                 }
                 continue;
             }

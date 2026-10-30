@@ -15,6 +15,7 @@ import { Status } from "../schema/story-schema.js";
 import type { HumanRef, IssueKey, WorkTracker } from "../storage/interface.js";
 import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
 import { DirtyTreeError } from "./dev-tasks-git.js";
+import { isMergeConflict } from "./git-pr.js";
 import { yoloHandoff, type ConflictStop } from "./dev-yolo.js";
 import { stampedAs } from "../storage/stamp.js";
 
@@ -42,14 +43,9 @@ export interface FinishDeps {
     readonly resolveConflicts?: boolean;
 }
 
-/**
- * Whether a host's reason for refusing a merge is a conflict with the default branch: the wording seen on TAI-727 ("has merge
- * conflicts"), "conflicts with", and GitHub's bare "not mergeable". A reason that says there are no conflicts, or that is about
- * something else (branch protection, a moved head), is not one.
- */
+/** Whether a host's reason for refusing a merge is a conflict with the default branch: the same test `git-pr merge` uses. */
 export function isConflictRefusal(reason: string): boolean {
-    if (/\b(no|without|free of)\s+(merge\s+)?conflicts?\b/i.test(reason)) return false;
-    return /merge conflicts?|conflicts? with|has conflicts|not mergeable/i.test(reason);
+    return isMergeConflict(reason);
 }
 
 /** The merge comment: it says the approval was automated, by whom, and on which commit. */
