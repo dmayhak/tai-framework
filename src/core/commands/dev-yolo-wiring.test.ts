@@ -30,7 +30,7 @@ const FINDINGS = (sev: string): string =>
         leaningReason: "fine",
     });
 
-async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string; before?: PullRequestActivity[]; storyDescription?: string } = {}): Promise<void> {
+async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string; before?: PullRequestActivity[]; storyDescription?: string; approved?: boolean; mergeResult?: { ok: false; reason: string } } = {}): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-yolo-wire-"));
     try {
         const backend = createFilesystemBackend(dir, ME);
@@ -42,12 +42,13 @@ async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: str
         const ctx = { docStore: backend.docStore, spaceKey: "TAIT", email: "a@b.co", aiSession: false };
         await changeAdmin(ctx, "add", "a@b.co");
         await setSetting({ ...ctx, attest: (e, k, v) => recordAttestation(taiDir, e, k, v) }, "dev-yolo", "true");
-        const pr = { id: 7, repo: "o/r", title: `${story.key} - ${dev.key} - x`, sourceBranch: "b", sourceCommit: HEAD, state: "open", reviewers: [], url: "https://pr/7" };
+        const pr = { id: 7, repo: "o/r", title: `${story.key} - ${dev.key} - x`, sourceBranch: "b", destinationBranch: "main", sourceCommit: HEAD, state: "open", reviewers: [], url: "https://pr/7" };
         const heads = [...(over.heads ?? [])];
         let activityReads = 0;
         const gitHost = {
             listPullRequests: async () => [pr],
-            getPullRequest: async () => ({ ...pr, sourceCommit: heads.shift() ?? HEAD }),
+            getPullRequest: async () => ({ ...pr, sourceCommit: heads.shift() ?? HEAD, ...(over.approved ? { reviewers: [{ human: BOT, status: "approved" }] } : {}) }),
+            mergePullRequest: async () => over.mergeResult ?? { ok: true, pullRequest: pr },
             getCurrentUser: async () => ME,
             getCommitStatuses: async () => [],
             // The first read is before the reviewer run, the later ones after it.
@@ -314,6 +315,71 @@ describe("yoloRun wiring (TAI-634)", () => {
             },
             { runClaude: findingsRun("") }
         ));
+
+    // TAI-736: the conflict resolver is wired through the real merge step, not a stub.
+    const conflictRefusal = { ok: false as const, reason: "Pull Request has merge conflicts" };
+    const reviewAndRecord = (seen: string[]): NonNullable<YoloWiring["runClaude"]> => async (prompt, options) => {
+        seen.push(prompt);
+        return findingsRun("")(prompt, options);
+    };
+
+    it("runs the conflict resolver with the PR's branch and the default branch when the merge is refused for a conflict (TAI-736)", async () => {
+        const seen: string[] = [];
+        await world(
+            async ({ wiring, task, handoffs }) => {
+                const out = await yoloRun({ ...wiring, finish: FINISH })(task);
+                const resolver = seen.filter((p) => /cannot merge because it conflicts/.test(p));
+                assert.equal(resolver.length, 1);
+                assert.match(resolver[0]!, new RegExp(`PR 7 of o/r \\(branch b\\)[^]*conflicts with main`));
+                assert.match(resolver[0]!, /git merge origin\/main/);
+                assert.match(resolver[0]!, /`tai git-pr check o\/r 7`/);
+                // The resolver pushed nothing here (the head never moved), so the run stops for a person and does not call it a plain refusal.
+                assert.equal(out.state, "waiting");
+                assert.match(handoffs[0]!, /nothing was pushed \(the refusal was "Pull Request has merge conflicts"/);
+                assert.doesNotMatch(handoffs[0]!, /the merge was refused/);
+            },
+            { approved: true, mergeResult: conflictRefusal, runClaude: reviewAndRecord(seen) }
+        );
+    });
+
+    it("stops with a hand-off naming the failure when the resolver run dies, as it can mid-merge (TAI-736)", async () => {
+        const dying: NonNullable<YoloWiring["runClaude"]> = async (prompt, options) =>
+            /cannot merge because it conflicts/.test(prompt) ? { ok: false, summary: "timed out in the middle of the merge" } : findingsRun("")(prompt, options);
+        await world(
+            async ({ wiring, task, handoffs }) => {
+                const out = await yoloRun({ ...wiring, finish: FINISH })(task);
+                assert.equal(out.state, "waiting");
+                assert.match(handoffs[0]!, /could not be resolved[^]*timed out in the middle of the merge/);
+            },
+            { approved: true, mergeResult: conflictRefusal, runClaude: dying }
+        );
+    });
+
+    it("does not wire the resolver when afterApproved is supplied: a conflict it reports stops for a person (TAI-736)", async () => {
+        const seen: string[] = [];
+        await world(
+            async ({ wiring, task, handoffs }) => {
+                const out = await yoloRun({ ...wiring, finish: FINISH, afterApproved: async () => ({ state: "conflict", reason: "x conflicts" }) })(task);
+                assert.equal(out.state, "waiting");
+                assert.equal(seen.filter((p) => /cannot merge because it conflicts/.test(p)).length, 0);
+                assert.match(handoffs[0]!, /resolve the conflict, then merge it through the gate/);
+            },
+            { runClaude: reviewAndRecord(seen) }
+        );
+    });
+
+    it("leaves a refusal that is not a conflict as a plain refusal, with no resolver run (TAI-736)", async () => {
+        const seen: string[] = [];
+        await world(
+            async ({ wiring, task, handoffs }) => {
+                const out = await yoloRun({ ...wiring, finish: FINISH })(task);
+                assert.equal(out.state, "waiting");
+                assert.equal(seen.filter((p) => /cannot merge because it conflicts/.test(p)).length, 0);
+                assert.match(handoffs[0]!, /the merge was refused: Branch protection blocks it/);
+            },
+            { approved: true, mergeResult: { ok: false, reason: "Branch protection blocks it" }, runClaude: reviewAndRecord(seen) }
+        );
+    });
 
     it("uses afterApproved over finish when both are given, and ends at the approval with neither", async () => {
         await world(
