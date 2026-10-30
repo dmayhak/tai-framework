@@ -158,7 +158,7 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
 /**
  * Why `only=<KEY>` cannot be worked (TAI-695), or null when `found` has it to work. Run on the first look, before anything starts:
  * the ticket is not found, is not a Dev subtask, is not assigned to the person or is not To Do or In Progress, or `findDevTasks`
- * skipped it (precedence, a blocker, an open PR) and says why.
+ * skipped it (a flag, precedence, a blocker, an open PR) and says why.
  */
 export async function onlyRefusal(found: FoundDevTasks, only: IssueKey, deps: Pick<FindDevTasksDeps, "workTracker" | "currentHuman" | "projectKey">): Promise<string | null> {
     if (found.tasks.some((t) => t.issue.key === only)) return null;
