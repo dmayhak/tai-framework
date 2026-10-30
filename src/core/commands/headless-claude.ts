@@ -153,7 +153,7 @@ export function buildConflictPrompt(input: { readonly key: string; readonly repo
         `1. Run \`${cli} work ${key}\` and act as the persona it names. Check out ${branch} and make sure it matches the remote.`,
         `2. Run \`git fetch origin\`, then \`git merge origin/${base}\`. A merge commit, never a rebase, so nothing is rewritten.`,
         "3. Resolve each conflicted file only when the resolution is mechanical: both sides are kept as they are (for example two new entries at the top of a list, or two new tests next to each other), and any number that must stay unique or in order is renumbered. If a conflict is in the logic of the same lines on both sides, or you are not sure the result keeps what both changes do, run `git merge --abort`, post a Handoff: comment on the ticket naming the conflicting files and why, push nothing, and end.",
-        "4. Run the project's checks until they pass, commit the merge, push it, and record the check with the PR's check command.",
+        `4. Run the project's checks until they pass, commit the merge, push it, and record the check on the new commit with \`${cli} git-pr check ${repo} ${prId}\` (the merge gate needs it).`,
         `5. Post ONE comment on the PR with \`${cli} git-pr comment ${repo} ${prId} "..."\`, starting with the line \`Conflict resolution:\`, then one line per conflicted file saying how you resolved it. A reviewer reads this to check the resolution.`,
         "",
         "Stop after step 5. Do not approve, merge or close anything, never force a push, and change nothing outside the conflicted files.",

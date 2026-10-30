@@ -351,6 +351,9 @@ describe("the conflict prompt (TAI-733)", () => {
         assert.match(prompt, /never force a push/);
         assert.match(prompt, /Do not approve, merge or close/);
     });
+    it("names the command that records the check on the new commit", () => {
+        assert.match(prompt, /record the check on the new commit with `tai git-pr check o\/r 7`/);
+    });
     it("tells the reviewer to check a resolution against its comment", () => {
         assert.match(buildReviewerPrompt({ repo: "o/r", prId: "7", cli: "tai", findingsPath: "/f.json" }), /Conflict resolution:[\s\S]*dropped or changed behaviour a finding/);
     });
