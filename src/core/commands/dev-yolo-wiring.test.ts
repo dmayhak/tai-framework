@@ -216,6 +216,26 @@ describe("yoloRun wiring (TAI-634)", () => {
                 assert.equal(fixes.length, 1);
                 assert.match(fixes[0]!, /branch b\)/);
                 assert.match(fixes[0]!, /"title": "T"/);
+                // The wiring's four rounds, minus the one just reviewed (TAI-739).
+                assert.match(fixes[0]!, /3 review rounds are left/);
+            },
+            {
+                runClaude: async (prompt) => {
+                    const file = /to (\S+findings\.json)/.exec(prompt)?.[1];
+                    if (file) await writeFile(file, FINDINGS("suggestion"));
+                    if (/You are the Developer for ticket/.test(prompt)) fixes.push(prompt);
+                    return { ok: true, summary: "" };
+                },
+            }
+        );
+    });
+    it("tells the fix run it is the last round, so it pushes nothing, when no review round is left after it (TAI-739)", () => {
+        const fixes: string[] = [];
+        return world(
+            async ({ wiring, task }) => {
+                await yoloRun({ ...wiring, rounds: 1, afterApproved: async () => ({ state: "handed-on", note: "merged" }) })(task);
+                assert.equal(fixes.length, 1);
+                assert.match(fixes[0]!, /last review round[^]*change no code and push nothing/);
             },
             {
                 runClaude: async (prompt) => {

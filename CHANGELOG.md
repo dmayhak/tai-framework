@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 157 (2026-10-30)
+
+**TAI-739 (Story TAI-738): a DEV-YOLO fix run prefers fixing a finding while a review round is left.** The fix prompt listed three outcomes for each Suggestion and Nitpick (do it now, make a new ticket, comment why not) without ranking them, so an unattended run could file a ticket for something it could have fixed. `buildFixPrompt` now takes the rounds left after this fix (`rounds` minus the round just reviewed). With at least one left it asks for a fix as the default, a ticket only for work that does not belong in this change, and a comment only with a reason. In the last round a push gets no fresh review, so it tells the run to change no code and push nothing, and to use a ticket or a reason. The brief's DEV-YOLO paragraph says so.
+
 ## rev 156 (2026-10-30)
 
 **TAI-735 (Story TAI-734): `do-dev-tasks` and DEV-YOLO skip a Dev ticket that is flagged in Jira.** A flag is an impediment a person set, and `/tai-ready` already sets flagged To Do items aside (TAI-390), but `do-dev-tasks` did not look at it, so a run, YOLO included, would have built a ticket a person flagged. `findDevTasks` now lists a flagged ticket, To Do or In Progress, under Skipped with a reason that says it is flagged, and no run starts for it. `only=<KEY>` on a flagged ticket is refused before anything starts, with that reason. Clearing the flag puts the ticket back in the list. The brief's `do-dev-tasks` paragraph says so.
