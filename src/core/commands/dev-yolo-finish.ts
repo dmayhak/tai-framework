@@ -15,7 +15,8 @@ import { Status } from "../schema/story-schema.js";
 import type { HumanRef, IssueKey, WorkTracker } from "../storage/interface.js";
 import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
 import { DirtyTreeError } from "./dev-tasks-git.js";
-import { yoloHandoff } from "./dev-yolo.js";
+import { isMergeConflict } from "./git-pr.js";
+import { yoloHandoff, type ConflictStop } from "./dev-yolo.js";
 import { stampedAs } from "../storage/stamp.js";
 
 export interface FinishDeps {
@@ -38,6 +39,13 @@ export interface FinishDeps {
     /** The Tessa run: it posts one `Verified:` or `Not verified:` comment on the Story or Bug. */
     readonly verify: (task: DevTask) => Promise<{ readonly ok: boolean; readonly summary: string }>;
     readonly handoff: (key: string, body: string) => Promise<void>;
+    /** TAI-733: when set, a merge refused for a conflict is answered `conflict` (no hand-off) so the run can resolve it and ask for a fresh review. */
+    readonly resolveConflicts?: boolean;
+}
+
+/** Whether a host's reason for refusing a merge is a conflict with the default branch: the same test `git-pr merge` uses. */
+export function isConflictRefusal(reason: string): boolean {
+    return isMergeConflict(reason);
 }
 
 /** The merge comment: it says the approval was automated, by whom, and on which commit. */
@@ -56,7 +64,7 @@ function errorText(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
 
-export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string) => Promise<DevTaskOutcome> {
+export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string) => Promise<DevTaskOutcome | ConflictStop> {
     return async (task, prUrl) => {
         const key = task.issue.key;
         let merged = false;
@@ -113,6 +121,7 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
                 notes.push(`the merge call failed (${errorText(err)}) but the host shows the PR merged`);
                 result = { ok: true, pullRequest: after };
             }
+            if (!result.ok && deps.resolveConflicts && isConflictRefusal(result.reason)) return { state: "conflict", reason: result.reason };
             if (!result.ok) return await say(`the merge was refused: ${result.reason}.`, "read the reason and merge it by hand.");
             merged = true;
             try {

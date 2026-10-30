@@ -109,6 +109,8 @@ export function buildReviewerPrompt(input: { readonly repo: string; readonly prI
         `3. Run \`${cli} git-pr render-findings @${findingsPath}\`, then \`${cli} git-pr comment-findings ${repo} ${prId} @${findingsPath}\`. Do not stop to wait for anyone after rendering: this run has no one to ask.`,
         `4. Record your decision: \`${cli} git-pr review ${repo} ${prId} requestChanges\` if any finding is "critical", otherwise \`${cli} git-pr review ${repo} ${prId} approve\`.`,
         "",
+        `If the PR has a comment starting "Conflict resolution:", its newest commit merges the default branch and the comment says how each conflict was resolved: check that the diff kept what both sides do, and make a resolution that dropped or changed behaviour a finding.`,
+        "",
         "Stop after step 4. Do not merge, do not edit or commit anything, and do not transition any ticket.",
         dataRule(", except the findings file named in step 2, which you write"),
         "If you cannot finish, say where you stopped and why, and end without recording a decision.",
@@ -133,6 +135,28 @@ export function buildFixPrompt(input: { readonly key: string; readonly repo: str
         `5. Post ONE comment on the PR with \`${cli} git-pr comment ${repo} ${prId} "..."\` with one line per finding: its title, your decision, and the fix commit, the new ticket key, or the reason.`,
         "",
         "Stop after step 5. Do not approve, merge or close anything, and do not decide a finding that is not in the list.",
+        dataRule(),
+        "If you cannot finish, post a Handoff: comment on the ticket saying where you stopped and why, and end.",
+    ].join("\n");
+}
+
+/**
+ * TAI-733: the Developer's resolution of a merge conflict between the PR's branch and the default branch. Mechanical conflicts only;
+ * anything that needs a judgment about behaviour stops the run, which pushes nothing.
+ */
+export function buildConflictPrompt(input: { readonly key: string; readonly repo: string; readonly prId: string; readonly branch: string; readonly base: string; readonly cli: string }): string {
+    const { key, repo, prId, branch, base, cli } = input;
+    return [
+        `You are the Developer for ticket ${key}, working on your own with nobody to answer questions. PR ${prId} of ${repo} (branch ${branch}) was approved but cannot merge because it conflicts with ${base}.`,
+        "",
+        "Steps, in order:",
+        `1. Run \`${cli} work ${key}\` and act as the persona it names. Check out ${branch} and make sure it matches the remote.`,
+        `2. Run \`git fetch origin\`, then \`git merge origin/${base}\`. A merge commit, never a rebase, so nothing is rewritten.`,
+        "3. Resolve each conflicted file only when the resolution is mechanical: both sides are kept as they are (for example two new entries at the top of a list, or two new tests next to each other), and any number that must stay unique or in order is renumbered. If a conflict is in the logic of the same lines on both sides, or you are not sure the result keeps what both changes do, run `git merge --abort`, post a Handoff: comment on the ticket naming the conflicting files and why, push nothing, and end.",
+        `4. Run the project's checks until they pass, commit the merge, push it, and record the check on the new commit with \`${cli} git-pr check ${repo} ${prId}\` (the merge gate needs it).`,
+        `5. Post ONE comment on the PR with \`${cli} git-pr comment ${repo} ${prId} "..."\`, starting with the line \`Conflict resolution:\`, then one line per conflicted file saying how you resolved it. A reviewer reads this to check the resolution.`,
+        "",
+        "Stop after step 5. Do not approve, merge or close anything, never force a push, and change nothing outside the conflicted files except a number the conflict forces you to renumber (a CHANGELOG revision named in another file, for example).",
         dataRule(),
         "If you cannot finish, post a Handoff: comment on the ticket saying where you stopped and why, and end.",
     ].join("\n");

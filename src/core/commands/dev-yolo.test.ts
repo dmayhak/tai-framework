@@ -8,7 +8,7 @@ import { runDevTask, type DevTask, type RunDevTasksDeps } from "./do-dev-tasks.j
 import { mkdtemp, rm, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildFixPrompt, buildReviewerPrompt, buildDevPrompt, buildVerifyPrompt, runEnv, runHeadlessClaude } from "./headless-claude.js";
+import { buildConflictPrompt, buildFixPrompt, buildReviewerPrompt, buildDevPrompt, buildVerifyPrompt, runEnv, runHeadlessClaude } from "./headless-claude.js";
 
 const task = { issue: { key: "TAI-9" }, parent: { key: "TAI-8" } } as unknown as DevTask;
 
@@ -69,6 +69,55 @@ describe("runYolo (TAI-634)", () => {
         const out = await runYolo(task, deps(s, { afterApproved: async () => (s.log.push("merged"), { state: "handed-on", note: "merged" }) }));
         assert.deepEqual(s.log, ["build", "review 1", "merged"]);
         assert.equal(out.state, "handed-on");
+    });
+
+    describe("a merge refused for a conflict (TAI-733)", () => {
+        const conflict = { state: "conflict", reason: "Pull Request has merge conflicts" } as const;
+        const approved = () => ({ findings: findingsOf(), decision: "approve" as const, head: "a" });
+
+        it("resolves it, gets a fresh review of the pushed commit, and merges only after that", async () => {
+            const s = script({ reviews: [approved(), approved()], heads: ["a", "b"] });
+            let finishes = 0;
+            const out = await runYolo(task, deps(s, {
+                afterApproved: async () => (finishes++ === 0 ? conflict : (s.log.push("merged"), { state: "handed-on" as const, note: "merged" })),
+                resolveConflict: async () => (s.log.push("resolve"), { ok: true, summary: "" }),
+            }));
+            assert.deepEqual(s.log, ["build", "review 1", "resolve", "review 2", "merged"]);
+            assert.equal(out.state, "handed-on");
+            assert.deepEqual(s.handoffs, []);
+        });
+
+        it("stops for a person, naming the reason, when the resolution fails or pushes nothing", async () => {
+            for (const resolve of [async () => ({ ok: false, summary: "src/a.ts needs a judgment" }), async () => ({ ok: true, summary: "aborted the merge: src/a.ts" })]) {
+                const s = script({ reviews: [approved(), approved()], heads: ["a", "a"] });
+                const out = await runYolo(task, deps(s, { afterApproved: async () => conflict, resolveConflict: resolve }));
+                assert.equal(out.state, "waiting");
+                assert.deepEqual(s.log, ["build", "review 1"]);
+                assert.match(s.handoffs[0]!, /conflicts with the default branch[\s\S]*src\/a\.ts/);
+            }
+        });
+
+        it("says a commit was pushed when a resolution failed after pushing, and that the refusal may not be a conflict when nothing was pushed", async () => {
+            const pushed = script({ reviews: [approved(), approved()], heads: ["a", "b"] });
+            const out = await runYolo(task, deps(pushed, { afterApproved: async () => conflict, resolveConflict: async () => ({ ok: false, summary: "the checks failed" }) }));
+            assert.equal(out.state, "waiting");
+            assert.match(pushed.handoffs[0]!, /a commit was pushed before it stopped[\s\S]*the checks failed/);
+            const nothing = script({ reviews: [approved(), approved()], heads: ["a", "a"] });
+            await runYolo(task, deps(nothing, { afterApproved: async () => ({ state: "conflict", reason: "Pull Request is not mergeable" }), resolveConflict: async () => ({ ok: true, summary: "already up to date" }) }));
+            assert.match(nothing.handoffs[0]!, /nothing was pushed \(the refusal was "Pull Request is not mergeable", which may not be a conflict\)/);
+        });
+
+        it("stops, without resolving, when no review round is left for the resolution, or when nothing can resolve", async () => {
+            const s = script({ reviews: [approved()] });
+            let resolved = false;
+            const out = await runYolo(task, deps(s, { rounds: 1, afterApproved: async () => conflict, resolveConflict: async () => ((resolved = true), { ok: true, summary: "" }) }));
+            assert.equal(out.state, "waiting");
+            assert.equal(resolved, false);
+            assert.match(s.handoffs[0]!, /No review round is left for a resolution/);
+            const t = script({ reviews: [approved()] });
+            assert.equal((await runYolo(task, deps(t, { afterApproved: async () => conflict }))).state, "waiting");
+            assert.match(t.handoffs[0]!, /resolve the conflict, then merge it through the gate/);
+        });
     });
 
     it("decides every Suggestion and Nitpick, and asks for a fresh review when the fix pushed", async () => {
@@ -299,6 +348,24 @@ describe("DEV-YOLO prompts", () => {
     it("the reviewer prompt carves its findings file out of the rule about .tai/, and the other prompts do not", () => {
         assert.match(buildReviewerPrompt({ repo: "o/r", prId: "7", cli: "tai", findingsPath: "/x/.tai/f.json" }), /yourself \(the TAI commands write there\), except the findings file named in step 2/);
         assert.doesNotMatch(buildFixPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "b", cli: "tai", findings: [] }), /except the findings file/);
+    });
+});
+
+describe("the conflict prompt (TAI-733)", () => {
+    const prompt = buildConflictPrompt({ key: "TAI-9", repo: "o/r", prId: "7", branch: "TAI-8-x", base: "main", cli: "tai" });
+    it("merges the default branch (never a rebase), resolves only what is mechanical, aborts otherwise, and leaves a comment for the reviewer", () => {
+        assert.match(prompt, /git merge origin\/main/);
+        assert.match(prompt, /never a rebase/);
+        assert.match(prompt, /git merge --abort/);
+        assert.match(prompt, /Conflict resolution:/);
+        assert.match(prompt, /never force a push/);
+        assert.match(prompt, /Do not approve, merge or close/);
+    });
+    it("names the command that records the check on the new commit", () => {
+        assert.match(prompt, /record the check on the new commit with `tai git-pr check o\/r 7`/);
+    });
+    it("tells the reviewer to check a resolution against its comment", () => {
+        assert.match(buildReviewerPrompt({ repo: "o/r", prId: "7", cli: "tai", findingsPath: "/f.json" }), /Conflict resolution:[\s\S]*dropped or changed behaviour a finding/);
     });
 });
 

@@ -11,7 +11,7 @@ import { stampComment } from "../storage/stamp.js";
 import type { GitHost, PullRequestRef } from "../git/interface.js";
 import type { DevTask } from "./do-dev-tasks.js";
 import { DirtyTreeError } from "./dev-tasks-git.js";
-import { automatedMergeComment, finishApproved, verificationVerdict, type FinishDeps } from "./dev-yolo-finish.js";
+import { automatedMergeComment, finishApproved, isConflictRefusal, verificationVerdict, type FinishDeps } from "./dev-yolo-finish.js";
 
 const TESTER = { id: "tester", displayName: "Tessa" };
 const ME: HumanRef = { id: toHumanId("a@b.co"), displayName: "A", email: "a@b.co" };
@@ -170,6 +170,26 @@ describe("finishApproved (TAI-634)", () => {
             assert.equal(out.state, "waiting");
             assert.match(handoffs[0]!, /not merged by this run.*the merge was refused: head moved/s);
         }));
+
+    it("answers a conflict, with no hand-off, when it may be resolved; any other refusal, or a run that cannot resolve, stops as before (TAI-733)", async () => {
+        await world(async ({ deps, task, handoffs, pr }) => {
+            pr.mergeResult = { ok: false, reason: "Pull Request has merge conflicts" };
+            assert.deepEqual(await finishApproved({ ...deps, resolveConflicts: true })(task, "u"), { state: "conflict", reason: "Pull Request has merge conflicts" });
+            assert.deepEqual(handoffs, []);
+            pr.mergeResult = { ok: false, reason: "head moved" };
+            assert.equal((await finishApproved({ ...deps, resolveConflicts: true })(task, "u")).state, "waiting");
+        });
+        await world(async ({ deps, task, handoffs, pr }) => {
+            pr.mergeResult = { ok: false, reason: "Pull Request has merge conflicts" };
+            assert.equal((await finishApproved(deps)(task, "u")).state, "waiting");
+            assert.match(handoffs[0]!, /the merge was refused: Pull Request has merge conflicts/);
+        });
+    });
+
+    it("reads a refusal as a conflict only when it names one (TAI-733)", () => {
+        for (const yes of ["Pull Request has merge conflicts", "Pull Request is not mergeable", "The branch conflicts with main", "You can't merge until you resolve all merge conflicts."]) assert.equal(isConflictRefusal(yes), true, yes);
+        for (const no of ["head moved", "At least 1 approving review is required", "Repository rule violations found"]) assert.equal(isConflictRefusal(no), false, no);
+    });
 
     it("says the PR merged when a later step stops: the checkout cannot be updated, or the verification run fails", async () => {
         await world(async ({ deps, task, handoffs }) => {

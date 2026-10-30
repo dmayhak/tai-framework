@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-29 (rev 154). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-10-29 (rev 155). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1255,7 +1255,7 @@ comment's content.
   in a push with no fresh review stops that ticket with a `Handoff:` for a person and the batch goes on. The findings must name the PR's current commit, and the PR must not move during the review. `git-pr review` and `git-pr comment-findings` refuse a PR that is merged or closed (as `review-prep` does), so a reviewer run that outlives the merge posts no second review or approval. A fix that pushed
   needs a fresh review; one that pushed nothing keeps the approval. An approved PR is then merged by `core/commands/dev-yolo-finish.ts`: only through the same gate as `git-pr merge`
   (the check green, the gate met, a check result present when a check command is set, and the approval on the current commit
-  the automated reviewer's own), on the commit the gate checked, never with force. The working tree must be clean before the merge, so a dirty one stops the ticket while the PR is still open. A PR comment records that the approval was
+  the automated reviewer's own), on the commit the gate checked, never with force. A merge the host refuses because the PR conflicts with the default branch is not a stop when a review round is left: a Developer run merges the default branch into the PR's branch (a merge commit, never a rebase or a force push), resolves the conflicts that are mechanical (both sides kept, a number that must stay unique renumbered), runs the checks, pushes and posts a `Conflict resolution:` comment saying how each file was resolved; a conflict in the logic of the same lines on both sides makes the run abort the merge and push nothing. The push is a new commit, so it goes back to the review loop for a fresh review (the reviewer is told to check the resolution against that comment and to make one that dropped behaviour a finding), and the merge goes through the gate as before; a conflict found in the last round, or one the run cannot resolve, stops with a `Handoff:` naming the files. The working tree must be clean before the merge, so a dirty one stops the ticket while the PR is still open. A PR comment records that the approval was
   automated, by which account and on which commit. The linked ticket goes to Done as `git-pr merge` does, the checkout is
   brought to the updated default branch, and a fresh Tester run verifies the Story or Bug against its criteria. The Story or Bug is closed only when
   that run posts a `Verified:` comment as its first line, stamped as the Tester and new during the run, with no `Not verified:` among the new ones, and no other subtask of the Story still open; `Not verified:`, no verdict or any refusal leaves it
