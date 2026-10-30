@@ -317,6 +317,8 @@ describe("yoloRun wiring (TAI-634)", () => {
         ));
 
     // TAI-736: the conflict resolver is wired through the real merge step, not a stub.
+    // The resolver's prompt, told apart from the build, review and fix prompts by this phrase of buildConflictPrompt.
+    const RESOLVER_PROMPT = /cannot merge because it conflicts/;
     const conflictRefusal = { ok: false as const, reason: "Pull Request has merge conflicts" };
     const reviewAndRecord = (seen: string[]): NonNullable<YoloWiring["runClaude"]> => async (prompt, options) => {
         seen.push(prompt);
@@ -328,7 +330,7 @@ describe("yoloRun wiring (TAI-634)", () => {
         await world(
             async ({ wiring, task, handoffs }) => {
                 const out = await yoloRun({ ...wiring, finish: FINISH })(task);
-                const resolver = seen.filter((p) => /cannot merge because it conflicts/.test(p));
+                const resolver = seen.filter((p) => RESOLVER_PROMPT.test(p));
                 assert.equal(resolver.length, 1);
                 assert.match(resolver[0]!, new RegExp(`PR 7 of o/r \\(branch b\\)[^]*conflicts with main`));
                 assert.match(resolver[0]!, /git merge origin\/main/);
@@ -344,7 +346,7 @@ describe("yoloRun wiring (TAI-634)", () => {
 
     it("stops with a hand-off naming the failure when the resolver run dies, as it can mid-merge (TAI-736)", async () => {
         const dying: NonNullable<YoloWiring["runClaude"]> = async (prompt, options) =>
-            /cannot merge because it conflicts/.test(prompt) ? { ok: false, summary: "timed out in the middle of the merge" } : findingsRun("")(prompt, options);
+            RESOLVER_PROMPT.test(prompt) ? { ok: false, summary: "timed out in the middle of the merge" } : findingsRun("")(prompt, options);
         await world(
             async ({ wiring, task, handoffs }) => {
                 const out = await yoloRun({ ...wiring, finish: FINISH })(task);
@@ -361,7 +363,7 @@ describe("yoloRun wiring (TAI-634)", () => {
             async ({ wiring, task, handoffs }) => {
                 const out = await yoloRun({ ...wiring, finish: FINISH, afterApproved: async () => ({ state: "conflict", reason: "x conflicts" }) })(task);
                 assert.equal(out.state, "waiting");
-                assert.equal(seen.filter((p) => /cannot merge because it conflicts/.test(p)).length, 0);
+                assert.equal(seen.filter((p) => RESOLVER_PROMPT.test(p)).length, 0);
                 assert.match(handoffs[0]!, /resolve the conflict, then merge it through the gate/);
             },
             { runClaude: reviewAndRecord(seen) }
@@ -374,7 +376,7 @@ describe("yoloRun wiring (TAI-634)", () => {
             async ({ wiring, task, handoffs }) => {
                 const out = await yoloRun({ ...wiring, finish: FINISH })(task);
                 assert.equal(out.state, "waiting");
-                assert.equal(seen.filter((p) => /cannot merge because it conflicts/.test(p)).length, 0);
+                assert.equal(seen.filter((p) => RESOLVER_PROMPT.test(p)).length, 0);
                 assert.match(handoffs[0]!, /the merge was refused: Branch protection blocks it/);
             },
             { approved: true, mergeResult: { ok: false, reason: "Branch protection blocks it" }, runClaude: reviewAndRecord(seen) }
