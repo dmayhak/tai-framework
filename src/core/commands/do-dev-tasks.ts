@@ -15,7 +15,7 @@ import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
 import { sameHuman } from "../personas/roster.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
-import type { HumanRef, Issue, IssueKey, WorkTracker } from "../storage/interface.js";
+import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
 import { openPrerequisites } from "../storage/precedence-gate.js";
 import { findOpenDependsOnBlockers, priorityRank } from "./ready.js";
 
@@ -88,7 +88,7 @@ export interface FindDevTasksDeps {
 
 /**
  * The current user's In Progress and To Do `Dev` subtasks, most urgent first, and the ones left out with the reason.
- * A To Do subtask that precedence still holds is skipped (an In Progress one has started, so precedence no longer
+ * A flagged subtask is skipped (TAI-735). A To Do subtask that precedence still holds is skipped (an In Progress one has started, so precedence no longer
  * gates it), and so is any whose Story, or itself, has an open `DependsOn` blocker.
  */
 export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTasks> {
@@ -110,6 +110,11 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
     for (const issue of mine) {
         if (deps.only && issue.key !== deps.only) {
             skipped.push({ issue, reason: `not selected (only=${deps.only})` });
+            continue;
+        }
+        // TAI-735: a flag is an impediment a person set; no run, YOLO included, starts a ticket until it is cleared.
+        if (isFlagged(issue)) {
+            skipped.push({ issue, reason: "it is flagged (an impediment is set on it), so nobody works it until the flag is cleared" });
             continue;
         }
         if (!issue.parentKey) {

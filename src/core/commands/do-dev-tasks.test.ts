@@ -50,6 +50,40 @@ describe("findDevTasks (TAI-633)", () => {
         });
     });
 
+    it("skips a flagged ticket, To Do or In Progress, and still works an unflagged one in the same list (TAI-735)", async () => {
+        await withTracker(async (wt) => {
+            const dev = async () => mk(wt, { issueType: SubtaskType.Dev, parentKey: (await mk(wt, { issueType: StoryType.Story })).key, assignee: ME });
+            const flaggedTodo = await dev();
+            const flaggedStarted = await dev();
+            const plain = await dev();
+            await wt.transition(flaggedTodo.key, Status.ToDo);
+            await wt.transition(flaggedStarted.key, Status.InProgress);
+            await wt.transition(plain.key, Status.ToDo);
+            await wt.updateIssue(flaggedTodo.key, { flagged: true });
+            await wt.updateIssue(flaggedStarted.key, { flagged: true });
+            const { tasks, skipped } = await find(wt);
+            assert.deepEqual(tasks.map((t) => t.issue.key), [plain.key]);
+            assert.deepEqual(skipped.map((x) => x.issue.key).sort(), [flaggedTodo.key, flaggedStarted.key].sort());
+            for (const x of skipped) assert.match(x.reason, /flagged/);
+            assert.match(renderDevTasksReport({ tasks, skipped }, null, { yolo: true }), new RegExp(`${flaggedTodo.key}[^\\n]*flagged`));
+            // Clearing the flag puts it back.
+            await wt.updateIssue(flaggedTodo.key, { flagged: false });
+            assert.deepEqual((await find(wt)).tasks.map((t) => t.issue.key).sort(), [flaggedTodo.key, plain.key].sort());
+        });
+    });
+
+    it("refuses only=<KEY> on a flagged ticket before anything starts, saying it is flagged (TAI-735)", async () => {
+        await withTracker(async (wt) => {
+            const story = await mk(wt, { issueType: StoryType.Story });
+            const dev = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            await wt.transition(dev.key, Status.ToDo);
+            await wt.updateIssue(dev.key, { flagged: true });
+            const found = await findDevTasks({ workTracker: wt, projectKey: "TAI", currentHuman: ME, only: dev.key });
+            assert.deepEqual(found.tasks, []);
+            assert.match((await onlyRefusal(found, dev.key, { workTracker: wt, currentHuman: ME, projectKey: "TAI" }))!, new RegExp(`${dev.key} cannot be worked now: it is flagged`));
+        });
+    });
+
     it("skips a To Do subtask that precedence holds, naming the blocker", async () => {
         await withTracker(async (wt) => {
             const story = await mk(wt, { issueType: StoryType.Story });
