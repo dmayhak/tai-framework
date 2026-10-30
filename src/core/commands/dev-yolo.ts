@@ -148,7 +148,7 @@ export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOut
                 const stopped = `the PR conflicts with the default branch: ${finished.reason}`;
                 const where = `The PR is open: ${prUrl}. Review round ${round} of ${deps.rounds}.`;
                 if (!deps.resolveConflict) return await say(where, stopped, "resolve the conflict, then merge it through the gate.");
-                // The resolution is a push, so it needs its own fresh review; with no round left for one, a person takes it from here.
+                // The resolution is a push, so it needs its own fresh review; with no round left for one, a person takes it from here. The fix prompt (`buildFixPrompt`) has the same rule for a fix push.
                 if (round === deps.rounds) return await say(where, `${stopped}. No review round is left for a resolution.`, "resolve the conflict and review the newest commit by hand.");
                 const before = await deps.head(task, prUrl);
                 const resolved = await deps.resolveConflict(task, prUrl);
