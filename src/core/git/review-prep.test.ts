@@ -766,6 +766,13 @@ describe("the Conflict resolution comment (TAI-740)", () => {
         assert.doesNotMatch(renderConflictResolution([comment("Conflict resolution: short")])!, /was cut at/);
     });
 
+    it("takes the section's room out of the inline diff, so the output stays inside the budget", () => {
+        const big = okDiff(Array.from({ length: 40 }, (_, i) => ({ path: `f${i}.ts`, patch: `diff --git a/f${i}.ts b/f${i}.ts\n${"+x\n".repeat(400)}` })));
+        const withComment = renderReviewPrep(input({ diff: big, comments: [comment(`Conflict resolution:\n${"y".repeat(3900)}`)] }));
+        const without = renderReviewPrep(input({ diff: big }));
+        assert.ok(withComment.length <= without.length + 600, `grew from ${without.length} to ${withComment.length}`);
+    });
+
     it("says so when the comments could not be read", () => {
         assert.match(renderReviewPrep(input({ comments: null })), /Could not read the PR's comments[\s\S]*notChecked/);
     });

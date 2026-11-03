@@ -701,10 +701,11 @@ export function renderReviewPrep(input: ReviewPrepInput): string {
     const prefix = renderPersonaTurn(input.persona, before, input.projectContext);
     // TAI-527 ADR decisions 3 and 4: the code first (as a file when it could be written), the author's account last.
     // TAI-575: room for the reminder that closes the output. The diff is cut by whole files, so the margin is generous.
+    // TAI-740: the conflict-resolution section comes after the diff, so the inline diff gives up room for it too.
+    const conflict = renderConflictResolution(input.comments);
     const changes =
         input.diff.kind === "ok" && input.reviewFiles
             ? renderChangesFromFile(input.diff, input.reviewFiles)
-            : renderChanges(input.diff, Math.max(DIFF_FLOOR, OUTPUT_BUDGET - prefix.length - REVIEW_PREP_REMINDER.length - 600));
-    const conflict = renderConflictResolution(input.comments);
+            : renderChanges(input.diff, Math.max(DIFF_FLOOR, OUTPUT_BUDGET - prefix.length - REVIEW_PREP_REMINDER.length - (conflict?.length ?? 0) - 600));
     return `${prefix}${changes}\n\n${renderAuthorDescription(pr)}\n\n${conflict ? `${conflict}\n\n` : ""}---\n${REVIEW_PREP_REMINDER}\n`;
 }
