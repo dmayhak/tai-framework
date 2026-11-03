@@ -1866,6 +1866,8 @@ async function main(): Promise<void> {
             // Both best effort: a failure costs that section, never the review.
             const ci = await gitHost.getCommitStatuses(repo, pr.sourceCommit).catch(() => null);
             const reviewFiles = await writeReviewFiles(config.taiRoot, repoArg, String(prId), pr.sourceCommit, diff).catch(() => null);
+            // TAI-740: the PR's comments, for a "Conflict resolution:" comment to check. Best effort as well.
+            const comments = await gitHost.listPullRequestComments(repo, prId).catch(() => null);
 
             // TAI-522 ADR decision 2: the same safe fast-forward of the local default branch that `work` and
             // `ready` run. After gatherDiff, whose fetch of the two PR branches must not be skipped by a debounce.
@@ -1893,6 +1895,7 @@ async function main(): Promise<void> {
                     projectContext,
                     ci,
                     reviewFiles,
+                    comments,
                 })
             );
             return;

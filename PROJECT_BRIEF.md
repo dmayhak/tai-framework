@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-10-30 (rev 158). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-11-03 (rev 159). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -437,7 +437,9 @@ the briefing down to its `---` line only; what follows is for Perry.
 **Review has no ticket entry.** There is no `CodeReview` subtask, so the Code
 Reviewer is not loaded by `/tai-work`. Its entry point is `/tai-pr`'s review flow, which runs
 `git-pr review-prep <REPO> [PR-ID]` — same persona-heading-then-body shape as `work` and `groom`, keyed by a PR
-instead of a ticket. A ticketless `/tai-review` skill was considered and deferred.
+instead of a ticket. A ticketless `/tai-review` skill was considered and deferred. When the PR has a comment starting
+`Conflict resolution:` (left by DEV-YOLO's conflict resolver), the output shows the newest one after the author's account, labelled as data,
+so the reviewer can check it against the merge commit; a failure to read the comments is said in the output, not hidden.
 
 **In Claude Code, `/tai-pr` runs the review in a subagent by default.** The subagent sees only the `review-prep` output and the
 repository, follows the review steps through writing the findings file, and returns its path; it never posts to the PR. The main
