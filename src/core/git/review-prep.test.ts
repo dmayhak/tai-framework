@@ -752,6 +752,20 @@ describe("the Conflict resolution comment (TAI-740)", () => {
         assert.doesNotMatch(renderReviewPrep(input({ comments: [] })), /Conflict resolution comment/);
     });
 
+    it("does not claim who wrote the comment or that the newest commit is a merge", () => {
+        const out = renderReviewPrep(input({ comments: [comment("Conflict resolution: kept both.")] }));
+        assert.doesNotMatch(out, /The resolver left this comment/);
+        assert.match(out, /who wrote it is not checked/);
+        assert.match(out, /If the PR's newest commit merges the default branch/);
+    });
+
+    it("says where the rest is, and to note it under notChecked, when the comment is cut", () => {
+        const out = renderConflictResolution([comment(`Conflict resolution:\n${"x".repeat(5000)}`)])!;
+        assert.match(out, /\(truncated\)/);
+        assert.match(out, /git-pr comments[\s\S]*notChecked/);
+        assert.doesNotMatch(renderConflictResolution([comment("Conflict resolution: short")])!, /was cut at/);
+    });
+
     it("says so when the comments could not be read", () => {
         assert.match(renderReviewPrep(input({ comments: null })), /Could not read the PR's comments[\s\S]*notChecked/);
     });
