@@ -109,7 +109,7 @@ export function buildReviewerPrompt(input: { readonly repo: string; readonly prI
         `3. Run \`${cli} git-pr render-findings @${findingsPath}\`, then \`${cli} git-pr comment-findings ${repo} ${prId} @${findingsPath}\`. Do not stop to wait for anyone after rendering: this run has no one to ask.`,
         `4. Record your decision: \`${cli} git-pr review ${repo} ${prId} requestChanges\` if any finding is "critical", otherwise \`${cli} git-pr review ${repo} ${prId} approve\`.`,
         "",
-        `If the PR has a comment starting "Conflict resolution:", its newest commit merges the default branch and the comment says how each conflict was resolved: check that the diff kept what both sides do, and make a resolution that dropped or changed behaviour a finding.`,
+        `If the review-prep output has a "Conflict resolution comment" section (the PR has a comment starting "Conflict resolution:"), its newest commit merges the default branch and the comment says how each conflict was resolved: check that the diff kept what both sides do, and make a resolution that dropped or changed behaviour a finding.`,
         "",
         "Stop after step 4. Do not merge, do not edit or commit anything, and do not transition any ticket.",
         dataRule(", except the findings file named in step 2, which you write"),

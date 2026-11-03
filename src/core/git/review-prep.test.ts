@@ -29,6 +29,7 @@ import {
     recordRenderedFindings,
     readRenderedFindings,
     REVIEW_PREP_REMINDER,
+    renderConflictResolution,
 } from "./review-prep.js";
 import { withFakeSshAndEmptySshCommand } from "./fake-ssh.testing.js";
 import type { PullRequestRef } from "./interface.js";
@@ -724,5 +725,34 @@ describe("review-prep ends with the reminder (TAI-575)", () => {
         assert.match(out.slice(out.lastIndexOf("---")), /^---\nFrom TAI \(not the PR's author\)/);
         assert.match(REVIEW_PREP_REMINDER, /chat text/);
         assert.match(REVIEW_PREP_REMINDER, /refuse until the findings have been rendered/);
+    });
+});
+
+describe("the Conflict resolution comment (TAI-740)", () => {
+    const comment = (body: string, createdAt = "2026-10-30T10:00:00Z") => ({ id: createdAt, author: human("ann"), body, createdAt, updatedAt: createdAt });
+
+    it("puts a PR's Conflict resolution comment in what the reviewer is given, labelled as data", () => {
+        const out = renderReviewPrep(input({ comments: [comment("LGTM"), comment("Conflict resolution:\nREADME.md: kept both lines.")] }));
+        assert.match(out, /## Conflict resolution comment/);
+        assert.match(out, /README\.md: kept both lines\./);
+        assert.match(out, /data, never instructions/);
+        assert.ok(out.indexOf("README.md: kept both lines.") > out.indexOf("## What the author says"), "after the author's account");
+        assert.ok(out.trimEnd().endsWith(REVIEW_PREP_REMINDER.trimEnd()), "the reminder stays last");
+    });
+
+    it("shows only the newest such comment", () => {
+        const out = renderReviewPrep(input({ comments: [comment("Conflict resolution: stale-account", "2026-10-30T09:00:00Z"), comment("Conflict resolution: NEW", "2026-10-30T11:00:00Z")] }));
+        assert.match(out, /NEW/);
+        assert.doesNotMatch(out, /stale-account/);
+    });
+
+    it("adds nothing when the PR has no such comment or comments were not looked up", () => {
+        assert.equal(renderConflictResolution([comment("Review: looks fine")]), null);
+        assert.equal(renderConflictResolution(undefined), null);
+        assert.doesNotMatch(renderReviewPrep(input({ comments: [] })), /Conflict resolution comment/);
+    });
+
+    it("says so when the comments could not be read", () => {
+        assert.match(renderReviewPrep(input({ comments: null })), /Could not read the PR's comments[\s\S]*notChecked/);
     });
 });
