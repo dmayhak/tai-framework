@@ -205,6 +205,8 @@ export interface RunDevTasksDeps {
     /** TAI-706: sleeps for the given milliseconds; ends early (resolving) on an interrupt. Without it nothing is waited for. */
     readonly sleep?: (ms: number) => Promise<void>;
     readonly now?: () => Date;
+    /** TAI-706: whether the ticket's own newest hand-off says it was paused on a usage limit. Such a ticket is worked first, because its cut-off work is still in the tree. */
+    readonly pausedOnLimit?: (task: DevTask) => Promise<boolean>;
     /** TAI-706: a line for the person watching, such as "waiting until ...". */
     readonly say?: (line: string) => void;
 }
@@ -290,6 +292,26 @@ export interface WorkedDevTasks {
 }
 
 /**
+ * The next ticket to work: the first not yet attempted, except that one whose own newest hand-off is a usage-limit pause comes first.
+ * Its cut-off work is still in the working tree, and any other ticket prepared before it would stop the run on that dirty tree.
+ */
+async function pickNext(tasks: readonly DevTask[], attempted: ReadonlySet<IssueKey>, deps: RunDevTasksDeps): Promise<DevTask | undefined> {
+    const open = tasks.filter((t) => !attempted.has(t.issue.key));
+    if (open.length > 1 && deps.pausedOnLimit) {
+        for (const t of open) {
+            let paused = false;
+            try {
+                paused = await deps.pausedOnLimit(t);
+            } catch {
+                // an unreadable ticket keeps its place; its own run reports the problem
+            }
+            if (paused) return t;
+        }
+    }
+    return open[0];
+}
+
+/**
  * Works the tickets one at a time and looks again after each. A ticket that one of ours unblocks (its blocker finished
  * while this run was going) was skipped at the start but is found by the next look, so it is not dropped. A ticket is
  * attempted once per run, so a failed one is never retried in a loop and one whose PR is still open is not rebuilt.
@@ -306,7 +328,7 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
         const found = pending ?? (await find());
         pending = undefined;
         last = found;
-        const next = found.tasks.find((t) => !attempted.has(t.issue.key));
+        const next = await pickNext(found.tasks, attempted, deps);
         if (!next) return { results, found };
         attempted.add(next.issue.key);
         deps.limitLatch?.clear();

@@ -10,6 +10,8 @@
  * messages in `usage-limit.test.ts` are marked as reported, not recorded; replace them when a real hit is captured.
  */
 
+import type { IssueKey, WorkTracker } from "../storage/interface.js";
+
 /** A usage limit the account has reached. */
 export interface UsageLimit {
     /** The line that said so, as the run printed it. */
@@ -27,8 +29,12 @@ const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
 // "Your usage limit has been reached", "You've hit your limit". Anchored at the start, so a summary line that merely talks about a
 // limit ("- detects the 5-hour limit reached message", "Added detection of the usage limit reached message") is not one.
 const LEAD = "^[^A-Za-z0-9]*";
-const NAMED_LIMIT = new RegExp(`${LEAD}(?:claude(?:\\s+ai)?\\s+)?(?:your\\s+)?(?:(?:opus|sonnet)\\s+)?(?:usage|5-hour|five-hour|weekly|daily|session|opus|sonnet)\\s+limit\\b[^.\\n]{0,30}?\\b(?:reached|hit|exceeded)\\b`, "i");
-const HIT_YOUR_LIMIT = new RegExp(`${LEAD}you(?:'|’)?ve\\s+(?:hit|reached)\\s+your\\b.*\\blimit\\b`, "i");
+// Where the message ends: the end of the line, a separator before the reset ("∙", "·", "|", "-", ":"), a "resets" clause, or the
+// prose form ("... reached. Your limit will reset at 3pm"). More words straight after it ("Usage limit reached handling is now covered
+// by tests", "Weekly limit exceeded case added") are a closing line of a run that finished, not the message (TAI-706 review).
+const END = "(?=\\s*$|\\s*[|∙·•—–:]|\\s+-|\\.\\s*$|\\.\\s+(?:your\\s+)?limit\\b.*\\breset|\\s+resets?\\b)";
+const NAMED_LIMIT = new RegExp(`${LEAD}(?:claude(?:\\s+ai)?\\s+)?(?:your\\s+)?(?:(?:opus|sonnet)\\s+)?(?:usage|5-hour|five-hour|weekly|daily|session|opus|sonnet)\\s+limit\\b[^.\\n]{0,30}?\\b(?:reached|hit|exceeded)\\b${END}`, "i");
+const HIT_YOUR_LIMIT = new RegExp(`${LEAD}you(?:'|’)?ve\\s+(?:hit|reached)\\s+your\\b[^.\\n]*?\\blimit\\b${END}`, "i");
 // A list item, a quote, a heading, a numbered step or code: how a run's own summary is written, never how Claude Code prints a limit.
 const SUMMARY_LINE = /^\s*(?:[-*+>#`]|\d+[.)]\s)/;
 // A throttle (HTTP 429) is retried by Claude Code itself and has no reset time to wait for: it is not a usage limit.
@@ -199,8 +205,8 @@ export function pausedHandoff(limit: UsageLimit, stage: string): string {
  * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
  * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other (TAI-706 review).
  */
-export async function wasPausedOnLimit(workTracker: { getIssue(key: never): Promise<{ readonly comments: readonly { readonly body: string; readonly createdAt?: string }[] } | null> }, key: string): Promise<boolean> {
-    const issue = await workTracker.getIssue(key as never);
+export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue">, key: IssueKey): Promise<boolean> {
+    const issue = await workTracker.getIssue(key);
     // Newest last by the comment's own time, not by the order a host happens to return them in.
     const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body)).sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
     const newest = handoffs[handoffs.length - 1];

@@ -7,7 +7,7 @@
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
-import type { DocStore, WorkTracker } from "../storage/interface.js";
+import type { DocStore, IssueKey, WorkTracker } from "../storage/interface.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isEligibleReviewer, loadPrReviewers } from "../git/pr-reviewers.js";
 import { acceptanceCriteria } from "../storage/verification.js";
@@ -31,6 +31,8 @@ export interface YoloWiring {
     readonly taiDir: string;
     /** TAI-706: where a run that ended on the usage limit is recorded (the same latch the batch loop reads). */
     readonly limitLatch?: UsageLimitLatch;
+    /** TAI-706: whether the ticket was paused on a usage limit, as already read for this attempt. Without it the ticket is read here. */
+    readonly pausedOnLimit?: (key: IssueKey) => Promise<boolean>;
     readonly email: string | null;
     /** DEV-YOLO is on for this run only (`do-dev-tasks yolo=true`), not by the stored setting. */
     readonly oneRun?: boolean;
@@ -122,7 +124,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
     };
     const deps: YoloDeps = {
         rounds: w.rounds,
-        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, (await wasPausedOnLimit(w.workTracker, task.issue.key)) ? await cutOffBranch(w.cwd, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, (await (w.pausedOnLimit ?? ((k) => wasPausedOnLimit(w.workTracker, k)))(task.issue.key)) ? await cutOffBranch(w.cwd, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
         findPullRequest: (task) => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }),
         review: async (task) => {
             const pr = await pullRequest(task);

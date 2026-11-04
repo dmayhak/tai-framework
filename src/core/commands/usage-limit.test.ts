@@ -59,6 +59,11 @@ describe("detecting a usage limit (TAI-706)", () => {
         ["a heading", "## the usage limit reached path"],
         ["code", "`5-hour limit reached` is the message"],
         ["prose that talks about it", "Added detection of the 5-hour limit reached message."],
+        // Not a bullet or a quote, but a closing line of a run that finished (review of PR 51, round 3).
+        ["a closing line that starts with the phrase", "Usage limit reached handling is now covered by tests"],
+        ["a closing line with exceeded", "Weekly limit exceeded case added"],
+        ["a closing line with hit", "5-hour limit hit detection is done"],
+        ["a closing 'you've hit your limit' line", "You've hit your limit handling is covered by the new tests"],
         ["prose with the phrase in the middle", "The run stops when the usage limit is reached and resumes later."],
     ];
     for (const [name, line] of summaryLines) {
@@ -71,6 +76,12 @@ describe("detecting a usage limit (TAI-706)", () => {
         assert.ok(detectUsageLimit("⎿ 5-hour limit reached ∙ resets 3pm", NOW));
         assert.ok(detectUsageLimit("5-hour limit reached ∙ resets 3pm", NOW));
         assert.ok(detectUsageLimit("Opus weekly limit reached ∙ resets Nov 7, 10am", NOW));
+    });
+
+    it("still recognises each real form once the end of the message is required", () => {
+        for (const real of ["Usage limit reached", "5-hour limit reached.", "Your usage limit has been reached.", "You've hit your limit", "Weekly limit reached - resets Nov 7, 10am", "Claude usage limit reached. Your limit will reset at 3pm (America/Denver).", "5-hour limit reached resets 3pm"]) {
+            assert.ok(detectUsageLimit(`Working.\n${real}`, NOW), real);
+        }
     });
 
     it("ignores a limit message that is not near the end of the output", () => {

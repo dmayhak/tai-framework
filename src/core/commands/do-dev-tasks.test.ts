@@ -852,6 +852,22 @@ describe("pausing on a usage limit (TAI-706)", () => {
         return { d, posted, sleeps, said, latch };
     }
 
+    it("works a ticket paused on a limit before the others, so its cut-off work is not stopped on by a sibling's dirty-tree check (review of PR 51)", async () => {
+        const d = deps({ pausedOnLimit: async (t) => t.issue.key === "TAI-12" });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11"), task("TAI-12")], skipped: [] }), d);
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("prepare")), ["prepare TAI-12", "prepare TAI-10", "prepare TAI-11"]);
+        assert.equal(results.length, 3);
+    });
+
+    it("keeps the usual order when no ticket was paused, or when the pause cannot be read", async () => {
+        const none = deps({ pausedOnLimit: async () => false });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), none);
+        assert.deepEqual(none.calls.filter((c) => c.startsWith("prepare")), ["prepare TAI-10", "prepare TAI-11"]);
+        const broken = deps({ pausedOnLimit: async () => { throw new Error("jira down"); } });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), broken);
+        assert.deepEqual(broken.calls.filter((c) => c.startsWith("prepare")), ["prepare TAI-10", "prepare TAI-11"]);
+    });
+
     it("a limit hit ends the batch at once: the ticket is paused, not failed, and no further ticket is started", async () => {
         const { d, posted } = limitDeps({ "TAI-10": 1 });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
@@ -1039,22 +1055,22 @@ describe("pausing on a usage limit (TAI-706)", () => {
         const reviewPause = pausedHandoff({ text: "5-hour limit reached" }, "review run");
 
         it("is true when the newest hand-off is a build-stage pause", async () => {
-            assert.equal(await wasPausedOnLimit(tracker(buildPause + "\n\nPosted via the TAI CLI as Dev."), "TAI-10"), true);
+            assert.equal(await wasPausedOnLimit(tracker(buildPause + "\n\nPosted via the TAI CLI as Dev.") as never, "TAI-10" as never), true);
         });
 
         it("reads the newest by the comment's own time, not by the order the host returned them in", async () => {
             const t = { getIssue: async () => ({ comments: [{ body: buildPause, createdAt: "2026-11-04T12:00:00Z" }, { body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T09:00:00Z" }] }) };
-            assert.equal(await wasPausedOnLimit(t, "TAI-10"), true, "the pause is newer even though it is listed first");
+            assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), true, "the pause is newer even though it is listed first");
             const u = { getIssue: async () => ({ comments: [{ body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T13:00:00Z" }, { body: buildPause, createdAt: "2026-11-04T12:00:00Z" }] }) };
-            assert.equal(await wasPausedOnLimit(u, "TAI-10"), false, "a newer failure hand-off replaced it even though it is listed first");
+            assert.equal(await wasPausedOnLimit(u as never, "TAI-10" as never), false, "a newer failure hand-off replaced it even though it is listed first");
         });
 
         it("is false for a failure hand-off, a later-stage pause, no hand-off, or a pause that a newer hand-off replaced", async () => {
-            assert.equal(await wasPausedOnLimit(tracker("Handoff: \"Do all dev tasks\" stopped on this ticket. tests failed"), "TAI-10"), false);
-            assert.equal(await wasPausedOnLimit(tracker(reviewPause), "TAI-10"), false);
-            assert.equal(await wasPausedOnLimit(tracker("a plain comment"), "TAI-10"), false);
-            assert.equal(await wasPausedOnLimit({ getIssue: async () => null }, "TAI-10"), false);
-            assert.equal(await wasPausedOnLimit(tracker(buildPause, "Handoff: DEV-YOLO run. The build run did not finish."), "TAI-10"), false);
+            assert.equal(await wasPausedOnLimit(tracker("Handoff: \"Do all dev tasks\" stopped on this ticket. tests failed") as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit(tracker(reviewPause) as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit(tracker("a plain comment") as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit({ getIssue: async () => null } as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit(tracker(buildPause, "Handoff: DEV-YOLO run. The build run did not finish.") as never, "TAI-10" as never), false);
         });
     });
 
