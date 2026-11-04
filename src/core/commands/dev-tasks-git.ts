@@ -62,9 +62,13 @@ export async function cutOffBranch(cwd: string, taiRoot: string, storyKey: strin
     return porcelain.trim() === "" ? null : branch;
 }
 
-/** Starts a ticket: continues on its own branch when a cut-off run left work there (AC-5), otherwise from a clean default branch. */
-export async function prepareForTicket(cwd: string, taiRoot: string, storyKey: string): Promise<void> {
-    if ((await cutOffBranch(cwd, taiRoot, storyKey)) !== null) return;
+/**
+ * Starts a ticket: continues on its own branch when THIS ticket was paused on a usage limit and left work there (`pausedOnLimit`, read
+ * from its own hand-off), otherwise from a clean default branch. A dirty tree on the Story's branch that no pause explains, such as a
+ * sibling ticket's failed run, still stops the run.
+ */
+export async function prepareForTicket(cwd: string, taiRoot: string, storyKey: string, pausedOnLimit: boolean): Promise<void> {
+    if (pausedOnLimit && (await cutOffBranch(cwd, taiRoot, storyKey)) !== null) return;
     await prepareCleanDefaultBranch(cwd, taiRoot);
 }
 

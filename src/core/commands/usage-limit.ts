@@ -123,14 +123,37 @@ export function parseWaitHours(value: string): number {
     return hours;
 }
 
+/** The step whose cut-off work can be picked up again: the build. After it a PR is open, and "Do all dev tasks" leaves a ticket with an open PR to a person. */
+export const CONTINUABLE_STAGE = "build run";
+export function isContinuableStage(stage: string): boolean {
+    return stage === CONTINUABLE_STAGE;
+}
+
+const PAUSED_NOTE_START = "Handoff: DEV-YOLO paused on a usage limit.";
+const CONTINUES_LINE = 'Next: once the limit has reset, run "Do all dev tasks" again. The run continues this ticket on its branch.';
+
 /** The note left on a ticket whose run was cut off by a usage limit. Neutral: the ticket did nothing wrong. */
 export function pausedHandoff(limit: UsageLimit, stage: string): string {
     const reset = limit.resetsAt ? ` It resets at ${limit.resetsAt.toISOString()}.` : "";
+    const next = isContinuableStage(stage)
+        ? CONTINUES_LINE
+        : 'Next: the PR is already open, so "Do all dev tasks" skips this ticket. Once the limit has reset, continue it with /tai-work, or review and merge the PR by hand.';
     return (
-        `Handoff: DEV-YOLO paused on a usage limit. The account's usage limit was reached while this ticket's ${stage} was running: "${limit.text}".${reset}\n\n` +
+        `${PAUSED_NOTE_START} The account's usage limit was reached while this ticket's ${stage} was running: "${limit.text}".${reset}\n\n` +
         "This is not a failure of the ticket. The branch and any uncommitted work were left as they were.\n\n" +
-        'Next: once the limit has reset, run "Do all dev tasks" again. The run continues this ticket on its branch.'
+        next
     );
+}
+
+/**
+ * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
+ * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other (TAI-706 review).
+ */
+export async function wasPausedOnLimit(workTracker: { getIssue(key: never): Promise<{ readonly comments: readonly { readonly body: string }[] } | null> }, key: string): Promise<boolean> {
+    const issue = await workTracker.getIssue(key as never);
+    const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body));
+    const newest = handoffs[handoffs.length - 1];
+    return newest !== undefined && newest.body.includes(PAUSED_NOTE_START) && newest.body.includes(CONTINUES_LINE);
 }
 
 /**

@@ -18,7 +18,7 @@ import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "
 import { yoloStopReasons } from "./yolo-checks.js";
 import { finishApproved } from "./dev-yolo-finish.js";
 import { cutOffBranch } from "./dev-tasks-git.js";
-import { pausedAwareHandoff, type UsageLimitLatch } from "./usage-limit.js";
+import { pausedAwareHandoff, wasPausedOnLimit, type UsageLimitLatch } from "./usage-limit.js";
 
 export interface YoloWiring {
     readonly gitHost: GitHost;
@@ -122,7 +122,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
     };
     const deps: YoloDeps = {
         rounds: w.rounds,
-        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, await cutOffBranch(w.cwd, w.taiDir, task.parent.key)), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, (await wasPausedOnLimit(w.workTracker, task.issue.key)) ? await cutOffBranch(w.cwd, w.taiDir, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
         findPullRequest: (task) => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }),
         review: async (task) => {
             const pr = await pullRequest(task);

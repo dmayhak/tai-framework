@@ -13,7 +13,7 @@
 import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
-import { decideWait, MAX_WAITS_PER_RUN, parseWaitHours, type UsageLimit, type UsageLimitLatch } from "./usage-limit.js";
+import { decideWait, isContinuableStage, MAX_WAITS_PER_RUN, parseWaitHours, type UsageLimit, type UsageLimitLatch } from "./usage-limit.js";
 import { sameHuman } from "../personas/roster.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
@@ -320,10 +320,16 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             const decision = deps.waitHours === undefined || !deps.sleep ? ({ wait: false, why: "no wait= was given" } as const) : decideWait(limit, deps.waitHours, now);
             if (decision.wait && waits < MAX_WAITS_PER_RUN && !deps.interrupted?.()) {
                 waits++;
-                deps.say?.(`Usage limit reached (${limit.text}). Waiting ${Math.round(decision.ms / 60000)} minutes for the reset, then carrying on with ${next.issue.key}.`);
+                const continuable = isContinuableStage(result.outcome.stage);
+                deps.say?.(`Usage limit reached (${limit.text}). Waiting ${Math.round(decision.ms / 60000)} minutes for the reset, then ${continuable ? `carrying on with ${next.issue.key}` : `carrying on with the other tickets (${next.issue.key} has an open PR, so it is left to a person)`}.`);
                 await deps.sleep!(decision.ms);
+                // An interrupt ends the wait early: keep the paused ticket in the report instead of dropping it.
+                if (deps.interrupted?.()) {
+                    results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: "the run was interrupted during the wait" } };
+                    return { results, found };
+                }
                 results.pop();
-                attempted.delete(next.issue.key);
+                if (continuable) attempted.delete(next.issue.key);
                 deps.limitLatch?.clear();
                 continue;
             }
@@ -400,7 +406,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
                     const o = r.outcome as Extract<DevTaskOutcome, { state: "paused" }>;
                     const reset = o.limit.resetsAt ? `resets ${o.limit.resetsAt.toISOString()}` : "reset time not known";
                     const why = o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "";
-                    return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} No further ticket was started. Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).`;
+                    return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} No further ticket was started. ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
                 })
             );
         }

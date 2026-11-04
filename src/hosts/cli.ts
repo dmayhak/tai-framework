@@ -178,7 +178,7 @@ import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, ren
 import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
-import { pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch } from "../core/commands/usage-limit.js";
+import { pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -2495,9 +2495,9 @@ async function main(): Promise<void> {
             ...(waitHours !== undefined ? { waitHours } : {}),
             sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
             say: (line) => console.log(line),
-            prepare: (task) => prepareForTicket(process.cwd(), config.taiRoot, task.parent.key),
+            prepare: async (task) => prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await wasPausedOnLimit(config.backend.workTracker, task.issue.key)),
             build: async (task) => {
-                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, await cutOffBranch(process.cwd(), config.taiRoot, task.parent.key)), { cwd: process.cwd(), timeoutMs });
+                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, (await wasPausedOnLimit(config.backend.workTracker, task.issue.key)) ? await cutOffBranch(process.cwd(), config.taiRoot, task.parent.key) : null), { cwd: process.cwd(), timeoutMs });
                 if (built.limit) limitLatch.hit(built.limit, "build run");
                 return built;
             },
