@@ -17,6 +17,8 @@ import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask,
 import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "./dev-yolo.js";
 import { yoloStopReasons } from "./yolo-checks.js";
 import { finishApproved } from "./dev-yolo-finish.js";
+import { cutOffBranch } from "./dev-tasks-git.js";
+import { pausedAwareHandoff, type UsageLimitLatch } from "./usage-limit.js";
 
 export interface YoloWiring {
     readonly gitHost: GitHost;
@@ -27,6 +29,8 @@ export interface YoloWiring {
     readonly projectKey: string;
     /** The resolved `.tai` directory, the same one `settings set` writes its record to. */
     readonly taiDir: string;
+    /** TAI-706: where a run that ended on the usage limit is recorded (the same latch the batch loop reads). */
+    readonly limitLatch?: UsageLimitLatch;
     readonly email: string | null;
     /** DEV-YOLO is on for this run only (`do-dev-tasks yolo=true`), not by the stored setting. */
     readonly oneRun?: boolean;
@@ -93,7 +97,14 @@ async function locate(w: YoloWiring, task: DevTask): Promise<PullRequestRef | nu
 
 /** The run for one ticket: build, review by a fresh reviewer run, decide, fix. */
 export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcome> {
-    const run = w.runClaude ?? runHeadlessClaude;
+    const baseRun = w.runClaude ?? runHeadlessClaude;
+    // TAI-706: a run that ended on the usage limit is recorded once, with the step it was in, so the batch can pause instead of failing.
+    const run = (stage: string) => async (prompt: string, options: HeadlessRunOptions): Promise<HeadlessRunResult> => {
+        const result = await baseRun(prompt, options);
+        if (result.limit) w.limitLatch?.hit(result.limit, stage);
+        return result;
+    };
+    const handoff = pausedAwareHandoff(w.limitLatch, w.handoff);
     // The PR is listed once per ticket; every later read of it is by id, and the head is always read the same way.
     const found = new Map<string, PullRequestRef>();
     const pullRequest = async (task: DevTask): Promise<PullRequestRef> => {
@@ -111,7 +122,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
     };
     const deps: YoloDeps = {
         rounds: w.rounds,
-        build: (task) => run(buildDevPrompt(task.issue.key, w.cli), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, await cutOffBranch(w.cwd, w.taiDir, task.parent.key)), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
         findPullRequest: (task) => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }),
         review: async (task) => {
             const pr = await pullRequest(task);
@@ -126,7 +137,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
             // The Story's numbered criteria go into the prompt; a Story that cannot be read reviews as before, and the prompt says so.
             const criteria = await w.workTracker.getIssue(task.parent.key).then((story) => (story ? acceptanceCriteria(story.description) : null), () => null);
             try {
-                const ran = await run(buildReviewerPrompt({ repo: pr.repo, prId: String(pr.id), cli: w.cli, findingsPath, storyKey: task.parent.key, criteria }), {
+                const ran = await run("review run")(buildReviewerPrompt({ repo: pr.repo, prId: String(pr.id), cli: w.cli, findingsPath, storyKey: task.parent.key, criteria }), {
                     cwd: w.cwd,
                     timeoutMs: w.timeoutMs,
                     // Only the git host identity is the reviewer's; the tracker and page reads stay on the person's own Jira email and token, a pair that matches.
@@ -162,15 +173,15 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
         fix: async (task, _prUrl, findings, round) => {
             const pr = await pullRequest(task);
             const slim = findings.map((f) => ({ severity: f.severity, title: f.title, file: f.file, ...(f.line !== undefined ? { line: f.line } : {}), issue: f.issue }));
-            return run(buildFixPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, cli: w.cli, roundsLeft: w.rounds - round, findings: slim }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
+            return run("fix run")(buildFixPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, cli: w.cli, roundsLeft: w.rounds - round, findings: slim }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
         },
         head: async (task) => liveHead(await pullRequest(task)),
-        handoff: w.handoff,
+        handoff,
         ...(w.finish && !w.afterApproved
             ? {
                   resolveConflict: async (task) => {
                       const pr = await pullRequest(task);
-                      return run(buildConflictPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, base: pr.destinationBranch, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
+                      return run("conflict resolution run")(buildConflictPrompt({ key: task.issue.key, repo: pr.repo, prId: String(pr.id), branch: pr.sourceBranch, base: pr.destinationBranch, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs });
                   },
               }
             : {}),
@@ -189,8 +200,8 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
                         stamp: w.finish.stamp,
                         assertClean: w.finish.assertClean,
                         prepare: w.finish.prepare,
-                        verify: (task) => run(buildVerifyPrompt({ key: task.parent.key, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
-                        handoff: w.handoff,
+                        verify: (task) => run("verification run")(buildVerifyPrompt({ key: task.parent.key, cli: w.cli }), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+                        handoff,
                         resolveConflicts: true,
                     }),
                 }

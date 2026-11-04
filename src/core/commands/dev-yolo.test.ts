@@ -427,3 +427,39 @@ describe("the reviewer's credentials (TAI-634)", () => {
         }
     });
 });
+
+describe("a run that ends on a usage limit (TAI-706)", () => {
+    async function runWith(script: string) {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-limit-"));
+        try {
+            const bin = path.join(dir, "claude");
+            await writeFile(bin, `#!/bin/sh\n${script}\n`);
+            await chmod(bin, 0o755);
+            return await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin });
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    }
+
+    it("carries the limit when the message comes back with exit code 0, and is not ok", async () => {
+        const result = await runWith('echo "working"\necho "5-hour limit reached ∙ resets 3pm"');
+        assert.equal(result.ok, false);
+        assert.match(result.limit?.text ?? "", /5-hour limit reached/);
+        assert.ok(result.limit?.resetsAt);
+    });
+
+    it("carries the limit when the run exits non-zero", async () => {
+        const result = await runWith('echo "Claude AI usage limit reached|1793800000"\nexit 1');
+        assert.equal(result.ok, false);
+        assert.equal(result.limit?.resetsAt?.getTime(), 1793800000 * 1000);
+    });
+
+    it("carries no limit for an ordinary failure, a throttle or a clean finish", async () => {
+        assert.equal((await runWith('echo "npm ERR! Exit status 1"\nexit 1')).limit, undefined);
+        const throttled = await runWith('echo "API Error: Rate limit reached"\nexit 1');
+        assert.equal(throttled.limit, undefined);
+        const clean = await runWith('echo "done"');
+        assert.equal(clean.ok, true);
+        assert.equal(clean.limit, undefined);
+    });
+});

@@ -670,6 +670,8 @@ function doDevTasksSkillBody(taiHome: string): string {
         "session, so never add it yourself: tell the human to run it in a plain terminal.\n\n" +
         "`only=<DEV-KEY>` after `do-dev-tasks` works that one ticket and lists every other as not selected; it is refused, saying why, " +
         "when the ticket cannot be worked now. Add it only when the human names the ticket.\n\n" +
+        "`wait=<hours>` after `do-dev-tasks` sleeps until the account's usage limit resets when the reset is within that many hours, and then carries on; " +
+        "without it a usage limit pauses the run. Add it only when the human asks to wait for the reset.\n\n" +
         "Show the human its closing report: what was done for each ticket, what failed, what was skipped, and what waits for a person. " +
         "If `DEV-YOLO` is on it says so, and says whether the full run is available; never turn the setting on yourself.\n"
     );

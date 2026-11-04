@@ -12,6 +12,7 @@ import { recordAttestation } from "../settings/attestation.js";
 import { changeAdmin, setSetting } from "./settings.js";
 import type { DevTask } from "./do-dev-tasks.js";
 import { yoloGate, yoloRun, type YoloWiring } from "./dev-yolo-wiring.js";
+import { UsageLimitLatch } from "./usage-limit.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.co"), displayName: "A", email: "a@b.co" };
 
@@ -418,6 +419,51 @@ describe("yoloRun wiring (TAI-634)", () => {
                 assert.match(handoffs[0]!, /not in this version/);
             },
             { runClaude: findingsRun("") }
+        );
+    });
+});
+
+describe("yoloRun on a usage limit (TAI-706)", () => {
+    it("records the limit with the step it hit, and the hand-off the run leaves is the neutral paused note", () => {
+        const latch = new UsageLimitLatch();
+        return world(
+            async ({ wiring, task, handoffs }) => {
+                const out = await yoloRun({ ...wiring, limitLatch: latch })(task);
+                // The unattended run itself reports its stop as before; the batch turns it into "paused" from the latch.
+                assert.equal(out.state, "waiting");
+                assert.deepEqual(latch.current(), { limit: { text: "5-hour limit reached ∙ resets 3pm", resetsAt: latch.current()!.limit.resetsAt }, stage: "build run" });
+                assert.equal(handoffs.length, 1);
+                assert.match(handoffs[0]!, /^Handoff: DEV-YOLO paused on a usage limit/);
+                assert.match(handoffs[0]!, /while this ticket's build run was running/);
+                assert.doesNotMatch(handoffs[0]!, /did not finish/);
+            },
+            { runClaude: async () => ({ ok: false, summary: "exit 1", limit: { text: "5-hour limit reached ∙ resets 3pm", resetsAt: new Date(2026, 10, 4, 15) } }) }
+        );
+    });
+
+    it("without a limit, a failed build keeps its ordinary hand-off", () =>
+        world(
+            async ({ wiring, task, handoffs }) => {
+                await yoloRun({ ...wiring, limitLatch: new UsageLimitLatch() })(task);
+                assert.match(handoffs[0]!, /The build run did not finish/);
+                assert.doesNotMatch(handoffs[0]!, /usage limit/);
+            },
+            { runClaude: async () => ({ ok: false, summary: "tests failed" }) }
+        ));
+
+    it("names the review run when the limit hits there", () => {
+        const latch = new UsageLimitLatch();
+        return world(
+            async ({ wiring, task }) => {
+                await yoloRun({ ...wiring, limitLatch: latch })(task);
+                assert.equal(latch.current()?.stage, "review run");
+            },
+            {
+                runClaude: async (prompt) =>
+                    /automated Code Reviewer/.test(prompt)
+                        ? { ok: false, summary: "cut off", limit: { text: "You've hit your limit" } }
+                        : { ok: true, summary: "" },
+            }
         );
     });
 });

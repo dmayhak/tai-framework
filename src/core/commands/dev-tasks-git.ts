@@ -46,6 +46,28 @@ export async function assertCleanTree(cwd: string, taiRoot: string): Promise<voi
     }
 }
 
+/**
+ * TAI-706: the branch of a ticket whose run was cut off mid-build, or null. It is the checked-out branch when that is the ticket's
+ * Story branch (`<STORY>-slug`, brief §6) and the tree holds uncommitted work: the run must continue there, not start from the default branch.
+ */
+export async function cutOffBranch(cwd: string, taiRoot: string, storyKey: string): Promise<string | null> {
+    let branch: string;
+    try {
+        branch = (await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).stdout.trim();
+    } catch {
+        return null;
+    }
+    if (branch === "HEAD" || !(branch === storyKey || branch.startsWith(`${storyKey}-`))) return null;
+    const { porcelain } = await readWorkingTree(cwd, taiRoot);
+    return porcelain.trim() === "" ? null : branch;
+}
+
+/** Starts a ticket: continues on its own branch when a cut-off run left work there (AC-5), otherwise from a clean default branch. */
+export async function prepareForTicket(cwd: string, taiRoot: string, storyKey: string): Promise<void> {
+    if ((await cutOffBranch(cwd, taiRoot, storyKey)) !== null) return;
+    await prepareCleanDefaultBranch(cwd, taiRoot);
+}
+
 /** Throws unless the tree is clean; then checks out the default branch and brings it up to date. */
 export async function prepareCleanDefaultBranch(cwd: string, taiRoot: string): Promise<void> {
     await assertCleanTree(cwd, taiRoot);
