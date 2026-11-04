@@ -308,7 +308,9 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             child.stdout?.destroy();
             child.stderr?.destroy();
             // A limit message can come back with exit code 0, so the end of the output is read for every result.
-            const limit = detectUsageLimit(tail);
+            const found = detectUsageLimit(tail);
+            // The line is posted to the ticket, so it is redacted like the summaries are.
+            const limit = found ? { ...found, text: redactSecrets(found.text) } : null;
             resolve(limit ? { ...result, ok: false, limit } : result);
         };
         const timer = setTimeout(() => {

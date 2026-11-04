@@ -448,6 +448,13 @@ describe("a run that ends on a usage limit (TAI-706)", () => {
         assert.ok(result.limit?.resetsAt);
     });
 
+    it("redacts a secret in the limit line, since the line is posted to the ticket", async () => {
+        const result = await runWith('echo "5-hour limit reached ∙ resets 3pm Bearer abcdefgh12345678"');
+        assert.ok(result.limit, "a limit");
+        assert.doesNotMatch(result.limit.text, /abcdefgh12345678/);
+        assert.match(result.limit.text, /Bearer \*\*\*/);
+    });
+
     it("carries the limit when the run exits non-zero", async () => {
         const result = await runWith('echo "Claude AI usage limit reached|1793800000"\nexit 1');
         assert.equal(result.ok, false);

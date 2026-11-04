@@ -859,6 +859,13 @@ describe("pausing on a usage limit (TAI-706)", () => {
         assert.equal(results.length, 3);
     });
 
+    it("reads each ticket's pause once for the run, not again on every pick", async () => {
+        const reads: string[] = [];
+        const d = deps({ pausedOnLimit: async (t) => (reads.push(t.issue.key), false) });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11"), task("TAI-12")], skipped: [] }), d);
+        assert.equal(new Set(reads).size, reads.length, "no ticket read twice");
+    });
+
     it("keeps the usual order when no ticket was paused, or when the pause cannot be read", async () => {
         const none = deps({ pausedOnLimit: async () => false });
         await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), none);

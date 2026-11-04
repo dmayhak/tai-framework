@@ -79,7 +79,7 @@ export function parseReset(line: string, now: Date): Date | undefined {
         const n = Number(epoch[1]);
         return new Date(epoch[1]!.length > 10 ? n : n * 1000);
     }
-    const clock = /resets?(?:\s+at)?\s+(?:([A-Za-z]{3})[a-z]*\s+(\d{1,2}),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b(?:\s*\(([A-Za-z_]+(?:\/[A-Za-z_+-]+){1,2})\))?/i.exec(line);
+    const clock = /resets?(?:\s+at)?\s+(?:([A-Za-z]{3})[a-z]*\s+(\d{1,2}),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b(?:\s*\(([A-Za-z_]+(?:\/[A-Za-z_+-]+){0,2})\))?/i.exec(line);
     if (!clock) return undefined;
     const hour12 = Number(clock[3]);
     if (hour12 < 1 || hour12 > 12) return undefined;
@@ -193,7 +193,9 @@ export function pausedHandoff(limit: UsageLimit, stage: string): string {
     const reset = limit.resetsAt ? ` It resets at ${limit.resetsAt.toISOString()}.` : "";
     const next = isContinuableStage(stage)
         ? CONTINUES_LINE
-        : 'Next: the PR is already open, so "Do all dev tasks" skips this ticket. Once the limit has reset, continue it with /tai-work, or review and merge the PR by hand.';
+        : stage === "verification run"
+          ? `Next: the PR is already merged, so only the verification is left. Once the limit has reset, run /tai-verify on the Story by hand.`
+          : 'Next: the PR is already open, so "Do all dev tasks" skips this ticket. Once the limit has reset, continue it with /tai-work, or review and merge the PR by hand.';
     return (
         `${PAUSED_NOTE_START} The account's usage limit was reached while this ticket's ${stage} was running: "${limit.text}".${reset}\n\n` +
         "This is not a failure of the ticket. The branch and any uncommitted work were left as they were.\n\n" +

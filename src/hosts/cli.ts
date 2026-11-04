@@ -2457,6 +2457,7 @@ async function main(): Promise<void> {
         // TAI-706: the ticket is read once per attempt (in prepare) and that answer is used by the build, so a read that fails in between
         // cannot make the build disagree with the branch prepare chose.
         const pausedRead = new Map<string, boolean>();
+        const pausedSeed = new Map<string, boolean>(); // answers already read while picking the next ticket; prepare uses one once instead of reading again
         const pausedOnLimit = async (key: IssueKey): Promise<boolean> => pausedRead.get(key) ?? wasPausedOnLimit(config.backend.workTracker, key);
         const yoloWiring = yolo
             ? {
@@ -2494,7 +2495,11 @@ async function main(): Promise<void> {
             : null;
         const worked = await workDevTasks(find, {
             yolo,
-            pausedOnLimit: (task) => wasPausedOnLimit(config.backend.workTracker, task.issue.key),
+            pausedOnLimit: async (task) => {
+                const paused = await wasPausedOnLimit(config.backend.workTracker, task.issue.key);
+                pausedSeed.set(task.issue.key, paused);
+                return paused;
+            },
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
             limitLatch,
@@ -2502,7 +2507,8 @@ async function main(): Promise<void> {
             sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
             say: (line) => console.log(line),
             prepare: async (task) => {
-                const paused = await wasPausedOnLimit(config.backend.workTracker, task.issue.key);
+                const paused = pausedSeed.get(task.issue.key) ?? (await wasPausedOnLimit(config.backend.workTracker, task.issue.key));
+                pausedSeed.delete(task.issue.key);
                 pausedRead.set(task.issue.key, paused);
                 await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, paused);
             },

@@ -128,6 +128,11 @@ describe("reading a reset time", () => {
             assert.equal(parseReset("resets Nov 7, 10am (America/Denver)", at)?.toISOString(), "2026-11-07T17:00:00.000Z");
         });
 
+        it("reads a bare zone name such as UTC or GMT, which has no slash", () => {
+            assert.equal(parseReset("resets 3pm (UTC)", at)?.toISOString(), "2026-11-05T15:00:00.000Z", "3pm UTC is already past at 17:00Z, so tomorrow's");
+            assert.equal(parseReset("resets 3pm (GMT)", at)?.toISOString(), "2026-11-05T15:00:00.000Z");
+        });
+
         it("falls back to the machine's clock for a zone name that is not one", () => {
             const local = new Date(2026, 10, 4, 10, 0);
             assert.equal(parseReset("resets 3pm (Not/AZone)", local)?.getTime(), new Date(2026, 10, 4, 15, 0).getTime());
@@ -198,6 +203,12 @@ describe("the latch and the note", () => {
         assert.deepEqual(latch.current(), { limit: { text: "first" }, stage: "build run" });
         latch.clear();
         assert.equal(latch.current(), null);
+    });
+
+    it("says a verification-run pause is after the merge, not an open PR", () => {
+        const note = pausedHandoff({ text: "5-hour limit reached" }, "verification run");
+        assert.match(note, /already merged[\s\S]*\/tai-verify/);
+        assert.doesNotMatch(note, /already open/);
     });
 
     it("writes a neutral note that says where it stopped and when it resets", () => {

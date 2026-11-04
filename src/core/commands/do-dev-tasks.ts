@@ -295,15 +295,19 @@ export interface WorkedDevTasks {
  * The next ticket to work: the first not yet attempted, except that one whose own newest hand-off is a usage-limit pause comes first.
  * Its cut-off work is still in the working tree, and any other ticket prepared before it would stop the run on that dirty tree.
  */
-async function pickNext(tasks: readonly DevTask[], attempted: ReadonlySet<IssueKey>, deps: RunDevTasksDeps): Promise<DevTask | undefined> {
+async function pickNext(tasks: readonly DevTask[], attempted: ReadonlySet<IssueKey>, deps: RunDevTasksDeps, known: Map<IssueKey, boolean>): Promise<DevTask | undefined> {
     const open = tasks.filter((t) => !attempted.has(t.issue.key));
     if (open.length > 1 && deps.pausedOnLimit) {
         for (const t of open) {
-            let paused = false;
-            try {
-                paused = await deps.pausedOnLimit(t);
-            } catch {
-                // an unreadable ticket keeps its place; its own run reports the problem
+            // Read once per ticket for the run: a ticket's own note changes only when its own attempt ends (the entry is dropped then).
+            let paused = known.get(t.issue.key);
+            if (paused === undefined) {
+                try {
+                    paused = await deps.pausedOnLimit(t);
+                    known.set(t.issue.key, paused);
+                } catch {
+                    paused = false; // an unreadable ticket keeps its place; its own run reports the problem
+                }
             }
             if (paused) return t;
         }
@@ -318,6 +322,7 @@ async function pickNext(tasks: readonly DevTask[], attempted: ReadonlySet<IssueK
  */
 export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDeps, firstLook?: FoundDevTasks): Promise<WorkedDevTasks> {
     const attempted = new Set<IssueKey>();
+    const pausedKnown = new Map<IssueKey, boolean>();
     const results: DevTaskResult[] = [];
     let waits = 0;
     let pending = firstLook;
@@ -328,11 +333,12 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
         const found = pending ?? (await find());
         pending = undefined;
         last = found;
-        const next = await pickNext(found.tasks, attempted, deps);
+        const next = await pickNext(found.tasks, attempted, deps, pausedKnown);
         if (!next) return { results, found };
         attempted.add(next.issue.key);
         deps.limitLatch?.clear();
         const result = await runDevTask(next, deps);
+        pausedKnown.delete(next.issue.key);
         results.push(result);
         if (result.outcome.state === "paused") {
             // TAI-706: no further ticket is started. With wait=<hours> and a reset within that cap, sleep until it and take a fresh look;
@@ -433,7 +439,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
                     const o = r.outcome as Extract<DevTaskOutcome, { state: "paused" }>;
                     const reset = o.limit.resetsAt ? `resets ${o.limit.resetsAt.toISOString()}` : "reset time not known";
                     const why = o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "";
-                    return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} ${o.carriedOn ? "The run waited for the reset and carried on with the other tickets." : "No further ticket was started."} ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
+                    return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} ${o.carriedOn ? "The run waited for the reset and carried on with the other tickets." : "No further ticket was started."} ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : o.stage === "verification run" ? "The PR is already merged: run /tai-verify on the Story by hand after the reset (note left on the ticket)." : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
                 })
             );
         }
