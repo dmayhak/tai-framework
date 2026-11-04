@@ -48,6 +48,8 @@ import {
     unlinkIssues,
     isHelpRequest,
     renderUsage,
+    postReviewDecision,
+    postReviewFindings,
 } from "./cli.js";
 import type { IssueFilter, IssueKey, WorkTracker } from "../core/storage/interface.js";
 import type { InitState } from "../core/commands/target-init.js";
@@ -1283,5 +1285,54 @@ describe("renderUsage (TAI-704)", () => {
         assert.ok(dispatched.length >= 15, "found the dispatch branches");
         const out = renderUsage();
         for (const name of dispatched) assert.match(out, new RegExp(`^  ${name}[ \\n]`, "m"), `${name} is missing from the help`);
+    });
+});
+
+describe("git-pr review and comment-findings refuse a PR that is no longer open (TAI-728)", () => {
+    const findings = JSON.stringify({
+        reviewOf: { repo: "acme/widgets", pr: "7", commit: "abc123def456" },
+        overview: "A small change.",
+        coverage: { filesRead: ["a.ts"], commandsRun: [], claimsVerified: [], notChecked: "Everything else." },
+        findings: [{ severity: "suggestion", category: "Style", title: "Naming", file: "a.ts", line: 3, issue: "Rename it." }],
+        leaning: "approve",
+        leaningReason: "Fine.",
+    });
+    const human = { id: toHumanId("bob"), displayName: "Bob", email: "bob@example.com" } as HumanRef;
+
+    /** A host whose PR 7 has the given state. Every call is recorded; a call that writes to the PR is listed in `writes`. */
+    function fakeHost(state: string) {
+        const writes: string[] = [];
+        const pr = { id: "7", repo: "acme/widgets", state, sourceCommit: "abc123", sourceBranch: "b", destinationBranch: "main" };
+        const host = new Proxy({} as Record<string, unknown>, {
+            get: (_t, name: string) => {
+                if (name === "getPullRequest") return async () => pr;
+                return async () => {
+                    writes.push(name);
+                    return { id: "1", body: "" };
+                };
+            },
+        });
+        return { host: host as unknown as Parameters<typeof postReviewDecision>[0]["gitHost"], writes };
+    }
+    const config = { taiRoot: "/nonexistent/tai-root", actingPersona: undefined } as Parameters<typeof postReviewDecision>[0]["config"];
+
+    for (const state of ["merged", "declined"]) {
+        it(`git-pr review on a ${state} PR throws the refusal and posts nothing`, async () => {
+            const { host, writes } = fakeHost(state);
+            await assert.rejects(postReviewDecision({ gitHost: host, currentHuman: human, config }, "acme/widgets", ["7", "requestChanges"]), new RegExp(`^Error: Not posted: PR 7 is ${state}`));
+            assert.deepEqual(writes, []);
+        });
+
+        it(`git-pr comment-findings on a ${state} PR throws the refusal and posts nothing`, async () => {
+            const { host, writes } = fakeHost(state);
+            await assert.rejects(postReviewFindings({ gitHost: host, currentHuman: human, config }, "acme/widgets", ["7", findings]), new RegExp(`^Error: Not posted: PR 7 is ${state}`));
+            assert.deepEqual(writes, []);
+        });
+    }
+
+    it("git-pr review on an open PR is not refused for being closed (the check is what refuses, not the fake)", async () => {
+        const { host, writes } = fakeHost("open");
+        await postReviewDecision({ gitHost: host, currentHuman: human, config }, "acme/widgets", ["7", "requestChanges"]);
+        assert.deepEqual(writes, ["reviewPullRequest"]);
     });
 });

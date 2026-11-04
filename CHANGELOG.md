@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 160 (2026-11-04)
+
+**TAI-729 (Bug TAI-728): the refusal of a merged or declined PR is tested at the two CLI call sites.** TAI-727 refused `git-pr review` and `git-pr comment-findings` on a PR that is no longer open, but only the pure function `reviewOfClosedPullRequestRefusal` had a test, so removing either check left the suite green. The bodies of those two actions moved out of the dispatch handler into exported `postReviewDecision` and `postReviewFindings` in `cli.ts`, with no change in behaviour. `cli.test.ts` drives each with a fake git host whose PR is merged or declined, and asserts the refusal is thrown and nothing is written to the PR. Removing either check makes its tests fail (checked by deleting each in turn).
+
 ## rev 159 (2026-11-03)
 
 **TAI-740 (Bug): `git-pr review-prep` shows the reviewer a `Conflict resolution:` PR comment.** In the live conflict trial (PR 37 of the scratch project) both reviewer runs said they did not read the PR comments: the reviewer prompt told them to check the resolver's `Conflict resolution:` comment against the merge commit, but nothing in `review-prep` printed it. `review-prep` now reads the PR's comments (best effort) and, when one starts with `Conflict resolution:`, prints the newest after the author's account under "Conflict resolution comment", labelled as data and without claiming who wrote it or that the newest commit is a merge. A comment over 4,000 characters is cut with a note to read the rest or list it under `notChecked`. When the diff has to be shown inline, the section's length comes out of the diff's share of the output budget. If the comments cannot be read it says so and tells the reviewer to name that under `notChecked`. The reviewer prompt points at that section. Tests: `review-prep.test.ts`.

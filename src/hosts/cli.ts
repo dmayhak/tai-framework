@@ -492,6 +492,93 @@ async function resolveGitHost(
     return { gitHost: new PersonaScopedGitHost(backend.gitHost, personaConfig), personaId: personaConfig.id, issue };
 }
 
+/** What the review-posting actions need: the host, who is acting, and the config for the review files and the stamp. */
+export interface ReviewPostingDeps {
+    readonly gitHost: GitHost;
+    readonly currentHuman: HumanRef;
+    readonly config: Pick<ResolvedConfig, "taiRoot" | "actingPersona">;
+}
+
+/** `git-pr review`: records an approve or request-changes decision. Exported so the refusals can be tested without the dispatch handler (TAI-728). */
+export async function postReviewDecision(deps: ReviewPostingDeps, repoArg: string, gitArgs: readonly string[]): Promise<void> {
+    const { gitHost, currentHuman, config } = deps;
+    const repo = toRepoId(repoArg);
+
+    const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
+    const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+    // Never a decision after the merge (or a close): the PR is read live, so a run that outlives the merge posts nothing.
+    const reviewed = await gitHost.getPullRequest(repo, prId);
+    if (!reviewed) throw new Error(`PR ${prId} not found on ${repo}.`);
+    const closedDecision = reviewOfClosedPullRequestRefusal(reviewed.state, String(prId), "decision");
+    if (closedDecision) throw new Error(closedDecision);
+    // TAI-527: an approval counts for the PR's current commit, so it is refused when review-prep
+    // last ran here for an older one. A request for changes is always allowed.
+    // Looked up only for an approval, so a request for changes never depends on this read succeeding.
+    if (decision === "approve") {
+        const refusal = reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), reviewed.sourceCommit);
+        if (refusal) throw new Error(refusal);
+    }
+    // TAI-575: once review-prep has run for this PR here, the findings must have been rendered before a decision.
+    const unrenderedDecision = unrenderedDecisionRefusal(
+        decision,
+        await readReviewManifest(config.taiRoot, repoArg, String(prId)),
+        await readRenderedFindings(config.taiRoot, repoArg, String(prId))
+    );
+    if (unrenderedDecision) throw new Error(unrenderedDecision);
+    // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
+    await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
+    console.log(`# Review posted (as ${actingHumanLabel(currentHuman)})\n\n${decision} on PR ${prId}.`);
+}
+
+/** `git-pr comment-findings`: posts the rendered findings as PR comments. Exported so the refusals can be tested without the dispatch handler (TAI-728). */
+export async function postReviewFindings(deps: ReviewPostingDeps, repoArg: string, gitArgs: readonly string[]): Promise<void> {
+    const { gitHost, currentHuman, config } = deps;
+    const repo = toRepoId(repoArg);
+
+    const { prIdArg, findingsArg } = parseFindingsCommentArgs(gitArgs);
+    const findings = parseReviewFindings(findingsArg);
+    const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
+    const reviewedPr = await gitHost.getPullRequest(repo, prId);
+    if (!reviewedPr) throw new Error(`PR ${prId} not found on ${repo}.`);
+    const closedReview = reviewOfClosedPullRequestRefusal(reviewedPr.state, String(prId), "review");
+    if (closedReview) throw new Error(closedReview);
+    // TAI-527: a review is of one PR. Refuse to post findings written for another.
+    const wrongPr = reviewOfMismatch(findings.reviewOf, repoArg, String(prId));
+    if (wrongPr) throw new Error(wrongPr);
+    // TAI-575: what is posted must be what render-findings rendered for this PR. Refused before anything is posted.
+    const unrendered = unrenderedFindingsRefusal(findings, await readRenderedFindings(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr));
+    if (unrendered) throw new Error(unrendered);
+    const manifest = await readReviewManifest(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr);
+    // The PR's head now: the only thing that can show a push made after the review was prepared.
+    const liveCommit = (await gitHost.getPullRequest(repo, prId))?.sourceCommit;
+
+    const eligible = selectInlineFindings(findings.findings);
+    const inlineFailures: string[] = [];
+    for (const f of eligible) {
+        try {
+            await gitHost.addInlineComment(repo, prId, {
+                path: f.file,
+                line: f.line!,
+                body: stampComment(renderInlineComment(f), actingPersonaOf(config)),
+            });
+        } catch (err) {
+            // A failed inline post (e.g. `line` isn't actually part of the diff) never blocks the
+            // summary, which lists the finding in full anyway; it is reported to the person here.
+            inlineFailures.push(`${f.file}:${f.line} (${f.title}) — ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+
+    const comment = await gitHost.addPullRequestComment(
+        repo,
+        prId,
+        stampComment(renderReviewFindings(findings, manifest, liveCommit), actingPersonaOf(config))
+    );
+    const failureNote = inlineFailures.length > 0
+        ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- still listed in the summary above.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
+        : "";
+    console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}${failureNote}`);
+}
+
 /**
  * Resolves who's allowed to run `git-pr review` (rev 52, TAI-159 ADR — see the AskUserQuestion-
  * confirmed decision this implements): authorization is no longer "does this issue's persona
@@ -1910,32 +1997,7 @@ async function main(): Promise<void> {
             const [repoArg, ...gitArgs] = actionArgs;
             if (!repoArg) throw new Error(usage);
             const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
-            const repo = toRepoId(repoArg);
-
-            const { prIdArg, decision, comment } = parseReviewArgs(gitArgs);
-            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
-            // Never a decision after the merge (or a close): the PR is read live, so a run that outlives the merge posts nothing.
-            const reviewed = await gitHost.getPullRequest(repo, prId);
-            if (!reviewed) throw new Error(`PR ${prId} not found on ${repo}.`);
-            const closedDecision = reviewOfClosedPullRequestRefusal(reviewed.state, String(prId), "decision");
-            if (closedDecision) throw new Error(closedDecision);
-            // TAI-527: an approval counts for the PR's current commit, so it is refused when review-prep
-            // last ran here for an older one. A request for changes is always allowed.
-            // Looked up only for an approval, so a request for changes never depends on this read succeeding.
-            if (decision === "approve") {
-                const refusal = reviewDecisionRefusal(decision, await readReviewManifest(config.taiRoot, repoArg, String(prId)), reviewed.sourceCommit);
-                if (refusal) throw new Error(refusal);
-            }
-            // TAI-575: once review-prep has run for this PR here, the findings must have been rendered before a decision.
-            const unrenderedDecision = unrenderedDecisionRefusal(
-                decision,
-                await readReviewManifest(config.taiRoot, repoArg, String(prId)),
-                await readRenderedFindings(config.taiRoot, repoArg, String(prId))
-            );
-            if (unrenderedDecision) throw new Error(unrenderedDecision);
-            // TAI-475: a decision made through the CLI always leaves a stamped PR comment saying so.
-            await gitHost.reviewPullRequest(repo, prId, decision, reviewDecisionComment(decision, comment, actingPersonaOf(config)));
-            console.log(`# Review posted (as ${actingHumanLabel(currentHuman)})\n\n${decision} on PR ${prId}.`);
+            await postReviewDecision({ gitHost, currentHuman, config }, repoArg, gitArgs);
             return;
         }
 
@@ -2014,50 +2076,7 @@ async function main(): Promise<void> {
             const [repoArg, ...gitArgs] = actionArgs;
             if (!repoArg) throw new Error(usage);
             const { gitHost, currentHuman } = await resolveReviewerGitHost(config);
-            const repo = toRepoId(repoArg);
-
-            const { prIdArg, findingsArg } = parseFindingsCommentArgs(gitArgs);
-            const findings = parseReviewFindings(findingsArg);
-            const prId = await resolvePullRequestId(gitHost, repo, prIdArg);
-            const reviewedPr = await gitHost.getPullRequest(repo, prId);
-            if (!reviewedPr) throw new Error(`PR ${prId} not found on ${repo}.`);
-            const closedReview = reviewOfClosedPullRequestRefusal(reviewedPr.state, String(prId), "review");
-            if (closedReview) throw new Error(closedReview);
-            // TAI-527: a review is of one PR. Refuse to post findings written for another.
-            const wrongPr = reviewOfMismatch(findings.reviewOf, repoArg, String(prId));
-            if (wrongPr) throw new Error(wrongPr);
-            // TAI-575: what is posted must be what render-findings rendered for this PR. Refused before anything is posted.
-            const unrendered = unrenderedFindingsRefusal(findings, await readRenderedFindings(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr));
-            if (unrendered) throw new Error(unrendered);
-            const manifest = await readReviewManifest(config.taiRoot, findings.reviewOf.repo, findings.reviewOf.pr);
-            // The PR's head now: the only thing that can show a push made after the review was prepared.
-            const liveCommit = (await gitHost.getPullRequest(repo, prId))?.sourceCommit;
-
-            const eligible = selectInlineFindings(findings.findings);
-            const inlineFailures: string[] = [];
-            for (const f of eligible) {
-                try {
-                    await gitHost.addInlineComment(repo, prId, {
-                        path: f.file,
-                        line: f.line!,
-                        body: stampComment(renderInlineComment(f), actingPersonaOf(config)),
-                    });
-                } catch (err) {
-                    // A failed inline post (e.g. `line` isn't actually part of the diff) never blocks the
-                    // summary, which lists the finding in full anyway; it is reported to the person here.
-                    inlineFailures.push(`${f.file}:${f.line} (${f.title}) — ${err instanceof Error ? err.message : String(err)}`);
-                }
-            }
-
-            const comment = await gitHost.addPullRequestComment(
-                repo,
-                prId,
-                stampComment(renderReviewFindings(findings, manifest, liveCommit), actingPersonaOf(config))
-            );
-            const failureNote = inlineFailures.length > 0
-                ? `\n\n(${inlineFailures.length} inline comment${inlineFailures.length === 1 ? "" : "s"} failed to post -- still listed in the summary above.)\n${inlineFailures.map((f) => `  - ${f}`).join("\n")}`
-                : "";
-            console.log(`# Comment posted on PR ${prId} (as ${actingHumanLabel(currentHuman)})\n\n${comment.body}${failureNote}`);
+            await postReviewFindings({ gitHost, currentHuman, config }, repoArg, gitArgs);
             return;
         }
 
