@@ -2497,7 +2497,7 @@ async function main(): Promise<void> {
             say: (line) => console.log(line),
             prepare: async (task) => prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await wasPausedOnLimit(config.backend.workTracker, task.issue.key)),
             build: async (task) => {
-                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, (await wasPausedOnLimit(config.backend.workTracker, task.issue.key)) ? await cutOffBranch(process.cwd(), config.taiRoot, task.parent.key) : null), { cwd: process.cwd(), timeoutMs });
+                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, (await wasPausedOnLimit(config.backend.workTracker, task.issue.key)) ? await cutOffBranch(process.cwd(), task.parent.key) : null), { cwd: process.cwd(), timeoutMs });
                 if (built.limit) limitLatch.hit(built.limit, "build run");
                 return built;
             },

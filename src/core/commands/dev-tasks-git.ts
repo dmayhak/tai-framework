@@ -47,28 +47,27 @@ export async function assertCleanTree(cwd: string, taiRoot: string): Promise<voi
 }
 
 /**
- * TAI-706: the branch of a ticket whose run was cut off mid-build, or null. It is the checked-out branch when that is the ticket's
- * Story branch (`<STORY>-slug`, brief §6) and the tree holds uncommitted work: the run must continue there, not start from the default branch.
+ * TAI-706: the branch a ticket whose run was cut off mid-build continues on, or null. It is the checked-out branch when that is the
+ * ticket's Story branch (`<STORY>-slug`, brief §6), whether the run left uncommitted work or only local commits: either way the next
+ * build carries on from there, not from the default branch.
  */
-export async function cutOffBranch(cwd: string, taiRoot: string, storyKey: string): Promise<string | null> {
+export async function cutOffBranch(cwd: string, storyKey: string): Promise<string | null> {
     let branch: string;
     try {
         branch = (await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).stdout.trim();
     } catch {
         return null;
     }
-    if (branch === "HEAD" || !(branch === storyKey || branch.startsWith(`${storyKey}-`))) return null;
-    const { porcelain } = await readWorkingTree(cwd, taiRoot);
-    return porcelain.trim() === "" ? null : branch;
+    return branch !== "HEAD" && (branch === storyKey || branch.startsWith(`${storyKey}-`)) ? branch : null;
 }
 
 /**
- * Starts a ticket: continues on its own branch when THIS ticket was paused on a usage limit and left work there (`pausedOnLimit`, read
- * from its own hand-off), otherwise from a clean default branch. A dirty tree on the Story's branch that no pause explains, such as a
- * sibling ticket's failed run, still stops the run.
+ * Starts a ticket: continues on its own branch when THIS ticket was paused on a usage limit (`pausedOnLimit`, read from its own
+ * hand-off) and that branch is checked out, otherwise from a clean default branch. A dirty tree that no pause explains, such as a
+ * sibling ticket's failed run on the Story's branch, still stops the run.
  */
 export async function prepareForTicket(cwd: string, taiRoot: string, storyKey: string, pausedOnLimit: boolean): Promise<void> {
-    if (pausedOnLimit && (await cutOffBranch(cwd, taiRoot, storyKey)) !== null) return;
+    if (pausedOnLimit && (await cutOffBranch(cwd, storyKey)) !== null) return;
     await prepareCleanDefaultBranch(cwd, taiRoot);
 }
 

@@ -10,11 +10,12 @@ const NOW = new Date(2026, 10, 4, 10, 0, 0);
  * NOT RECORDED FROM A REAL HIT (TAI-706, AC-1 as amended): a real hit would use up the account. These are the messages Claude Code
  * is documented or reported to print, as the last output of a `claude -p` run. Replace them with a captured sample when one exists.
  */
-const REPORTED_LIMIT_MESSAGES: readonly { readonly name: string; readonly output: string; readonly resetsAt?: Date }[] = [
+const REPORTED_LIMIT_MESSAGES: readonly { readonly name: string; readonly output: string; readonly resetsAt?: Date; readonly now?: Date }[] = [
     { name: "older epoch form", output: "Claude AI usage limit reached|1793800000", resetsAt: new Date(1793800000 * 1000) },
     { name: "5-hour limit with a clock time", output: "5-hour limit reached ∙ resets 3pm", resetsAt: new Date(2026, 10, 4, 15, 0) },
-    { name: "hit your limit with minutes and a zone", output: "You've hit your limit · resets 3:30pm (America/Denver)", resetsAt: new Date(2026, 10, 4, 15, 30) },
-    { name: "prose form", output: "Claude usage limit reached. Your limit will reset at 3pm (America/Denver).", resetsAt: new Date(2026, 10, 4, 15, 0) },
+    // The zone is the message's own, so these use a fixed instant: 17:00Z on 2026-11-04 is 10:00 in Denver (MST, UTC-7).
+    { name: "hit your limit with minutes and a zone", output: "You've hit your limit · resets 3:30pm (America/Denver)", now: new Date("2026-11-04T17:00:00Z"), resetsAt: new Date("2026-11-04T22:30:00Z") },
+    { name: "prose form", output: "Claude usage limit reached. Your limit will reset at 3pm (America/Denver).", now: new Date("2026-11-04T17:00:00Z"), resetsAt: new Date("2026-11-04T22:00:00Z") },
     { name: "weekly limit with a date", output: "Weekly limit reached ∙ resets Nov 7, 10am", resetsAt: new Date(2026, 10, 7, 10, 0) },
     { name: "no reset time", output: "Your usage limit has been reached." },
 ];
@@ -22,7 +23,7 @@ const REPORTED_LIMIT_MESSAGES: readonly { readonly name: string; readonly output
 describe("detecting a usage limit (TAI-706)", () => {
     for (const sample of REPORTED_LIMIT_MESSAGES) {
         it(`recognises the ${sample.name}`, () => {
-            const found = detectUsageLimit(`Working on it...\nrunning tests\n${sample.output}\n`, NOW);
+            const found = detectUsageLimit(`Working on it...\nrunning tests\n${sample.output}\n`, sample.now ?? NOW);
             assert.ok(found, "a limit");
             if (sample.resetsAt) assert.equal(found.resetsAt?.getTime(), sample.resetsAt.getTime());
             else assert.equal(found.resetsAt, undefined);
@@ -49,6 +50,29 @@ describe("detecting a usage limit (TAI-706)", () => {
         });
     }
 
+    // A run's own closing summary, which a ticket about limits can easily end with (review of PR 51).
+    const summaryLines: readonly (readonly [string, string])[] = [
+        ["a bullet", "- detects the 5-hour limit reached message"],
+        ["a starred bullet", "* handles: the usage limit reached case"],
+        ["a numbered step", "3. the weekly limit reached output is parsed"],
+        ["a quote", "> Claude usage limit reached|1793800000"],
+        ["a heading", "## the usage limit reached path"],
+        ["code", "`5-hour limit reached` is the message"],
+        ["prose that talks about it", "Added detection of the 5-hour limit reached message."],
+        ["prose with the phrase in the middle", "The run stops when the usage limit is reached and resumes later."],
+    ];
+    for (const [name, line] of summaryLines) {
+        it(`does not mistake ${name} in the closing summary for a usage limit`, () => {
+            assert.equal(detectUsageLimit(`Opened the PR.\n${line}\nDone.`, NOW), null);
+        });
+    }
+
+    it("still recognises the real message with a leading symbol, and the message that starts with a digit", () => {
+        assert.ok(detectUsageLimit("⎿ 5-hour limit reached ∙ resets 3pm", NOW));
+        assert.ok(detectUsageLimit("5-hour limit reached ∙ resets 3pm", NOW));
+        assert.ok(detectUsageLimit("Opus weekly limit reached ∙ resets Nov 7, 10am", NOW));
+    });
+
     it("ignores a limit message that is not near the end of the output", () => {
         const output = ["5-hour limit reached ∙ resets 3pm", "one", "two", "three", "four", "five", "six"].join("\n");
         assert.equal(detectUsageLimit(output, NOW), null);
@@ -67,6 +91,36 @@ describe("reading a reset time", () => {
     it("reads 12am and 12pm", () => {
         assert.equal(parseReset("resets 12am", NOW)?.getHours(), 0);
         assert.equal(parseReset("resets 12pm", NOW)?.getHours(), 12);
+    });
+
+    describe("on the clock of the zone the message names", () => {
+        // 17:00Z on 2026-11-04: 10:00 in Denver (MST, UTC-7), 09:00 in Los Angeles (PST, UTC-8), 18:00 in Berlin (CET, UTC+1), 02:00 on the 5th in Tokyo.
+        const at = new Date("2026-11-04T17:00:00Z");
+        it("reads a clock time in that zone, whatever the machine's zone is", () => {
+            assert.equal(parseReset("resets 3pm (America/Denver)", at)?.toISOString(), "2026-11-04T22:00:00.000Z");
+            assert.equal(parseReset("resets 3pm (America/Los_Angeles)", at)?.toISOString(), "2026-11-04T23:00:00.000Z");
+            assert.equal(parseReset("resets 3pm (Europe/Berlin)", at)?.toISOString(), "2026-11-05T14:00:00.000Z", "already past in Berlin today, so tomorrow's");
+        });
+
+        it("takes today in that zone, which can be another date than in UTC", () => {
+            // 02:00 on the 5th in Tokyo: 1am is already past, so the next 1am is the 6th in Tokyo.
+            assert.equal(parseReset("resets 1am (Asia/Tokyo)", at)?.toISOString(), "2026-11-05T16:00:00.000Z");
+            assert.equal(parseReset("resets 11am (Asia/Tokyo)", at)?.toISOString(), "2026-11-05T02:00:00.000Z");
+        });
+
+        it("follows daylight saving: the same clock time is a different instant in summer", () => {
+            const summer = new Date("2026-07-04T17:00:00Z");
+            assert.equal(parseReset("resets 3pm (America/Denver)", summer)?.toISOString(), "2026-07-04T21:00:00.000Z", "MDT is UTC-6");
+        });
+
+        it("reads a date in that zone", () => {
+            assert.equal(parseReset("resets Nov 7, 10am (America/Denver)", at)?.toISOString(), "2026-11-07T17:00:00.000Z");
+        });
+
+        it("falls back to the machine's clock for a zone name that is not one", () => {
+            const local = new Date(2026, 10, 4, 10, 0);
+            assert.equal(parseReset("resets 3pm (Not/AZone)", local)?.getTime(), new Date(2026, 10, 4, 15, 0).getTime());
+        });
     });
 
     it("gives nothing for a time it cannot read", () => {

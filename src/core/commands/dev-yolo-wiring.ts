@@ -122,7 +122,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
     };
     const deps: YoloDeps = {
         rounds: w.rounds,
-        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, (await wasPausedOnLimit(w.workTracker, task.issue.key)) ? await cutOffBranch(w.cwd, w.taiDir, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, (await wasPausedOnLimit(w.workTracker, task.issue.key)) ? await cutOffBranch(w.cwd, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
         findPullRequest: (task) => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }),
         review: async (task) => {
             const pr = await pullRequest(task);

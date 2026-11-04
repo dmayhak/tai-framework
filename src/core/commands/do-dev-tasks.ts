@@ -179,7 +179,7 @@ export type DevTaskOutcome =
     | { readonly state: "waiting"; readonly reason: string }
     | { readonly state: "failed"; readonly reason: string }
     /** TAI-706: the account's usage limit was reached. Not a failure of the ticket; the batch stops here (or waits for the reset). */
-    | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string }
+    | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean }
     | { readonly state: "stopped"; readonly reason: string; readonly dirtyTree?: boolean };
 
 export interface RunDevTasksDeps {
@@ -328,8 +328,13 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
                     results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: "the run was interrupted during the wait" } };
                     return { results, found };
                 }
-                results.pop();
-                if (continuable) attempted.delete(next.issue.key);
+                // A ticket that will be tried again is replaced by how it ends; one that will not (its PR is open) stays in the report as paused.
+                if (continuable) {
+                    results.pop();
+                    attempted.delete(next.issue.key);
+                } else {
+                    results[results.length - 1] = { task: next, outcome: { ...result.outcome, carriedOn: true } };
+                }
                 deps.limitLatch?.clear();
                 continue;
             }
@@ -406,7 +411,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
                     const o = r.outcome as Extract<DevTaskOutcome, { state: "paused" }>;
                     const reset = o.limit.resetsAt ? `resets ${o.limit.resetsAt.toISOString()}` : "reset time not known";
                     const why = o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "";
-                    return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} No further ticket was started. ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
+                    return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} ${o.carriedOn ? "The run waited for the reset and carried on with the other tickets." : "No further ticket was started."} ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
                 })
             );
         }

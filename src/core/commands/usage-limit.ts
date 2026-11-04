@@ -23,49 +23,99 @@ const TAIL_LINES = 6;
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
-// "usage limit reached", "5-hour limit reached", "Weekly limit reached", "You've hit your limit"
-const NAMED_LIMIT = /\b(?:usage|5-hour|five-hour|weekly|daily|session|opus|sonnet)\s+limit\b/i;
-const REACHED = /\b(?:reached|hit|exceeded)\b/i;
-const HIT_YOUR_LIMIT = /\byou(?:'|’)?ve\s+(?:hit|reached)\s+your\b.*\blimit\b/i;
+// The message itself, from the start of the line: "Claude usage limit reached", "5-hour limit reached", "Weekly limit reached",
+// "Your usage limit has been reached", "You've hit your limit". Anchored at the start, so a summary line that merely talks about a
+// limit ("- detects the 5-hour limit reached message", "Added detection of the usage limit reached message") is not one.
+const LEAD = "^[^A-Za-z0-9]*";
+const NAMED_LIMIT = new RegExp(`${LEAD}(?:claude(?:\\s+ai)?\\s+)?(?:your\\s+)?(?:(?:opus|sonnet)\\s+)?(?:usage|5-hour|five-hour|weekly|daily|session|opus|sonnet)\\s+limit\\b[^.\\n]{0,30}?\\b(?:reached|hit|exceeded)\\b`, "i");
+const HIT_YOUR_LIMIT = new RegExp(`${LEAD}you(?:'|’)?ve\\s+(?:hit|reached)\\s+your\\b.*\\blimit\\b`, "i");
+// A list item, a quote, a heading, a numbered step or code: how a run's own summary is written, never how Claude Code prints a limit.
+const SUMMARY_LINE = /^\s*(?:[-*+>#`]|\d+[.)]\s)/;
 // A throttle (HTTP 429) is retried by Claude Code itself and has no reset time to wait for: it is not a usage limit.
 const THROTTLE = /rate[\s_-]?limit/i;
 const MAX_LINE = 300;
 
-/** The reset time in a limit message, read as local time (the message shows the person's own clock), or undefined. */
+interface WallClock {
+    readonly y: number;
+    readonly m: number;
+    readonly d: number;
+    readonly h: number;
+    readonly min: number;
+}
+
+/** The date and time on the wall clock of `zone` at `at`. Throws a RangeError for a name that is not a time zone. */
+function clockIn(at: Date, zone: string): WallClock {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }).formatToParts(at);
+    const n = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
+    return { y: n("year"), m: n("month") - 1, d: n("day"), h: n("hour"), min: n("minute") };
+}
+
+/** The instant at which the wall clock of `zone` reads y-m-d h:min (day overflow, such as the 32nd, rolls over). */
+function instantIn(zone: string, y: number, m: number, d: number, h: number, min: number): Date {
+    const wanted = Date.UTC(y, m, d, h, min);
+    let t = wanted;
+    // The zone's offset depends on the instant, so settle on it in two passes (a daylight-saving change in between is rare and settles too).
+    for (let i = 0; i < 2; i++) {
+        const c = clockIn(new Date(t), zone);
+        t += wanted - Date.UTC(c.y, c.m, c.d, c.h, c.min);
+    }
+    return new Date(t);
+}
+
+/**
+ * The reset time in a limit message, or undefined. An epoch is exact. A clock time ("resets 3pm", "resets 3:30pm (America/Denver)",
+ * "resets Nov 7, 10am") is read on the clock of the zone the message names, or the machine's own when it names none or one that is
+ * not a time zone; a clock time already past today is tomorrow's.
+ */
 export function parseReset(line: string, now: Date): Date | undefined {
     const epoch = /\|(\d{9,13})\b/.exec(line);
     if (epoch) {
         const n = Number(epoch[1]);
         return new Date(epoch[1]!.length > 10 ? n : n * 1000);
     }
-    const clock = /resets?(?:\s+at)?\s+(?:([A-Za-z]{3})[a-z]*\s+(\d{1,2}),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(line);
+    const clock = /resets?(?:\s+at)?\s+(?:([A-Za-z]{3})[a-z]*\s+(\d{1,2}),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b(?:\s*\(([A-Za-z_]+(?:\/[A-Za-z_+-]+){1,2})\))?/i.exec(line);
     if (!clock) return undefined;
     const hour12 = Number(clock[3]);
     if (hour12 < 1 || hour12 > 12) return undefined;
     const hour = (hour12 % 12) + (clock[5]!.toLowerCase() === "pm" ? 12 : 0);
     const minute = clock[4] ? Number(clock[4]) : 0;
     if (minute > 59) return undefined;
-    if (clock[1]) {
-        const month = MONTHS.indexOf(clock[1].toLowerCase());
-        if (month < 0) return undefined;
-        const at = new Date(now.getFullYear(), month, Number(clock[2]), hour, minute);
-        return at.getTime() <= now.getTime() ? new Date(now.getFullYear() + 1, month, Number(clock[2]), hour, minute) : at;
+    const monthIndex = clock[1] ? MONTHS.indexOf(clock[1].toLowerCase()) : -1;
+    if (clock[1] && monthIndex < 0) return undefined;
+    const day = clock[2] ? Number(clock[2]) : undefined;
+
+    let zone: string | undefined = clock[6];
+    let today: WallClock;
+    if (zone) {
+        try {
+            today = clockIn(now, zone);
+        } catch {
+            zone = undefined;
+            today = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate(), h: 0, min: 0 };
+        }
+    } else {
+        today = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate(), h: 0, min: 0 };
     }
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute);
-    return today.getTime() <= now.getTime() ? new Date(today.getTime() + 24 * 3_600_000) : today;
+    const at = (y: number, m: number, d: number): Date => (zone ? instantIn(zone, y, m, d, hour, minute) : new Date(y, m, d, hour, minute));
+    if (day !== undefined) {
+        const thisYear = at(today.y, monthIndex, day);
+        return thisYear.getTime() <= now.getTime() ? at(today.y + 1, monthIndex, day) : thisYear;
+    }
+    const first = at(today.y, today.m, today.d);
+    return first.getTime() <= now.getTime() ? at(today.y, today.m, today.d + 1) : first;
 }
 
 /**
- * The usage limit a run ended on, or null. Only the last few lines of the output count, and only a short line that names a usage
- * limit as reached; a throttle ("Rate limit reached") and a limit mentioned earlier in a long output are not a limit hit.
+ * The usage limit a run ended on, or null. Only the last few lines of the output count, and only a short line that STARTS with the
+ * message that a usage limit is reached; a throttle ("Rate limit reached"), a limit mentioned earlier in a long output and a summary
+ * line that talks about a limit are not a limit hit.
  */
 export function detectUsageLimit(output: string, now: Date = new Date()): UsageLimit | null {
     const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-TAIL_LINES);
     for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i]!;
-        if (line.length > MAX_LINE || THROTTLE.test(line)) continue;
-        const named = NAMED_LIMIT.test(line) && REACHED.test(line);
-        if (!named && !HIT_YOUR_LIMIT.test(line)) continue;
+        if (line.length > MAX_LINE || THROTTLE.test(line) || SUMMARY_LINE.test(line)) continue;
+        if (!NAMED_LIMIT.test(line) && !HIT_YOUR_LIMIT.test(line)) continue;
         const resetsAt = parseReset(line, now);
         return { text: line, ...(resetsAt ? { resetsAt } : {}) };
     }
@@ -149,9 +199,10 @@ export function pausedHandoff(limit: UsageLimit, stage: string): string {
  * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
  * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other (TAI-706 review).
  */
-export async function wasPausedOnLimit(workTracker: { getIssue(key: never): Promise<{ readonly comments: readonly { readonly body: string }[] } | null> }, key: string): Promise<boolean> {
+export async function wasPausedOnLimit(workTracker: { getIssue(key: never): Promise<{ readonly comments: readonly { readonly body: string; readonly createdAt?: string }[] } | null> }, key: string): Promise<boolean> {
     const issue = await workTracker.getIssue(key as never);
-    const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body));
+    // Newest last by the comment's own time, not by the order a host happens to return them in.
+    const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body)).sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
     const newest = handoffs[handoffs.length - 1];
     return newest !== undefined && newest.body.includes(PAUSED_NOTE_START) && newest.body.includes(CONTINUES_LINE);
 }

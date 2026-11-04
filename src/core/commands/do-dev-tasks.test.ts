@@ -961,7 +961,7 @@ describe("pausing on a usage limit (TAI-706)", () => {
             try {
                 r.g("checkout", "-q", "-b", "TAI-1-feature");
                 await writeFile(path.join(r.work, "a.txt"), "cut off half way");
-                assert.equal(await cutOffBranch(r.work, ".tai", "TAI-1"), "TAI-1-feature");
+                assert.equal(await cutOffBranch(r.work, "TAI-1"), "TAI-1-feature");
                 await prepareForTicket(r.work, ".tai", "TAI-1", true);
                 assert.equal(r.head(), "TAI-1-feature", "still on the ticket's branch");
                 assert.equal(await readFile(path.join(r.work, "a.txt"), "utf8"), "cut off half way", "its work is kept");
@@ -975,7 +975,7 @@ describe("pausing on a usage limit (TAI-706)", () => {
             try {
                 r.g("checkout", "-q", "-b", "TAI-2-other");
                 await writeFile(path.join(r.work, "a.txt"), "someone else's");
-                assert.equal(await cutOffBranch(r.work, ".tai", "TAI-1"), null);
+                assert.equal(await cutOffBranch(r.work, "TAI-1"), null);
                 await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", true), DirtyTreeError);
                 r.g("checkout", "-q", "--", "a.txt");
                 r.g("checkout", "-q", "main");
@@ -998,13 +998,28 @@ describe("pausing on a usage limit (TAI-706)", () => {
             }
         });
 
-        it("starts from the default branch as before when the ticket's branch is clean", async () => {
+        it("starts from the default branch as before when this ticket was not paused", async () => {
             const r = await repo();
             try {
                 r.g("checkout", "-q", "-b", "TAI-1-feature");
-                assert.equal(await cutOffBranch(r.work, ".tai", "TAI-1"), null);
-                await prepareForTicket(r.work, ".tai", "TAI-1", true);
+                await prepareForTicket(r.work, ".tai", "TAI-1", false);
                 assert.equal(r.head(), "main");
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("continues from commits a cut-off run made locally, with a clean tree, not from the default branch", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                await writeFile(path.join(r.work, "b.txt"), "committed before the limit hit");
+                r.g("add", "."); r.g("commit", "-q", "-m", "work in progress");
+                const before = execFileSync("git", ["rev-parse", "HEAD"], { cwd: r.work }).toString().trim();
+                assert.equal(await cutOffBranch(r.work, "TAI-1"), "TAI-1-feature");
+                await prepareForTicket(r.work, ".tai", "TAI-1", true);
+                assert.equal(r.head(), "TAI-1-feature");
+                assert.equal(execFileSync("git", ["rev-parse", "HEAD"], { cwd: r.work }).toString().trim(), before, "its commits are kept");
             } finally {
                 await rm(r.dir, { recursive: true, force: true });
             }
@@ -1025,6 +1040,13 @@ describe("pausing on a usage limit (TAI-706)", () => {
 
         it("is true when the newest hand-off is a build-stage pause", async () => {
             assert.equal(await wasPausedOnLimit(tracker(buildPause + "\n\nPosted via the TAI CLI as Dev."), "TAI-10"), true);
+        });
+
+        it("reads the newest by the comment's own time, not by the order the host returned them in", async () => {
+            const t = { getIssue: async () => ({ comments: [{ body: buildPause, createdAt: "2026-11-04T12:00:00Z" }, { body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T09:00:00Z" }] }) };
+            assert.equal(await wasPausedOnLimit(t, "TAI-10"), true, "the pause is newer even though it is listed first");
+            const u = { getIssue: async () => ({ comments: [{ body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T13:00:00Z" }, { body: buildPause, createdAt: "2026-11-04T12:00:00Z" }] }) };
+            assert.equal(await wasPausedOnLimit(u, "TAI-10"), false, "a newer failure hand-off replaced it even though it is listed first");
         });
 
         it("is false for a failure hand-off, a later-stage pause, no hand-off, or a pause that a newer hand-off replaced", async () => {
@@ -1067,7 +1089,10 @@ describe("pausing on a usage limit (TAI-706)", () => {
         assert.equal(sleeps.length, 1);
         assert.match(said[0]!, /carrying on with the other tickets \(TAI-10 has an open PR/);
         assert.deepEqual(d.calls.filter((c) => c.startsWith("yolo")), ["yolo TAI-10", "yolo TAI-11"]);
-        assert.deepEqual(results.map((r) => r.task.issue.key), ["TAI-11"]);
+        // The paused ticket stays in the report (a later run will not pick it up), and it says the run carried on without it.
+        assert.deepEqual(results.map((r) => [r.task.issue.key, r.outcome.state]), [["TAI-10", "paused"], ["TAI-11", "waiting"]]);
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true }), /## Paused \(1\)[\s\S]*review run[\s\S]*The run waited for the reset and carried on with the other tickets\.[\s\S]*continue it with \/tai-work/);
+        assert.doesNotMatch(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true }), /No further ticket was started/);
     });
 
     it("an interrupt during the wait keeps the paused ticket in the report", async () => {
