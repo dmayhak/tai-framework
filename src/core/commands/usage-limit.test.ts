@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { decideWait, detectUsageLimit, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
+import { decideWait, detectUsageLimit, limitMention, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
 
 // A fixed local "now": 2026-11-04 10:00 on the machine's own clock, so clock-time resets read the same everywhere.
 const NOW = new Date(2026, 10, 4, 10, 0, 0);
@@ -91,6 +91,18 @@ describe("detecting a usage limit (TAI-706)", () => {
 
     it("ignores a very long line that merely mentions a limit", () => {
         assert.equal(detectUsageLimit(`the usage limit was reached ${"x".repeat(400)}`, NOW), null);
+    });
+});
+
+describe("a failed run that mentions a limit this detector does not know", () => {
+    it("is reported by limitMention", () => {
+        assert.equal(limitMention("working\nYou're out of extra usage · resets 3pm"), "You're out of extra usage · resets 3pm");
+        assert.equal(limitMention("working\nSession limit: come back later"), "Session limit: come back later");
+    });
+    it("is not reported for a throttle, a summary line or an output that says nothing of a limit", () => {
+        assert.equal(limitMention("API Error: Rate limit reached"), null);
+        assert.equal(limitMention("- handled the usage limit"), null);
+        assert.equal(limitMention("npm ERR! Exit status 1"), null);
     });
 });
 

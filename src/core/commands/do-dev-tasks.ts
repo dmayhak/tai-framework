@@ -346,6 +346,12 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             const { limit } = result.outcome;
             const now = deps.now?.() ?? new Date();
             const decision = deps.waitHours === undefined || !deps.sleep ? ({ wait: false, why: "no wait= was given" } as const) : decideWait(limit, deps.waitHours, now);
+            // A ticket that cannot be continued (its PR is open) buys nothing from a wait when no other ticket is left to carry on with.
+            const worthWaiting = isContinuableStage(result.outcome.stage) || found.tasks.some((t) => t.issue.key !== next.issue.key && !attempted.has(t.issue.key));
+            if (decision.wait && !worthWaiting) {
+                results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: "no other ticket is left to carry on with, and this one cannot be continued by a later run" } };
+                return { results, found };
+            }
             if (decision.wait && waits < MAX_WAITS_PER_RUN && !deps.interrupted?.()) {
                 waits++;
                 const continuable = isContinuableStage(result.outcome.stage);

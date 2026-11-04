@@ -2458,7 +2458,12 @@ async function main(): Promise<void> {
         // cannot make the build disagree with the branch prepare chose.
         const pausedRead = new Map<string, boolean>();
         const pausedSeed = new Map<string, boolean>(); // answers already read while picking the next ticket; prepare uses one once instead of reading again
-        const pausedOnLimit = async (key: IssueKey): Promise<boolean> => pausedRead.get(key) ?? wasPausedOnLimit(config.backend.workTracker, key);
+        const pausedOnLimit = async (key: IssueKey): Promise<boolean> => {
+            // Used once, by the build that follows its preparation, then dropped: the answer lives for one attempt.
+            const read = pausedRead.get(key);
+            pausedRead.delete(key);
+            return read ?? wasPausedOnLimit(config.backend.workTracker, key);
+        };
         const yoloWiring = yolo
             ? {
                   gitHost: gitDeps.gitHost,

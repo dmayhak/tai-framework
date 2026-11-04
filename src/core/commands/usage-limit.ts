@@ -128,6 +128,20 @@ export function detectUsageLimit(output: string, now: Date = new Date()): UsageL
     return null;
 }
 
+/**
+ * The last lines of a run's output that mention a limit or running out of usage, or null. Used only for a run that failed without
+ * matching a known message: its wording may be a usage limit this detector has not seen, and the person should be told (TAI-706 review).
+ */
+export function limitMention(output: string): string | null {
+    const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-TAIL_LINES);
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i]!;
+        if (line.length > MAX_LINE || THROTTLE.test(line) || SUMMARY_LINE.test(line)) continue;
+        if (/\blimit\b|out of (?:extra )?usage/i.test(line)) return line;
+    }
+    return null;
+}
+
 /** Records the first usage limit a run hit, so every step that learns of it, and the code that stops the batch, read the same one. */
 export class UsageLimitLatch {
     private limit: UsageLimit | null = null;
@@ -207,10 +221,16 @@ export function pausedHandoff(limit: UsageLimit, stage: string): string {
  * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
  * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other (TAI-706 review).
  */
+/** A comment's time as a number, so offsets like -0700 compare exactly; a missing or unreadable one sorts first and keeps its list order. */
+function timeOf(createdAt: string | undefined): number {
+    const t = createdAt ? Date.parse(createdAt) : NaN;
+    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+}
+
 export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue">, key: IssueKey): Promise<boolean> {
     const issue = await workTracker.getIssue(key);
     // Newest last by the comment's own time, not by the order a host happens to return them in.
-    const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body)).sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+    const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body)).sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
     const newest = handoffs[handoffs.length - 1];
     return newest !== undefined && newest.body.includes(PAUSED_NOTE_START) && newest.body.includes(CONTINUES_LINE);
 }

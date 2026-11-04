@@ -10,7 +10,7 @@
  * is never given a blanket allow, because that would include `git-pr merge`, which stays the person's separate opt-in.
  */
 
-import { detectUsageLimit, type UsageLimit } from "./usage-limit.js";
+import { detectUsageLimit, limitMention, type UsageLimit } from "./usage-limit.js";
 import { spawn } from "node:child_process";
 
 /** Minutes a run may take, from `TAI_DEV_RUN_TIMEOUT_MIN` (default 45). A value that is not a positive number is refused, not guessed. */
@@ -311,7 +311,10 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             const found = detectUsageLimit(tail);
             // The line is posted to the ticket, so it is redacted like the summaries are.
             const limit = found ? { ...found, text: redactSecrets(found.text) } : null;
-            resolve(limit ? { ...result, ok: false, limit } : result);
+            if (limit) return resolve({ ...result, ok: false, limit });
+            // A failed run whose end talks about a limit but matched no known message: say so, so a new wording is noticed and captured.
+            const mention = result.ok ? null : limitMention(tail);
+            resolve(mention ? { ...result, summary: `${result.summary}\n(Its output mentions a limit, "${redactSecrets(mention)}", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-706.)` } : result);
         };
         const timer = setTimeout(() => {
             timedOut = true;

@@ -455,6 +455,14 @@ describe("a run that ends on a usage limit (TAI-706)", () => {
         assert.match(result.limit.text, /Bearer \*\*\*/);
     });
 
+    it("tells a failed run whose end mentions an unknown limit wording, and leaves a clean finish alone", async () => {
+        const failed = await runWith('echo "You\'re out of extra usage"\nexit 1');
+        assert.equal(failed.limit, undefined);
+        assert.match(failed.summary, /mentions a limit, "You're out of extra usage", but matches no known usage-limit message/);
+        const clean = await runWith('echo "You\'re out of extra usage"');
+        assert.doesNotMatch(clean.summary, /matches no known/);
+    });
+
     it("carries the limit when the run exits non-zero", async () => {
         const result = await runWith('echo "Claude AI usage limit reached|1793800000"\nexit 1');
         assert.equal(result.ok, false);

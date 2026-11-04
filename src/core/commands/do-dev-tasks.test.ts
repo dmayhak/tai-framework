@@ -1072,6 +1072,12 @@ describe("pausing on a usage limit (TAI-706)", () => {
             assert.equal(await wasPausedOnLimit(u as never, "TAI-10" as never), false, "a newer failure hand-off replaced it even though it is listed first");
         });
 
+        it("orders by the instant, not the text, when the offsets differ", async () => {
+            // 13:00-0700 is 20:00Z, later than 15:00Z even though "13:00" sorts before "15:00" as text.
+            const t = { getIssue: async () => ({ comments: [{ body: buildPause, createdAt: "2026-11-04T13:00:00.000-0700" }, { body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T15:00:00.000+0000" }] }) };
+            assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), true);
+        });
+
         it("is false for a failure hand-off, a later-stage pause, no hand-off, or a pause that a newer hand-off replaced", async () => {
             assert.equal(await wasPausedOnLimit(tracker("Handoff: \"Do all dev tasks\" stopped on this ticket. tests failed") as never, "TAI-10" as never), false);
             assert.equal(await wasPausedOnLimit(tracker(reviewPause) as never, "TAI-10" as never), false);
@@ -1089,6 +1095,19 @@ describe("pausing on a usage limit (TAI-706)", () => {
         const result = (stage: string): DevTaskResult => ({ task: task("TAI-10"), outcome: { state: "paused", limit: { text: "x" }, stage } });
         assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, [result("fix run")], { yolo: true }), /PR is already open, so a later run skips this ticket: continue it with \/tai-work/);
         assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, [result("build run")], { yolo: true }), /Run "Do all dev tasks" again after the reset: it continues this ticket/);
+    });
+
+    it("does not sleep after a later-stage pause when no other ticket is left to carry on with", async () => {
+        const latch = new UsageLimitLatch();
+        const sleeps: number[] = [];
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10), sleep: async (ms) => void sleeps.push(ms),
+            yolo: true,
+            yoloRun: async () => (latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "review run"), { state: "waiting", reason: "r" }),
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.deepEqual(sleeps, []);
+        assert.match((results[0]!.outcome as { notWaited?: string }).notWaited ?? "", /no other ticket is left/);
     });
 
     it("waiting after a later-stage pause carries on with the other tickets and does not retry the ticket whose PR is open", async () => {
