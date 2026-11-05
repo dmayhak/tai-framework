@@ -448,8 +448,10 @@ describe("a run that ends on a usage limit (TAI-706)", () => {
         assert.ok(result.limit?.resetsAt);
     });
 
-    it("a run that exited 0 pauses only when the message is its very last line; a failed run's last few lines are read", async () => {
-        const echoed = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "all tests passed"');
+    it("a run that exited 0 pauses when the message is among its last two lines; a failed run's last few lines are read", async () => {
+        const trailing = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "node: warning" >&2');
+        assert.ok(trailing.limit, "one trailing warning after the message");
+        const echoed = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "all tests passed"\necho "done"');
         assert.equal(echoed.ok, true, "a finished run that only printed the message earlier");
         assert.equal(echoed.limit, undefined);
         const failed = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "cleaning up" >&2\nexit 1');

@@ -10,7 +10,7 @@
  * is never given a blanket allow, because that would include `git-pr merge`, which stays the person's separate opt-in.
  */
 
-import { detectUsageLimit, limitMention, type UsageLimit } from "./usage-limit.js";
+import { detectUsageLimit, FINISHED_RUN_TAIL_LINES, limitMention, type UsageLimit } from "./usage-limit.js";
 import { spawn } from "node:child_process";
 
 /** Minutes a run may take, from `TAI_DEV_RUN_TIMEOUT_MIN` (default 45). A value that is not a positive number is refused, not guessed. */
@@ -308,8 +308,8 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             child.stdout?.destroy();
             child.stderr?.destroy();
             // A limit message can come back with exit code 0, so the end of the output is read for every result. A run that exited 0 and
-            // finished its work only counts when the message is its very last line; a failed run's last few lines are read.
-            const found = detectUsageLimit(tail, new Date(), result.ok ? 1 : undefined);
+            // finished its work only counts when the message is among its last two lines; a failed run's last few lines are read.
+            const found = detectUsageLimit(tail, new Date(), result.ok ? FINISHED_RUN_TAIL_LINES : undefined);
             // The line is posted to the ticket, so it is redacted like the summaries are.
             const limit = found ? { ...found, text: redactSecrets(found.text, { ...process.env, ...options.env }) } : null;
             if (limit) return resolve({ ...result, ok: false, limit });

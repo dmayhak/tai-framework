@@ -827,7 +827,7 @@ describe("pausing on a usage limit (TAI-706)", () => {
     const reset2h = new Date(NOW.getTime() + 2 * 3_600_000);
 
     /** Deps whose build ends on the limit for the keys in `hits` (as many times as `hits[key]` says), the way the CLI's build does. */
-    function limitDeps(hits: Record<string, number>, over: Partial<RunDevTasksDeps> = {}, limit: UsageLimit = { text: "5-hour limit reached", resetsAt: reset2h }) {
+    function limitDeps(hits: Record<string, number>, over: Partial<RunDevTasksDeps> = {}, limit: UsageLimit = { text: "5-hour limit reached", resetsAt: reset2h }, stage = "build run") {
         const latch = new UsageLimitLatch();
         const posted: [string, string][] = [];
         const sleeps: number[] = [];
@@ -841,7 +841,7 @@ describe("pausing on a usage limit (TAI-706)", () => {
                 d.calls.push(`build ${t.issue.key}`);
                 if ((hits[t.issue.key] ?? 0) > 0) {
                     hits[t.issue.key]!--;
-                    latch.hit(limit, "build run");
+                    latch.hit(limit, stage);
                     return { ok: false, summary: "the run exited with code 1", limit } as never;
                 }
                 return { ok: true, summary: "" };
@@ -946,27 +946,7 @@ describe("pausing on a usage limit (TAI-706)", () => {
 
     it("the wait message says a verification pause is merged, and an open-PR pause has an open PR", async () => {
         for (const [stage, wanted] of [["verification run", /is merged and only its verification is left/], ["review run", /has an open PR/]] as const) {
-            const latch = new UsageLimitLatch();
-            const limit = { text: "5-hour limit reached", resetsAt: reset2h };
-            const said: string[] = [];
-            let hit = false;
-            const d = deps({
-                limitLatch: latch,
-                now: () => NOW,
-                sleep: async () => undefined,
-                say: (line) => void said.push(line),
-                build: async (t) => {
-                    d.calls.push(`build ${t.issue.key}`);
-                    if (t.issue.key === "TAI-10" && !hit) {
-                        hit = true;
-                        latch.hit(limit, stage);
-                        return { ok: false, summary: "x", limit } as never;
-                    }
-                    return { ok: true, summary: "" };
-                },
-                handoff: pausedAwareHandoff(latch, async () => undefined),
-                waitHours: 6,
-            });
+            const { d, said } = limitDeps({ "TAI-10": 1 }, { waitHours: 6 }, undefined, stage);
             await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
             assert.match(said[0] ?? "", wanted, stage);
         }

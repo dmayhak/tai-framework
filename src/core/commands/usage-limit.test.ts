@@ -30,9 +30,9 @@ describe("detecting a usage limit (TAI-706)", () => {
         });
     }
 
-    it("with a window of one line, finds the message only as the very last line", () => {
-        assert.ok(detectUsageLimit("a\n5-hour limit reached ∙ resets 3pm\n", NOW, 1));
-        assert.equal(detectUsageLimit("5-hour limit reached ∙ resets 3pm\nall tests passed\n", NOW, 1), null);
+    it("with a window of two lines, finds the message with one line after it and not with two", () => {
+        assert.ok(detectUsageLimit("a\n5-hour limit reached ∙ resets 3pm\nwarning\n", NOW, 2));
+        assert.equal(detectUsageLimit("5-hour limit reached ∙ resets 3pm\nall tests passed\ndone\n", NOW, 2), null);
     });
 
     it("recognises it whatever else is printed around the message, as long as it is among the last lines", () => {
@@ -164,9 +164,10 @@ describe("reading a reset time", () => {
             assert.equal(parseReset("resets 3pm (GMT)", at)?.toISOString(), "2026-11-05T15:00:00.000Z");
         });
 
-        it("falls back to the machine's clock for a zone name that is not one", () => {
+        it("gives no reset time for a zone name that is not one, rather than a guess on the machine's clock", () => {
             const local = new Date(2026, 10, 4, 10, 0);
-            assert.equal(parseReset("resets 3pm (Not/AZone)", local)?.getTime(), new Date(2026, 10, 4, 15, 0).getTime());
+            assert.equal(parseReset("resets 3pm (Not/AZone)", local), undefined);
+            assert.equal(parseReset("resets 3pm (Nowhere)", local), undefined);
         });
     });
 

@@ -10,10 +10,10 @@ A run that ended on the account's usage limit used to look like any failure: the
 
 Detection (`usage-limit.ts`):
 
-* The last ten lines of a run's output are read whatever the exit code, since a limit message can come back with exit 0. A run that exited 0 counts only when the message is its very last line. `runHeadlessClaude` returns the match as `limit`, with the line redacted like the run summaries.
+* The last ten lines of a run's output are read whatever the exit code, since a limit message can come back with exit 0. A run that exited 0 counts only when the message is among its last two lines. `runHeadlessClaude` returns the match as `limit`, with the line redacted like the run summaries.
 * A line counts only if it starts with the message ("5-hour limit reached", "You've hit your limit") and then ends, or continues only with a separator, a "resets" clause or the prose form.
 * Not matched: a rate-limit throttle, a failing build, a limit mentioned early in a long output, and a closing summary that talks about limits (a bullet, a quote, a sentence with the phrase in it, or a line such as "Usage limit reached handling is now covered by tests").
-* A clock-time reset is read on the clock of the zone the message names (a bare `UTC` or `GMT` too), daylight saving included, and on the machine's clock when it names none.
+* A clock-time reset is read on the clock of the zone the message names (a bare `UTC` or `GMT` too), daylight saving included, and on the machine's clock when it names none. A zone it names that is not a time zone gives no reset time, so `wait=` says the message gave none.
 * A failed run whose end mentions a limit but matches no known message says so in its failure summary, so a new wording is noticed. TAI-743 tracks capturing a real message.
 * AC-1 was amended: no real hit was recorded (it would use up the account), so the tests use the documented and reported messages, marked as such.
 

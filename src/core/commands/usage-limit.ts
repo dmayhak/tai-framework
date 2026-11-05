@@ -22,6 +22,8 @@ export interface UsageLimit {
 
 /** How much of the end of the output is read. A limit ends the run, so its message is among the last lines. */
 const TAIL_LINES = 10;
+/** A run that exited 0 and finished its work: the message must be among its last two lines (one trailing warning is allowed for). */
+export const FINISHED_RUN_TAIL_LINES = 2;
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
@@ -74,8 +76,8 @@ const JUST_PASSED_MS = 5 * 60_000;
 
 /**
  * The reset time in a limit message, or undefined. An epoch is exact. A clock time ("resets 3pm", "resets 3:30pm (America/Denver)",
- * "resets Nov 7, 10am") is read on the clock of the zone the message names, or the machine's own when it names none or one that is
- * not a time zone; a clock time that passed more than five minutes ago today is tomorrow's.
+ * "resets Nov 7, 10am") is read on the clock of the zone the message names, or the machine's own when it names none; one it names that is
+ * not a time zone gives no reset time; a clock time that passed more than five minutes ago today is tomorrow's.
  */
 export function parseReset(line: string, now: Date): Date | undefined {
     const epoch = /\|(\d{9,13})\b/.exec(line);
@@ -94,14 +96,15 @@ export function parseReset(line: string, now: Date): Date | undefined {
     if (clock[1] && monthIndex < 0) return undefined;
     const day = clock[2] ? Number(clock[2]) : undefined;
 
-    let zone: string | undefined = clock[6];
+    const zone: string | undefined = clock[6];
     let today: WallClock;
     if (zone) {
         try {
             today = clockIn(now, zone);
         } catch {
-            zone = undefined;
-            today = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate(), h: 0, min: 0 };
+            // A zone the message names but Intl does not know (an abbreviation such as PST): the clock time cannot be placed, so there is
+            // no reset time rather than a guess on the machine's clock; wait= then says the message gave none.
+            return undefined;
         }
     } else {
         today = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate(), h: 0, min: 0 };
