@@ -45,6 +45,13 @@ describe("refusedCommand (TAI-710)", () => {
         }
     });
 
+    it("reads a refusal only among the last four lines, not one the run worked around earlier", () => {
+        const refused = "Permission to use Bash with command `git rm a` was denied.";
+        assert.ok(refusedCommand(`${refused}\nb\nc\nd`), "four lines from the end");
+        assert.equal(refusedCommand(`${refused}\nb\nc\nd\ne`), null, "five lines from the end");
+        assert.match(describeStop({ summary: "", output: `${refused}\nI used another way\n1 test failed\nexit\nbye` }, "unfinished").cause, /not known/);
+    });
+
     it("does not read an ordinary stop as a refusal", () => {
         assert.equal(refusedCommand("npm ERR! code ELIFECYCLE\ntests failed\nI could not finish."), null);
         assert.equal(refusedCommand(""), null);
@@ -55,6 +62,7 @@ describe("for a Jira comment (TAI-710)", () => {
     it("writes the command as monospace wiki markup", () => {
         assert.equal(forJira("refused `git rm README.md`, and `ls`."), "refused {{git rm README.md}}, and {{ls}}.");
         assert.equal(forJira("no ticks"), "no ticks");
+        assert.equal(forJira("refused `echo ${HOME}`"), "refused {{echo $\\{HOME\\}}}", "braces inside are escaped");
     });
 });
 
@@ -97,7 +105,7 @@ describe("describeStop (TAI-710)", () => {
 
     it("an unrecognised limit wording is named in the cause, so the capture path stays visible", () => {
         const s = describeStop({ summary: "", output: "something\nthe quota is used up", what: "the run exited with code 1", limitNote: "the quota is used up" }, "unfinished");
-        assert.match(s.cause, /mentions a usage limit that matches no known message \("the quota is used up"\)[\s\S]*TAI-743/);
+        assert.match(s.cause, /mentions a usage limit that matches no known message \(the output below has the line\)[\s\S]*TAI-743/);
         assert.equal(s.output, "something\nthe quota is used up");
         const both = describeStop({ summary: "", output: "Permission to use Bash with command `git rm a` was denied.", limitNote: "limit" }, "unfinished");
         assert.match(both.cause, /looks to have refused `git rm a`[\s\S]*also mentions a usage limit[\s\S]*TAI-743/, "a refusal is still named when a limit is also mentioned");
@@ -114,14 +122,15 @@ describe("describeStop (TAI-710)", () => {
 
     it("a refusal without a command quotes the line", () => {
         const s = describeStop({ summary: "", output: "I was denied permission to do that." }, "unfinished");
-        assert.match(s.cause, /refused a command[\s\S]*I was denied permission to do that\./);
+        assert.match(s.cause, /refused a command, and nobody was there to approve it \(the output below has the line\)\./);
+        assert.doesNotMatch(s.cause, /I was denied/, "the agent's line is in the output block, not the cause");
     });
 
     it("the lines are three, and the output section is apart from them", () => {
         const s = describeStop({ summary: "", output: "a\nb" }, "no-pr");
         assert.equal(stopLines(s).length, 3);
         assert.equal(outputSection(s.output), "\n\nThe end of the run's own output:\n{noformat}\na\nb\n{noformat}");
-        assert.ok(!outputSection("x {noformat} y").slice(40, -12).includes("{noformat}"), "agent text cannot close the block early");
+        assert.equal(outputSection("x {noformat} y"), "\n\nThe end of the run's own output:\n{noformat}\nx { noformat } y\n{noformat}", "agent text cannot close the block early");
         assert.equal(outputSection(""), "");
     });
 });

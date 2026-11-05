@@ -29,6 +29,7 @@ export interface StopReason {
 
 const MAX_OUTPUT_LINES = 8;
 const MAX_LINE = 240;
+const REFUSAL_WINDOW = 4;
 
 /** The last lines of `text`, each cut to a readable length, line breaks kept. */
 export function trimmedOutput(text: string): string {
@@ -49,7 +50,8 @@ const COMMAND_AFTER = /\b(?:command|running|run|ran|use)[:\s]+["“']?((?:git|np
 /** The refused command named in the end of the output, with the line that says so, or null when no line reads as a refusal. */
 export function refusedCommand(output: string): { readonly command: string | null; readonly line: string } | null {
     const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
+    // Only the last few lines: a refusal the agent worked around earlier is not why the run stopped.
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - REFUSAL_WINDOW); i--) {
         const line = lines[i]!;
         if (OS_ERROR.test(line) || !REFUSAL.test(line)) continue;
         const found = COMMAND_IN_TICKS.exec(line)?.[1]?.trim() ?? COMMAND_AFTER.exec(line)?.[1]?.trim().replace(/[.,;:]+$/, "") ?? null;
@@ -86,12 +88,12 @@ export function describeStop(run: RunEnd, kind: "unfinished" | "no-pr"): StopRea
     const output = trimmedOutput(raw);
     const refusal = refusedCommand(output);
     const what = kind === "unfinished" ? sentence(`The build run did not finish${ended ? `: ${ended}` : ""}`) : "The build run finished but no open PR for this ticket was found.";
-    const limit = run.limitNote ? `The output also mentions a usage limit that matches no known message ("${run.limitNote}"); if it was one, capture the wording for TAI-743.` : "";
+    const limit = run.limitNote ? "The output also mentions a usage limit that matches no known message (the output below has the line); if it was one, capture the wording for TAI-743." : "";
     if (refusal) {
         // The wording is the agent's own and a heuristic reads it, so the cause says what it looks like, not that it is certain.
         const looks = refusal.command
             ? `the permission system looks to have refused \`${refusal.command}\`, and nobody was there to approve it.`
-            : `the permission system looks to have refused a command, and nobody was there to approve it ("${refusal.line}").`;
+            : "the permission system looks to have refused a command, and nobody was there to approve it (the output below has the line).";
         return {
             what,
             cause: limit ? `${looks} ${limit}` : looks,
@@ -102,7 +104,7 @@ export function describeStop(run: RunEnd, kind: "unfinished" | "no-pr"): StopRea
     if (run.limitNote) {
         return {
             what,
-            cause: sentence(`the run's output mentions a usage limit that matches no known message ("${run.limitNote}"). If it was one, capture the wording for TAI-743`),
+            cause: "the run's output mentions a usage limit that matches no known message (the output below has the line). If it was one, capture the wording for TAI-743.",
             next: kind === "unfinished" ? "wait for the limit to reset if it was one, then run the ticket again with /tai-work." : "check the branch and open the PR with /tai-work.",
             output,
         };
@@ -122,7 +124,7 @@ export function stopLines(stop: Pick<StopReason, "what" | "cause" | "next">): st
 
 /** A line written for the report (markdown backticks) as Jira wiki markup, which is what a ticket comment is. */
 export function forJira(text: string): string {
-    return text.replace(/`([^`\n]+)`/g, "{{$1}}");
+    return text.replace(/`([^`\n]+)`/g, (_m, c: string) => `{{${c.replace(/([{}])/g, "\\$1")}}}`);
 }
 
 /**

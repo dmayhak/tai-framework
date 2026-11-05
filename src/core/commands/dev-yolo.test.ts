@@ -245,7 +245,7 @@ describe("runYolo (TAI-634)", () => {
     it("an unrecognised limit wording reaches the reason and the hand-off, not only the summary (TAI-710)", async () => {
         const s = script();
         const o = await runYolo(task, deps(s, { build: async () => ({ ok: false, summary: "x", what: "the run exited with code 1", output: "You're out of extra usage", limitNote: "You're out of extra usage" }) }));
-        assert.match((o as { cause: string }).cause, /matches no known message \("You're out of extra usage"\).*TAI-743/);
+        assert.match((o as { cause: string }).cause, /matches no known message \(the output below has the line\).*TAI-743/);
         assert.match(s.handoffs[0]!, /Cause: .*TAI-743/);
     });
 
