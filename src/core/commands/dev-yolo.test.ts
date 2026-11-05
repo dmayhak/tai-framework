@@ -221,6 +221,26 @@ describe("runYolo (TAI-634)", () => {
         assert.match(boom.handoffs[0]!, /spawn failed/);
     });
 
+    it("a stop with no PR is three short lines and the agent's own output apart from them (TAI-710)", async () => {
+        const out = "Trying to remove README.md.\nPermission to use Bash with command `git rm README.md` was denied.";
+        const refused = script();
+        const outcome = await runYolo(task, deps(refused, { build: async () => ({ ok: false, summary: "only the summary line", what: "the run exited with code 1", output: out }) }));
+        assert.equal(outcome.state, "waiting");
+        const o = outcome as { reason: string; cause: string; next: string };
+        assert.equal(o.reason, "The build run did not finish: the run exited with code 1.");
+        assert.equal(o.cause, "the permission system refused `git rm README.md`, and nobody was there to approve it.");
+        const [lines, tail] = refused.handoffs[0]!.split("\n\nThe end of the run's own output:\n") as [string, string];
+        assert.equal(lines.split("\n").filter((l) => l !== "").length, 3, "the Handoff line with what stopped, then Cause and Next");
+        assert.match(lines, /^Handoff: DEV-YOLO run\. The build run did not finish: the run exited with code 1\.\n\nCause: .*\nNext: /);
+        assert.equal(tail, out);
+        const runOn = script();
+        const closing = Array.from({ length: 5 }, (_, n) => `I did step ${n}.`).join("\n");
+        const second = await runYolo(task, deps(runOn, { build: async () => ({ ok: true, summary: closing, output: closing }), findPullRequest: async () => ({ prUrl: null, checkRecorded: null }) }));
+        assert.equal((second as { reason: string }).reason, "The build run finished but no open PR for this ticket was found.");
+        assert.doesNotMatch(runOn.handoffs[0]!.split("\n\nThe end of")[0]!, /step/, "none of the agent's text in the lines");
+        assert.match(runOn.handoffs[0]!, /The end of the run's own output:\nI did step 0\.\nI did step 1\./, "the closing text keeps its lines");
+    });
+
     it("stops on an unreadable review and on a failed fix run", async () => {
         const noReview = script();
         await runYolo(task, deps(noReview));

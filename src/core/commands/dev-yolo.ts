@@ -10,7 +10,8 @@
 import type { PullRequestActivity } from "../git/interface.js";
 import type { HumanRef } from "../storage/interface.js";
 import type { ReviewFinding, ReviewFindings } from "../git/review-findings.js";
-import { noPrDetail, type DevTask, type DevTaskOutcome } from "./do-dev-tasks.js";
+import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
+import { describeStop, outputSection, type RunEnd, type StopReason } from "./stop-reason.js";
 
 export type ReviewDecision = "approve" | "requestChanges" | "none";
 
@@ -31,7 +32,7 @@ export interface ConflictStop {
 export interface YoloDeps {
     /** The most review-and-fix rounds before the run stops for a person (the `review-rounds` setting). */
     readonly rounds: number;
-    readonly build: (task: DevTask) => Promise<{ readonly ok: boolean; readonly summary: string }>;
+    readonly build: (task: DevTask) => Promise<{ readonly ok: boolean; readonly summary: string } & Partial<RunEnd>>;
     /** The open PR the build left, or null. */
     readonly findPullRequest: (task: DevTask) => Promise<{ readonly prUrl: string | null; readonly checkRecorded: boolean | null }>;
     /** A fresh Claude run as the automated reviewer. Fails (ok: false) when it produced no readable findings. */
@@ -53,6 +54,11 @@ export interface YoloDeps {
 /** What a person reads on the ticket when the run stops. */
 export function yoloHandoff(done: string, stoppedAt: string, next: string): string {
     return `Handoff: DEV-YOLO run. ${done}\n\nStopped: ${stoppedAt}\n\nNext: ${next}`;
+}
+
+/** The hand-off for a build run that stopped without a PR (TAI-710): three short lines, then the agent's own output apart from them. */
+export function yoloStopHandoff(stop: StopReason): string {
+    return `Handoff: DEV-YOLO run. ${stop.what}\n\nCause: ${stop.cause}\nNext: ${stop.next}${outputSection(stop.output)}`;
 }
 
 function errorText(err: unknown): string {
@@ -101,11 +107,20 @@ export async function runYolo(task: DevTask, deps: YoloDeps): Promise<DevTaskOut
         }
         return { state: "waiting", reason: stoppedAt };
     };
+    const sayStop = async (stop: StopReason): Promise<DevTaskOutcome> => {
+        const lines = { cause: stop.cause, next: stop.next };
+        try {
+            await deps.handoff(key, yoloStopHandoff(stop));
+        } catch (err) {
+            return { state: "waiting", reason: `${stop.what} (and the hand-off comment could not be posted: ${errorText(err)})`, ...lines };
+        }
+        return { state: "waiting", reason: stop.what, ...lines };
+    };
     try {
         const built = await deps.build(task);
-        if (!built.ok) return await say("The build run did not finish.", built.summary, "read the reason, fix what it names, and run the ticket again with /tai-work.");
+        if (!built.ok) return await sayStop(describeStop(built, "unfinished"));
         const found = await deps.findPullRequest(task);
-        if (!found.prUrl) return await say("The build run finished.", noPrDetail(built.summary), "check the branch and open the PR with /tai-work.");
+        if (!found.prUrl) return await sayStop(describeStop(built, "no-pr"));
         const prUrl = found.prUrl;
         if (found.checkRecorded === false) {
             return await say(`The PR is open: ${prUrl}.`, "the PR has no check result.", "run git-pr check on the PR, then run the ticket again.");

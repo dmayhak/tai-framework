@@ -2,6 +2,22 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 162 (2026-11-05)
+
+**TAI-711 (Story TAI-710): a readable stop reason in the report and the hand-off.**
+
+A build run that stopped without a PR used to quote the end of the agent's own output in the report and the hand-off, joined into one line with " / ". In trial B (TAIT-2030) that mixed the real cause, a refused `git rm`, with noise.
+
+The reason is now a fixed shape (`stop-reason.ts`):
+
+* Three short lines: what stopped, the cause as far as it is known, and the next step. They appear in the report (the cause and next step under the ticket's bullet) and in the hand-off, for DEV-YOLO and for a plain "Do all dev tasks" run.
+* The agent's own closing text is kept after them in the hand-off: the last eight lines, each cut to 240 characters, with their line breaks. It is never joined into the lines.
+* A refused command is named as a refusal, with the command. The wording a refusal takes in the agent's output is not recorded from a real run, so it is read from a line that talks about a permission being denied, refused or not granted; a miss reports the cause as not known and still keeps the output.
+* `runHeadlessClaude` returns `what` (what happened to a run that did not finish) and `output` apart from `summary`, which is unchanged for the other callers.
+* A Story that is still To Do or Backlog after its Dev ticket ran gets its own line in the report, with why (no assignee, or just not moved). `issue create-small` gives the Story the Dev subtask's assignee when the subtask has one, since Jira will not move a Story that nobody holds; it falls back to the Story's own pick when the subtask has nobody.
+
+Tests: `stop-reason.test.ts`, `do-dev-tasks.test.ts`, `dev-yolo.test.ts`, `create-small.test.ts`.
+
 ## rev 161 (2026-11-04)
 
 **TAI-707 (Story TAI-706): DEV-YOLO pauses on a usage limit and can wait for the reset.**
