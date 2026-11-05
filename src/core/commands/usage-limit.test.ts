@@ -85,7 +85,7 @@ describe("detecting a usage limit (TAI-706)", () => {
     });
 
     it("still finds the message with a few warnings printed after it", () => {
-        const output = ["5-hour limit reached ∙ resets 3pm", "(node:1) DeprecationWarning: a", "(node:1) DeprecationWarning: b", "(node:1) DeprecationWarning: c"].join("\n");
+        const output = ["5-hour limit reached ∙ resets 3pm", ...Array.from({ length: 8 }, (_, i) => `(node:1) DeprecationWarning: ${i}`)].join("\n");
         assert.ok(detectUsageLimit(output, NOW));
     });
 
