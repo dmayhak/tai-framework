@@ -1134,6 +1134,14 @@ describe("pausing on a usage limit (TAI-706)", () => {
             assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), true);
         });
 
+        it("is false when several hand-offs are listed and one has no readable time", async () => {
+            const fail = "Handoff: DEV-YOLO run. The build run did not finish.";
+            const t = { getIssue: async () => ({ comments: [{ body: fail }, { body: buildPause, createdAt: "2026-11-04T12:00:00Z" }] }) };
+            assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), false);
+            const u = { getIssue: async () => ({ comments: [{ body: buildPause }] }) };
+            assert.equal(await wasPausedOnLimit(u as never, "TAI-10" as never), true, "a lone note needs no ordering");
+        });
+
         it("is false for a failure hand-off, a later-stage pause, no hand-off, or a pause that a newer hand-off replaced", async () => {
             assert.equal(await wasPausedOnLimit(tracker("Handoff: \"Do all dev tasks\" stopped on this ticket. tests failed") as never, "TAI-10" as never), false);
             assert.equal(await wasPausedOnLimit(tracker(reviewPause) as never, "TAI-10" as never), false);

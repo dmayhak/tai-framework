@@ -232,10 +232,9 @@ export function pausedHandoff(limit: UsageLimit, stage: string, position?: strin
     );
 }
 
-/** A comment's time as a number, so offsets like -0700 compare exactly; a missing or unreadable one sorts first and keeps its list order. */
+/** A comment's time as a number, so offsets like -0700 compare exactly; NaN when it is missing or unreadable. */
 function timeOf(createdAt: string | undefined): number {
-    const t = createdAt ? Date.parse(createdAt) : NaN;
-    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+    return createdAt ? Date.parse(createdAt) : Number.NaN;
 }
 
 /**
@@ -245,7 +244,10 @@ function timeOf(createdAt: string | undefined): number {
 export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue">, key: IssueKey, current?: string): Promise<boolean> {
     const issue = await workTracker.getIssue(key);
     // Newest last by the comment's own time, not by the order a host happens to return them in.
-    const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body)).sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
+    const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body));
+    // Among several hand-offs, one whose time cannot be read makes the newest impossible to tell, so the dirty-tree stop applies.
+    if (handoffs.length > 1 && handoffs.some((c) => Number.isNaN(timeOf(c.createdAt)))) return false;
+    handoffs.sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
     const newest = handoffs[handoffs.length - 1];
     if (newest === undefined || !newest.body.includes(PAUSED_NOTE_START) || !newest.body.includes(CONTINUES_LINE)) return false;
     // A note that recorded where the checkout stood only counts while it still stands there: if the person has since committed, switched
