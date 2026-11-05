@@ -31,7 +31,7 @@ const FINDINGS = (sev: string): string =>
         leaningReason: "fine",
     });
 
-async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string; before?: PullRequestActivity[]; storyDescription?: string; approved?: boolean; mergeResult?: { ok: false; reason: string } } = {}): Promise<void> {
+async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: string[]; prompts: string[] }) => Promise<void>, over: { runClaude?: YoloWiring["runClaude"]; activity?: PullRequestActivity[]; heads?: string[]; reviewerId?: string; before?: PullRequestActivity[]; storyDescription?: string; approved?: boolean; noPr?: boolean; mergeResult?: { ok: false; reason: string } } = {}): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-yolo-wire-"));
     try {
         const backend = createFilesystemBackend(dir, ME);
@@ -47,7 +47,7 @@ async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: str
         const heads = [...(over.heads ?? [])];
         let activityReads = 0;
         const gitHost = {
-            listPullRequests: async () => [pr],
+            listPullRequests: async () => (over.noPr ? [] : [pr]),
             getPullRequest: async () => ({ ...pr, sourceCommit: heads.shift() ?? HEAD, ...(over.approved ? { reviewers: [{ human: BOT, status: "approved" }] } : {}) }),
             mergePullRequest: async () => over.mergeResult ?? { ok: true, pullRequest: pr },
             getCurrentUser: async () => ME,
@@ -437,7 +437,20 @@ describe("yoloRun on a usage limit (TAI-706)", () => {
                 assert.match(handoffs[0]!, /while this ticket's build run was running/);
                 assert.doesNotMatch(handoffs[0]!, /did not finish/);
             },
-            { runClaude: async () => ({ ok: false, summary: "exit 1", limit: { text: "5-hour limit reached ∙ resets 3pm", resetsAt: new Date(2026, 10, 4, 15) } }) }
+            { noPr: true, runClaude: async () => ({ ok: false, summary: "exit 1", limit: { text: "5-hour limit reached ∙ resets 3pm", resetsAt: new Date(2026, 10, 4, 15) } }) }
+        );
+    });
+
+    it("a limit printed after the PR was opened is not a continuable build pause (review of PR 51)", () => {
+        const latch = new UsageLimitLatch();
+        return world(
+            async ({ wiring, task, handoffs }) => {
+                await yoloRun({ ...wiring, limitLatch: latch })(task);
+                assert.equal(latch.current()?.stage, "build run (PR open)");
+                assert.match(handoffs[0]!, /the PR is already open/);
+                assert.doesNotMatch(handoffs[0]!, /continues this ticket/);
+            },
+            { runClaude: async () => ({ ok: false, summary: "exit 0", limit: { text: "5-hour limit reached ∙ resets 3pm" } }) }
         );
     });
 

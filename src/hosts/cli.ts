@@ -178,7 +178,7 @@ import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, ren
 import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
-import { pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
+import { buildStageAfterLimit, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -2519,7 +2519,7 @@ async function main(): Promise<void> {
             },
             build: async (task) => {
                 const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, (await pausedOnLimit(task.issue.key)) ? await cutOffBranch(process.cwd(), task.parent.key) : null), { cwd: process.cwd(), timeoutMs });
-                if (built.limit) limitLatch.hit(built.limit, "build run");
+                if (built.limit) limitLatch.hit(built.limit, await buildStageAfterLimit(() => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured })));
                 return built;
             },
             inspect: (task) => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured }),

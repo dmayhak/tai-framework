@@ -472,8 +472,8 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 
 /**
  * The command's arguments: `dryrun=true`, `yolo=true` or `yolo=false` for this run only (TAI-693), and `only=<DEV-KEY>` to work one
- * ticket (TAI-695). Anything else is refused, because a mistyped flag must not start real builds. After `rules` (which prints a rule set
- * and runs nothing) only `yolo=` is taken, and `only=` is accepted and has no effect, since the set does not depend on the ticket.
+ * ticket (TAI-695), and `wait=<hours>` to sleep until a usage limit resets (TAI-706). Anything else is refused, because a mistyped flag must not start real builds. After `rules` (which prints a rule set
+ * and runs nothing) only `yolo=` is taken, `only=` is accepted and has no effect, since the set does not depend on the ticket, and `wait=` is refused.
  */
 export function parseDevTasksArgs(
     args: readonly (string | undefined)[],

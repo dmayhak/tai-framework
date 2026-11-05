@@ -18,7 +18,7 @@ import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "
 import { yoloStopReasons } from "./yolo-checks.js";
 import { finishApproved } from "./dev-yolo-finish.js";
 import { cutOffBranch } from "./dev-tasks-git.js";
-import { pausedAwareHandoff, wasPausedOnLimit, type UsageLimitLatch } from "./usage-limit.js";
+import { buildStageAfterLimit, pausedAwareHandoff, wasPausedOnLimit, type UsageLimitLatch } from "./usage-limit.js";
 
 export interface YoloWiring {
     readonly gitHost: GitHost;
@@ -101,9 +101,9 @@ async function locate(w: YoloWiring, task: DevTask): Promise<PullRequestRef | nu
 export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcome> {
     const baseRun = w.runClaude ?? runHeadlessClaude;
     // TAI-706: a run that ended on the usage limit is recorded once, with the step it was in, so the batch can pause instead of failing.
-    const run = (stage: string) => async (prompt: string, options: HeadlessRunOptions): Promise<HeadlessRunResult> => {
+    const run = (stage: string | (() => Promise<string>)) => async (prompt: string, options: HeadlessRunOptions): Promise<HeadlessRunResult> => {
         const result = await baseRun(prompt, options);
-        if (result.limit) w.limitLatch?.hit(result.limit, stage);
+        if (result.limit) w.limitLatch?.hit(result.limit, typeof stage === "string" ? stage : await stage());
         return result;
     };
     const handoff = pausedAwareHandoff(w.limitLatch, w.handoff);
@@ -124,7 +124,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
     };
     const deps: YoloDeps = {
         rounds: w.rounds,
-        build: async (task) => run("build run")(buildDevPrompt(task.issue.key, w.cli, (await (w.pausedOnLimit ?? ((k) => wasPausedOnLimit(w.workTracker, k)))(task.issue.key)) ? await cutOffBranch(w.cwd, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+        build: async (task) => run(() => buildStageAfterLimit(() => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured })))(buildDevPrompt(task.issue.key, w.cli, (await (w.pausedOnLimit ?? ((k) => wasPausedOnLimit(w.workTracker, k)))(task.issue.key)) ? await cutOffBranch(w.cwd, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
         findPullRequest: (task) => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }),
         review: async (task) => {
             const pr = await pullRequest(task);

@@ -195,6 +195,18 @@ export function parseWaitHours(value: string): number {
 
 /** The step whose cut-off work can be picked up again: the build. After it a PR is open, and "Do all dev tasks" leaves a ticket with an open PR to a person. */
 export const CONTINUABLE_STAGE = "build run";
+/** A limit printed after the PR was already opened (a run that finished its work and then hit the limit): nothing is left to continue. */
+export const PR_OPEN_BUILD_STAGE = "build run (PR open)";
+
+/** The stage to record for a build run that ended on a limit: not continuable when its PR is already open, since a later run skips such a ticket. */
+export async function buildStageAfterLimit(findPr: () => Promise<{ readonly prUrl: string | null }>): Promise<string> {
+    try {
+        return (await findPr()).prUrl ? PR_OPEN_BUILD_STAGE : CONTINUABLE_STAGE;
+    } catch {
+        return CONTINUABLE_STAGE; // cannot tell: the ticket's own pause note and the next prepare decide
+    }
+}
+
 export function isContinuableStage(stage: string): boolean {
     return stage === CONTINUABLE_STAGE;
 }
@@ -217,16 +229,16 @@ export function pausedHandoff(limit: UsageLimit, stage: string): string {
     );
 }
 
-/**
- * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
- * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other (TAI-706 review).
- */
 /** A comment's time as a number, so offsets like -0700 compare exactly; a missing or unreadable one sorts first and keeps its list order. */
 function timeOf(createdAt: string | undefined): number {
     const t = createdAt ? Date.parse(createdAt) : NaN;
     return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
 }
 
+/**
+ * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
+ * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other (TAI-706 review).
+ */
 export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue">, key: IssueKey): Promise<boolean> {
     const issue = await workTracker.getIssue(key);
     // Newest last by the comment's own time, not by the order a host happens to return them in.

@@ -22,8 +22,8 @@ export class PrepareStopError extends Error {
 
 /** The working tree has uncommitted changes. Not a fault of the ticket about to start, so it is not reported against it. */
 export class DirtyTreeError extends PrepareStopError {
-    constructor(readonly porcelain: string) {
-        super(`The working tree has uncommitted changes, so a new run cannot start on a clean branch:\n${porcelain}`);
+    constructor(readonly porcelain: string, because = "") {
+        super(`${because}The working tree has uncommitted changes, so a new run cannot start on a clean branch:\n${porcelain}`);
         this.name = "DirtyTreeError";
     }
 }
@@ -68,7 +68,15 @@ export async function cutOffBranch(cwd: string, storyKey: string): Promise<strin
  */
 export async function prepareForTicket(cwd: string, taiRoot: string, storyKey: string, pausedOnLimit: boolean): Promise<void> {
     if (pausedOnLimit && (await cutOffBranch(cwd, storyKey)) !== null) return;
-    await prepareCleanDefaultBranch(cwd, taiRoot);
+    try {
+        await prepareCleanDefaultBranch(cwd, taiRoot);
+    } catch (err) {
+        // The ticket's note says its run continues, but the cut-off came before its branch existed, so the uncommitted work is on another branch: say so.
+        if (pausedOnLimit && err instanceof DirtyTreeError) {
+            throw new DirtyTreeError(err.porcelain, `This ticket was paused on a usage limit, but its Story branch (${storyKey}-...) is not checked out, so its cut-off work cannot be continued from here: commit, stash or discard what is in the tree, then run it again. `);
+        }
+        throw err;
+    }
 }
 
 /** Throws unless the tree is clean; then checks out the default branch and brings it up to date. */

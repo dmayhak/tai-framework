@@ -1003,7 +1003,9 @@ describe("pausing on a usage limit (TAI-706)", () => {
                 r.g("checkout", "-q", "--", "a.txt");
                 r.g("checkout", "-q", "main");
                 await writeFile(path.join(r.work, "a.txt"), "dirty default branch");
-                await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", true), DirtyTreeError);
+                // A pause cut off before the Story branch existed: the stop says why a paused ticket is not continued.
+                await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", true), (err: unknown) => err instanceof DirtyTreeError && /paused on a usage limit[\s\S]*not checked out/.test(err.message));
+                await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", false), (err: unknown) => err instanceof DirtyTreeError && !/paused on a usage limit/.test(err.message));
             } finally {
                 await rm(r.dir, { recursive: true, force: true });
             }

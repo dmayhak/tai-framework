@@ -67,7 +67,7 @@ export function buildDevPrompt(key: string, cli: string, resumeBranch?: string |
         "",
         ...(resumeBranch
             ? [
-                  `This ticket is being CONTINUED (TAI-706): an earlier run was cut off by a usage limit. You are on its branch ${resumeBranch} with that run's uncommitted work in the tree. Keep that work: do not stash, reset, discard or re-create the branch, and do not start over. Read what is there, finish it, and carry on from step 3. If a PR for ${key} is already open, do not open a second one.`,
+                  `This ticket is being CONTINUED: an earlier run was cut off by a usage limit. You are on its branch ${resumeBranch} with that run's uncommitted work in the tree. Keep that work: do not stash, reset, discard or re-create the branch, and do not start over. Read what is there, finish it, and carry on from step 3. If a PR for ${key} is already open, do not open a second one.`,
                   "",
               ]
             : []),

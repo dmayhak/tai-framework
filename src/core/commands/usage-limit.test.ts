@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { decideWait, detectUsageLimit, limitMention, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
+import { buildStageAfterLimit, decideWait, detectUsageLimit, limitMention, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
 
 // A fixed local "now": 2026-11-04 10:00 on the machine's own clock, so clock-time resets read the same everywhere.
 const NOW = new Date(2026, 10, 4, 10, 0, 0);
@@ -230,6 +230,16 @@ describe("the latch and the note", () => {
         assert.match(note, /2026-11-04T22:00:00\.000Z/);
         assert.match(note, /not a failure of the ticket/);
         assert.doesNotMatch(note, /stopped on this ticket|fix what it names/);
+    });
+});
+
+describe("the stage of a build run that ended on a limit", () => {
+    it("is continuable with no open PR, and not when the PR is already open", async () => {
+        assert.equal(await buildStageAfterLimit(async () => ({ prUrl: null })), "build run");
+        assert.equal(await buildStageAfterLimit(async () => ({ prUrl: "https://pr/1" })), "build run (PR open)");
+    });
+    it("stays continuable when the PR cannot be looked up", async () => {
+        assert.equal(await buildStageAfterLimit(async () => { throw new Error("host down"); }), "build run");
     });
 });
 
