@@ -228,7 +228,7 @@ describe("runYolo (TAI-634)", () => {
         assert.equal(outcome.state, "waiting");
         const o = outcome as { reason: string; cause: string; next: string };
         assert.equal(o.reason, "The build run did not finish: the run exited with code 1.");
-        assert.equal(o.cause, "the permission system refused `git rm README.md`, and nobody was there to approve it.");
+        assert.equal(o.cause, "the permission system looks to have refused `git rm README.md`, and nobody was there to approve it.");
         const [lines, tail] = refused.handoffs[0]!.split("\n\nThe end of the run's own output:\n") as [string, string];
         assert.equal(lines.split("\n").filter((l) => l !== "").length, 3, "the Handoff line with what stopped, then Cause and Next");
         assert.match(lines, /^Handoff: DEV-YOLO run\. The build run did not finish: the run exited with code 1\.\n\nCause: .*\nNext: /);

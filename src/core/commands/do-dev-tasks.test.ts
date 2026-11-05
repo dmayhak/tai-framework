@@ -199,10 +199,10 @@ describe("runDevTasks (TAI-633)", () => {
         const r = await runDevTasks([task("TAI-10")], d);
         const o = r[0]!.outcome as { reason: string; cause: string };
         assert.match(o.reason, /did not finish: the run exited with code 1/);
-        assert.match(o.cause, /permission system refused `git rm README\.md`/);
-        assert.match(d.handoffs[0]![1], /Cause: the permission system refused `git rm README\.md`/);
+        assert.match(o.cause, /permission system looks to have refused `git rm README\.md`/);
+        assert.match(d.handoffs[0]![1], /Cause: the permission system looks to have refused `git rm README\.md`/);
         const report = renderDevTasksReport({ tasks: [], skipped: [] }, r, { yolo: false });
-        assert.match(report, /## Failed \(1\)[\s\S]*- \*\*TAI-10\*\*[^\n]*did not finish[^\n]*\n {2}- Cause: the permission system refused `git rm README\.md`[^\n]*\n {2}- Next: /);
+        assert.match(report, /## Failed \(1\)[\s\S]*- \*\*TAI-10\*\*[^\n]*did not finish[^\n]*\n {2}- Cause: the permission system looks to have refused `git rm README\.md`[^\n]*\n {2}- Next: /);
     });
 
     it("a result that has only a summary still gets its output split from the run's own end", async () => {
@@ -215,14 +215,17 @@ describe("runDevTasks (TAI-633)", () => {
     it("reports a Story that is still not In Progress as its own line, with why (TAI-710)", async () => {
         const story = { key: "TAI-1", status: "To Do", assignee: null } as never;
         assert.match(storyNotInProgress(story)!, /TAI-1 is still To Do: it has no assignee/);
-        assert.match(storyNotInProgress({ key: "TAI-1", status: "To Do", assignee: { id: "u" } } as never)!, /TAI-1 is still To Do$/);
+        assert.match(storyNotInProgress({ key: "TAI-1", status: "To Do", assignee: { id: "u" } } as never)!, /TAI-1 is still To Do\. Move it to In Progress by hand\.$/);
         assert.equal(storyNotInProgress({ key: "TAI-1", status: "In Progress", assignee: null } as never), null);
         assert.equal(storyNotInProgress(null), null);
+        assert.equal(storyNotInProgress(story, { status: "To Do" } as never), null, "the Dev ticket never reached In Progress, so the Story staying put is not news");
+        assert.match(storyNotInProgress(story, { status: "In Progress" } as never)!, /no assignee/);
+        assert.doesNotMatch(storyNotInProgress({ key: "TAI-1", status: "To Do", assignee: { id: "u" } } as never)!, /assign/i, "an assigned Story is not told to get an assignee");
         const d = deps({ storyProblem: async () => storyNotInProgress(story) });
         const r = await runDevTasks([task("TAI-10")], d);
-        assert.equal(r[0]!.storyProblem, "TAI-1 is still To Do: it has no assignee, so it could not be moved");
+        assert.equal(r[0]!.storyProblem, "TAI-1 is still To Do: it has no assignee, so it could not be moved. Assign it, then move it to In Progress by hand.");
         const report = renderDevTasksReport({ tasks: [], skipped: [] }, r, { yolo: false });
-        assert.match(report, /## Story not In Progress \(1\)\n\n- TAI-1 is still To Do: it has no assignee.* \(for TAI-10\)/);
+        assert.match(report, /## Story not In Progress \(1\)\n\n- TAI-1 is still To Do: it has no assignee.* \(for TAI-10\)$/m);
     });
 
     it("says nothing about the Story when the ticket never started, or the Story cannot be read", async () => {

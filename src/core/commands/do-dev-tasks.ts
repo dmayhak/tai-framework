@@ -228,9 +228,13 @@ export interface DevTaskResult {
  * Why a Story the run worked under is not In Progress, or null when it is (or further on, or cannot be read). Moving a Dev subtask to
  * In Progress moves its Story too, and a Story with nobody assigned cannot be moved: the run carries on, so this is what tells the person.
  */
-export function storyNotInProgress(story: Pick<Issue, "key" | "status" | "assignee"> | null): string | null {
+export function storyNotInProgress(story: Pick<Issue, "key" | "status" | "assignee"> | null, dev?: Pick<Issue, "status"> | null): string | null {
     if (story === null || (story.status !== Status.Backlog && story.status !== Status.ToDo)) return null;
-    return story.assignee ? `${story.key} is still ${story.status}` : `${story.key} is still ${story.status}: it has no assignee, so it could not be moved`;
+    // A Dev ticket that never reached In Progress did not ask to move its Story, so the Story staying put is not news.
+    if (dev && (dev.status === Status.Backlog || dev.status === Status.ToDo)) return null;
+    return story.assignee
+        ? `${story.key} is still ${story.status}. Move it to In Progress by hand.`
+        : `${story.key} is still ${story.status}: it has no assignee, so it could not be moved. Assign it, then move it to In Progress by hand.`;
 }
 
 function errorText(err: unknown): string {
@@ -514,7 +518,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         const storyProblems = results.filter((r) => r.storyProblem);
         if (storyProblems.length) {
             out.push("", `## Story not In Progress (${storyProblems.length})`, "");
-            out.push(...storyProblems.map((r) => `- ${r.storyProblem} (for ${r.task.issue.key}). Move it by hand once it has an assignee.`));
+            out.push(...storyProblems.map((r) => `- ${r.storyProblem} (for ${r.task.issue.key})`));
         }
         out.push("", "## Waiting for a person", "");
         const waitingLines = [

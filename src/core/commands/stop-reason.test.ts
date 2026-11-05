@@ -73,7 +73,7 @@ describe("describeStop (TAI-710)", () => {
 
     it("names a refused command as a refusal, with the command", () => {
         const s = describeStop({ summary: "", output: "Permission to use Bash with command `git rm README.md` was denied." }, "no-pr");
-        assert.equal(s.cause, "the permission system refused `git rm README.md`, and nobody was there to approve it.");
+        assert.equal(s.cause, "the permission system looks to have refused `git rm README.md`, and nobody was there to approve it.");
         assert.match(s.next, /allow that command/);
     });
 
@@ -81,8 +81,17 @@ describe("describeStop (TAI-710)", () => {
         const s = describeStop({ summary: "", output: "something\nthe quota is used up", what: "the run exited with code 1", limitNote: "the quota is used up" }, "unfinished");
         assert.match(s.cause, /mentions a usage limit that matches no known message \("the quota is used up"\)[\s\S]*TAI-743/);
         assert.equal(s.output, "something\nthe quota is used up");
-        const noFalseRefusal = describeStop({ summary: "", output: "Permission to use Bash with command `git rm a` was denied.", limitNote: "limit" }, "unfinished");
-        assert.match(noFalseRefusal.cause, /TAI-743/);
+        const both = describeStop({ summary: "", output: "Permission to use Bash with command `git rm a` was denied.", limitNote: "limit" }, "unfinished");
+        assert.match(both.cause, /looks to have refused `git rm a`[\s\S]*also mentions a usage limit[\s\S]*TAI-743/, "a refusal is still named when a limit is also mentioned");
+    });
+
+    it("takes backticked text as the refused command only when it starts like one, and hedges the cause", () => {
+        const title = describeStop({ summary: "", output: "The command for `returns 403 when permission is denied` was refused" }, "unfinished");
+        assert.equal(refusedCommand(title.output)?.command, null, "a test title is not a command");
+        assert.doesNotMatch(title.cause, /refused `returns/);
+        assert.match(title.cause, /looks to have refused a command/);
+        assert.match(title.next, /if that is what happened/);
+        assert.equal(refusedCommand("Permission to use Bash with command `./scripts/run.sh --all` was denied")?.command, "./scripts/run.sh --all");
     });
 
     it("a refusal without a command quotes the line", () => {

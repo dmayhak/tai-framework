@@ -2494,7 +2494,7 @@ async function main(): Promise<void> {
             yolo,
             pausedOnLimit: (task) => pauses.whilePicking(task.issue.key),
             rememberPause: (key) => pauses.remember(key),
-            storyProblem: async (task) => storyNotInProgress(await config.backend.workTracker.getIssue(task.parent.key)),
+            storyProblem: async (task) => storyNotInProgress(await config.backend.workTracker.getIssue(task.parent.key), await config.backend.workTracker.getIssue(task.issue.key)),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
             limitLatch,

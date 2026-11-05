@@ -41,6 +41,8 @@ export function trimmedOutput(text: string): string {
 const REFUSAL = /\bpermissions?\b[^\n]{0,90}\b(?:denied|refused|not granted|blocked|declined)\b|\b(?:denied|refused|blocked|declined)\b[^\n]{0,40}\bpermission|\bcommand\b[^\n]{0,100}\b(?:denied|refused|blocked)\b|\b(?:denied|refused|blocked)\b[^.\n]{0,20}\bcommand\b|haven't granted|not allowed to (?:run|use)|(?:isn't|is not|wasn't|was not) (?:allowed|permitted) to (?:run|use)/i;
 // An operating-system or ssh error that says "permission denied" is not the permission system refusing a command.
 const OS_ERROR = /\bEACCES\b|\bEPERM\b|publickey|permission denied(?:\s*\(|,|\.?$|\s+while)/i;
+// Backticked text counts as the refused command only when it starts like one: a tool's name or a path, not a test title or a phrase.
+const COMMAND_START = /^(?:git|npm|npx|node|tsx|yarn|pnpm|rm|mv|cp|mkdir|chmod|cat|sed|awk|curl|wget|gh|docker|make|bash|sh|python3?|pip|sudo|ssh|scp|kill|tai|bin\/tai|\.{0,2}\/\S+)(?:\s|$)/;
 const COMMAND_IN_TICKS = /`([^`\n]{2,120})`/;
 const COMMAND_AFTER = /\b(?:command|running|run|ran|use)[:\s]+["“']?((?:git|npm|npx|node|tsx|rm|mv|cp|curl|gh|docker|make|bash|sh)\s[^"”'\n]{1,100})/i;
 
@@ -50,7 +52,8 @@ export function refusedCommand(output: string): { readonly command: string | nul
     for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i]!;
         if (OS_ERROR.test(line) || !REFUSAL.test(line)) continue;
-        const command = COMMAND_IN_TICKS.exec(line)?.[1]?.trim() ?? COMMAND_AFTER.exec(line)?.[1]?.trim().replace(/[.,;:]+$/, "") ?? null;
+        const found = COMMAND_IN_TICKS.exec(line)?.[1]?.trim() ?? COMMAND_AFTER.exec(line)?.[1]?.trim().replace(/[.,;:]+$/, "") ?? null;
+        const command = found !== null && COMMAND_START.test(found) ? found : null;
         return { command, line };
     }
     return null;
@@ -76,24 +79,26 @@ function sentence(text: string): string {
 export function describeStop(run: RunEnd, kind: "unfinished" | "no-pr"): StopReason {
     const { what: ended, output: raw } = split(run);
     const output = trimmedOutput(raw);
-    const refusal = run.limitNote ? null : refusedCommand(output);
+    const refusal = refusedCommand(output);
     const what = kind === "unfinished" ? sentence(`The build run did not finish${ended ? `: ${ended}` : ""}`) : "The build run finished but no open PR for this ticket was found.";
+    const limit = run.limitNote ? `The output also mentions a usage limit that matches no known message ("${run.limitNote}"); if it was one, capture the wording for TAI-743.` : "";
+    if (refusal) {
+        // The wording is the agent's own and a heuristic reads it, so the cause says what it looks like, not that it is certain.
+        const looks = refusal.command
+            ? `the permission system looks to have refused \`${refusal.command}\`, and nobody was there to approve it.`
+            : `the permission system looks to have refused a command, and nobody was there to approve it ("${refusal.line}").`;
+        return {
+            what,
+            cause: limit ? `${looks} ${limit}` : looks,
+            next: "if that is what happened, allow that command in the project's Claude settings or do that step by hand; either way read the output below, then run the ticket again with /tai-work.",
+            output,
+        };
+    }
     if (run.limitNote) {
         return {
             what,
             cause: sentence(`the run's output mentions a usage limit that matches no known message ("${run.limitNote}"). If it was one, capture the wording for TAI-743`),
             next: kind === "unfinished" ? "wait for the limit to reset if it was one, then run the ticket again with /tai-work." : "check the branch and open the PR with /tai-work.",
-            output,
-        };
-    }
-    if (refusal) {
-        const cause = refusal.command
-            ? `the permission system refused \`${refusal.command}\`, and nobody was there to approve it.`
-            : `the permission system refused a command, and nobody was there to approve it ("${refusal.line}").`;
-        return {
-            what,
-            cause,
-            next: "allow that command in the project's Claude settings or do that step by hand, then run the ticket again with /tai-work.",
             output,
         };
     }
