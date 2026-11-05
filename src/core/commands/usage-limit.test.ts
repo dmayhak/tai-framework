@@ -61,6 +61,9 @@ describe("detecting a usage limit (TAI-706)", () => {
         ["prose that talks about it", "Added detection of the 5-hour limit reached message."],
         // Not a bullet or a quote, but a closing line of a run that finished.
         ["a closing line that starts with the phrase", "Usage limit reached handling is now covered by tests"],
+        ["a closing line with a colon", "Usage limit reached: now handled by retry"],
+        ["a closing line with a dash", "Weekly limit reached - handling added"],
+        ["a closing line with a bar", "5-hour limit reached | covered by tests"],
         ["a closing line with exceeded", "Weekly limit exceeded case added"],
         ["a closing line with hit", "5-hour limit hit detection is done"],
         ["a closing 'you've hit your limit' line", "You've hit your limit handling is covered by the new tests"],
@@ -114,6 +117,12 @@ describe("a failed run that mentions a limit this detector does not know", () =>
 describe("reading a reset time", () => {
     it("takes a clock time that has already passed today as tomorrow's", () => {
         assert.equal(parseReset("resets 9am", NOW)?.getTime(), new Date(2026, 10, 5, 9, 0).getTime());
+    });
+
+    it("reads a clock time that passed a minute ago as this reset, and one that passed an hour ago as tomorrow's", () => {
+        const at = new Date(2026, 10, 4, 15, 1, 0);
+        assert.equal(parseReset("resets 3pm", at)?.getTime(), new Date(2026, 10, 4, 15, 0).getTime());
+        assert.equal(parseReset("resets 2pm", at)?.getTime(), new Date(2026, 10, 5, 14, 0).getTime());
     });
 
     it("reads 12am and 12pm", () => {

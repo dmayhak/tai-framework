@@ -29,10 +29,12 @@ const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
 // "Your usage limit has been reached", "You've hit your limit". Anchored at the start, so a summary line that merely talks about a
 // limit ("- detects the 5-hour limit reached message", "Added detection of the usage limit reached message") is not one.
 const LEAD = "^[^A-Za-z0-9]*";
-// Where the message ends: the end of the line, a separator before the reset ("∙", "·", "|", "-", ":"), a "resets" clause, or the
-// prose form ("... reached. Your limit will reset at 3pm"). More words straight after it ("Usage limit reached handling is now covered
-// by tests", "Weekly limit exceeded case added") are a closing line of a run that finished, not the message.
-const END = "(?=\\s*$|\\s*[|∙·•—–:]|\\s+-|\\.\\s*$|\\.\\s+(?:your\\s+)?limit\\b.*\\breset|\\s+resets?\\b)";
+// Where the message ends: the end of the line, a separator ("∙", "·", "|", "-", ":") that leads to the reset (a "resets" clause, an epoch
+// time) or to nothing, a "resets" clause, or the prose form ("... reached. Your limit will reset at 3pm"). More words straight after it
+// ("Usage limit reached handling is now covered by tests") or after a separator ("Usage limit reached: now handled by retry",
+// "Weekly limit reached - handling added") are a closing line of a run that finished, not the message.
+const SEPARATOR = "(?:[|∙·•—–:]|\\s-)\\s*(?:resets?\\b|\\d{9,}\\b|$)";
+const END = `(?=\\s*$|\\s*${SEPARATOR}|\\.\\s*$|\\.\\s+(?:your\\s+)?limit\\b.*\\breset|\\s+resets?\\b)`;
 const NAMED_LIMIT = new RegExp(`${LEAD}(?:claude(?:\\s+ai)?\\s+)?(?:your\\s+)?(?:(?:opus|sonnet)\\s+)?(?:usage|5-hour|five-hour|weekly|daily|session|opus|sonnet)\\s+limit\\b[^.\\n]{0,30}?\\b(?:reached|hit|exceeded)\\b${END}`, "i");
 const HIT_YOUR_LIMIT = new RegExp(`${LEAD}you(?:'|’)?ve\\s+(?:hit|reached)\\s+your\\b[^.\\n]*?\\blimit\\b${END}`, "i");
 // A list item, a quote, a heading, a numbered step or code: how a run's own summary is written, never how Claude Code prints a limit.
@@ -68,10 +70,12 @@ function instantIn(zone: string, y: number, m: number, d: number, h: number, min
     return new Date(t);
 }
 
+const JUST_PASSED_MS = 5 * 60_000;
+
 /**
  * The reset time in a limit message, or undefined. An epoch is exact. A clock time ("resets 3pm", "resets 3:30pm (America/Denver)",
  * "resets Nov 7, 10am") is read on the clock of the zone the message names, or the machine's own when it names none or one that is
- * not a time zone; a clock time already past today is tomorrow's.
+ * not a time zone; a clock time that passed more than five minutes ago today is tomorrow's.
  */
 export function parseReset(line: string, now: Date): Date | undefined {
     const epoch = /\|(\d{9,13})\b/.exec(line);
@@ -108,7 +112,8 @@ export function parseReset(line: string, now: Date): Date | undefined {
         return thisYear.getTime() <= now.getTime() ? at(today.y + 1, monthIndex, day) : thisYear;
     }
     const first = at(today.y, today.m, today.d);
-    return first.getTime() <= now.getTime() ? at(today.y, today.m, today.d + 1) : first;
+    // A reset a few minutes ago is this reset, just reached while the message was printed or the run was shutting down: not a day away.
+    return first.getTime() + JUST_PASSED_MS <= now.getTime() ? at(today.y, today.m, today.d + 1) : first;
 }
 
 /**

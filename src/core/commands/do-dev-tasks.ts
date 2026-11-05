@@ -363,7 +363,7 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             if (decision.wait && waits < MAX_WAITS_PER_RUN && !deps.interrupted?.()) {
                 waits++;
                 const continuable = isContinuableStage(result.outcome.stage);
-                deps.say?.(`Usage limit reached (${limit.text}). Waiting ${Math.round(decision.ms / 60000)} minutes for the reset, then ${continuable ? `carrying on with ${next.issue.key}` : `carrying on with the other tickets (${next.issue.key} has an open PR, so it is left to a person)`}.`);
+                deps.say?.(`Usage limit reached (${limit.text}). Waiting ${Math.round(decision.ms / 60000)} minutes for the reset, then ${continuable ? `carrying on with ${next.issue.key}` : `carrying on with the other tickets (${next.issue.key} ${result.outcome.stage === "verification run" ? "is merged and only its verification is left, so it is left to a person" : "has an open PR, so it is left to a person"})`}.`);
                 await deps.sleep!(decision.ms);
                 // An interrupt ends the wait early: keep the paused ticket in the report instead of dropping it.
                 if (deps.interrupted?.()) {
