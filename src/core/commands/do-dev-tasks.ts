@@ -179,7 +179,7 @@ export type DevTaskOutcome =
     | { readonly state: "waiting"; readonly reason: string }
     | { readonly state: "failed"; readonly reason: string }
     /** TAI-706: the account's usage limit was reached. Not a failure of the ticket; the batch stops here (or waits for the reset). */
-    | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean; readonly before?: string }
+    | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean; readonly before?: string; readonly noteNotPosted?: boolean }
     | { readonly state: "stopped"; readonly reason: string; readonly dirtyTree?: boolean };
 
 export interface RunDevTasksDeps {
@@ -207,6 +207,8 @@ export interface RunDevTasksDeps {
     readonly now?: () => Date;
     /** TAI-706: whether the ticket's own newest hand-off says it was paused on a usage limit. Such a ticket is worked first, because its cut-off work is still in the tree. */
     readonly pausedOnLimit?: (task: DevTask) => Promise<boolean>;
+    /** TAI-706: called when a ticket paused in its build run is about to be tried again in this same run, so the retry does not depend on its pause note having been posted. */
+    readonly rememberPause?: (key: IssueKey) => void;
     /** TAI-706: a line for the person watching, such as "waiting until ...". */
     readonly say?: (line: string) => void;
 }
@@ -230,6 +232,7 @@ export function failureHandoff(reason: string): string {
 /** Runs one ticket. It never throws: a failure becomes a `failed` outcome with a hand-off comment on the ticket. */
 export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<DevTaskResult> {
     let outcome: DevTaskOutcome;
+    let handoffFailed = false;
     try {
         if (deps.yolo && deps.yoloGate) {
             const reasons = await deps.yoloGate(task);
@@ -264,6 +267,7 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
         try {
             await deps.handoff(task.issue.key, failureHandoff(reason));
         } catch (handoffErr) {
+            handoffFailed = true;
             outcome = { state: "failed", reason: `${reason} (and the hand-off comment could not be posted: ${errorText(handoffErr)})` };
         }
     }
@@ -273,7 +277,7 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
     if (hit) {
         // What the run had already done is kept, so the report and the note agree (a merge, then a limit in the verification run).
         const before = outcome.state === "pr-opened" ? `PR opened: ${outcome.prUrl}` : outcome.state === "handed-on" ? outcome.note : undefined;
-        outcome = { state: "paused", limit: hit.limit, stage: hit.stage, ...(before ? { before } : {}) };
+        outcome = { state: "paused", limit: hit.limit, stage: hit.stage, ...(before ? { before } : {}), ...(handoffFailed ? { noteNotPosted: true } : {}) };
     }
     return { task, outcome };
 }
@@ -370,6 +374,9 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
                 if (continuable) {
                     results.pop();
                     attempted.delete(next.issue.key);
+                    // Known from this run, whether or not the pause note could be posted: the retry carries on from the cut-off work.
+                    pausedKnown.set(next.issue.key, true);
+                    deps.rememberPause?.(next.issue.key);
                 } else {
                     results[results.length - 1] = { task: next, outcome: { ...result.outcome, carriedOn: true } };
                 }
@@ -448,7 +455,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
                 ...paused.map((r) => {
                     const o = r.outcome as Extract<DevTaskOutcome, { state: "paused" }>;
                     const reset = o.limit.resetsAt ? `resets ${o.limit.resetsAt.toISOString()}` : "reset time not known";
-                    const why = (o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "") + (o.before ? ` Before the pause it had done: ${o.before}.` : "");
+                    const why = (o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "") + (o.before ? ` Before the pause it had done: ${o.before}.` : "") + (o.noteNotPosted ? " The pause note could not be posted to the ticket." : "");
                     return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} ${o.carriedOn ? "The run waited for the reset and carried on with the other tickets." : "No further ticket was started."} ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : o.stage === "verification run" ? "The PR is already merged: run /tai-verify on the Story by hand after the reset (note left on the ticket)." : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
                 })
             );

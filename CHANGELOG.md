@@ -27,6 +27,7 @@ Resuming:
 * A ticket paused in its build run continues on its own Story branch with its uncommitted work, and is worked first in the next run. The dirty-tree stop is lifted only for a ticket whose own newest `Handoff:` is the pause note, so a sibling's leftover work still stops the run. The build prompt says to carry on and not open a second PR.
 * If the cut-off came before the Story branch existed, the next run stops on the dirty tree with a message that says why.
 * A pause once the PR is open (a limit printed after the PR was opened, review, fix, conflict resolution, verification) is not continued by a later run, because "Do all dev tasks" leaves a ticket with an open PR to a person. Its note and the report say so, `wait=` carries on with the other tickets, and the ticket stays in the report as paused.
+* When `wait=` tries a ticket again in the same run, the run's own knowledge that it was paused is used, so the retry does not depend on the pause note having been posted; if the note could not be posted, the report says so.
 * Whether a ticket was paused is read through `PauseReads`, which states each answer's lifetime (picking, preparation, build). The pause note is found by the comments' own instants. A build with no preparation behind it does not fail the ticket when that read fails.
 
 Tests: `usage-limit.test.ts`, `do-dev-tasks.test.ts`, `dev-yolo-wiring.test.ts`, `dev-yolo.test.ts`.

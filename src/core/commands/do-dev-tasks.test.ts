@@ -865,6 +865,32 @@ describe("pausing on a usage limit (TAI-706)", () => {
         assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true }), /Before the pause it had done: merged PR 7; verification not run\./);
     });
 
+    it("a pause note that could not be posted still lets the retry after a wait continue the ticket, and the report says so", async () => {
+        const latch = new UsageLimitLatch();
+        const remembered: string[] = [];
+        let hit = true;
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10), sleep: async () => undefined,
+            rememberPause: (k) => void remembered.push(k),
+            handoff: async () => { throw new Error("jira down"); },
+            build: async (t) => {
+                d.calls.push(`build ${t.issue.key}`);
+                if (hit) { hit = false; latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "build run"); return { ok: false, summary: "x" }; }
+                return { ok: true, summary: "" };
+            },
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.deepEqual(remembered, ["TAI-10"]);
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("build")), ["build TAI-10", "build TAI-10"], "tried again in the same run");
+        assert.equal(results[0]!.outcome.state, "pr-opened");
+        // Without a wait, the pause is reported with the note failure.
+        const latch2 = new UsageLimitLatch();
+        const d2 = deps({ limitLatch: latch2, handoff: async () => { throw new Error("jira down"); }, build: async () => (latch2.hit({ text: "limit" }, "build run"), { ok: false, summary: "x" }) });
+        const second = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d2);
+        assert.equal((second.results[0]!.outcome as { noteNotPosted?: boolean }).noteNotPosted, true);
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, second.results, { yolo: false }), /The pause note could not be posted to the ticket\./);
+    });
+
     it("works a ticket paused on a limit before the others, so its cut-off work is not stopped on by a sibling's dirty-tree check", async () => {
         const d = deps({ pausedOnLimit: async (t) => t.issue.key === "TAI-12" });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11"), task("TAI-12")], skipped: [] }), d);

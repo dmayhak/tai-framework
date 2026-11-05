@@ -2493,6 +2493,7 @@ async function main(): Promise<void> {
         const worked = await workDevTasks(find, {
             yolo,
             pausedOnLimit: (task) => pauses.whilePicking(task.issue.key),
+            rememberPause: (key) => pauses.remember(key),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
             limitLatch,

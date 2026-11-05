@@ -124,7 +124,13 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
     };
     const deps: YoloDeps = {
         rounds: w.rounds,
-        build: async (task) => run(() => buildStageAfterLimit(() => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured })))(buildDevPrompt(task.issue.key, w.cli, (await (w.pausedOnLimit ?? ((k) => wasPausedOnLimit(w.workTracker, k)))(task.issue.key)) ? await cutOffBranch(w.cwd, task.parent.key) : null), { cwd: w.cwd, timeoutMs: w.timeoutMs }),
+        build: async (task) => {
+            const paused = await (w.pausedOnLimit ?? ((key) => wasPausedOnLimit(w.workTracker, key)))(task.issue.key);
+            const resumeBranch = paused ? await cutOffBranch(w.cwd, task.parent.key) : null;
+            // A limit that ends the build run is recorded with whether the PR is already open, since a later run does not continue such a ticket.
+            const stage = () => buildStageAfterLimit(() => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }));
+            return run(stage)(buildDevPrompt(task.issue.key, w.cli, resumeBranch), { cwd: w.cwd, timeoutMs: w.timeoutMs });
+        },
         findPullRequest: (task) => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }),
         review: async (task) => {
             const pr = await pullRequest(task);

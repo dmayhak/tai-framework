@@ -257,6 +257,14 @@ describe("PauseReads: one answer per attempt", () => {
         assert.deepEqual(log, ["TAI-10"], "a single read for the whole attempt");
     });
 
+    it("uses what this run remembered, with no read, for the next preparation and its build", async () => {
+        const { log, pauses } = reads([false]);
+        pauses.remember("TAI-10" as never);
+        assert.equal(await pauses.forPrepare("TAI-10" as never), true);
+        assert.equal(await pauses.forBuild("TAI-10" as never), true);
+        assert.deepEqual(log, []);
+    });
+
     it("reads afresh for the next attempt, so a retry after a wait sees the new note", async () => {
         const { log, pauses } = reads([true, false]);
         await pauses.forPrepare("TAI-10" as never);

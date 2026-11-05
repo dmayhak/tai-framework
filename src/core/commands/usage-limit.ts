@@ -264,6 +264,11 @@ export class PauseReads {
         return paused;
     }
 
+    /** This run knows the ticket was just paused (whether or not its note could be posted): the next preparation uses that without a read. */
+    remember(key: IssueKey): void {
+        this.seen.set(key, true);
+    }
+
     /** For a ticket's preparation: the answer seen while picking, else a read. Kept for this attempt's build. */
     async forPrepare(key: IssueKey): Promise<boolean> {
         const paused = this.seen.get(key) ?? (await this.read(key));
