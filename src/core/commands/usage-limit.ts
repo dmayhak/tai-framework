@@ -102,8 +102,9 @@ export function parseReset(line: string, now: Date): Date | undefined {
         try {
             today = clockIn(now, zone);
         } catch {
-            // A zone the message names but Intl does not know (an abbreviation such as PST): the clock time cannot be placed, so there is
-            // no reset time rather than a guess on the machine's clock; wait= then says the message gave none.
+            // A zone the message names but Intl does not know (an abbreviation such as PDT): the clock time cannot be placed, so there is
+            // no reset time rather than a guess on the machine's clock; wait= then says the message gave none. The fixed-offset names
+            // Node does accept (EST, MST) are read as written, with no daylight saving.
             return undefined;
         }
     } else {
