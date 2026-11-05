@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { PauseReads, buildStageAfterLimit, decideWait, detectUsageLimit, limitMention, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
+import { PauseReads, buildStageAfterLimit, pausedAwareHandoff, wasPausedOnLimit, decideWait, detectUsageLimit, limitMention, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
 
 // A fixed local "now": 2026-11-04 10:00 on the machine's own clock, so clock-time resets read the same everywhere.
 const NOW = new Date(2026, 10, 4, 10, 0, 0);
@@ -84,8 +84,13 @@ describe("detecting a usage limit (TAI-706)", () => {
         }
     });
 
+    it("still finds the message with a few warnings printed after it", () => {
+        const output = ["5-hour limit reached ∙ resets 3pm", "(node:1) DeprecationWarning: a", "(node:1) DeprecationWarning: b", "(node:1) DeprecationWarning: c"].join("\n");
+        assert.ok(detectUsageLimit(output, NOW));
+    });
+
     it("ignores a limit message that is not near the end of the output", () => {
-        const output = ["5-hour limit reached ∙ resets 3pm", "one", "two", "three", "four", "five", "six"].join("\n");
+        const output = ["5-hour limit reached ∙ resets 3pm", ...Array.from({ length: 10 }, (_, i) => `line ${i}`)].join("\n");
         assert.equal(detectUsageLimit(output, NOW), null);
     });
 
@@ -240,6 +245,39 @@ describe("the stage of a build run that ended on a limit", () => {
     });
     it("stays continuable when the PR cannot be looked up", async () => {
         assert.equal(await buildStageAfterLimit(async () => { throw new Error("host down"); }), "build run");
+    });
+});
+
+describe("the position a pause note records", () => {
+    const note = (position?: string) => pausedHandoff({ text: "5-hour limit reached" }, "build run", position);
+    const tracker = (body: string) => ({ getIssue: async () => ({ comments: [{ body }] }) }) as never;
+
+    it("is written into the note", () => {
+        assert.match(note("TAI-1-x@abc1234"), /\nPosition: TAI-1-x@abc1234\n/);
+        assert.doesNotMatch(note(), /Position:/);
+    });
+
+    it("counts only while the checkout still stands there", async () => {
+        const t = tracker(note("TAI-1-x@abc1234"));
+        assert.equal(await wasPausedOnLimit(t, "TAI-1" as never, "TAI-1-x@abc1234"), true);
+        assert.equal(await wasPausedOnLimit(t, "TAI-1" as never, "TAI-1-x@def5678"), false, "committed since");
+        assert.equal(await wasPausedOnLimit(t, "TAI-1" as never, "TAI-1-y@abc1234"), false, "another branch");
+    });
+
+    it("trusts a note with no position, and a checkout git cannot describe", async () => {
+        assert.equal(await wasPausedOnLimit(tracker(note()), "TAI-1" as never, "TAI-1-x@abc1234"), true);
+        assert.equal(await wasPausedOnLimit(tracker(note("TAI-1-x@abc1234")), "TAI-1" as never, undefined), true);
+    });
+
+    it("is attached by the hand-off wrapper, and a failing lookup still posts the note", async () => {
+        const latch = new UsageLimitLatch();
+        latch.hit({ text: "5-hour limit reached" }, "build run");
+        const posted: string[] = [];
+        await pausedAwareHandoff(latch, async (_k, b) => void posted.push(b), async () => "b@c")("TAI-1", "ignored");
+        await pausedAwareHandoff(latch, async (_k, b) => void posted.push(b), async () => { throw new Error("no git"); })("TAI-1", "ignored");
+        assert.match(posted[0]!, /Position: b@c/);
+        assert.match(posted[1]!, /^Handoff: DEV-YOLO paused/);
+        assert.doesNotMatch(posted[1]!, /Position:/);
     });
 });
 

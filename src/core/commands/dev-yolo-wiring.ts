@@ -17,7 +17,7 @@ import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask,
 import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "./dev-yolo.js";
 import { yoloStopReasons } from "./yolo-checks.js";
 import { finishApproved } from "./dev-yolo-finish.js";
-import { cutOffBranch } from "./dev-tasks-git.js";
+import { checkoutPosition, cutOffBranch } from "./dev-tasks-git.js";
 import { buildStageAfterLimit, pausedAwareHandoff, wasPausedOnLimit, type UsageLimitLatch } from "./usage-limit.js";
 
 export interface YoloWiring {
@@ -106,7 +106,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
         if (result.limit) w.limitLatch?.hit(result.limit, typeof stage === "string" ? stage : await stage());
         return result;
     };
-    const handoff = pausedAwareHandoff(w.limitLatch, w.handoff);
+    const handoff = pausedAwareHandoff(w.limitLatch, w.handoff, () => checkoutPosition(w.cwd));
     // The PR is listed once per ticket; every later read of it is by id, and the head is always read the same way.
     const found = new Map<string, PullRequestRef>();
     const pullRequest = async (task: DevTask): Promise<PullRequestRef> => {
@@ -125,7 +125,8 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
     const deps: YoloDeps = {
         rounds: w.rounds,
         build: async (task) => {
-            const paused = await (w.pausedOnLimit ?? ((key) => wasPausedOnLimit(w.workTracker, key)))(task.issue.key);
+            const readPause = async (key: IssueKey): Promise<boolean> => wasPausedOnLimit(w.workTracker, key, await checkoutPosition(w.cwd));
+            const paused = await (w.pausedOnLimit ?? readPause)(task.issue.key);
             const resumeBranch = paused ? await cutOffBranch(w.cwd, task.parent.key) : null;
             // A limit that ends the build run is recorded with whether the PR is already open, since a later run does not continue such a ticket.
             const stage = () => buildStageAfterLimit(() => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }));

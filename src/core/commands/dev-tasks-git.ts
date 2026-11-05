@@ -61,6 +61,17 @@ export async function cutOffBranch(cwd: string, storyKey: string): Promise<strin
     return branch !== "HEAD" && (branch === storyKey || branch.startsWith(`${storyKey}-`)) ? branch : null;
 }
 
+/** Where the checkout stands, "<branch>@<short commit>", or undefined when git cannot say. Recorded in a pause note, compared by the next run. */
+export async function checkoutPosition(cwd: string): Promise<string | undefined> {
+    try {
+        const branch = (await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).stdout.trim();
+        const head = (await execFileAsync("git", ["rev-parse", "--short", "HEAD"], { cwd })).stdout.trim();
+        return branch && head ? `${branch}@${head}` : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 /**
  * Starts a ticket: continues on its own branch when THIS ticket was paused on a usage limit (`pausedOnLimit`, read from its own
  * hand-off) and that branch is checked out, otherwise from a clean default branch. A dirty tree that no pause explains, such as a

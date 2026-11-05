@@ -177,7 +177,7 @@ import { resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
 import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
-import { assertCleanTree, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
+import { assertCleanTree, checkoutPosition, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
 import { buildStageAfterLimit, PauseReads, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
@@ -2455,7 +2455,7 @@ async function main(): Promise<void> {
         // TAI-706: a run that ends on the account's usage limit is recorded here; the ticket is then paused, not failed.
         const limitLatch = new UsageLimitLatch();
         // TAI-706: whether each ticket was paused on a limit; the lifetime of each answer is documented on PauseReads.
-        const pauses = new PauseReads((key) => wasPausedOnLimit(config.backend.workTracker, key));
+        const pauses = new PauseReads(async (key) => wasPausedOnLimit(config.backend.workTracker, key, await checkoutPosition(process.cwd())));
         const yoloWiring = yolo
             ? {
                   gitHost: gitDeps.gitHost,
@@ -2511,7 +2511,7 @@ async function main(): Promise<void> {
             inspect: (task) => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured }),
             handoff: pausedAwareHandoff(limitLatch, async (key, body) => {
                 await postIssueComment(config.backend.workTracker, key as IssueKey, stampComment(body, developer));
-            }),
+            }, () => checkoutPosition(process.cwd())),
         }, found);
         console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
         return;

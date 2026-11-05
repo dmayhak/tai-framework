@@ -9,7 +9,7 @@ import { chmod, readFile, writeFile } from "node:fs/promises";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
-import { DirtyTreeError, PrepareStopError, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "./dev-tasks-git.js";
+import { DirtyTreeError, PrepareStopError, checkoutPosition, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "./dev-tasks-git.js";
 import { pausedAwareHandoff, pausedHandoff, UsageLimitLatch, wasPausedOnLimit, type UsageLimit } from "./usage-limit.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
 import { noPrReason, onlyRefusal, parseDevTasksArgs, resolveYolo } from "./do-dev-tasks.js";
@@ -1027,6 +1027,21 @@ describe("pausing on a usage limit (TAI-706)", () => {
                 await prepareForTicket(r.work, ".tai", "TAI-1", true);
                 assert.equal(r.head(), "TAI-1-feature", "still on the ticket's branch");
                 assert.equal(await readFile(path.join(r.work, "a.txt"), "utf8"), "cut off half way", "its work is kept");
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("describes where the checkout stands, and the description changes with a commit or a branch switch", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                const before = await checkoutPosition(r.work);
+                assert.match(before ?? "", /^TAI-1-feature@[0-9a-f]{4,}$/);
+                await writeFile(path.join(r.work, "a.txt"), "changed");
+                r.g("commit", "-q", "-am", "more");
+                assert.notEqual(await checkoutPosition(r.work), before);
+                assert.equal(await checkoutPosition(path.join(r.dir, "nowhere")), undefined);
             } finally {
                 await rm(r.dir, { recursive: true, force: true });
             }

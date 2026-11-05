@@ -10,7 +10,7 @@ A run that ended on the account's usage limit used to look like any failure: the
 
 Detection (`usage-limit.ts`):
 
-* The last six lines of a run's output are read whatever the exit code, since a limit message can come back with exit 0. `runHeadlessClaude` returns the match as `limit`, with the line redacted like the run summaries.
+* The last ten lines of a run's output are read whatever the exit code, since a limit message can come back with exit 0. `runHeadlessClaude` returns the match as `limit`, with the line redacted like the run summaries.
 * A line counts only if it starts with the message ("5-hour limit reached", "You've hit your limit") and then ends, or continues only with a separator, a "resets" clause or the prose form.
 * Not matched: a rate-limit throttle, a failing build, a limit mentioned early in a long output, and a closing summary that talks about limits (a bullet, a quote, a sentence with the phrase in it, or a line such as "Usage limit reached handling is now covered by tests").
 * A clock-time reset is read on the clock of the zone the message names (a bare `UTC` or `GMT` too), daylight saving included, and on the machine's clock when it names none.
@@ -25,6 +25,7 @@ The pause:
 Resuming:
 
 * A ticket paused in its build run continues on its own Story branch with its uncommitted work, and is worked first in the next run. The dirty-tree stop is lifted only for a ticket whose own newest `Handoff:` is the pause note, so a sibling's leftover work still stops the run. The build prompt says to carry on and not open a second PR.
+* The pause note records where the checkout stood (`Position: <branch>@<commit>`). A later run lifts the dirty-tree stop only while the checkout still stands there, so a stale note cannot excuse leftovers the person made since (a commit, another branch). A note without a position, or a checkout git cannot describe, is trusted as before.
 * If the cut-off came before the Story branch existed, the next run stops on the dirty tree with a message that says why.
 * A pause once the PR is open (a limit printed after the PR was opened, review, fix, conflict resolution, verification) is not continued by a later run, because "Do all dev tasks" leaves a ticket with an open PR to a person. Its note and the report say so, `wait=` carries on with the other tickets, and the ticket stays in the report as paused.
 * When `wait=` tries a ticket again in the same run, the run's own knowledge that it was paused is used, so the retry does not depend on the pause note having been posted; if the note could not be posted, the report says so.

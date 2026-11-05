@@ -21,7 +21,7 @@ export interface UsageLimit {
 }
 
 /** How much of the end of the output is read. A limit ends the run, so its message is among the last lines. */
-const TAIL_LINES = 6;
+const TAIL_LINES = 10;
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
@@ -211,11 +211,13 @@ export function isContinuableStage(stage: string): boolean {
     return stage === CONTINUABLE_STAGE;
 }
 
+/** Where the checkout stood when the run was cut off ("<branch>@<commit>"). A later run continues only if it still stands there. */
+const POSITION_PREFIX = "Position: ";
 const PAUSED_NOTE_START = "Handoff: DEV-YOLO paused on a usage limit.";
 const CONTINUES_LINE = 'Next: once the limit has reset, run "Do all dev tasks" again. The run continues this ticket on its branch.';
 
 /** The note left on a ticket whose run was cut off by a usage limit. Neutral: the ticket did nothing wrong. */
-export function pausedHandoff(limit: UsageLimit, stage: string): string {
+export function pausedHandoff(limit: UsageLimit, stage: string, position?: string): string {
     const reset = limit.resetsAt ? ` It resets at ${limit.resetsAt.toISOString()}.` : "";
     const next = isContinuableStage(stage)
         ? CONTINUES_LINE
@@ -225,6 +227,7 @@ export function pausedHandoff(limit: UsageLimit, stage: string): string {
     return (
         `${PAUSED_NOTE_START} The account's usage limit was reached while this ticket's ${stage} was running: "${limit.text}".${reset}\n\n` +
         "This is not a failure of the ticket. The branch and any uncommitted work were left as they were.\n\n" +
+        (position ? `${POSITION_PREFIX}${position}\n\n` : "") +
         next
     );
 }
@@ -239,12 +242,16 @@ function timeOf(createdAt: string | undefined): number {
  * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
  * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other.
  */
-export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue">, key: IssueKey): Promise<boolean> {
+export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue">, key: IssueKey, current?: string): Promise<boolean> {
     const issue = await workTracker.getIssue(key);
     // Newest last by the comment's own time, not by the order a host happens to return them in.
     const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body)).sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
     const newest = handoffs[handoffs.length - 1];
-    return newest !== undefined && newest.body.includes(PAUSED_NOTE_START) && newest.body.includes(CONTINUES_LINE);
+    if (newest === undefined || !newest.body.includes(PAUSED_NOTE_START) || !newest.body.includes(CONTINUES_LINE)) return false;
+    // A note that recorded where the checkout stood only counts while it still stands there: if the person has since committed, switched
+    // branch or moved on, the tree's leftovers are not this pause's and the dirty-tree stop applies. An older note, or no way to tell, is trusted.
+    const recorded = new RegExp(`^${POSITION_PREFIX}(\\S+)$`, "m").exec(newest.body)?.[1];
+    return recorded === undefined || current === undefined || recorded === current;
 }
 
 /**
@@ -294,10 +301,17 @@ export class PauseReads {
  * Wraps a hand-off poster so that, once a run has hit the usage limit, whatever hand-off the ticket's code goes on to write (a failure
  * hand-off, a "run did not finish" note) is replaced by the neutral paused note: the ticket did not fail.
  */
-export function pausedAwareHandoff(latch: UsageLimitLatch | undefined, post: (key: string, body: string) => Promise<void>): (key: string, body: string) => Promise<void> {
-    return (key, body) => {
+export function pausedAwareHandoff(latch: UsageLimitLatch | undefined, post: (key: string, body: string) => Promise<void>, position?: () => Promise<string | undefined>): (key: string, body: string) => Promise<void> {
+    return async (key, body) => {
         const hit = latch?.current();
-        return post(key, hit ? pausedHandoff(hit.limit, hit.stage) : body);
+        if (!hit) return post(key, body);
+        let where: string | undefined;
+        try {
+            where = await position?.();
+        } catch {
+            where = undefined; // the note is still posted, without the position
+        }
+        return post(key, pausedHandoff(hit.limit, hit.stage, where));
     };
 }
 
