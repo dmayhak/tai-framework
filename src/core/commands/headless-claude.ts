@@ -37,6 +37,9 @@ export interface HeadlessRunOptions {
     readonly env?: Readonly<Record<string, string>>;
 }
 
+/** How many lines of a run's output are kept for the person who reads why it stopped (the summary keeps fewer). */
+const OUTPUT_LINES = 8;
+
 export interface HeadlessRunResult {
     readonly ok: boolean;
     readonly summary: string;
@@ -44,6 +47,8 @@ export interface HeadlessRunResult {
     readonly what?: string;
     /** TAI-710: the end of the run's output, redacted, kept apart from the summary line so a person reads it as the agent's text. */
     readonly output?: string;
+    /** TAI-710: a line of a failed run's output that talks about a usage limit no known message matches (so a new wording is noticed, TAI-743). */
+    readonly limitNote?: string;
     /** TAI-706: set when the run ended on the account's usage limit, whatever its exit code. Such a run is never `ok`. */
     readonly limit?: UsageLimit;
 }
@@ -289,12 +294,12 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         const keep = (d: Buffer): void => {
             tail = (tail + d.toString()).slice(-TAIL_BYTES);
         };
-        const lastLines = (): string => redactSecrets(tail.trim().split("\n").slice(-6).join("\n"), { ...process.env, ...options.env });
+        const lastLines = (count = 6): string => redactSecrets(tail.trim().split("\n").slice(-count).join("\n"), { ...process.env, ...options.env });
         let timedOut = false;
         let killTimer: NodeJS.Timeout | undefined;
         let exitTimer: NodeJS.Timeout | undefined;
-        const notFinished = (what: string): HeadlessRunResult => ({ ok: false, summary: `${what}. Last output:\n${lastLines()}`, what, output: lastLines() });
-        const finishedOk = (): HeadlessRunResult => ({ ok: true, summary: lastLines(), output: lastLines() });
+        const notFinished = (what: string): HeadlessRunResult => ({ ok: false, summary: `${what}. Last output:\n${lastLines()}`, what, output: lastLines(OUTPUT_LINES) });
+        const finishedOk = (): HeadlessRunResult => ({ ok: true, summary: lastLines(), output: lastLines(OUTPUT_LINES) });
         const stopped = (): HeadlessRunResult => notFinished(`the run was stopped after ${Number((options.timeoutMs / 60000).toFixed(1))} minutes`);
         const killGroup = (signal: NodeJS.Signals): void => {
             if (settled) return; // the group is gone and its id may belong to something else by now
@@ -321,7 +326,8 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             if (limit) return resolve({ ...result, ok: false, limit });
             // A failed run whose end talks about a limit but matched no known message: say so, so a new wording is noticed and captured.
             const mention = result.ok ? null : limitMention(tail);
-            resolve(mention ? { ...result, summary: `${result.summary}\n(Its output mentions a limit, "${redactSecrets(mention, { ...process.env, ...options.env })}", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-743.)` } : result);
+            const note = mention ? redactSecrets(mention, { ...process.env, ...options.env }) : null;
+            resolve(note ? { ...result, limitNote: note, summary: `${result.summary}\n(Its output mentions a limit, "${note}", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-743.)` } : result);
         };
         const timer = setTimeout(() => {
             timedOut = true;

@@ -31,6 +31,20 @@ describe("refusedCommand (TAI-710)", () => {
         });
     }
 
+    it("does not read an operating-system or ci error as the permission system refusing a command", () => {
+        for (const line of [
+            "npm ERR! EACCES: permission denied, open '/usr/lib/x'",
+            "git@github.com: Permission denied (publickey).",
+            "mkdir: cannot create directory: Permission denied",
+            "The CI step was blocked by a failing check.",
+            "Deploying requires approval from a maintainer.",
+            "The login was denied by the server.",
+        ]) {
+            assert.equal(refusedCommand(`working\n${line}\n`), null, line);
+            assert.doesNotMatch(describeStop({ summary: "", output: line }, "unfinished").cause, /permission system/, line);
+        }
+    });
+
     it("does not read an ordinary stop as a refusal", () => {
         assert.equal(refusedCommand("npm ERR! code ELIFECYCLE\ntests failed\nI could not finish."), null);
         assert.equal(refusedCommand(""), null);
@@ -61,6 +75,14 @@ describe("describeStop (TAI-710)", () => {
         const s = describeStop({ summary: "", output: "Permission to use Bash with command `git rm README.md` was denied." }, "no-pr");
         assert.equal(s.cause, "the permission system refused `git rm README.md`, and nobody was there to approve it.");
         assert.match(s.next, /allow that command/);
+    });
+
+    it("an unrecognised limit wording is named in the cause, so the capture path stays visible", () => {
+        const s = describeStop({ summary: "", output: "something\nthe quota is used up", what: "the run exited with code 1", limitNote: "the quota is used up" }, "unfinished");
+        assert.match(s.cause, /mentions a usage limit that matches no known message \("the quota is used up"\)[\s\S]*TAI-743/);
+        assert.equal(s.output, "something\nthe quota is used up");
+        const noFalseRefusal = describeStop({ summary: "", output: "Permission to use Bash with command `git rm a` was denied.", limitNote: "limit" }, "unfinished");
+        assert.match(noFalseRefusal.cause, /TAI-743/);
     });
 
     it("a refusal without a command quotes the line", () => {

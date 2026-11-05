@@ -12,6 +12,8 @@ export interface RunEnd {
     readonly what?: string;
     /** The end of the run's output. */
     readonly output?: string;
+    /** A line of a failed run's output that talks about a usage limit no known message matches, if there is one. */
+    readonly limitNote?: string;
 }
 
 export interface StopReason {
@@ -36,7 +38,9 @@ export function trimmedOutput(text: string): string {
 
 // A refusal as the agent tends to write it: the permission system or the settings said no, to a command. The wording is the agent's own and
 // not recorded from a real run, so a miss only means the cause is reported as not known (the output is still kept).
-const REFUSAL = /\b(?:permission|permissions)\b[^.\n]{0,60}\b(?:denied|refused|not granted|blocked|declined)\b|\b(?:denied|refused|blocked|declined)\b[^.\n]{0,40}\bpermission|\b(?:was|were|got|been)\s+(?:denied|refused|blocked)\b|haven't granted|requires? (?:approval|permission)|not allowed to (?:run|use)|(?:isn't|is not|wasn't|was not) (?:allowed|permitted)/i;
+const REFUSAL = /\bpermissions?\b[^\n]{0,90}\b(?:denied|refused|not granted|blocked|declined)\b|\b(?:denied|refused|blocked|declined)\b[^\n]{0,40}\bpermission|\bcommand\b[^\n]{0,100}\b(?:denied|refused|blocked)\b|\b(?:denied|refused|blocked)\b[^.\n]{0,20}\bcommand\b|haven't granted|not allowed to (?:run|use)|(?:isn't|is not|wasn't|was not) (?:allowed|permitted) to (?:run|use)/i;
+// An operating-system or ssh error that says "permission denied" is not the permission system refusing a command.
+const OS_ERROR = /\bEACCES\b|\bEPERM\b|publickey|permission denied(?:\s*\(|,|\.?$|\s+while)/i;
 const COMMAND_IN_TICKS = /`([^`\n]{2,120})`/;
 const COMMAND_AFTER = /\b(?:command|running|run|ran|use)[:\s]+["“']?((?:git|npm|npx|node|tsx|rm|mv|cp|curl|gh|docker|make|bash|sh)\s[^"”'\n]{1,100})/i;
 
@@ -45,7 +49,7 @@ export function refusedCommand(output: string): { readonly command: string | nul
     const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i]!;
-        if (!REFUSAL.test(line)) continue;
+        if (OS_ERROR.test(line) || !REFUSAL.test(line)) continue;
         const command = COMMAND_IN_TICKS.exec(line)?.[1]?.trim() ?? COMMAND_AFTER.exec(line)?.[1]?.trim().replace(/[.,;:]+$/, "") ?? null;
         return { command, line };
     }
@@ -72,8 +76,16 @@ function sentence(text: string): string {
 export function describeStop(run: RunEnd, kind: "unfinished" | "no-pr"): StopReason {
     const { what: ended, output: raw } = split(run);
     const output = trimmedOutput(raw);
-    const refusal = refusedCommand(output);
+    const refusal = run.limitNote ? null : refusedCommand(output);
     const what = kind === "unfinished" ? sentence(`The build run did not finish${ended ? `: ${ended}` : ""}`) : "The build run finished but no open PR for this ticket was found.";
+    if (run.limitNote) {
+        return {
+            what,
+            cause: sentence(`the run's output mentions a usage limit that matches no known message ("${run.limitNote}"). If it was one, capture the wording for TAI-743`),
+            next: kind === "unfinished" ? "wait for the limit to reset if it was one, then run the ticket again with /tai-work." : "check the branch and open the PR with /tai-work.",
+            output,
+        };
+    }
     if (refusal) {
         const cause = refusal.command
             ? `the permission system refused \`${refusal.command}\`, and nobody was there to approve it.`

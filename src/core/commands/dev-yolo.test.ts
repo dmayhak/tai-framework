@@ -241,6 +241,13 @@ describe("runYolo (TAI-634)", () => {
         assert.match(runOn.handoffs[0]!, /The end of the run's own output:\nI did step 0\.\nI did step 1\./, "the closing text keeps its lines");
     });
 
+    it("an unrecognised limit wording reaches the reason and the hand-off, not only the summary (TAI-710)", async () => {
+        const s = script();
+        const o = await runYolo(task, deps(s, { build: async () => ({ ok: false, summary: "x", what: "the run exited with code 1", output: "You're out of extra usage", limitNote: "You're out of extra usage" }) }));
+        assert.match((o as { cause: string }).cause, /matches no known message \("You're out of extra usage"\).*TAI-743/);
+        assert.match(s.handoffs[0]!, /Cause: .*TAI-743/);
+    });
+
     it("stops on an unreadable review and on a failed fix run", async () => {
         const noReview = script();
         await runYolo(task, deps(noReview));
@@ -500,6 +507,14 @@ describe("a run that ends on a usage limit (TAI-706)", () => {
         assert.match(failed.summary, /mentions a limit, "You're out of extra usage", but matches no known usage-limit message/);
         const clean = await runWith('echo "You\'re out of extra usage"');
         assert.doesNotMatch(clean.summary, /matches no known/);
+        assert.equal(failed.limitNote, "You're out of extra usage", "kept apart for the reason shown in the report and hand-off (TAI-710)");
+        assert.equal(clean.limitNote, undefined);
+    });
+
+    it("keeps the last eight lines of a run's output apart from the summary, which keeps six (TAI-710)", async () => {
+        const result = await runWith("for i in 1 2 3 4 5 6 7 8 9 10; do echo \"line $i\"; done\nexit 1");
+        assert.equal(result.output, ["line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "line 9", "line 10"].join("\n"));
+        assert.doesNotMatch(result.summary, /line 3\b/);
     });
 
     it("carries the limit when the run exits non-zero", async () => {

@@ -12,7 +12,8 @@ The reason is now a fixed shape (`stop-reason.ts`):
 
 * Three short lines: what stopped, the cause as far as it is known, and the next step. They appear in the report (the cause and next step under the ticket's bullet) and in the hand-off, for DEV-YOLO and for a plain "Do all dev tasks" run.
 * The agent's own closing text is kept after them in the hand-off: the last eight lines, each cut to 240 characters, with their line breaks. It is never joined into the lines.
-* A refused command is named as a refusal, with the command. The wording a refusal takes in the agent's output is not recorded from a real run, so it is read from a line that talks about a permission being denied, refused or not granted; a miss reports the cause as not known and still keeps the output.
+* A refused command is named as a refusal, with the command. The wording a refusal takes in the agent's output is not recorded from a real run, so it is read from a line that talks about a permission being denied, refused or not granted; a miss reports the cause as not known and still keeps the output. An operating-system error such as `EACCES` or an ssh `Permission denied (publickey)` is not read as a refusal.
+* A failed run whose output mentions a usage limit no known message matches (TAI-743) says so in the cause, so the capture path stays visible.
 * `runHeadlessClaude` returns `what` (what happened to a run that did not finish) and `output` apart from `summary`, which is unchanged for the other callers.
 * A Story that is still To Do or Backlog after its Dev ticket ran gets its own line in the report, with why (no assignee, or just not moved). `issue create-small` gives the Story the Dev subtask's assignee when the subtask has one, since Jira will not move a Story that nobody holds; it falls back to the Story's own pick when the subtask has nobody.
 
