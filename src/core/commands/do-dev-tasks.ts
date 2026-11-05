@@ -13,6 +13,7 @@
 import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
+import { decideWait, isContinuableStage, MAX_WAITS_PER_RUN, parseWaitHours, type UsageLimit, type UsageLimitLatch } from "./usage-limit.js";
 import { sameHuman } from "../personas/roster.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { isFlagged, type HumanRef, type Issue, type IssueKey, type WorkTracker } from "../storage/interface.js";
@@ -177,6 +178,8 @@ export type DevTaskOutcome =
     | { readonly state: "handed-on"; readonly note: string }
     | { readonly state: "waiting"; readonly reason: string }
     | { readonly state: "failed"; readonly reason: string }
+    /** TAI-706: the account's usage limit was reached. Not a failure of the ticket; the batch stops here (or waits for the reset). */
+    | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean; readonly before?: string; readonly noteNotPosted?: boolean }
     | { readonly state: "stopped"; readonly reason: string; readonly dirtyTree?: boolean };
 
 export interface RunDevTasksDeps {
@@ -195,6 +198,19 @@ export interface RunDevTasksDeps {
     readonly yolo: boolean;
     /** True once the command has been interrupted: nothing new is looked up, prepared or started. */
     readonly interrupted?: () => boolean;
+    /** TAI-706: where a run that ended on a usage limit is recorded. A ticket whose run hit one is `paused`, not `failed`. */
+    readonly limitLatch?: UsageLimitLatch;
+    /** TAI-706: `wait=<hours>`: sleep until the reset when it is within this many hours. Without it a limit stops the batch. */
+    readonly waitHours?: number;
+    /** TAI-706: sleeps for the given milliseconds; ends early (resolving) on an interrupt. Without it nothing is waited for. */
+    readonly sleep?: (ms: number) => Promise<void>;
+    readonly now?: () => Date;
+    /** TAI-706: whether the ticket's own newest hand-off says it was paused on a usage limit. Such a ticket is worked first, because its cut-off work is still in the tree. */
+    readonly pausedOnLimit?: (task: DevTask) => Promise<boolean>;
+    /** TAI-706: called when a ticket paused in its build run is about to be tried again in this same run, so the retry does not depend on its pause note having been posted. */
+    readonly rememberPause?: (key: IssueKey) => void;
+    /** TAI-706: a line for the person watching, such as "waiting until ...". */
+    readonly say?: (line: string) => void;
 }
 
 export interface DevTaskResult {
@@ -216,6 +232,7 @@ export function failureHandoff(reason: string): string {
 /** Runs one ticket. It never throws: a failure becomes a `failed` outcome with a hand-off comment on the ticket. */
 export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<DevTaskResult> {
     let outcome: DevTaskOutcome;
+    let handoffFailed = false;
     try {
         if (deps.yolo && deps.yoloGate) {
             const reasons = await deps.yoloGate(task);
@@ -250,8 +267,17 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
         try {
             await deps.handoff(task.issue.key, failureHandoff(reason));
         } catch (handoffErr) {
+            handoffFailed = true;
             outcome = { state: "failed", reason: `${reason} (and the hand-off comment could not be posted: ${errorText(handoffErr)})` };
         }
+    }
+    // TAI-706: a run that ended on the usage limit is paused whatever else it went on to report; the hand-off it left (or this
+    // function's own) was already turned into the neutral note by the caller's `handoff`.
+    const hit = deps.limitLatch?.current();
+    if (hit) {
+        // What the run had already done is kept, so the report and the note agree (a merge, then a limit in the verification run).
+        const before = outcome.state === "pr-opened" ? `PR opened: ${outcome.prUrl}` : outcome.state === "handed-on" ? outcome.note : undefined;
+        outcome = { state: "paused", limit: hit.limit, stage: hit.stage, ...(before ? { before } : {}), ...(handoffFailed ? { noteNotPosted: true } : {}) };
     }
     return { task, outcome };
 }
@@ -274,13 +300,39 @@ export interface WorkedDevTasks {
 }
 
 /**
+ * The next ticket to work: the first not yet attempted, except that one whose own newest hand-off is a usage-limit pause comes first.
+ * Its cut-off work is still in the working tree, and any other ticket prepared before it would stop the run on that dirty tree.
+ */
+async function pickNext(tasks: readonly DevTask[], attempted: ReadonlySet<IssueKey>, deps: RunDevTasksDeps, known: Map<IssueKey, boolean>): Promise<DevTask | undefined> {
+    const open = tasks.filter((t) => !attempted.has(t.issue.key));
+    if (open.length > 1 && deps.pausedOnLimit) {
+        for (const t of open) {
+            // Read once per ticket for the run: a ticket's own note changes only when its own attempt ends (the entry is dropped then).
+            let paused = known.get(t.issue.key);
+            if (paused === undefined) {
+                try {
+                    paused = await deps.pausedOnLimit(t);
+                    known.set(t.issue.key, paused);
+                } catch {
+                    paused = false; // an unreadable ticket keeps its place; its own run reports the problem
+                }
+            }
+            if (paused) return t;
+        }
+    }
+    return open[0];
+}
+
+/**
  * Works the tickets one at a time and looks again after each. A ticket that one of ours unblocks (its blocker finished
  * while this run was going) was skipped at the start but is found by the next look, so it is not dropped. A ticket is
  * attempted once per run, so a failed one is never retried in a loop and one whose PR is still open is not rebuilt.
  */
 export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDeps, firstLook?: FoundDevTasks): Promise<WorkedDevTasks> {
     const attempted = new Set<IssueKey>();
+    const pausedKnown = new Map<IssueKey, boolean>();
     const results: DevTaskResult[] = [];
+    let waits = 0;
     let pending = firstLook;
     let last: FoundDevTasks = firstLook ?? { tasks: [], skipped: [] };
     for (;;) {
@@ -289,11 +341,52 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
         const found = pending ?? (await find());
         pending = undefined;
         last = found;
-        const next = found.tasks.find((t) => !attempted.has(t.issue.key));
+        const next = await pickNext(found.tasks, attempted, deps, pausedKnown);
         if (!next) return { results, found };
         attempted.add(next.issue.key);
+        deps.limitLatch?.clear();
         const result = await runDevTask(next, deps);
+        pausedKnown.delete(next.issue.key);
         results.push(result);
+        if (result.outcome.state === "paused") {
+            // TAI-706: no further ticket is started. With wait=<hours> and a reset within that cap, sleep until it and take a fresh look;
+            // the cut-off ticket is tried again (it continues on its branch). Otherwise the run ends here.
+            const { limit } = result.outcome;
+            const now = deps.now?.() ?? new Date();
+            const decision = deps.waitHours === undefined || !deps.sleep ? ({ wait: false, why: "no wait= was given" } as const) : decideWait(limit, deps.waitHours, now);
+            // A ticket that cannot be continued (its PR is open) buys nothing from a wait when no other ticket is left to carry on with.
+            const worthWaiting = isContinuableStage(result.outcome.stage) || found.tasks.some((t) => t.issue.key !== next.issue.key && !attempted.has(t.issue.key));
+            if (decision.wait && !worthWaiting) {
+                results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: "no other ticket is left to carry on with, and this one cannot be continued by a later run" } };
+                return { results, found };
+            }
+            if (decision.wait && waits < MAX_WAITS_PER_RUN && !deps.interrupted?.()) {
+                waits++;
+                const continuable = isContinuableStage(result.outcome.stage);
+                deps.say?.(`Usage limit reached (${limit.text}). Waiting ${Math.round(decision.ms / 60000)} minutes for the reset, then ${continuable ? `carrying on with ${next.issue.key}` : `carrying on with the other tickets (${next.issue.key} ${result.outcome.stage === "verification run" ? "is merged and only its verification is left, so it is left to a person" : "has an open PR, so it is left to a person"})`}.`);
+                await deps.sleep!(decision.ms);
+                // An interrupt ends the wait early: keep the paused ticket in the report instead of dropping it.
+                if (deps.interrupted?.()) {
+                    results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: "the run was interrupted during the wait" } };
+                    return { results, found };
+                }
+                // A ticket that will be tried again is replaced by how it ends; one that will not (its PR is open) stays in the report as paused.
+                if (continuable) {
+                    results.pop();
+                    attempted.delete(next.issue.key);
+                    // Known from this run, whether or not the pause note could be posted: the retry carries on from the cut-off work.
+                    pausedKnown.set(next.issue.key, true);
+                    deps.rememberPause?.(next.issue.key);
+                } else {
+                    results[results.length - 1] = { task: next, outcome: { ...result.outcome, carriedOn: true } };
+                }
+                deps.limitLatch?.clear();
+                continue;
+            }
+            const why = decision.wait ? (waits >= MAX_WAITS_PER_RUN ? `the limit was hit again after ${waits} waits` : "the run was interrupted") : decision.why;
+            results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: why } };
+            return { results, found };
+        }
         if (result.outcome.state === "stopped") {
             // Do not go on to fail the rest. A dirty tree is the previous ticket's run's doing, so say so on that ticket,
             // keeping the reason it already failed for (one current Handoff: per ticket); a branch that will not update is not.
@@ -355,6 +448,18 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
         }
         out.push("", `## Failed (${failed.length})`, "");
         out.push(...(failed.length ? failed.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason} (hand-off left on the ticket)`) : ["None."]));
+        const paused = results.filter((r) => r.outcome.state === "paused");
+        if (paused.length) {
+            out.push("", `## Paused (${paused.length})`, "");
+            out.push(
+                ...paused.map((r) => {
+                    const o = r.outcome as Extract<DevTaskOutcome, { state: "paused" }>;
+                    const reset = o.limit.resetsAt ? `resets ${o.limit.resetsAt.toISOString()}` : "reset time not known";
+                    const why = (o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "") + (o.before ? ` Before the pause it had done: ${o.before}.` : "") + (o.noteNotPosted ? " The pause note could not be posted to the ticket." : "");
+                    return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} ${o.carriedOn ? "The run waited for the reset and carried on with the other tickets." : "No further ticket was started."} ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : o.stage === "verification run" ? "The PR is already merged: run /tai-verify on the Story by hand after the reset (note left on the ticket)." : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
+                })
+            );
+        }
         const stopped = results.filter((r) => r.outcome.state === "stopped");
         if (stopped.length) {
             out.push("", "## Stopped", "");
@@ -378,23 +483,27 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 
 /**
  * The command's arguments: `dryrun=true`, `yolo=true` or `yolo=false` for this run only (TAI-693), and `only=<DEV-KEY>` to work one
- * ticket (TAI-695). Anything else is refused, because a mistyped flag must not start real builds. After `rules` (which prints a rule set
- * and runs nothing) only `yolo=` is taken, and `only=` is accepted and has no effect, since the set does not depend on the ticket.
+ * ticket (TAI-695), and `wait=<hours>` to sleep until a usage limit resets (TAI-706). Anything else is refused, because a mistyped flag must not start real builds. After `rules` (which prints a rule set
+ * and runs nothing) only `yolo=` is taken, `only=` is accepted and has no effect, since the set does not depend on the ticket, and `wait=` is refused.
  */
 export function parseDevTasksArgs(
     args: readonly (string | undefined)[],
     options: { readonly rules?: boolean } = {}
-): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey } {
+): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
     const onlyArgs = given.filter((a) => a.startsWith("only="));
-    const unknown = given.filter((a) => !known.includes(a) && !a.startsWith("only="));
+    const waitArgs = options.rules ? [] : given.filter((a) => a.startsWith("wait="));
+    const unknown = given.filter((a) => !known.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")));
     if (unknown.length > 0) {
         throw new Error(
-            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false and only=<DEV-KEY>"} (got: ${unknown.join(" ")}).`
+            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY> and wait=<hours>"} (got: ${unknown.join(" ")}).`
         );
     }
     if (onlyArgs.length > 1) throw new Error(`do-dev-tasks takes only one only=<DEV-KEY> (got: ${onlyArgs.join(" ")}).`);
+    if (waitArgs.length > 1) throw new Error(`do-dev-tasks takes only one wait=<hours> (got: ${waitArgs.join(" ")}).`);
+    // TAI-706: a mistyped or empty value is refused, because it would otherwise silently mean "do not wait" or "wait forever".
+    const waitHours = waitArgs.length === 1 ? parseWaitHours(waitArgs[0]!.slice("wait=".length)) : undefined;
     let only: IssueKey | undefined;
     if (onlyArgs.length === 1) {
         const value = onlyArgs[0]!.slice("only=".length);
@@ -407,7 +516,7 @@ export function parseDevTasksArgs(
     let yolo: boolean | undefined;
     if (wantsOn) yolo = true;
     else if (wantsOff) yolo = false;
-    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }) };
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }) };
 }
 
 /**

@@ -9,7 +9,8 @@ import { chmod, readFile, writeFile } from "node:fs/promises";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
-import { DirtyTreeError, PrepareStopError, prepareCleanDefaultBranch } from "./dev-tasks-git.js";
+import { DirtyTreeError, PrepareStopError, checkoutPosition, cutOffBranch, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "./dev-tasks-git.js";
+import { pausedAwareHandoff, pausedHandoff, UsageLimitLatch, wasPausedOnLimit, type UsageLimit } from "./usage-limit.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
 import { noPrReason, onlyRefusal, parseDevTasksArgs, resolveYolo } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
@@ -631,7 +632,7 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.deepEqual(parseDevTasksArgs(["yolo=true"]), { dryRun: false, yolo: true });
         assert.deepEqual(parseDevTasksArgs(["yolo=false"]), { dryRun: false, yolo: false });
         assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
-        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false and only=<DEV-KEY>/);
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY> and wait=<hours>/);
         assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
     });
 
@@ -818,5 +819,423 @@ describe("do-dev-tasks only=<KEY> (TAI-695)", () => {
             assert.deepEqual(results.map((r) => r.task.issue.key), [b.key]);
             assert.ok(!d.calls.join("\n").includes(a.key));
         });
+    });
+});
+
+describe("pausing on a usage limit (TAI-706)", () => {
+    const NOW = new Date(2026, 10, 4, 10, 0, 0);
+    const reset2h = new Date(NOW.getTime() + 2 * 3_600_000);
+
+    /** Deps whose build ends on the limit for the keys in `hits` (as many times as `hits[key]` says), the way the CLI's build does. */
+    function limitDeps(hits: Record<string, number>, over: Partial<RunDevTasksDeps> = {}, limit: UsageLimit = { text: "5-hour limit reached", resetsAt: reset2h }, stage = "build run") {
+        const latch = new UsageLimitLatch();
+        const posted: [string, string][] = [];
+        const sleeps: number[] = [];
+        const said: string[] = [];
+        const d = deps({
+            limitLatch: latch,
+            now: () => NOW,
+            sleep: async (ms) => void sleeps.push(ms),
+            say: (line) => void said.push(line),
+            build: async (t) => {
+                d.calls.push(`build ${t.issue.key}`);
+                if ((hits[t.issue.key] ?? 0) > 0) {
+                    hits[t.issue.key]!--;
+                    latch.hit(limit, stage);
+                    return { ok: false, summary: "the run exited with code 1", limit } as never;
+                }
+                return { ok: true, summary: "" };
+            },
+            handoff: pausedAwareHandoff(latch, async (k, b) => void posted.push([k, b])),
+            ...over,
+        });
+        return { d, posted, sleeps, said, latch };
+    }
+
+    it("a pause after a PR or a merge keeps what the run had already done, in the outcome and the report", async () => {
+        const latch = new UsageLimitLatch();
+        const d = deps({
+            limitLatch: latch, yolo: true,
+            yoloRun: async () => (latch.hit({ text: "limit" }, "verification run"), { state: "handed-on", note: "merged PR 7; verification not run" }),
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        const o = results[0]!.outcome as { state: string; before?: string };
+        assert.equal(o.state, "paused");
+        assert.equal(o.before, "merged PR 7; verification not run");
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true }), /Before the pause it had done: merged PR 7; verification not run\./);
+    });
+
+    it("a pause note that could not be posted still lets the retry after a wait continue the ticket, and the report says so", async () => {
+        const latch = new UsageLimitLatch();
+        const remembered: string[] = [];
+        let hit = true;
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10), sleep: async () => undefined,
+            rememberPause: (k) => void remembered.push(k),
+            handoff: async () => { throw new Error("jira down"); },
+            build: async (t) => {
+                d.calls.push(`build ${t.issue.key}`);
+                if (hit) { hit = false; latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "build run"); return { ok: false, summary: "x" }; }
+                return { ok: true, summary: "" };
+            },
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.deepEqual(remembered, ["TAI-10"]);
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("build")), ["build TAI-10", "build TAI-10"], "tried again in the same run");
+        assert.equal(results[0]!.outcome.state, "pr-opened");
+        // Without a wait, the pause is reported with the note failure.
+        const latch2 = new UsageLimitLatch();
+        const d2 = deps({ limitLatch: latch2, handoff: async () => { throw new Error("jira down"); }, build: async () => (latch2.hit({ text: "limit" }, "build run"), { ok: false, summary: "x" }) });
+        const second = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d2);
+        assert.equal((second.results[0]!.outcome as { noteNotPosted?: boolean }).noteNotPosted, true);
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, second.results, { yolo: false }), /The pause note could not be posted to the ticket\./);
+    });
+
+    it("works a ticket paused on a limit before the others, so its cut-off work is not stopped on by a sibling's dirty-tree check", async () => {
+        const d = deps({ pausedOnLimit: async (t) => t.issue.key === "TAI-12" });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11"), task("TAI-12")], skipped: [] }), d);
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("prepare")), ["prepare TAI-12", "prepare TAI-10", "prepare TAI-11"]);
+        assert.equal(results.length, 3);
+    });
+
+    it("reads each ticket's pause once for the run, not again on every pick", async () => {
+        const reads: string[] = [];
+        const d = deps({ pausedOnLimit: async (t) => (reads.push(t.issue.key), false) });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11"), task("TAI-12")], skipped: [] }), d);
+        assert.equal(new Set(reads).size, reads.length, "no ticket read twice");
+    });
+
+    it("keeps the usual order when no ticket was paused, or when the pause cannot be read", async () => {
+        const none = deps({ pausedOnLimit: async () => false });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), none);
+        assert.deepEqual(none.calls.filter((c) => c.startsWith("prepare")), ["prepare TAI-10", "prepare TAI-11"]);
+        const broken = deps({ pausedOnLimit: async () => { throw new Error("jira down"); } });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), broken);
+        assert.deepEqual(broken.calls.filter((c) => c.startsWith("prepare")), ["prepare TAI-10", "prepare TAI-11"]);
+    });
+
+    it("a limit hit ends the batch at once: the ticket is paused, not failed, and no further ticket is started", async () => {
+        const { d, posted } = limitDeps({ "TAI-10": 1 });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["paused"]);
+        assert.deepEqual(d.calls, ["prepare TAI-10", "build TAI-10"], "TAI-11 is never prepared or built");
+        // The only note is the neutral one: no failure hand-off.
+        assert.equal(posted.length, 1);
+        assert.match(posted[0]![1], /^Handoff: DEV-YOLO paused on a usage limit/);
+        assert.match(posted[0]![1], /while this ticket's build run was running/);
+        assert.doesNotMatch(posted[0]![1], /"Do all dev tasks" stopped on this ticket/);
+    });
+
+    it("an unattended run that ended on the limit is paused even though it reported its own stop", async () => {
+        const { d, posted, latch } = limitDeps({});
+        const yoloD: RunDevTasksDeps = {
+            ...d,
+            yolo: true,
+            yoloRun: async (t) => {
+                latch.hit({ text: "You've hit your limit · resets 3pm" }, "review run");
+                await d.handoff(t.issue.key, "Handoff: DEV-YOLO run. The build run did not finish.\n\nStopped: something else");
+                return { state: "waiting", reason: "something else" };
+            },
+        };
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), yoloD);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["paused"]);
+        assert.equal((results[0]!.outcome as { stage: string }).stage, "review run");
+        assert.match(posted[0]![1], /paused on a usage limit/);
+        assert.doesNotMatch(posted[0]![1], /something else/);
+    });
+
+    it("the wait message says a verification pause is merged, and an open-PR pause has an open PR", async () => {
+        for (const [stage, wanted] of [["verification run", /is merged and only its verification is left/], ["review run", /has an open PR/]] as const) {
+            const { d, said } = limitDeps({ "TAI-10": 1 }, { waitHours: 6 }, undefined, stage);
+            await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+            assert.match(said[0] ?? "", wanted, stage);
+        }
+    });
+
+    it("with no wait=, the run stops and says why it did not wait", async () => {
+        const { d, sleeps } = limitDeps({ "TAI-10": 1 });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.deepEqual(sleeps, []);
+        assert.equal((results[0]!.outcome as { notWaited?: string }).notWaited, "no wait= was given");
+    });
+
+    it("with wait=<hours> and a reset within it, sleeps until the reset and carries on with the same ticket after a fresh look", async () => {
+        const { d, sleeps, said } = limitDeps({ "TAI-10": 1 }, { waitHours: 6 });
+        let looks = 0;
+        const { results } = await workDevTasks(async () => (looks++, { tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.deepEqual(sleeps, [2 * 3_600_000 + 60_000]);
+        assert.match(said[0]!, /Waiting 121 minutes for the reset, then carrying on with TAI-10/);
+        assert.deepEqual(results.map((r) => [r.task.issue.key, r.outcome.state]), [["TAI-10", "pr-opened"], ["TAI-11", "pr-opened"]], "the paused entry is replaced by how the ticket ended");
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("build")), ["build TAI-10", "build TAI-10", "build TAI-11"]);
+        assert.ok(looks >= 3, "a fresh look after the wait");
+    });
+
+    it("with a reset beyond the cap, stops as it does with no wait=", async () => {
+        const weekly: UsageLimit = { text: "Weekly limit reached ∙ resets Nov 7, 10am", resetsAt: new Date(NOW.getTime() + 72 * 3_600_000) };
+        const { d, sleeps } = limitDeps({ "TAI-10": 1 }, { waitHours: 6 }, weekly);
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.deepEqual(sleeps, []);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["paused"]);
+        assert.match((results[0]!.outcome as { notWaited?: string }).notWaited ?? "", /further off than wait=6 hours/);
+    });
+
+    it("a limit that keeps coming back after the reset is not waited for for ever", async () => {
+        const { d, sleeps } = limitDeps({ "TAI-10": 99 }, { waitHours: 6 });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.equal(sleeps.length, 3);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["paused"]);
+        assert.match((results[0]!.outcome as { notWaited?: string }).notWaited ?? "", /hit again after 3 waits/);
+    });
+
+    it("a failure that is not a limit is still a failure, and the batch goes on", async () => {
+        const d = deps({ limitLatch: new UsageLimitLatch(), build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "Rate limit reached" } : { ok: true, summary: "" }) });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["failed", "pr-opened"]);
+    });
+
+    it("the report has a Paused section naming the ticket, where it stopped and the reset time, and lists it nowhere else", () => {
+        const resetsAt = new Date("2026-11-04T22:00:00Z");
+        const result: DevTaskResult = { task: task("TAI-10"), outcome: { state: "paused", limit: { text: "5-hour limit reached ∙ resets 3pm", resetsAt }, stage: "review run", notWaited: "no wait= was given" } };
+        const text = renderDevTasksReport({ tasks: [], skipped: [] }, [result], { yolo: true });
+        assert.match(text, /## Paused \(1\)\n\n- \*\*TAI-10\*\* s TAI-10: the usage limit was reached during its review run \("5-hour limit reached ∙ resets 3pm"; resets 2026-11-04T22:00:00\.000Z\)\. The run did not wait: no wait= was given\. No further ticket was started/);
+        assert.match(text, /## Failed \(0\)\n\nNone\./);
+        const unknown = renderDevTasksReport({ tasks: [], skipped: [] }, [{ task: task("TAI-10"), outcome: { state: "paused", limit: { text: "limit reached" }, stage: "build run" } }], { yolo: false });
+        assert.match(unknown, /reset time not known/);
+        assert.doesNotMatch(renderDevTasksReport({ tasks: [], skipped: [] }, [], { yolo: false }), /## Paused/);
+    });
+
+    it("wait= is read by the arguments, and a mistyped or empty value is refused", () => {
+        assert.deepEqual(parseDevTasksArgs(["yolo=true", "wait=6"]), { dryRun: false, yolo: true, waitHours: 6 });
+        assert.deepEqual(parseDevTasksArgs(["wait=0.5"]), { dryRun: false, waitHours: 0.5 });
+        for (const bad of ["wait=", "wait=0", "wait=-2", "wait=soon", "wait=6h", "wait=999"]) assert.throws(() => parseDevTasksArgs([bad]), /wait= takes a number of hours/, bad);
+        assert.throws(() => parseDevTasksArgs(["wait=2", "wait=3"]), /only one wait=<hours>/);
+        assert.throws(() => parseDevTasksArgs(["wait=2"], { rules: true }), /rules takes only/);
+    });
+
+    describe("a ticket cut off mid-build continues on its own branch", () => {
+        async function repo() {
+            const dir = await mkdtemp(path.join(tmpdir(), "tai-resume-"));
+            const origin = path.join(dir, "origin.git");
+            execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
+            const work = path.join(dir, "work");
+            execFileSync("git", ["clone", "-q", origin, work]);
+            const g = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: work, stdio: "pipe" });
+            await writeFile(path.join(work, "a.txt"), "1");
+            g("add", "."); g("commit", "-q", "-m", "one"); g("push", "-q", "origin", "HEAD:main"); g("fetch", "-q");
+            g("branch", "-q", "--set-upstream-to=origin/main", "main");
+            return { dir, work, g, head: () => execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: work }).toString().trim() };
+        }
+
+        it("resumeBranchFor gives the cut-off branch only for a ticket paused on a limit", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                assert.equal(await resumeBranchFor(r.work, "TAI-1", true), "TAI-1-feature");
+                assert.equal(await resumeBranchFor(r.work, "TAI-1", false), null);
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("keeps its uncommitted work and does not trip the dirty-tree stop", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                await writeFile(path.join(r.work, "a.txt"), "cut off half way");
+                assert.equal(await cutOffBranch(r.work, "TAI-1"), "TAI-1-feature");
+                await prepareForTicket(r.work, ".tai", "TAI-1", true);
+                assert.equal(r.head(), "TAI-1-feature", "still on the ticket's branch");
+                assert.equal(await readFile(path.join(r.work, "a.txt"), "utf8"), "cut off half way", "its work is kept");
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("describes where the checkout stands, and the description changes with a commit or a branch switch", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                const before = await checkoutPosition(r.work);
+                assert.match(before ?? "", /^TAI-1-feature@[0-9a-f]{4,}$/);
+                await writeFile(path.join(r.work, "a.txt"), "changed");
+                r.g("commit", "-q", "-am", "more");
+                assert.notEqual(await checkoutPosition(r.work), before);
+                assert.equal(await checkoutPosition(path.join(r.dir, "nowhere")), undefined);
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("still stops on a dirty tree that is not this ticket's branch", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-2-other");
+                await writeFile(path.join(r.work, "a.txt"), "someone else's");
+                assert.equal(await cutOffBranch(r.work, "TAI-1"), null);
+                await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", true), DirtyTreeError);
+                r.g("checkout", "-q", "--", "a.txt");
+                r.g("checkout", "-q", "main");
+                await writeFile(path.join(r.work, "a.txt"), "dirty default branch");
+                // A pause cut off before the Story branch existed: the stop says why a paused ticket is not continued.
+                await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", true), (err: unknown) => err instanceof DirtyTreeError && /paused on a usage limit[\s\S]*not checked out/.test(err.message));
+                await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", false), (err: unknown) => err instanceof DirtyTreeError && !/paused on a usage limit/.test(err.message));
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("still stops on dirty work on the Story's branch when this ticket was not paused (a sibling's failed run)", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                await writeFile(path.join(r.work, "a.txt"), "a sibling ticket's half-done work");
+                await assert.rejects(prepareForTicket(r.work, ".tai", "TAI-1", false), DirtyTreeError);
+                assert.equal(await readFile(path.join(r.work, "a.txt"), "utf8"), "a sibling ticket's half-done work", "nothing was touched");
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("starts from the default branch as before when this ticket was not paused", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                await prepareForTicket(r.work, ".tai", "TAI-1", false);
+                assert.equal(r.head(), "main");
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("continues from commits a cut-off run made locally, with a clean tree, not from the default branch", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                await writeFile(path.join(r.work, "b.txt"), "committed before the limit hit");
+                r.g("add", "."); r.g("commit", "-q", "-m", "work in progress");
+                const before = execFileSync("git", ["rev-parse", "HEAD"], { cwd: r.work }).toString().trim();
+                assert.equal(await cutOffBranch(r.work, "TAI-1"), "TAI-1-feature");
+                await prepareForTicket(r.work, ".tai", "TAI-1", true);
+                assert.equal(r.head(), "TAI-1-feature");
+                assert.equal(execFileSync("git", ["rev-parse", "HEAD"], { cwd: r.work }).toString().trim(), before, "its commits are kept");
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
+
+        it("the build prompt tells the run to keep the work, not start over, and not open a second PR", () => {
+            const resumed = buildDevPrompt("TAI-10", "tai", "TAI-1-feature");
+            assert.match(resumed, /CONTINUED[\s\S]*TAI-1-feature[\s\S]*do not stash, reset, discard or re-create the branch[\s\S]*do not open a second one/);
+            assert.doesNotMatch(buildDevPrompt("TAI-10", "tai"), /CONTINUED/);
+            assert.doesNotMatch(buildDevPrompt("TAI-10", "tai", null), /CONTINUED/);
+        });
+    });
+
+    describe("only a pause that says the run continues the ticket lifts the dirty-tree stop", () => {
+        const tracker = (...bodies: string[]) => ({ getIssue: async () => ({ comments: bodies.map((body) => ({ body })) }) });
+        const buildPause = pausedHandoff({ text: "5-hour limit reached" }, "build run");
+        const reviewPause = pausedHandoff({ text: "5-hour limit reached" }, "review run");
+
+        it("is true when the newest hand-off is a build-stage pause", async () => {
+            assert.equal(await wasPausedOnLimit(tracker(buildPause + "\n\nPosted via the TAI CLI as Dev.") as never, "TAI-10" as never), true);
+        });
+
+        it("still finds the pause when a tracker rewrites the quote marks in the note", async () => {
+            const curly = buildPause.replaceAll('"', "\u201c");
+            assert.equal(await wasPausedOnLimit(tracker(curly) as never, "TAI-10" as never), true);
+        });
+
+        it("reads the newest by the comment's own time, not by the order the host returned them in", async () => {
+            const t = { getIssue: async () => ({ comments: [{ body: buildPause, createdAt: "2026-11-04T12:00:00Z" }, { body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T09:00:00Z" }] }) };
+            assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), true, "the pause is newer even though it is listed first");
+            const u = { getIssue: async () => ({ comments: [{ body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T13:00:00Z" }, { body: buildPause, createdAt: "2026-11-04T12:00:00Z" }] }) };
+            assert.equal(await wasPausedOnLimit(u as never, "TAI-10" as never), false, "a newer failure hand-off replaced it even though it is listed first");
+        });
+
+        it("orders by the instant, not the text, when the offsets differ", async () => {
+            // 13:00-0700 is 20:00Z, later than 15:00Z even though "13:00" sorts before "15:00" as text.
+            const t = { getIssue: async () => ({ comments: [{ body: buildPause, createdAt: "2026-11-04T13:00:00.000-0700" }, { body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T15:00:00.000+0000" }] }) };
+            assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), true);
+        });
+
+        it("is false when several hand-offs are listed and one has no readable time", async () => {
+            const fail = "Handoff: DEV-YOLO run. The build run did not finish.";
+            const t = { getIssue: async () => ({ comments: [{ body: fail }, { body: buildPause, createdAt: "2026-11-04T12:00:00Z" }] }) };
+            assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), false);
+            const u = { getIssue: async () => ({ comments: [{ body: buildPause }] }) };
+            assert.equal(await wasPausedOnLimit(u as never, "TAI-10" as never), true, "a lone note needs no ordering");
+        });
+
+        it("is false for a failure hand-off, a later-stage pause, no hand-off, or a pause that a newer hand-off replaced", async () => {
+            assert.equal(await wasPausedOnLimit(tracker("Handoff: \"Do all dev tasks\" stopped on this ticket. tests failed") as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit(tracker(reviewPause) as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit(tracker("a plain comment") as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit({ getIssue: async () => null } as never, "TAI-10" as never), false);
+            assert.equal(await wasPausedOnLimit(tracker(buildPause, "Handoff: DEV-YOLO run. The build run did not finish.") as never, "TAI-10" as never), false);
+        });
+    });
+
+    it("a pause after the PR is open says the ticket is not continued by the next run, in the note and in the report", () => {
+        const note = pausedHandoff({ text: "x" }, "review run");
+        assert.match(note, /PR is already open, so "Do all dev tasks" skips this ticket/);
+        assert.doesNotMatch(note, /continues this ticket/);
+        assert.match(pausedHandoff({ text: "x" }, "build run"), /The run continues this ticket on its branch/);
+        const result = (stage: string): DevTaskResult => ({ task: task("TAI-10"), outcome: { state: "paused", limit: { text: "x" }, stage } });
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, [result("fix run")], { yolo: true }), /PR is already open, so a later run skips this ticket: continue it with \/tai-work/);
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, [result("build run")], { yolo: true }), /Run "Do all dev tasks" again after the reset: it continues this ticket/);
+    });
+
+    it("does not sleep after a later-stage pause when no other ticket is left to carry on with", async () => {
+        const latch = new UsageLimitLatch();
+        const sleeps: number[] = [];
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10), sleep: async (ms) => void sleeps.push(ms),
+            yolo: true,
+            yoloRun: async () => (latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "review run"), { state: "waiting", reason: "r" }),
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.deepEqual(sleeps, []);
+        assert.match((results[0]!.outcome as { notWaited?: string }).notWaited ?? "", /no other ticket is left/);
+    });
+
+    it("waiting after a later-stage pause carries on with the other tickets and does not retry the ticket whose PR is open", async () => {
+        const latch = new UsageLimitLatch();
+        const sleeps: number[] = [];
+        const said: string[] = [];
+        let hit = true;
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10), sleep: async (ms) => void sleeps.push(ms), say: (l) => void said.push(l),
+            yolo: true,
+            yoloRun: async (t) => {
+                d.calls.push(`yolo ${t.issue.key}`);
+                if (t.issue.key === "TAI-10" && hit) {
+                    hit = false;
+                    latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "review run");
+                }
+                return { state: "waiting", reason: "r" };
+            },
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.equal(sleeps.length, 1);
+        assert.match(said[0]!, /carrying on with the other tickets \(TAI-10 has an open PR/);
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("yolo")), ["yolo TAI-10", "yolo TAI-11"]);
+        // The paused ticket stays in the report (a later run will not pick it up), and it says the run carried on without it.
+        assert.deepEqual(results.map((r) => [r.task.issue.key, r.outcome.state]), [["TAI-10", "paused"], ["TAI-11", "waiting"]]);
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true }), /## Paused \(1\)[\s\S]*review run[\s\S]*The run waited for the reset and carried on with the other tickets\.[\s\S]*continue it with \/tai-work/);
+        assert.doesNotMatch(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true }), /No further ticket was started/);
+    });
+
+    it("an interrupt during the wait keeps the paused ticket in the report", async () => {
+        const latch = new UsageLimitLatch();
+        let interrupted = false;
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10), interrupted: () => interrupted,
+            sleep: async () => void (interrupted = true),
+            build: async () => (latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "build run"), { ok: false, summary: "x" }),
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.deepEqual(results.map((r) => r.outcome.state), ["paused"]);
+        assert.equal((results[0]!.outcome as { notWaited?: string }).notWaited, "the run was interrupted during the wait");
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: false }), /## Paused \(1\)[\s\S]*interrupted during the wait/);
     });
 });

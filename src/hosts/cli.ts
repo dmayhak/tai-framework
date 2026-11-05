@@ -177,7 +177,8 @@ import { resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
 import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
-import { assertCleanTree, prepareCleanDefaultBranch } from "../core/commands/dev-tasks-git.js";
+import { assertCleanTree, checkoutPosition, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
+import { buildStageAfterLimit, PauseReads, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -1640,7 +1641,7 @@ export function renderUsage(): string {
         "Work",
         "  work <ISSUE-KEY>             Load a ticket's briefing and hand it to its persona",
         "  ready [persona]              Show what's ready to work on",
-        "  do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>]",
+        "  do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>] [wait=<hours>]",
         "                               Run the ready Dev tasks unattended (DEV-YOLO)",
         "  do-dev-tasks rules [yolo=true|false]",
         "                               Print the permission rules those runs use",
@@ -2363,12 +2364,12 @@ async function main(): Promise<void> {
         return;
     }
 
-    // TAI-633: `do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>]` (and `do-dev-tasks rules [yolo=true|false]`) works the current user's In Progress and To Do Dev subtasks one at a time, each in
+    // TAI-633: `do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>] [wait=<hours>]` (and `do-dev-tasks rules [yolo=true|false]`) works the current user's In Progress and To Do Dev subtasks one at a time, each in
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        const { dryRun, yolo: yoloArg, only } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
+        const { dryRun, yolo: yoloArg, only, waitHours } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
             // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
@@ -2451,6 +2452,10 @@ async function main(): Promise<void> {
         if (oneRun) await allowYoloForOneRun(settingsCtx, true);
         const developer = { id: "developer", displayName: (DEFAULT_PERSONA_DISPLAY_NAME as Record<string, string>)["developer"] ?? "developer" };
         stopRunsOnInterrupt();
+        // TAI-706: a run that ends on the account's usage limit is recorded here; the ticket is then paused, not failed.
+        const limitLatch = new UsageLimitLatch();
+        // TAI-706: whether each ticket was paused on a limit; the lifetime of each answer is documented on PauseReads.
+        const pauses = new PauseReads(async (key) => wasPausedOnLimit(config.backend.workTracker, key, await checkoutPosition(process.cwd())));
         const yoloWiring = yolo
             ? {
                   gitHost: gitDeps.gitHost,
@@ -2460,6 +2465,8 @@ async function main(): Promise<void> {
                   spaceKey: config.spaceKey,
                   projectKey: config.projectKey,
                   taiDir: resolvePath(config.taiRoot),
+                  limitLatch,
+                  pausedOnLimit: (key: IssueKey) => pauses.forBuild(key),
                   email: config.currentHuman?.email ?? null,
                   ...(oneRun ? { oneRun: true } : {}),
                   cli,
@@ -2485,14 +2492,26 @@ async function main(): Promise<void> {
             : null;
         const worked = await workDevTasks(find, {
             yolo,
+            pausedOnLimit: (task) => pauses.whilePicking(task.issue.key),
+            rememberPause: (key) => pauses.remember(key),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
-            prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),
-            build: (task) => runHeadlessClaude(buildDevPrompt(task.issue.key, cli), { cwd: process.cwd(), timeoutMs }),
-            inspect: (task) => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured }),
-            handoff: async (key, body) => {
-                await postIssueComment(config.backend.workTracker, key, stampComment(body, developer));
+            limitLatch,
+            ...(waitHours !== undefined ? { waitHours } : {}),
+            sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
+            say: (line) => console.log(line),
+            prepare: async (task) => {
+                await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await pauses.forPrepare(task.issue.key));
             },
+            build: async (task) => {
+                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, await resumeBranchFor(process.cwd(), task.parent.key, await pauses.forBuild(task.issue.key))), { cwd: process.cwd(), timeoutMs });
+                if (built.limit) limitLatch.hit(built.limit, await buildStageAfterLimit(() => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured })));
+                return built;
+            },
+            inspect: (task) => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured }),
+            handoff: pausedAwareHandoff(limitLatch, async (key, body) => {
+                await postIssueComment(config.backend.workTracker, key as IssueKey, stampComment(body, developer));
+            }, () => checkoutPosition(process.cwd())),
         }, found);
         console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
         return;

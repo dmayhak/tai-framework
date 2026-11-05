@@ -427,3 +427,73 @@ describe("the reviewer's credentials (TAI-634)", () => {
         }
     });
 });
+
+describe("a run that ends on a usage limit (TAI-706)", () => {
+    async function runWith(script: string, env?: Record<string, string>) {
+        const dir = await mkdtemp(path.join(tmpdir(), "tai-limit-"));
+        try {
+            const bin = path.join(dir, "claude");
+            await writeFile(bin, `#!/bin/sh\n${script}\n`);
+            await chmod(bin, 0o755);
+            return await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin, env });
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    }
+
+    it("carries the limit when the message comes back with exit code 0, and is not ok", async () => {
+        const result = await runWith('echo "working"\necho "5-hour limit reached ∙ resets 3pm"');
+        assert.equal(result.ok, false);
+        assert.match(result.limit?.text ?? "", /5-hour limit reached/);
+        assert.ok(result.limit?.resetsAt);
+    });
+
+    it("a run that exited 0 pauses when the message is among its last two lines; a failed run's last few lines are read", async () => {
+        const trailing = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "node: warning" >&2');
+        assert.ok(trailing.limit, "one trailing warning after the message");
+        const echoed = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "all tests passed"\necho "done"');
+        assert.equal(echoed.ok, true, "a finished run that only printed the message earlier");
+        assert.equal(echoed.limit, undefined);
+        const failed = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "cleaning up" >&2\nexit 1');
+        assert.ok(failed.limit, "a failed run with a line after the message");
+    });
+
+    it("redacts a secret in the limit line, since the line is posted to the ticket", async () => {
+        const result = await runWith('echo "5-hour limit reached ∙ resets 3pm Bearer abcdefgh12345678"');
+        assert.ok(result.limit, "a limit");
+        assert.doesNotMatch(result.limit.text, /abcdefgh12345678/);
+        assert.match(result.limit.text, /Bearer \*\*\*/);
+    });
+
+    it("redacts a secret passed only through the run's own env, in the limit line and in the unknown-wording note", async () => {
+        const env = { REVIEWER_TOKEN: "s3cr3t-value-9999" };
+        const hit = await runWith('echo "5-hour limit reached ∙ resets 3pm s3cr3t-value-9999"', env);
+        assert.ok(hit.limit, "a limit");
+        assert.doesNotMatch(hit.limit.text, /s3cr3t-value-9999/);
+        const miss = await runWith('echo "Hmm the limit is s3cr3t-value-9999 here" >&2; exit 3', env);
+        assert.doesNotMatch(miss.summary, /s3cr3t-value-9999/);
+    });
+
+    it("tells a failed run whose end mentions an unknown limit wording, and leaves a clean finish alone", async () => {
+        const failed = await runWith('echo "You\'re out of extra usage"\nexit 1');
+        assert.equal(failed.limit, undefined);
+        assert.match(failed.summary, /mentions a limit, "You're out of extra usage", but matches no known usage-limit message/);
+        const clean = await runWith('echo "You\'re out of extra usage"');
+        assert.doesNotMatch(clean.summary, /matches no known/);
+    });
+
+    it("carries the limit when the run exits non-zero", async () => {
+        const result = await runWith('echo "Claude AI usage limit reached|1793800000"\nexit 1');
+        assert.equal(result.ok, false);
+        assert.equal(result.limit?.resetsAt?.getTime(), 1793800000 * 1000);
+    });
+
+    it("carries no limit for an ordinary failure, a throttle or a clean finish", async () => {
+        assert.equal((await runWith('echo "npm ERR! Exit status 1"\nexit 1')).limit, undefined);
+        const throttled = await runWith('echo "API Error: Rate limit reached"\nexit 1');
+        assert.equal(throttled.limit, undefined);
+        const clean = await runWith('echo "done"');
+        assert.equal(clean.ok, true);
+        assert.equal(clean.limit, undefined);
+    });
+});

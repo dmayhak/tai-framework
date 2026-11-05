@@ -2,6 +2,37 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 161 (2026-11-04)
+
+**TAI-707 (Story TAI-706): DEV-YOLO pauses on a usage limit and can wait for the reset.**
+
+A run that ended on the account's usage limit used to look like any failure: the ticket was marked Failed with a misleading hand-off, and the loop went on to fail the next ticket the same way. Now the ticket is `paused`, and the batch stops cleanly or, with `wait=<hours>`, waits for the reset.
+
+Detection (`usage-limit.ts`):
+
+* The last ten lines of a run's output are read whatever the exit code, since a limit message can come back with exit 0. A run that exited 0 counts only when the message is among its last two lines. `runHeadlessClaude` returns the match as `limit`, with the line redacted like the run summaries.
+* A line counts only if it starts with the message ("5-hour limit reached", "You've hit your limit") and then ends, or continues only with a separator, a "resets" clause or the prose form.
+* Not matched: a rate-limit throttle, a failing build, a limit mentioned early in a long output, and a closing summary that talks about limits (a bullet, a quote, a sentence with the phrase in it, or a line such as "Usage limit reached handling is now covered by tests").
+* A clock-time reset is read on the clock of the zone the message names (a bare `UTC` or `GMT` too), daylight saving included, and on the machine's clock when it names none. A zone it names that is not a time zone gives no reset time, so `wait=` says the message gave none.
+* A failed run whose end mentions a limit but matches no known message says so in its failure summary, so a new wording is noticed. TAI-743 tracks capturing a real message.
+* AC-1 was amended: no real hit was recorded (it would use up the account), so the tests use the documented and reported messages, marked as such.
+
+The pause:
+
+* Each Claude step of an unattended run records the limit and its step in a shared latch. The ticket's outcome becomes `paused`, its hand-off becomes a neutral note, no later ticket is started, and the report has a Paused section with the step, the reset time and what the run had already done (a PR opened, a merge).
+* `wait=<hours>` (above 0, up to 168, else refused) sleeps until the reset when it is within that cap, takes a fresh look and carries on, at most three waits in a run. It does not sleep when nothing is left to carry on with. An interrupt during a wait keeps the paused ticket in the report.
+
+Resuming:
+
+* A ticket paused in its build run continues on its own Story branch with its uncommitted work, and is worked first in the next run. The dirty-tree stop is lifted only for a ticket whose own newest `Handoff:` is the pause note, so a sibling's leftover work still stops the run. The build prompt says to carry on and not open a second PR.
+* The pause note records where the checkout stood (`Position: <branch>@<commit>`). A later run lifts the dirty-tree stop only while the checkout still stands there, so a stale note cannot excuse leftovers the person made since (a commit, another branch). A note without a position, or a checkout git cannot describe, is trusted as before.
+* If the cut-off came before the Story branch existed, the next run stops on the dirty tree with a message that says why.
+* A pause once the PR is open (a limit printed after the PR was opened, review, fix, conflict resolution, verification) is not continued by a later run, because "Do all dev tasks" leaves a ticket with an open PR to a person. Its note and the report say so, `wait=` carries on with the other tickets, and the ticket stays in the report as paused.
+* When `wait=` tries a ticket again in the same run, the run's own knowledge that it was paused is used, so the retry does not depend on the pause note having been posted; if the note could not be posted, the report says so.
+* Whether a ticket was paused is read through `PauseReads`, which states each answer's lifetime (picking, preparation, build). The pause note is found by the comments' own instants. A build with no preparation behind it does not fail the ticket when that read fails.
+
+Tests: `usage-limit.test.ts`, `do-dev-tasks.test.ts`, `dev-yolo-wiring.test.ts`, `dev-yolo.test.ts`.
+
 ## rev 160 (2026-11-04)
 
 **TAI-729 (Bug TAI-728): the refusal of a merged or declined PR is tested at the two CLI call sites.** TAI-727 refused `git-pr review` and `git-pr comment-findings` on a PR that is no longer open, but only the pure function `reviewOfClosedPullRequestRefusal` had a test, so removing either check left the suite green. The bodies of those two actions moved out of the dispatch handler into exported `postReviewDecision` and `postReviewFindings` in `cli.ts`, with no change in behaviour. `cli.test.ts` drives each with a fake git host whose PR is merged or declined, and asserts the refusal is thrown and nothing is written to the PR. Removing either check makes its tests fail (checked by deleting each in turn).
