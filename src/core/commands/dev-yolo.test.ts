@@ -448,6 +448,14 @@ describe("a run that ends on a usage limit (TAI-706)", () => {
         assert.ok(result.limit?.resetsAt);
     });
 
+    it("a run that exited 0 pauses only when the message is its very last line; a failed run's last few lines are read", async () => {
+        const echoed = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "all tests passed"');
+        assert.equal(echoed.ok, true, "a finished run that only printed the message earlier");
+        assert.equal(echoed.limit, undefined);
+        const failed = await runWith('echo "5-hour limit reached ∙ resets 3pm"\necho "cleaning up" >&2\nexit 1');
+        assert.ok(failed.limit, "a failed run with a line after the message");
+    });
+
     it("redacts a secret in the limit line, since the line is posted to the ticket", async () => {
         const result = await runWith('echo "5-hour limit reached ∙ resets 3pm Bearer abcdefgh12345678"');
         assert.ok(result.limit, "a limit");

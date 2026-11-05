@@ -30,6 +30,11 @@ describe("detecting a usage limit (TAI-706)", () => {
         });
     }
 
+    it("with a window of one line, finds the message only as the very last line", () => {
+        assert.ok(detectUsageLimit("a\n5-hour limit reached ∙ resets 3pm\n", NOW, 1));
+        assert.equal(detectUsageLimit("5-hour limit reached ∙ resets 3pm\nall tests passed\n", NOW, 1), null);
+    });
+
     it("recognises it whatever else is printed around the message, as long as it is among the last lines", () => {
         assert.ok(detectUsageLimit("a\nb\nc\n5-hour limit reached ∙ resets 3pm\n\n", NOW));
     });

@@ -119,10 +119,10 @@ export function parseReset(line: string, now: Date): Date | undefined {
 /**
  * The usage limit a run ended on, or null. Only the last few lines of the output count, and only a short line that STARTS with the
  * message that a usage limit is reached; a throttle ("Rate limit reached"), a limit mentioned earlier in a long output and a summary
- * line that talks about a limit are not a limit hit.
+ * line that talks about a limit are not a limit hit. `tailLines` narrows the window (1 = the very last line only).
  */
-export function detectUsageLimit(output: string, now: Date = new Date()): UsageLimit | null {
-    const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-TAIL_LINES);
+export function detectUsageLimit(output: string, now: Date = new Date(), tailLines: number = TAIL_LINES): UsageLimit | null {
+    const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-tailLines);
     for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i]!;
         if (line.length > MAX_LINE || THROTTLE.test(line) || SUMMARY_LINE.test(line)) continue;
