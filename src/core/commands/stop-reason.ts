@@ -38,7 +38,7 @@ export function trimmedOutput(text: string): string {
 
 // A refusal as the agent tends to write it: the permission system or the settings said no, to a command. The wording is the agent's own and
 // not recorded from a real run, so a miss only means the cause is reported as not known (the output is still kept).
-const REFUSAL = /\bpermissions?\b[^\n]{0,90}\b(?:denied|refused|not granted|blocked|declined)\b|\b(?:denied|refused|blocked|declined)\b[^\n]{0,40}\bpermission|\bcommand\b[^\n]{0,100}\b(?:denied|refused|blocked)\b|\b(?:denied|refused|blocked)\b[^.\n]{0,20}\bcommand\b|haven't granted|not allowed to (?:run|use)|(?:isn't|is not|wasn't|was not) (?:allowed|permitted) to (?:run|use)/i;
+const REFUSAL = /\bpermissions?\b[^\n]{0,90}\b(?:denied|refused|not granted|blocked|declined)\b|\b(?:denied|refused|blocked|declined)\b[^\n]{0,40}\bpermission|haven't granted|not allowed to (?:run|use)|(?:isn't|is not|wasn't|was not) (?:allowed|permitted) to (?:run|use)/i;
 // An operating-system or ssh error that says "permission denied" is not the permission system refusing a command.
 const OS_ERROR = /\bEACCES\b|\bEPERM\b|publickey|permission denied(?:\s*\(|,|\.?$|\s+while)/i;
 // Backticked text counts as the refused command only when it starts like one: a tool's name or a path, not a test title or a phrase.
@@ -63,7 +63,12 @@ export function refusedCommand(output: string): { readonly command: string | nul
 function split(run: RunEnd): { what: string | null; output: string } {
     if (run.output !== undefined) return { what: run.what ?? null, output: run.output };
     const at = run.summary.indexOf("Last output:\n");
-    if (at >= 0) return { what: run.summary.slice(0, at).replace(/\.\s*$/, "").trim() || null, output: run.summary.slice(at + "Last output:\n".length) };
+    if (at >= 0) {
+        // The note about an unrecognised limit wording is appended to the summary after the output; it is not part of the output.
+        const noteAt = run.summary.indexOf("\n(Its output mentions a limit");
+        const end = noteAt > at ? noteAt : run.summary.length;
+        return { what: run.summary.slice(0, at).replace(/\.\s*$/, "").trim() || null, output: run.summary.slice(at + "Last output:\n".length, end) };
+    }
     return { what: null, output: run.summary };
 }
 
@@ -115,7 +120,15 @@ export function stopLines(stop: Pick<StopReason, "what" | "cause" | "next">): st
     return [stop.what, `Cause: ${stop.cause}`, `Next: ${stop.next}`];
 }
 
-/** The part of a hand-off after the lines: the agent's own closing text, set apart. Empty when the run printed nothing. */
+/** A line written for the report (markdown backticks) as Jira wiki markup, which is what a ticket comment is. */
+export function forJira(text: string): string {
+    return text.replace(/`([^`\n]+)`/g, "{{$1}}");
+}
+
+/**
+ * The part of a hand-off after the lines: the agent's own closing text, set apart and in a no-format block so Jira does not read its
+ * `*`, `{` or `[` as markup. Empty when the run printed nothing.
+ */
 export function outputSection(output: string): string {
-    return output === "" ? "" : `\n\nThe end of the run's own output:\n${output}`;
+    return output === "" ? "" : `\n\nThe end of the run's own output:\n{noformat}\n${output.replace(/\{noformat\}/gi, "{ noformat }")}\n{noformat}`;
 }

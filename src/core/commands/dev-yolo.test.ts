@@ -229,16 +229,17 @@ describe("runYolo (TAI-634)", () => {
         const o = outcome as { reason: string; cause: string; next: string };
         assert.equal(o.reason, "The build run did not finish: the run exited with code 1.");
         assert.equal(o.cause, "the permission system looks to have refused `git rm README.md`, and nobody was there to approve it.");
-        const [lines, tail] = refused.handoffs[0]!.split("\n\nThe end of the run's own output:\n") as [string, string];
+        const [lines, tail] = refused.handoffs[0]!.split("\n\nThe end of the run's own output:\n{noformat}\n") as [string, string];
         assert.equal(lines.split("\n").filter((l) => l !== "").length, 3, "the Handoff line with what stopped, then Cause and Next");
         assert.match(lines, /^Handoff: DEV-YOLO run\. The build run did not finish: the run exited with code 1\.\n\nCause: .*\nNext: /);
-        assert.equal(tail, out);
+        assert.equal(tail, `${out}\n{noformat}`);
+        assert.match(lines, /Cause: the permission system looks to have refused \{\{git rm README\.md\}\}, and/, "the command is wiki markup in the comment");
         const runOn = script();
         const closing = Array.from({ length: 5 }, (_, n) => `I did step ${n}.`).join("\n");
         const second = await runYolo(task, deps(runOn, { build: async () => ({ ok: true, summary: closing, output: closing }), findPullRequest: async () => ({ prUrl: null, checkRecorded: null }) }));
         assert.equal((second as { reason: string }).reason, "The build run finished but no open PR for this ticket was found.");
         assert.doesNotMatch(runOn.handoffs[0]!.split("\n\nThe end of")[0]!, /step/, "none of the agent's text in the lines");
-        assert.match(runOn.handoffs[0]!, /The end of the run's own output:\nI did step 0\.\nI did step 1\./, "the closing text keeps its lines");
+        assert.match(runOn.handoffs[0]!, /The end of the run's own output:\n\{noformat\}\nI did step 0\.\nI did step 1\./, "the closing text keeps its lines");
     });
 
     it("an unrecognised limit wording reaches the reason and the hand-off, not only the summary (TAI-710)", async () => {

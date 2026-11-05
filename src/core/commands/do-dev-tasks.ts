@@ -13,7 +13,7 @@
 import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
-import { describeStop, outputSection, type RunEnd, type StopReason } from "./stop-reason.js";
+import { describeStop, forJira, outputSection, type RunEnd, type StopReason } from "./stop-reason.js";
 import { decideWait, isContinuableStage, MAX_WAITS_PER_RUN, parseWaitHours, type UsageLimit, type UsageLimitLatch } from "./usage-limit.js";
 import { sameHuman } from "../personas/roster.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
@@ -252,7 +252,7 @@ export class StopError extends Error {
 /** The hand-off for a ticket that stopped on a reason of three lines (TAI-710). */
 export function stopHandoff(stop: StopReason): string {
     return (
-        `Handoff: "Do all dev tasks" stopped on this ticket.\n\n${stop.what}\nCause: ${stop.cause}\nNext: ${stop.next}\n\n` +
+        `Handoff: "Do all dev tasks" stopped on this ticket.\n\n${forJira(stop.what)}\nCause: ${forJira(stop.cause)}\nNext: ${forJira(stop.next)}\n\n` +
         `Nothing was reviewed, merged or closed.${outputSection(stop.output)}`
     );
 }

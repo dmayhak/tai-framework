@@ -173,10 +173,10 @@ describe("runDevTasks (TAI-633)", () => {
         assert.match(o.cause, /not known/);
         assert.match(o.next, /\/tai-work/);
         const body = d.handoffs[0]![1];
-        const [head, tail] = body.split("The end of the run's own output:\n") as [string, string];
+        const [head, tail] = body.split("The end of the run's own output:\n{noformat}\n") as [string, string];
         assert.equal(head.trim().split("\n").filter((l) => l.trim() !== "").length, 5, "the Handoff line, the three lines and the Nothing-was line");
         assert.match(head, /\nCause: .*\nNext: /);
-        assert.equal(tail, "I could not finish.\nThe tests need a fixture I do not have.", "the output keeps its line breaks");
+        assert.equal(tail, "I could not finish.\nThe tests need a fixture I do not have.\n{noformat}", "the output keeps its line breaks, in a no-format block");
         assert.doesNotMatch(body, / \/ /, "never joined into one line");
     });
 
@@ -187,7 +187,7 @@ describe("runDevTasks (TAI-633)", () => {
         const r = await runDevTasks([task("TAI-10")], d);
         const reason = (r[0]!.outcome as { reason: string }).reason;
         assert.doesNotMatch(reason, /line \d|xxx/, "none of the agent's text is in the summary line");
-        const tail = d.handoffs[0]![1].split("The end of the run's own output:\n")[1]!;
+        const tail = d.handoffs[0]![1].split("The end of the run's own output:\n{noformat}\n")[1]!.replace(/\n\{noformat\}$/, "");
         assert.equal(tail.split("\n").length, 8, "the last eight lines");
         assert.doesNotMatch(tail, /line 0\b/, "older lines are dropped");
         assert.ok(tail.split("\n").every((l) => l.length <= 240), "each line is cut");
@@ -200,7 +200,7 @@ describe("runDevTasks (TAI-633)", () => {
         const o = r[0]!.outcome as { reason: string; cause: string };
         assert.match(o.reason, /did not finish: the run exited with code 1/);
         assert.match(o.cause, /permission system looks to have refused `git rm README\.md`/);
-        assert.match(d.handoffs[0]![1], /Cause: the permission system looks to have refused `git rm README\.md`/);
+        assert.match(d.handoffs[0]![1], /Cause: the permission system looks to have refused \{\{git rm README\.md\}\}/, "wiki markup in the comment");
         const report = renderDevTasksReport({ tasks: [], skipped: [] }, r, { yolo: false });
         assert.match(report, /## Failed \(1\)[\s\S]*- \*\*TAI-10\*\*[^\n]*did not finish[^\n]*\n {2}- Cause: the permission system looks to have refused `git rm README\.md`[^\n]*\n {2}- Next: /);
     });
@@ -209,7 +209,7 @@ describe("runDevTasks (TAI-633)", () => {
         const d = deps({ build: async () => ({ ok: false, summary: "the run exited with code 2. Last output:\nboom" }) });
         const r = await runDevTasks([task("TAI-10")], d);
         assert.match((r[0]!.outcome as { reason: string }).reason, /exited with code 2/);
-        assert.match(d.handoffs[0]![1], /The end of the run's own output:\nboom/);
+        assert.match(d.handoffs[0]![1], /The end of the run's own output:\n\{noformat\}\nboom/);
     });
 
     it("reports a Story that is still not In Progress as its own line, with why (TAI-710)", async () => {

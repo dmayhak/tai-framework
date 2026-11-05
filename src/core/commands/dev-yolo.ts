@@ -11,7 +11,7 @@ import type { PullRequestActivity } from "../git/interface.js";
 import type { HumanRef } from "../storage/interface.js";
 import type { ReviewFinding, ReviewFindings } from "../git/review-findings.js";
 import type { DevTask, DevTaskOutcome } from "./do-dev-tasks.js";
-import { describeStop, outputSection, type RunEnd, type StopReason } from "./stop-reason.js";
+import { describeStop, forJira, outputSection, type RunEnd, type StopReason } from "./stop-reason.js";
 
 export type ReviewDecision = "approve" | "requestChanges" | "none";
 
@@ -58,7 +58,7 @@ export function yoloHandoff(done: string, stoppedAt: string, next: string): stri
 
 /** The hand-off for a build run that stopped without a PR (TAI-710): three short lines, then the agent's own output apart from them. */
 export function yoloStopHandoff(stop: StopReason): string {
-    return `Handoff: DEV-YOLO run. ${stop.what}\n\nCause: ${stop.cause}\nNext: ${stop.next}${outputSection(stop.output)}`;
+    return `Handoff: DEV-YOLO run. ${forJira(stop.what)}\n\nCause: ${forJira(stop.cause)}\nNext: ${forJira(stop.next)}${outputSection(stop.output)}`;
 }
 
 function errorText(err: unknown): string {

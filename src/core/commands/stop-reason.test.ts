@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { describeStop, outputSection, refusedCommand, stopLines, trimmedOutput } from "./stop-reason.js";
+import { describeStop, forJira, outputSection, refusedCommand, stopLines, trimmedOutput } from "./stop-reason.js";
 
 describe("trimmedOutput (TAI-710)", () => {
     it("keeps the last eight non-empty lines, one per line, each cut to a readable length", () => {
@@ -51,7 +51,25 @@ describe("refusedCommand (TAI-710)", () => {
     });
 });
 
+describe("for a Jira comment (TAI-710)", () => {
+    it("writes the command as monospace wiki markup", () => {
+        assert.equal(forJira("refused `git rm README.md`, and `ls`."), "refused {{git rm README.md}}, and {{ls}}.");
+        assert.equal(forJira("no ticks"), "no ticks");
+    });
+});
+
 describe("describeStop (TAI-710)", () => {
+    it("does not read a firewall block, a refused connection or a test log line as a permission refusal", () => {
+        for (const line of ["the command was blocked by the firewall", "the connection was refused by the command server", "ok 4 - the command is refused when empty", "it denied the request for a command"]) {
+            assert.equal(refusedCommand(line), null, line);
+        }
+    });
+
+    it("leaves the note about an unrecognised limit out of the output tail when reading a summary", () => {
+        const s = describeStop({ summary: 'the run exited with code 1. Last output:\nboom\n(Its output mentions a limit, "x", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-743.)' }, "unfinished");
+        assert.equal(s.output, "boom");
+    });
+
     it("an unfinished run names what happened to it, and says the cause is not known when nothing explains it", () => {
         const s = describeStop({ summary: "x", what: "the run was killed by SIGKILL", output: "halfway" }, "unfinished");
         assert.equal(s.what, "The build run did not finish: the run was killed by SIGKILL.");
@@ -102,7 +120,8 @@ describe("describeStop (TAI-710)", () => {
     it("the lines are three, and the output section is apart from them", () => {
         const s = describeStop({ summary: "", output: "a\nb" }, "no-pr");
         assert.equal(stopLines(s).length, 3);
-        assert.equal(outputSection(s.output), "\n\nThe end of the run's own output:\na\nb");
+        assert.equal(outputSection(s.output), "\n\nThe end of the run's own output:\n{noformat}\na\nb\n{noformat}");
+        assert.ok(!outputSection("x {noformat} y").slice(40, -12).includes("{noformat}"), "agent text cannot close the block early");
         assert.equal(outputSection(""), "");
     });
 });
