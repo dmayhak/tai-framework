@@ -62,6 +62,7 @@ describe("for a Jira comment (TAI-710)", () => {
     it("writes the command as monospace wiki markup", () => {
         assert.equal(forJira("refused `git rm README.md`, and `ls`."), "refused {{git rm README.md}}, and {{ls}}.");
         assert.equal(forJira("no ticks"), "no ticks");
+        assert.equal(forJira("could not start /opt/my_tools/claude_cli *now*"), "could not start /opt/my\\_tools/claude\\_cli \\*now\\*", "markup characters outside backticks stay as written");
         assert.equal(forJira("refused `echo ${HOME}`"), "refused {{echo $\\{HOME\\}}}", "braces inside are escaped");
     });
 });
