@@ -852,7 +852,20 @@ describe("pausing on a usage limit (TAI-706)", () => {
         return { d, posted, sleeps, said, latch };
     }
 
-    it("works a ticket paused on a limit before the others, so its cut-off work is not stopped on by a sibling's dirty-tree check (review of PR 51)", async () => {
+    it("a pause after a PR or a merge keeps what the run had already done, in the outcome and the report", async () => {
+        const latch = new UsageLimitLatch();
+        const d = deps({
+            limitLatch: latch, yolo: true,
+            yoloRun: async () => (latch.hit({ text: "limit" }, "verification run"), { state: "handed-on", note: "merged PR 7; verification not run" }),
+        });
+        const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        const o = results[0]!.outcome as { state: string; before?: string };
+        assert.equal(o.state, "paused");
+        assert.equal(o.before, "merged PR 7; verification not run");
+        assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: true }), /Before the pause it had done: merged PR 7; verification not run\./);
+    });
+
+    it("works a ticket paused on a limit before the others, so its cut-off work is not stopped on by a sibling's dirty-tree check", async () => {
         const d = deps({ pausedOnLimit: async (t) => t.issue.key === "TAI-12" });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11"), task("TAI-12")], skipped: [] }), d);
         assert.deepEqual(d.calls.filter((c) => c.startsWith("prepare")), ["prepare TAI-12", "prepare TAI-10", "prepare TAI-11"]);
@@ -1058,7 +1071,7 @@ describe("pausing on a usage limit (TAI-706)", () => {
         });
     });
 
-    describe("only a pause that says the run continues the ticket lifts the dirty-tree stop (review of PR 51)", () => {
+    describe("only a pause that says the run continues the ticket lifts the dirty-tree stop", () => {
         const tracker = (...bodies: string[]) => ({ getIssue: async () => ({ comments: bodies.map((body) => ({ body })) }) });
         const buildPause = pausedHandoff({ text: "5-hour limit reached" }, "build run");
         const reviewPause = pausedHandoff({ text: "5-hour limit reached" }, "review run");

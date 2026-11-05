@@ -179,7 +179,7 @@ export type DevTaskOutcome =
     | { readonly state: "waiting"; readonly reason: string }
     | { readonly state: "failed"; readonly reason: string }
     /** TAI-706: the account's usage limit was reached. Not a failure of the ticket; the batch stops here (or waits for the reset). */
-    | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean }
+    | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean; readonly before?: string }
     | { readonly state: "stopped"; readonly reason: string; readonly dirtyTree?: boolean };
 
 export interface RunDevTasksDeps {
@@ -270,7 +270,11 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
     // TAI-706: a run that ended on the usage limit is paused whatever else it went on to report; the hand-off it left (or this
     // function's own) was already turned into the neutral note by the caller's `handoff`.
     const hit = deps.limitLatch?.current();
-    if (hit) outcome = { state: "paused", limit: hit.limit, stage: hit.stage };
+    if (hit) {
+        // What the run had already done is kept, so the report and the note agree (a merge, then a limit in the verification run).
+        const before = outcome.state === "pr-opened" ? `PR opened: ${outcome.prUrl}` : outcome.state === "handed-on" ? outcome.note : undefined;
+        outcome = { state: "paused", limit: hit.limit, stage: hit.stage, ...(before ? { before } : {}) };
+    }
     return { task, outcome };
 }
 
@@ -444,7 +448,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
                 ...paused.map((r) => {
                     const o = r.outcome as Extract<DevTaskOutcome, { state: "paused" }>;
                     const reset = o.limit.resetsAt ? `resets ${o.limit.resetsAt.toISOString()}` : "reset time not known";
-                    const why = o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "";
+                    const why = (o.notWaited ? ` The run did not wait: ${o.notWaited}.` : "") + (o.before ? ` Before the pause it had done: ${o.before}.` : "");
                     return `- ${line(r.task.issue)}: the usage limit was reached during its ${o.stage} ("${o.limit.text}"; ${reset}).${why} ${o.carriedOn ? "The run waited for the reset and carried on with the other tickets." : "No further ticket was started."} ${isContinuableStage(o.stage) ? 'Run "Do all dev tasks" again after the reset: it continues this ticket (note left on the ticket).' : o.stage === "verification run" ? "The PR is already merged: run /tai-verify on the Story by hand after the reset (note left on the ticket)." : "The PR is already open, so a later run skips this ticket: continue it with /tai-work, or review and merge the PR by hand (note left on the ticket)."}`;
                 })
             );

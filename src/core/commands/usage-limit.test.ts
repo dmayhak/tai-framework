@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildStageAfterLimit, decideWait, detectUsageLimit, limitMention, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
+import { PauseReads, buildStageAfterLimit, decideWait, detectUsageLimit, limitMention, MAX_WAITS_PER_RUN, parseReset, parseWaitHours, pausedHandoff, RESET_MARGIN_MS, UsageLimitLatch } from "./usage-limit.js";
 
 // A fixed local "now": 2026-11-04 10:00 on the machine's own clock, so clock-time resets read the same everywhere.
 const NOW = new Date(2026, 10, 4, 10, 0, 0);
@@ -50,7 +50,7 @@ describe("detecting a usage limit (TAI-706)", () => {
         });
     }
 
-    // A run's own closing summary, which a ticket about limits can easily end with (review of PR 51).
+    // A run's own closing summary, which a ticket about limits can easily end with.
     const summaryLines: readonly (readonly [string, string])[] = [
         ["a bullet", "- detects the 5-hour limit reached message"],
         ["a starred bullet", "* handles: the usage limit reached case"],
@@ -59,7 +59,7 @@ describe("detecting a usage limit (TAI-706)", () => {
         ["a heading", "## the usage limit reached path"],
         ["code", "`5-hour limit reached` is the message"],
         ["prose that talks about it", "Added detection of the 5-hour limit reached message."],
-        // Not a bullet or a quote, but a closing line of a run that finished (review of PR 51, round 3).
+        // Not a bullet or a quote, but a closing line of a run that finished.
         ["a closing line that starts with the phrase", "Usage limit reached handling is now covered by tests"],
         ["a closing line with exceeded", "Weekly limit exceeded case added"],
         ["a closing line with hit", "5-hour limit hit detection is done"],
@@ -184,7 +184,7 @@ describe("waiting for the reset", () => {
         assert.equal(decideWait({ text: "limit reached" }, 6, NOW).wait, false);
     });
 
-    it("does not wait for a reset that has already passed", () => {
+    it("carries on at once for a reset that has already passed", () => {
         assert.deepEqual(decideWait({ text: "x", resetsAt: new Date(NOW.getTime() - 3_600_000 - RESET_MARGIN_MS) }, 6, NOW), { wait: true, ms: 0 });
     });
 
@@ -240,6 +240,35 @@ describe("the stage of a build run that ended on a limit", () => {
     });
     it("stays continuable when the PR cannot be looked up", async () => {
         assert.equal(await buildStageAfterLimit(async () => { throw new Error("host down"); }), "build run");
+    });
+});
+
+describe("PauseReads: one answer per attempt", () => {
+    const reads = (answers: boolean[]) => {
+        const log: string[] = [];
+        return { log, pauses: new PauseReads(async (k) => (log.push(k), answers.shift() ?? false)) };
+    };
+
+    it("reads once while picking, uses that for preparation, and hands preparation's answer to the build, each once", async () => {
+        const { log, pauses } = reads([true]);
+        assert.equal(await pauses.whilePicking("TAI-10" as never), true);
+        assert.equal(await pauses.forPrepare("TAI-10" as never), true);
+        assert.equal(await pauses.forBuild("TAI-10" as never), true);
+        assert.deepEqual(log, ["TAI-10"], "a single read for the whole attempt");
+    });
+
+    it("reads afresh for the next attempt, so a retry after a wait sees the new note", async () => {
+        const { log, pauses } = reads([true, false]);
+        await pauses.forPrepare("TAI-10" as never);
+        await pauses.forBuild("TAI-10" as never);
+        assert.equal(await pauses.forPrepare("TAI-10" as never), false);
+        assert.equal(log.length, 2);
+    });
+
+    it("a build with no preparation reads, and a failed read does not fail the ticket", async () => {
+        const pauses = new PauseReads(async () => { throw new Error("jira down"); });
+        assert.equal(await pauses.forBuild("TAI-10" as never), false);
+        await assert.rejects(pauses.forPrepare("TAI-10" as never), /jira down/, "preparation still reports it: it decides the branch");
     });
 });
 

@@ -441,7 +441,7 @@ describe("yoloRun on a usage limit (TAI-706)", () => {
         );
     });
 
-    it("a limit printed after the PR was opened is not a continuable build pause (review of PR 51)", () => {
+    it("a limit printed after the PR was opened is not a continuable build pause", () => {
         const latch = new UsageLimitLatch();
         return world(
             async ({ wiring, task, handoffs }) => {

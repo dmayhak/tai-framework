@@ -178,7 +178,7 @@ import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, ren
 import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
-import { buildStageAfterLimit, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
+import { buildStageAfterLimit, PauseReads, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
 import { findChangeContext, parseChangeArgs, renderChangeBriefing } from "../core/commands/change.js";
@@ -2454,16 +2454,8 @@ async function main(): Promise<void> {
         stopRunsOnInterrupt();
         // TAI-706: a run that ends on the account's usage limit is recorded here; the ticket is then paused, not failed.
         const limitLatch = new UsageLimitLatch();
-        // TAI-706: the ticket is read once per attempt (in prepare) and that answer is used by the build, so a read that fails in between
-        // cannot make the build disagree with the branch prepare chose.
-        const pausedRead = new Map<string, boolean>();
-        const pausedSeed = new Map<string, boolean>(); // answers already read while picking the next ticket; prepare uses one once instead of reading again
-        const pausedOnLimit = async (key: IssueKey): Promise<boolean> => {
-            // Used once, by the build that follows its preparation, then dropped: the answer lives for one attempt.
-            const read = pausedRead.get(key);
-            pausedRead.delete(key);
-            return read ?? wasPausedOnLimit(config.backend.workTracker, key);
-        };
+        // TAI-706: whether each ticket was paused on a limit; the lifetime of each answer is documented on PauseReads.
+        const pauses = new PauseReads((key) => wasPausedOnLimit(config.backend.workTracker, key));
         const yoloWiring = yolo
             ? {
                   gitHost: gitDeps.gitHost,
@@ -2474,7 +2466,7 @@ async function main(): Promise<void> {
                   projectKey: config.projectKey,
                   taiDir: resolvePath(config.taiRoot),
                   limitLatch,
-                  pausedOnLimit,
+                  pausedOnLimit: (key: IssueKey) => pauses.forBuild(key),
                   email: config.currentHuman?.email ?? null,
                   ...(oneRun ? { oneRun: true } : {}),
                   cli,
@@ -2500,11 +2492,7 @@ async function main(): Promise<void> {
             : null;
         const worked = await workDevTasks(find, {
             yolo,
-            pausedOnLimit: async (task) => {
-                const paused = await wasPausedOnLimit(config.backend.workTracker, task.issue.key);
-                pausedSeed.set(task.issue.key, paused);
-                return paused;
-            },
+            pausedOnLimit: (task) => pauses.whilePicking(task.issue.key),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
             limitLatch,
@@ -2512,13 +2500,10 @@ async function main(): Promise<void> {
             sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
             say: (line) => console.log(line),
             prepare: async (task) => {
-                const paused = pausedSeed.get(task.issue.key) ?? (await wasPausedOnLimit(config.backend.workTracker, task.issue.key));
-                pausedSeed.delete(task.issue.key);
-                pausedRead.set(task.issue.key, paused);
-                await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, paused);
+                await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await pauses.forPrepare(task.issue.key));
             },
             build: async (task) => {
-                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, (await pausedOnLimit(task.issue.key)) ? await cutOffBranch(process.cwd(), task.parent.key) : null), { cwd: process.cwd(), timeoutMs });
+                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, (await pauses.forBuild(task.issue.key)) ? await cutOffBranch(process.cwd(), task.parent.key) : null), { cwd: process.cwd(), timeoutMs });
                 if (built.limit) limitLatch.hit(built.limit, await buildStageAfterLimit(() => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured })));
                 return built;
             },

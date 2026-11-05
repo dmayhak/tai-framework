@@ -31,7 +31,7 @@ const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
 const LEAD = "^[^A-Za-z0-9]*";
 // Where the message ends: the end of the line, a separator before the reset ("∙", "·", "|", "-", ":"), a "resets" clause, or the
 // prose form ("... reached. Your limit will reset at 3pm"). More words straight after it ("Usage limit reached handling is now covered
-// by tests", "Weekly limit exceeded case added") are a closing line of a run that finished, not the message (TAI-706 review).
+// by tests", "Weekly limit exceeded case added") are a closing line of a run that finished, not the message.
 const END = "(?=\\s*$|\\s*[|∙·•—–:]|\\s+-|\\.\\s*$|\\.\\s+(?:your\\s+)?limit\\b.*\\breset|\\s+resets?\\b)";
 const NAMED_LIMIT = new RegExp(`${LEAD}(?:claude(?:\\s+ai)?\\s+)?(?:your\\s+)?(?:(?:opus|sonnet)\\s+)?(?:usage|5-hour|five-hour|weekly|daily|session|opus|sonnet)\\s+limit\\b[^.\\n]{0,30}?\\b(?:reached|hit|exceeded)\\b${END}`, "i");
 const HIT_YOUR_LIMIT = new RegExp(`${LEAD}you(?:'|’)?ve\\s+(?:hit|reached)\\s+your\\b[^.\\n]*?\\blimit\\b${END}`, "i");
@@ -130,7 +130,7 @@ export function detectUsageLimit(output: string, now: Date = new Date()): UsageL
 
 /**
  * The last lines of a run's output that mention a limit or running out of usage, or null. Used only for a run that failed without
- * matching a known message: its wording may be a usage limit this detector has not seen, and the person should be told (TAI-706 review).
+ * matching a known message: its wording may be a usage limit this detector has not seen, and the person should be told.
  */
 export function limitMention(output: string): string | null {
     const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-TAIL_LINES);
@@ -237,7 +237,7 @@ function timeOf(createdAt: string | undefined): number {
 
 /**
  * Whether the ticket's newest `Handoff:` comment is a pause note that says the run continues it. Only then may the next run carry on from
- * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other (TAI-706 review).
+ * the uncommitted work on the Story branch: the dirty-tree stop is lifted for this ticket and no other.
  */
 export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue">, key: IssueKey): Promise<boolean> {
     const issue = await workTracker.getIssue(key);
@@ -245,6 +245,44 @@ export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue"
     const handoffs = (issue?.comments ?? []).filter((c) => /^Handoff:/m.test(c.body)).sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
     const newest = handoffs[handoffs.length - 1];
     return newest !== undefined && newest.body.includes(PAUSED_NOTE_START) && newest.body.includes(CONTINUES_LINE);
+}
+
+/**
+ * Whether each ticket was paused on a limit, with the lifetime of every answer stated. The answer read while picking the next ticket is used
+ * once, by that ticket's preparation; the answer preparation settled on is used once, by that attempt's build. A later attempt reads afresh.
+ */
+export class PauseReads {
+    private readonly seen = new Map<string, boolean>();
+    private readonly attempt = new Map<string, boolean>();
+
+    constructor(private readonly read: (key: IssueKey) => Promise<boolean>) {}
+
+    /** Read while picking the next ticket (a failure here is the caller's to handle). */
+    async whilePicking(key: IssueKey): Promise<boolean> {
+        const paused = await this.read(key);
+        this.seen.set(key, paused);
+        return paused;
+    }
+
+    /** For a ticket's preparation: the answer seen while picking, else a read. Kept for this attempt's build. */
+    async forPrepare(key: IssueKey): Promise<boolean> {
+        const paused = this.seen.get(key) ?? (await this.read(key));
+        this.seen.delete(key);
+        this.attempt.set(key, paused);
+        return paused;
+    }
+
+    /** For the build: this attempt's answer. With none (preparation did not run), a read that cannot fail the ticket: an unreadable ticket is built from the default branch. */
+    async forBuild(key: IssueKey): Promise<boolean> {
+        const paused = this.attempt.get(key);
+        this.attempt.delete(key);
+        if (paused !== undefined) return paused;
+        try {
+            return await this.read(key);
+        } catch {
+            return false;
+        }
+    }
 }
 
 /**
