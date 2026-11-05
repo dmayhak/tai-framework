@@ -214,7 +214,9 @@ export function isContinuableStage(stage: string): boolean {
 /** Where the checkout stood when the run was cut off ("<branch>@<commit>"). A later run continues only if it still stands there. */
 const POSITION_PREFIX = "Position: ";
 const PAUSED_NOTE_START = "Handoff: DEV-YOLO paused on a usage limit.";
-const CONTINUES_LINE = 'Next: once the limit has reset, run "Do all dev tasks" again. The run continues this ticket on its branch.';
+/** The part of the continues line that has no quote marks, so a tracker that rewrites quotes in a comment cannot hide it. */
+const CONTINUES_MARK = "The run continues this ticket on its branch.";
+const CONTINUES_LINE = `Next: once the limit has reset, run "Do all dev tasks" again. ${CONTINUES_MARK}`;
 
 /** The note left on a ticket whose run was cut off by a usage limit. Neutral: the ticket did nothing wrong. */
 export function pausedHandoff(limit: UsageLimit, stage: string, position?: string): string {
@@ -249,7 +251,7 @@ export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue"
     if (handoffs.length > 1 && handoffs.some((c) => Number.isNaN(timeOf(c.createdAt)))) return false;
     handoffs.sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
     const newest = handoffs[handoffs.length - 1];
-    if (newest === undefined || !newest.body.includes(PAUSED_NOTE_START) || !newest.body.includes(CONTINUES_LINE)) return false;
+    if (newest === undefined || !newest.body.includes(PAUSED_NOTE_START) || !newest.body.includes(CONTINUES_MARK)) return false;
     // A note that recorded where the checkout stood only counts while it still stands there: if the person has since committed, switched
     // branch or moved on, the tree's leftovers are not this pause's and the dirty-tree stop applies. An older note, or no way to tell, is trusted.
     const recorded = new RegExp(`^${POSITION_PREFIX}(\\S+)$`, "m").exec(newest.body)?.[1];
@@ -266,7 +268,10 @@ export class PauseReads {
 
     constructor(private readonly read: (key: IssueKey) => Promise<boolean>) {}
 
-    /** Read while picking the next ticket (a failure here is the caller's to handle). */
+    /**
+     * Read while picking the next ticket (a failure here is the caller's to handle). The answer for a ticket that is not worked next stays
+     * until its own preparation; that is safe because only a run's own pause changes a ticket's note, and that goes through remember().
+     */
     async whilePicking(key: IssueKey): Promise<boolean> {
         const paused = await this.read(key);
         this.seen.set(key, paused);

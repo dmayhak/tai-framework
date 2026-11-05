@@ -310,11 +310,11 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             // A limit message can come back with exit code 0, so the end of the output is read for every result.
             const found = detectUsageLimit(tail);
             // The line is posted to the ticket, so it is redacted like the summaries are.
-            const limit = found ? { ...found, text: redactSecrets(found.text) } : null;
+            const limit = found ? { ...found, text: redactSecrets(found.text, { ...process.env, ...options.env }) } : null;
             if (limit) return resolve({ ...result, ok: false, limit });
             // A failed run whose end talks about a limit but matched no known message: say so, so a new wording is noticed and captured.
             const mention = result.ok ? null : limitMention(tail);
-            resolve(mention ? { ...result, summary: `${result.summary}\n(Its output mentions a limit, "${redactSecrets(mention)}", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-706.)` } : result);
+            resolve(mention ? { ...result, summary: `${result.summary}\n(Its output mentions a limit, "${redactSecrets(mention, { ...process.env, ...options.env })}", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-706.)` } : result);
         };
         const timer = setTimeout(() => {
             timedOut = true;

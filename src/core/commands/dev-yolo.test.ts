@@ -429,13 +429,13 @@ describe("the reviewer's credentials (TAI-634)", () => {
 });
 
 describe("a run that ends on a usage limit (TAI-706)", () => {
-    async function runWith(script: string) {
+    async function runWith(script: string, env?: Record<string, string>) {
         const dir = await mkdtemp(path.join(tmpdir(), "tai-limit-"));
         try {
             const bin = path.join(dir, "claude");
             await writeFile(bin, `#!/bin/sh\n${script}\n`);
             await chmod(bin, 0o755);
-            return await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin });
+            return await runHeadlessClaude("p", { cwd: dir, timeoutMs: 20_000, bin, env });
         } finally {
             await rm(dir, { recursive: true, force: true });
         }
@@ -453,6 +453,15 @@ describe("a run that ends on a usage limit (TAI-706)", () => {
         assert.ok(result.limit, "a limit");
         assert.doesNotMatch(result.limit.text, /abcdefgh12345678/);
         assert.match(result.limit.text, /Bearer \*\*\*/);
+    });
+
+    it("redacts a secret passed only through the run's own env, in the limit line and in the unknown-wording note", async () => {
+        const env = { REVIEWER_TOKEN: "s3cr3t-value-9999" };
+        const hit = await runWith('echo "5-hour limit reached ∙ resets 3pm s3cr3t-value-9999"', env);
+        assert.ok(hit.limit, "a limit");
+        assert.doesNotMatch(hit.limit.text, /s3cr3t-value-9999/);
+        const miss = await runWith('echo "Hmm the limit is s3cr3t-value-9999 here" >&2; exit 3', env);
+        assert.doesNotMatch(miss.summary, /s3cr3t-value-9999/);
     });
 
     it("tells a failed run whose end mentions an unknown limit wording, and leaves a clean finish alone", async () => {

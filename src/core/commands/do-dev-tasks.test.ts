@@ -1121,6 +1121,11 @@ describe("pausing on a usage limit (TAI-706)", () => {
             assert.equal(await wasPausedOnLimit(tracker(buildPause + "\n\nPosted via the TAI CLI as Dev.") as never, "TAI-10" as never), true);
         });
 
+        it("still finds the pause when a tracker rewrites the quote marks in the note", async () => {
+            const curly = buildPause.replaceAll('"', "\u201c");
+            assert.equal(await wasPausedOnLimit(tracker(curly) as never, "TAI-10" as never), true);
+        });
+
         it("reads the newest by the comment's own time, not by the order the host returned them in", async () => {
             const t = { getIssue: async () => ({ comments: [{ body: buildPause, createdAt: "2026-11-04T12:00:00Z" }, { body: "Handoff: DEV-YOLO run. The build run did not finish.", createdAt: "2026-11-04T09:00:00Z" }] }) };
             assert.equal(await wasPausedOnLimit(t as never, "TAI-10" as never), true, "the pause is newer even though it is listed first");
