@@ -205,7 +205,7 @@ describe("waiting for the reset", () => {
     });
 
     it("carries on at once for a reset that has already passed", () => {
-        assert.deepEqual(decideWait({ text: "x", resetsAt: new Date(NOW.getTime() - 3_600_000 - RESET_MARGIN_MS) }, 6, NOW), { wait: true, ms: 0 });
+        assert.deepEqual(decideWait({ text: "x", resetsAt: new Date(NOW.getTime() - 3_600_000 - RESET_MARGIN_MS) }, 6, NOW), { wait: true, ms: RESET_MARGIN_MS });
     });
 
     it("allows a few waits in one run, not an endless number", () => {

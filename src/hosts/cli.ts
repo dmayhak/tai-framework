@@ -177,7 +177,7 @@ import { resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
 import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
-import { assertCleanTree, checkoutPosition, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
+import { assertCleanTree, checkoutPosition, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
 import { buildStageAfterLimit, PauseReads, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
@@ -2504,7 +2504,7 @@ async function main(): Promise<void> {
                 await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await pauses.forPrepare(task.issue.key));
             },
             build: async (task) => {
-                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, (await pauses.forBuild(task.issue.key)) ? await cutOffBranch(process.cwd(), task.parent.key) : null), { cwd: process.cwd(), timeoutMs });
+                const built = await runHeadlessClaude(buildDevPrompt(task.issue.key, cli, await resumeBranchFor(process.cwd(), task.parent.key, await pauses.forBuild(task.issue.key))), { cwd: process.cwd(), timeoutMs });
                 if (built.limit) limitLatch.hit(built.limit, await buildStageAfterLimit(() => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured })));
                 return built;
             },

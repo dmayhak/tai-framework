@@ -187,7 +187,8 @@ export function decideWait(limit: UsageLimit, waitHours: number | undefined, now
     if (waitHours === undefined) return { wait: false, why: "no wait= was given" };
     if (!limit.resetsAt) return { wait: false, why: "the message gave no reset time" };
     const ms = limit.resetsAt.getTime() - now.getTime() + RESET_MARGIN_MS;
-    if (ms <= 0) return { wait: true, ms: 0 };
+    // A reset already reached (or just reached) still waits the margin, so the retry does not start before the limit has lifted.
+    if (ms <= 0) return { wait: true, ms: RESET_MARGIN_MS };
     if (ms > waitHours * 3_600_000) return { wait: false, why: `the reset is further off than wait=${waitHours} hours` };
     return { wait: true, ms };
 }

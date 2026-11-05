@@ -9,7 +9,7 @@ import { chmod, readFile, writeFile } from "node:fs/promises";
 import { DependencyRelation, Persona, Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
 import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface.js";
-import { DirtyTreeError, PrepareStopError, checkoutPosition, cutOffBranch, prepareCleanDefaultBranch, prepareForTicket } from "./dev-tasks-git.js";
+import { DirtyTreeError, PrepareStopError, checkoutPosition, cutOffBranch, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "./dev-tasks-git.js";
 import { pausedAwareHandoff, pausedHandoff, UsageLimitLatch, wasPausedOnLimit, type UsageLimit } from "./usage-limit.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
 import { noPrReason, onlyRefusal, parseDevTasksArgs, resolveYolo } from "./do-dev-tasks.js";
@@ -1025,6 +1025,17 @@ describe("pausing on a usage limit (TAI-706)", () => {
             g("branch", "-q", "--set-upstream-to=origin/main", "main");
             return { dir, work, g, head: () => execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: work }).toString().trim() };
         }
+
+        it("resumeBranchFor gives the cut-off branch only for a ticket paused on a limit", async () => {
+            const r = await repo();
+            try {
+                r.g("checkout", "-q", "-b", "TAI-1-feature");
+                assert.equal(await resumeBranchFor(r.work, "TAI-1", true), "TAI-1-feature");
+                assert.equal(await resumeBranchFor(r.work, "TAI-1", false), null);
+            } finally {
+                await rm(r.dir, { recursive: true, force: true });
+            }
+        });
 
         it("keeps its uncommitted work and does not trip the dirty-tree stop", async () => {
             const r = await repo();

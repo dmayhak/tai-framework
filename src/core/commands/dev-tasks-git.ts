@@ -61,6 +61,11 @@ export async function cutOffBranch(cwd: string, storyKey: string): Promise<strin
     return branch !== "HEAD" && (branch === storyKey || branch.startsWith(`${storyKey}-`)) ? branch : null;
 }
 
+/** The branch a build continues on: the cut-off Story branch when the ticket was paused on a limit, else null (a fresh build). Both build paths use this one rule. */
+export async function resumeBranchFor(cwd: string, storyKey: string, pausedOnLimit: boolean): Promise<string | null> {
+    return pausedOnLimit ? cutOffBranch(cwd, storyKey) : null;
+}
+
 /** Where the checkout stands, "<branch>@<short commit>", or undefined when git cannot say. Recorded in a pause note, compared by the next run. */
 export async function checkoutPosition(cwd: string): Promise<string | undefined> {
     try {

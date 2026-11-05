@@ -17,7 +17,7 @@ import { findOpenPullRequest, listOpenPullRequests, titleNamesKey, type DevTask,
 import { runYolo, reviewDecisionOnHead, ownDecisionCount, type YoloDeps } from "./dev-yolo.js";
 import { yoloStopReasons } from "./yolo-checks.js";
 import { finishApproved } from "./dev-yolo-finish.js";
-import { checkoutPosition, cutOffBranch } from "./dev-tasks-git.js";
+import { checkoutPosition, resumeBranchFor } from "./dev-tasks-git.js";
 import { buildStageAfterLimit, pausedAwareHandoff, wasPausedOnLimit, type UsageLimitLatch } from "./usage-limit.js";
 
 export interface YoloWiring {
@@ -127,7 +127,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
         build: async (task) => {
             const readPause = async (key: IssueKey): Promise<boolean> => wasPausedOnLimit(w.workTracker, key, await checkoutPosition(w.cwd));
             const paused = await (w.pausedOnLimit ?? readPause)(task.issue.key);
-            const resumeBranch = paused ? await cutOffBranch(w.cwd, task.parent.key) : null;
+            const resumeBranch = await resumeBranchFor(w.cwd, task.parent.key, paused);
             // A limit that ends the build run is recorded with whether the PR is already open, since a later run does not continue such a ticket.
             const stage = () => buildStageAfterLimit(() => findOpenPullRequest(w.gitHost, w.repos, task.issue.key, { checkConfigured: w.checkConfigured }));
             return run(stage)(buildDevPrompt(task.issue.key, w.cli, resumeBranch), { cwd: w.cwd, timeoutMs: w.timeoutMs });
