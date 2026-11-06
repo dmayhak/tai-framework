@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 163 (2026-11-06)
+
+**TAI-745 (Story TAI-744): the review preview says what a "neither" leaning means.** The numbered "what would you like to do?" list that `render-findings` prints marked option 5 as just "neither (suggested)", which read as "the reviewer has no opinion". It is the reviewer's own position: it neither recommends approving nor blocking, and leaves the call to the human. Option 5 now reads "neither (post nothing, record no decision)", and when the leaning is neither, a line above the list says so. The line is only in the terminal preview, never in the review comment posted to the PR (`renderReviewFindings` is unchanged). The unattended review already treats a "neither" leaning as a stop for a person (TAI-682).
+
 ## rev 162 (2026-11-05)
 
 **TAI-711 (Story TAI-710): a readable stop reason in the report and the hand-off.**
