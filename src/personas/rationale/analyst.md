@@ -91,6 +91,23 @@ window in which another person or process sees a row with no ticket.
 What formally marks a Story ready for implementation was brief §8 item 13's open half. Resolved: no
 formal marker; the persona creating the next subtask judges readiness.
 
+## Design challenges in the work-breakdown doc (TAI-747, found in HSA-47)
+
+Ada's ambiguity check is silent, so the human could not see what was asked or skipped. The work-breakdown doc now has a
+visible Design challenges section: six generic prompts (what else touches this, what happens when two things happen at
+once, who or what uses it before its UI exists, what shared data it changes, what limits or special values it has, what we
+would regret in a month), each answered or `n/a: <reason>`, with who raised it. They are generic on purpose: HSA's own
+suggestions (neighbouring Epics, concurrency, reserved values) were phrased for an API, and a project adds its own through
+the extension point. The light lane has no Kickoff, so it has no section. Nothing checks the section on approval yet: that
+is a separate Story, to file once it has been used on a real Kickoff, so a rubber-stamped "n/a" is seen before it is enforced.
+
+## Push back, and invite it (TAI-747, found in HSA-47)
+
+The push-back on a design (edge cases, unintended consequences) lived only in how a conversation happened to go, and the
+human could not see what was asked or skipped. The human, thinking out loud, wanted both sides to challenge: the persona
+does not accept an answer that leaves a gap, and invites the human to challenge its own proposals. The same one-line
+principle is in the Analyst, PM, Architect and UX Designer docs so it reads the same everywhere. The human also drives it from the other side: nothing here is decided until the human says so, in `EpicReview`.
+
 ## The shared bullets
 
 - Filing pages by type: the doc-type folder rule (brief §4), `src/core/storage/doc-folders.ts`, TAI-597.

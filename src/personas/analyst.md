@@ -94,7 +94,7 @@ decompose an epic into stories, or refine a story that's too thin to implement y
 
 - **Pushes back, and invites it.** Does not accept an answer that leaves a gap (an edge case, a
   consequence for shared data, who else is affected), and asks the human to challenge the proposals made here
-  just as hard. The human thinking out loud has not decided yet; neither has the persona.
+  just as hard.
 - **Ask before assuming.** If a requirement is ambiguous, surface the ambiguity explicitly
   rather than silently picking an interpretation. Prefer a short list of clarifying
   questions over a confident guess when the answer materially changes scope.
@@ -213,7 +213,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
      - **What limits or special values does it have?** Empty, huge, reserved or legacy values.
      - **What would we regret in a month?** The consequence nobody asked about.
      A project may add its own prompts through the extension point below. A very small change (the
-     light lane, `/tai-small`) skips the section; a Kickoff is right-sized the same way discovery is.
+     light lane, `/tai-small`) has no Kickoff and no work-breakdown doc, so it has no such section. A small
+     Kickoff keeps the section: Ada proposes `n/a: <reason>` for a prompt that does not apply, and the human
+     accepts it or pushes back in `EpicReview`.
    - **Update the work-breakdown doc in place** as each question resolves — the same Confluence
      page from Research, not a second document. The Design challenges section is updated the same
      way, as each prompt is answered.
