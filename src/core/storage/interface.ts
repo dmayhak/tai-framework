@@ -443,6 +443,15 @@ export interface DocStore {
 
 // ---------- StorageBackend ----------
 
+/**
+ * Web addresses for what a backend holds (TAI-749). A person reading a command's output or a persona's reply cannot open a bare
+ * id, so each returns a link, or null when the backend has no web page for it (the filesystem backend).
+ */
+export interface BackendLinks {
+    issue(key: IssueKey): string | null;
+    page(page: { readonly id: PageId; readonly spaceKey: string }): string | null;
+}
+
 export interface StorageBackend {
     // Deliberately NOT a closed union of known backend names — brief §3.2 explicitly
     // allows third-party backends via their own MCP servers, and a closed union
@@ -451,4 +460,6 @@ export interface StorageBackend {
     readonly kind: string;
     readonly workTracker: WorkTracker;
     readonly docStore: DocStore;
+    /** Web addresses for issues and pages; absent when the backend has none to give. */
+    readonly links?: BackendLinks;
 }

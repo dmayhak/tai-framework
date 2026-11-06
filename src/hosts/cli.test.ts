@@ -33,6 +33,8 @@ import {
     renderKickoffTurn,
     renderLinkedIssues,
     renderIssueDetail,
+    renderIssueRef,
+    renderPageRef,
     renderReadyWork,
     renderPRReadyWork,
     FLAG_MARKER,
@@ -171,6 +173,34 @@ describe("flagged= and flag markers (TAI-390)", () => {
         workTracker: { getLinkedIssues: async () => [], getLinkedPages: async () => [] },
         docStore: { getPage: async () => null },
     };
+
+    // TAI-749: a person cannot open a bare id, so a backend with web addresses has them printed.
+    const links = {
+        issue: (key: string) => `https://x.atlassian.net/browse/${key}`,
+        page: (page: { id: string; spaceKey: string }) => `https://x.atlassian.net/wiki/spaces/${page.spaceKey}/pages/${page.id}`,
+    };
+
+    it("issue and page references print the backend's URL, and are unchanged without one (TAI-749)", () => {
+        const issue = makeIssue();
+        assert.ok(renderIssueRef(issue, links as never).endsWith(`\nhttps://x.atlassian.net/browse/${issue.key}`));
+        assert.ok(!renderIssueRef(issue).includes("http"));
+        const page = { id: "68747265", spaceKey: "TA", title: "Draft" } as never;
+        assert.ok(renderPageRef("Page created", page, links as never).endsWith("\nspace: TA\nhttps://x.atlassian.net/wiki/spaces/TA/pages/68747265"));
+        assert.equal(renderPageRef("Page created", page), "# Page created\n\n**Draft**\nid: 68747265\nspace: TA");
+    });
+
+    it("issue get shows the issue's URL and each linked page with its URL (TAI-749)", async () => {
+        const withPage = {
+            workTracker: { getLinkedIssues: async () => [], getLinkedPages: async () => ["68747265"] },
+            docStore: { getPage: async () => ({ id: "68747265", spaceKey: "TA", title: "Draft" }) },
+            links,
+        };
+        const out = await renderIssueDetail(withPage as never, makeIssue());
+        assert.match(out, /https:\/\/x\.atlassian\.net\/browse\/[A-Z]+-\d+/);
+        assert.match(out, /- Draft \(id: 68747265, space: TA\) — https:\/\/x\.atlassian\.net\/wiki\/spaces\/TA\/pages\/68747265/);
+        const bare = await renderIssueDetail({ ...withPage, links: undefined } as never, makeIssue());
+        assert.ok(!bare.includes("http"), "no URL when the backend has none");
+    });
 
     it("flagged=true/false parse to a boolean patch field", () => {
         assert.deepEqual(parseIssueUpdatePatch({ flagged: "true" }), { flagged: true });

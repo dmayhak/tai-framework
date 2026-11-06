@@ -31,6 +31,7 @@ import {
     toPageId,
     DEFAULT_SEARCH_LIMIT,
     isFlagged,
+    type BackendLinks,
     type CreateIssueInput,
     type CreatePageInput,
     type Page,
@@ -1311,19 +1312,22 @@ export function renderPullRequestComments(prId: string, comments: readonly PullR
 export const FLAG_MARKER = "🚩 flagged";
 const flagSuffix = (issue: Pick<Issue, "flagged">): string => (isFlagged(issue) ? ` · ${FLAG_MARKER}` : "");
 
-function renderIssueRef(issue: Issue): string {
+export function renderIssueRef(issue: Issue, links?: BackendLinks): string {
+    const url = links?.issue(issue.key) ?? null;
     return [
         `# Issue ${issue.key}`,
         "",
         `**${issue.summary}**`,
         `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}${flagSuffix(issue)}`,
+        ...(url ? [url] : []),
     ].join("\n");
 }
 
 /** Shared by `page create`/`page update` -- found duplicated verbatim between the two
  *  during TAI-301's code review; factored out the same way `renderIssueRef` already is. */
-function renderPageRef(heading: string, page: Page): string {
-    return `# ${heading}\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}`;
+export function renderPageRef(heading: string, page: Page, links?: BackendLinks): string {
+    const url = links?.page(page) ?? null;
+    return `# ${heading}\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}${url ? `\n${url}` : ""}`;
 }
 
 /** TAI-275/276 ADR: visibility, not auto-retry -- prints alongside `issue transition`'s own
@@ -1538,6 +1542,7 @@ export async function renderIssueDetail(
     backend: {
         readonly workTracker: Pick<WorkTracker, "getLinkedIssues" | "getLinkedPages">;
         readonly docStore: Pick<DocStore, "getPage">;
+        readonly links?: BackendLinks;
     },
     issue: Issue
 ): Promise<string> {
@@ -1551,7 +1556,8 @@ export async function renderIssueDetail(
         ? await Promise.all(
               pageIds.map(async (id) => {
                   const page = await backend.docStore.getPage({ id });
-                  return page ? `- ${page.title} (id: ${id}, space: ${page.spaceKey})` : `- **MISSING** — linked page id ${id} no longer exists`;
+                  const pageUrl = page ? backend.links?.page(page) ?? null : null;
+                  return page ? `- ${page.title} (id: ${id}, space: ${page.spaceKey})${pageUrl ? ` — ${pageUrl}` : ""}` : `- **MISSING** — linked page id ${id} no longer exists`;
               })
           )
         : ["None."];
@@ -1560,11 +1566,13 @@ export async function renderIssueDetail(
         ? issue.comments.map((c) => `### ${c.author.displayName} — ${c.createdAt}\n\n${c.body}`)
         : ["_(no comments)_"];
 
+    const issueUrl = backend.links?.issue(issue.key) ?? null;
     return [
         `# Issue ${issue.key}`,
         "",
         `**${issue.summary}**`,
         `${issue.issueType} · ${issue.status}${issue.parentKey ? ` · parent: ${issue.parentKey}` : ""}${flagSuffix(issue)}`,
+        ...(issueUrl ? [issueUrl] : []),
         `Persona: ${issue.persona ?? "none"} | Priority: ${issue.priority ?? "none"} | Labels: ${issue.labels.join(", ") || "none"} | Updated: ${issue.updatedAt}`,
         "",
         "## Description",
@@ -2800,7 +2808,7 @@ async function main(): Promise<void> {
                 ...(resolvedAssignee !== undefined ? { assignee: resolvedAssignee } : {}),
             };
             const issue = await config.backend.workTracker.createIssue(input);
-            console.log(renderIssueRef(issue));
+            console.log(renderIssueRef(issue, config.backend.links));
             // TAI-504: a note, never a refusal, when the description is a wall of text.
             const createNote = wallOfTextNote("description", fields["description"], `issue update ${issue.key} description=…`);
             if (createNote) console.log(`\n${createNote}`);
@@ -2899,7 +2907,7 @@ async function main(): Promise<void> {
             const fields = parseKeyValueArgs(kv);
             const patch = parseIssueUpdatePatch(fields);
             const issue = await config.backend.workTracker.updateIssue(toIssueKey(issueKey), patch);
-            console.log(renderIssueRef(issue));
+            console.log(renderIssueRef(issue, config.backend.links));
             const updateNote = wallOfTextNote("description", fields["description"], `issue update ${issue.key} description=…`);
             if (updateNote) console.log(`\n${updateNote}`);
             return;
@@ -2982,7 +2990,7 @@ async function main(): Promise<void> {
 
             console.log(
                 result.ok
-                    ? renderIssueRef(result.issue) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "") + (unverifiedNote ? `\n\n${unverifiedNote}` : "") + (retroHint ? `\n\n${retroHint}` : "")
+                    ? renderIssueRef(result.issue, config.backend.links) + renderCascadeWarnings(result.cascadeWarnings) + signOffNote + (completeNote ? `\n\n${completeNote}` : "") + (unverifiedNote ? `\n\n${unverifiedNote}` : "") + (retroHint ? `\n\n${retroHint}` : "")
                     : `# Transition denied\n\n${issueKey} -> "${target}": ${result.reason}` +
                           (autoAssignFailure ? `\n\n${autoAssignFailure}` : "") +
                           (enrichedCandidates ? `\n\n${enrichedCandidates}` : "")
@@ -3018,7 +3026,7 @@ async function main(): Promise<void> {
             const result = await config.backend.workTracker.assignIssue(toIssueKey(issueKey), human);
             console.log(
                 result.ok
-                    ? renderIssueRef(result.issue)
+                    ? renderIssueRef(result.issue, config.backend.links)
                     : `# Assignment denied\n\n${issueKey} -> ${email}: ${result.reason}`
             );
             return;
@@ -3126,7 +3134,7 @@ async function main(): Promise<void> {
             });
             const input: CreatePageInput = { spaceKey, title, content, ...(parentId ? { parentId } : {}) };
             const page = await config.backend.docStore.createPage(input);
-            console.log(renderPageRef("Page created", page));
+            console.log(renderPageRef("Page created", page, config.backend.links));
             return;
         }
 
@@ -3134,7 +3142,10 @@ async function main(): Promise<void> {
             const [issueKey, pageId] = pageArgs;
             if (!issueKey || !pageId) throw new Error("Usage: page link <ISSUE-KEY> <PAGE-ID>");
             await config.backend.workTracker.linkPage(toIssueKey(issueKey), toPageId(pageId));
-            console.log(`# Page linked\n\n${pageId} linked to ${issueKey}.`);
+            const linkedPage = await config.backend.docStore.getPage({ id: toPageId(pageId) }).catch(() => null);
+            const pageUrl = linkedPage ? config.backend.links?.page(linkedPage) ?? null : null;
+            const issueUrl = config.backend.links?.issue(toIssueKey(issueKey)) ?? null;
+            console.log(`# Page linked\n\n${linkedPage ? `${linkedPage.title} (${pageId})` : pageId} linked to ${issueKey}.${pageUrl ? `\nPage: ${pageUrl}` : ""}${issueUrl ? `\nIssue: ${issueUrl}` : ""}`);
             return;
         }
 
@@ -3158,6 +3169,7 @@ async function main(): Promise<void> {
                     `# ${page.title}`,
                     "",
                     `id: ${page.id} | space: ${page.spaceKey} | updated: ${page.updatedAt}`,
+                    ...(config.backend.links?.page(page) ? [config.backend.links.page(page)!] : []),
                     "",
                     page.content,
                     "",
@@ -3179,7 +3191,7 @@ async function main(): Promise<void> {
             if (!pageId || !type) throw new Error("Usage: page file <PAGE-ID> type=<OUTPUT-TYPE>");
             const page = await filePage(config.backend.docStore, toPageId(pageId), type);
             await cachePage(config.taiRoot, config.projectKey, page);
-            console.log(renderPageRef("Page filed", page));
+            console.log(renderPageRef("Page filed", page, config.backend.links));
             return;
         }
 
@@ -3232,7 +3244,7 @@ async function main(): Promise<void> {
             // TAI-303: write-through the cache on success -- same rationale as the issue-
             // side fixes above ("issue update"'s comment), for `refreshPage`/`cachePage`.
             await cachePage(config.taiRoot, config.projectKey, page);
-            console.log(renderPageRef("Page updated", page));
+            console.log(renderPageRef("Page updated", page, config.backend.links));
             return;
         }
 

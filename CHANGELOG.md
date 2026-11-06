@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 164 (2026-11-06)
+
+**TAI-749 (Story TAI-748): a link, not a bare id, for a Jira ticket, a Confluence page or a PR.** Found in HSA-39: the output named a Confluence page by its id, which a person cannot open. A PR already printed its URL; a ticket and a page did not. `StorageBackend` has an optional `links` (an issue's and a page's web address); the Jira and Confluence backend builds `<site>/browse/<KEY>` and `<site>/wiki/spaces/<SPACE>/pages/<ID>`, and the filesystem backend has none. `issue get`, `create`, `update`, `transition`, `page create`, `update`, `get` (the "Page filed" form too) and `page link` print the URL when there is one, and the "Linked pages" list in `issue get` shows each page with its URL; with no URL the output is as before. Brief §4 and every persona doc say that a ticket, page or PR named to the human is given as its title or key with its URL, never an id alone.
+
 ## rev 163 (2026-11-06)
 
 **TAI-745 (Story TAI-744): the review preview says what a "neither" leaning means.** The numbered "what would you like to do?" list that `render-findings` prints marked option 5 as just "neither (suggested)", which read as "the reviewer has no opinion". It is the reviewer's own position: it neither recommends approving nor blocking, and leaves the call to the human. Option 5 now reads "neither (post nothing, record no decision)", and when the leaning is neither, a line above the list says so. The line is only in the terminal preview, never in the review comment posted to the PR (`renderReviewFindings` is unchanged). The unattended review already treats a "neither" leaning as a stop for a person (TAI-682).
