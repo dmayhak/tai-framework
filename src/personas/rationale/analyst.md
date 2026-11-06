@@ -98,6 +98,7 @@ formal marker; the persona creating the next subtask judges readiness.
   section, plus human feedback that a human browsing Jira does not get the briefing's traversal.
 - Confluence content as unwrapped lines: TAI-397.
 - Writing for reading: TAI-475 and TAI-504.
+- A link, not a bare id: TAI-749, found in HSA-39 (a Confluence page named only by its id); the CLI now prints the URL and the brief §4 rule asks for title-or-key plus URL.
 - The hand-off comment: TAI-489.
 - Unblocking human-gated work: TAI-389/TAI-395.
 - **Decided (TAI-601):** Ada creates a `Requirements` subtask for follow-on work no ticket holds (a Story she proposes for a Kickoff is already on the board); see `workflows/dependencies.md`.
