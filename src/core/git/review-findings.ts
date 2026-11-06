@@ -394,7 +394,7 @@ const NEXT_STEP_OPTIONS: readonly { readonly text: string; readonly suggestedFor
     { text: "post the findings only" },
     { text: "approve only (no comment)" },
     { text: "post and request changes", suggestedFor: "requestChanges" },
-    { text: "neither", suggestedFor: "neither" },
+    { text: "neither (post nothing, record no decision)", suggestedFor: "neither" },
 ];
 
 /**
@@ -411,7 +411,9 @@ export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
     const lines = NEXT_STEP_OPTIONS.map(
         (o, i) => `${i + 1}. ${o.text}${o.suggestedFor === leaning ? " (suggested)" : ""}`
     );
-    return ["---", "Nothing has been posted yet. What would you like to do? Reply with a number or plain words:", ...lines].join("\n");
+    // "neither" is the reviewer's own position (it neither recommends approving nor blocking), not "no opinion": say so where it is suggested.
+    const note = leaning === "neither" ? ["The reviewer's leaning is neither: it does not recommend approving or blocking, and leaves the call to you.", ""] : [];
+    return ["---", "Nothing has been posted yet. What would you like to do? Reply with a number or plain words:", ...note, ...lines].join("\n");
 }
 
 /**

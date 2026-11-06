@@ -222,7 +222,7 @@ describe("render-findings next-step options (TAI-411)", () => {
                 "2. post the findings only",
                 "3. approve only (no comment)",
                 "4. post and request changes",
-                "5. neither",
+                "5. neither (post nothing, record no decision)",
             ]
         );
     });
@@ -232,7 +232,13 @@ describe("render-findings next-step options (TAI-411)", () => {
             optionLines(renderFindingsNextSteps(leaning)).filter((l) => l.includes("(suggested)"));
         assert.deepEqual(suggested("approve"), ["1. post and approve (suggested)"]);
         assert.deepEqual(suggested("requestChanges"), ["4. post and request changes (suggested)"]);
-        assert.deepEqual(suggested("neither"), ["5. neither (suggested)"]);
+        assert.deepEqual(suggested("neither"), ["5. neither (post nothing, record no decision) (suggested)"]);
+    });
+
+    it("explains a neither leaning, and only then", () => {
+        assert.match(renderFindingsNextSteps("neither"), /leaning is neither: it does not recommend approving or blocking, and leaves the call to you/);
+        assert.doesNotMatch(renderFindingsNextSteps("approve"), /leaning is neither/);
+        assert.doesNotMatch(renderFindingsNextSteps("requestChanges"), /leaning is neither/);
     });
 
     it("the preview is the rendered findings followed by the options", () => {
