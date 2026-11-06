@@ -2,6 +2,26 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 162 (2026-11-05)
+
+**TAI-711 (Story TAI-710): a readable stop reason in the report and the hand-off.**
+
+A build run that stopped without a PR used to quote the end of the agent's own output in the report and the hand-off, joined into one line with " / ". In trial B (TAIT-2030) that mixed the real cause, a refused `git rm`, with noise.
+
+The reason is now a fixed shape (`stop-reason.ts`):
+
+* Three short lines: what stopped, the cause as far as it is known, and the next step. They appear in the report (the cause and next step under the ticket's bullet) and in the hand-off, for DEV-YOLO and for a plain "Do all dev tasks" run.
+* The hand-off is Jira wiki markup: the command is written `{{like this}}` (braces inside it escaped), and the markup characters in the rest of the lines are escaped too and the agent's text sits in a `{noformat}` block, so Jira does not read its `*`, `{` or `[` as markup. The report keeps plain backticks.
+* The agent's own closing text is kept after them in the hand-off: the last eight lines, each cut to 240 characters, with their line breaks. It is never joined into the lines.
+* The replacement hand-off a ticket gets when its run also left the working tree dirty is the same stop with the dirty-tree note added, so it keeps the cause, the next step and the output block. The refused command is the first backticked span on the line that starts like a command, and is read from the line before it is cut to 240 characters.
+* The cause never quotes the agent's text: a refusal with no readable command, and an unrecognised limit wording, say that the output below has the line. A refusal counts only among the last four lines of the output, so one the run worked around earlier is not named as the cause.
+* A refused command is named as a refusal, with the command, worded as what it looks like, not as certain: a line counts as a refusal only when it talks about a permission (or says a command is not allowed to run), not any line with 'command' and 'blocked' in it; backticked text counts as the command only when it starts like one (a tool's name or a path), and a limit note in the same output is added to it, not put in its place. The wording a refusal takes in the agent's output is not recorded from a real run, so it is read from a line that talks about a permission being denied, refused or not granted; a miss reports the cause as not known and still keeps the output. An operating-system error such as `EACCES` or an ssh `Permission denied (publickey)` is not read as a refusal.
+* A failed run whose output mentions a usage limit no known message matches (TAI-743) says so in the cause, so the capture path stays visible.
+* `runHeadlessClaude` returns `what` (what happened to a run that did not finish) and `output` apart from `summary`, which is unchanged for the other callers.
+* A Story that is still To Do or Backlog after its Dev ticket reached In Progress gets its own line in the report, with why and what to do (no assignee: assign it, then move it; otherwise just move it). `issue create-small` gives the Story the Dev subtask's assignee when the subtask has one, since Jira will not move a Story that nobody holds; it falls back to the Story's own pick when the subtask has nobody.
+
+Tests: `stop-reason.test.ts`, `do-dev-tasks.test.ts`, `dev-yolo.test.ts`, `create-small.test.ts`.
+
 ## rev 161 (2026-11-04)
 
 **TAI-707 (Story TAI-706): DEV-YOLO pauses on a usage limit and can wait for the reset.**

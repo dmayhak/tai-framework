@@ -37,9 +37,18 @@ export interface HeadlessRunOptions {
     readonly env?: Readonly<Record<string, string>>;
 }
 
+/** How many lines of a run's output are kept for the person who reads why it stopped (the summary keeps fewer). */
+const OUTPUT_LINES = 8;
+
 export interface HeadlessRunResult {
     readonly ok: boolean;
     readonly summary: string;
+    /** TAI-710: for a run that did not finish, what happened to it on its own ("the run exited with code 1"), apart from its output. */
+    readonly what?: string;
+    /** TAI-710: the end of the run's output, redacted, kept apart from the summary line so a person reads it as the agent's text. */
+    readonly output?: string;
+    /** TAI-710: a line of a failed run's output that talks about a usage limit no known message matches (so a new wording is noticed, TAI-743). */
+    readonly limitNote?: string;
     /** TAI-706: set when the run ended on the account's usage limit, whatever its exit code. Such a run is never `ok`. */
     readonly limit?: UsageLimit;
 }
@@ -285,11 +294,13 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
         const keep = (d: Buffer): void => {
             tail = (tail + d.toString()).slice(-TAIL_BYTES);
         };
-        const lastLines = (): string => redactSecrets(tail.trim().split("\n").slice(-6).join("\n"), { ...process.env, ...options.env });
+        const lastLines = (count = 6): string => redactSecrets(tail.trim().split("\n").slice(-count).join("\n"), { ...process.env, ...options.env });
         let timedOut = false;
         let killTimer: NodeJS.Timeout | undefined;
         let exitTimer: NodeJS.Timeout | undefined;
-        const stoppedSummary = (): string => `the run was stopped after ${Number((options.timeoutMs / 60000).toFixed(1))} minutes. Last output:\n${lastLines()}`;
+        const notFinished = (what: string): HeadlessRunResult => ({ ok: false, summary: `${what}. Last output:\n${lastLines()}`, what, output: lastLines(OUTPUT_LINES) });
+        const finishedOk = (): HeadlessRunResult => ({ ok: true, summary: lastLines(), output: lastLines(OUTPUT_LINES) });
+        const stopped = (): HeadlessRunResult => notFinished(`the run was stopped after ${Number((options.timeoutMs / 60000).toFixed(1))} minutes`);
         const killGroup = (signal: NodeJS.Signals): void => {
             if (settled) return; // the group is gone and its id may belong to something else by now
             try {
@@ -315,37 +326,37 @@ export function runHeadlessClaude(prompt: string, options: HeadlessRunOptions): 
             if (limit) return resolve({ ...result, ok: false, limit });
             // A failed run whose end talks about a limit but matched no known message: say so, so a new wording is noticed and captured.
             const mention = result.ok ? null : limitMention(tail);
-            resolve(mention ? { ...result, summary: `${result.summary}\n(Its output mentions a limit, "${redactSecrets(mention, { ...process.env, ...options.env })}", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-743.)` } : result);
+            const note = mention ? redactSecrets(mention, { ...process.env, ...options.env }) : null;
+            resolve(note ? { ...result, limitNote: note, summary: `${result.summary}\n(Its output mentions a limit, "${note}", but matches no known usage-limit message, so it was treated as a failure. If it was a usage limit, capture the wording for TAI-743.)` } : result);
         };
         const timer = setTimeout(() => {
             timedOut = true;
             killGroup("SIGTERM");
             killTimer = setTimeout(() => {
                 killGroup("SIGKILL");
-                finish({ ok: false, summary: stoppedSummary() });
+                finish(stopped());
             }, grace);
             killTimer.unref();
         }, options.timeoutMs);
         child.stdout?.on("data", keep);
         child.stderr?.on("data", keep);
-        child.on("error", (err) => finish({ ok: false, summary: `could not start ${bin}: ${err.message}` }));
+        child.on("error", (err) => finish({ ok: false, summary: `could not start ${bin}: ${err.message}`, what: `could not start ${bin}: ${err.message}`, output: "" }));
         // The run's own exit is its result. A child it left behind (a dev server, a watcher) can hold the pipes open, so
         // the pipes get a short grace to close and then the strays are stopped, instead of waiting out the timeout.
         child.on("exit", (code, signal) => {
             if (timedOut) return;
             exitTimer = setTimeout(() => {
                 killGroup("SIGTERM");
-                finish(code === 0 ? { ok: true, summary: lastLines() } : { ok: false, summary: ended(code, signal) });
+                finish(code === 0 ? finishedOk() : ended(code, signal));
             }, options.pipeGraceMs ?? 2_000);
             exitTimer.unref();
         });
-        const ended = (code: number | null, signal: NodeJS.Signals | null): string =>
-            signal ? `the run was killed by ${signal}. Last output:\n${lastLines()}` : `the run exited with code ${code}. Last output:\n${lastLines()}`;
+        const ended = (code: number | null, signal: NodeJS.Signals | null): HeadlessRunResult => notFinished(signal ? `the run was killed by ${signal}` : `the run exited with code ${code}`);
         child.on("close", (code, signal) => {
             if (!settled) killGroup("SIGTERM"); // a stray the run left behind, even one that did not hold the pipes
-            if (timedOut) finish({ ok: false, summary: stoppedSummary() });
-            else if (code === 0) finish({ ok: true, summary: lastLines() });
-            else finish({ ok: false, summary: ended(code, signal) });
+            if (timedOut) finish(stopped());
+            else if (code === 0) finish(finishedOk());
+            else finish(ended(code, signal));
         });
     });
 }

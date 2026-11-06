@@ -175,7 +175,7 @@ import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
-import { findDevTasks, onlyRefusal, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
+import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, checkoutPosition, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
 import { buildStageAfterLimit, PauseReads, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
@@ -2494,6 +2494,7 @@ async function main(): Promise<void> {
             yolo,
             pausedOnLimit: (task) => pauses.whilePicking(task.issue.key),
             rememberPause: (key) => pauses.remember(key),
+            storyProblem: async (task) => storyNotInProgress(await config.backend.workTracker.getIssue(task.parent.key), await config.backend.workTracker.getIssue(task.issue.key)),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
             limitLatch,

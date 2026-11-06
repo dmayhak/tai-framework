@@ -80,8 +80,13 @@ export async function createSmall(deps: CreateSmallDeps, input: CreateSmallInput
     }
 
     const notes: string[] = [];
-    const parentAssignee = await deps.resolveAssignee(Persona.Pm);
-    if (parentAssignee.note) notes.push(parentAssignee.note);
+    // TAI-710: the Story goes to the same person as the Dev subtask when the subtask has one. Moving the subtask to In Progress moves its
+    // Story too, and Jira will not move a Story that nobody holds. Only when the subtask has nobody does the Story take its own pick.
+    const devAssignee = await deps.resolveAssignee(Persona.Developer);
+    const parentPick = devAssignee.assignee ? undefined : await deps.resolveAssignee(Persona.Pm);
+    const storyAssignee = devAssignee.assignee ?? parentPick?.assignee;
+    if (devAssignee.note) notes.push(devAssignee.note);
+    if (parentPick?.note) notes.push(parentPick.note);
     const parent = await workTracker.createIssue({
         projectKey: input.projectKey,
         issueType: storyType,
@@ -90,13 +95,11 @@ export async function createSmall(deps: CreateSmallDeps, input: CreateSmallInput
         persona: Persona.Pm,
         ...(input.parentKey ? { parentKey: input.parentKey } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
-        ...(parentAssignee.assignee ? { assignee: parentAssignee.assignee } : {}),
+        ...(storyAssignee ? { assignee: storyAssignee } : {}),
     });
 
     let dev: Issue;
     try {
-        const devAssignee = await deps.resolveAssignee(Persona.Developer);
-        if (devAssignee.note) notes.push(devAssignee.note);
         dev = await workTracker.createIssue({
             projectKey: input.projectKey,
             issueType: SubtaskType.Dev,
