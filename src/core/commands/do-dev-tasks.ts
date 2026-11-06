@@ -179,7 +179,7 @@ export type DevTaskOutcome =
     | { readonly state: "handed-on"; readonly note: string }
     /** `cause` and `next` (TAI-710) are the second and third line of a stop reason; `reason` is the first. */
     | { readonly state: "waiting"; readonly reason: string; readonly cause?: string; readonly next?: string }
-    | { readonly state: "failed"; readonly reason: string; readonly cause?: string; readonly next?: string }
+    | { readonly state: "failed"; readonly reason: string; readonly cause?: string; readonly next?: string; readonly output?: string }
     /** TAI-706: the account's usage limit was reached. Not a failure of the ticket; the batch stops here (or waits for the reset). */
     | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean; readonly before?: string; readonly noteNotPosted?: boolean }
     | { readonly state: "stopped"; readonly reason: string; readonly dirtyTree?: boolean };
@@ -250,9 +250,10 @@ export class StopError extends Error {
 }
 
 /** The hand-off for a ticket that stopped on a reason of three lines (TAI-710). */
-export function stopHandoff(stop: StopReason): string {
+export function stopHandoff(stop: StopReason, also = ""): string {
     return (
         `Handoff: "Do all dev tasks" stopped on this ticket.\n\n${forJira(stop.what)}\nCause: ${forJira(stop.cause)}\nNext: ${forJira(stop.next)}\n\n` +
+        (also ? `${forJira(also)}\n\n` : "") +
         `Nothing was reviewed, merged or closed.${outputSection(stop.output)}`
     );
 }
@@ -301,7 +302,7 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
     } catch (err) {
         const stop = err instanceof StopError ? err.stop : null;
         const reason = stop ? stop.what : errorText(err);
-        const lines = stop ? { cause: stop.cause, next: stop.next } : {};
+        const lines = stop ? { cause: stop.cause, next: stop.next, output: stop.output } : {};
         outcome = { state: "failed", reason, ...lines };
         try {
             await deps.handoff(task.issue.key, stop ? stopHandoff(stop) : failureHandoff(reason));
@@ -429,11 +430,14 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             // keeping the reason it already failed for (one current Handoff: per ticket); a branch that will not update is not.
             const previous = results.length > 1 ? results[results.length - 2]! : null;
             if (previous && result.outcome.dirtyTree) {
-                const earlier = previous.outcome.state === "failed" ? `${previous.outcome.reason} ` : "";
+                const failed = previous.outcome.state === "failed" ? previous.outcome : null;
+                const earlier = failed ? `${failed.reason} ` : "";
                 // Only a ticket that failed gets a replacement Handoff:. One that opened its PR, or whose own run left a hand-off, keeps it: the note is a plain comment.
                 const note = `Its run also left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`;
                 try {
-                    await deps.handoff(previous.task.issue.key, previous.outcome.state === "failed" ? failureHandoff(`${earlier}${note}`) : `Note: ${note}\n\nThe outcome recorded for this ticket is unaffected.`);
+                    // A stop keeps its cause, next step and output: the replacement is the same hand-off with the note added, not a rebuild from the reason alone.
+                    const replacement = failed?.cause !== undefined && failed.next !== undefined ? stopHandoff({ what: failed.reason, cause: failed.cause, next: failed.next, output: failed.output ?? "" }, note) : failureHandoff(`${earlier}${note}`);
+                    await deps.handoff(previous.task.issue.key, failed ? replacement : `Note: ${note}\n\nThe outcome recorded for this ticket is unaffected.`);
                 } catch {
                     // the report below still says it
                 }

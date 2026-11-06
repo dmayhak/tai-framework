@@ -17,6 +17,14 @@ describe("trimmedOutput (TAI-710)", () => {
 });
 
 describe("refusedCommand (TAI-710)", () => {
+    it("takes the first backticked span that starts like a command, and reads a long line whole", () => {
+        assert.equal(refusedCommand("Permission to use `Bash` with command `git rm a` was denied")?.command, "git rm a");
+        const long = `${"x".repeat(300)} permission denied for \`git rm README.md\``;
+        assert.equal(refusedCommand(long)?.command, "git rm README.md");
+        const run = { summary: "s", what: "the run exited with code 1", output: `${"y ".repeat(150)}the permission was denied for \`npm publish\`` };
+        assert.match(describeStop(run, "unfinished").cause, /refused `npm publish`/);
+    });
+
     const cases: readonly (readonly [string, string, string | null])[] = [
         ["a command in backticks", "Permission to use Bash with command `git rm README.md` was denied.", "git rm README.md"],
         ["a permission refusal naming run", "The permission system refused me when I tried to run: git rm README.md", "git rm README.md"],

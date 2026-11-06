@@ -475,6 +475,23 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.match(last[1], /exited with code 1[\s\S]*also left uncommitted changes/);
     });
 
+    it("the replacement hand-off after a dirty tree keeps the cause, the next step and the output block", async () => {
+        const out = "I tried to run `git rm README.md` but the permission system denied it.";
+        const d = deps({
+            build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "x", what: "the run exited with code 1", output: out } : { ok: true, summary: "" }),
+            prepare: async (t) => {
+                if (t.issue.key === "TAI-11") throw new DirtyTreeError(" M src/x.ts");
+            },
+        });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        const last = d.handoffs.filter(([k]) => k === "TAI-10").pop()![1];
+        assert.match(last, /\nCause: the permission system looks to have refused \{\{git rm README\.md\}\}/);
+        assert.match(last, /\nNext: if that is what happened/);
+        assert.match(last, /also left uncommitted changes/);
+        assert.match(last, /\{noformat\}\n.*permission system denied it\.\n\{noformat\}/);
+        assert.equal(last.match(/^Handoff:/gm)?.length, 1, "one current Handoff: per ticket");
+    });
+
     it("a dirty tree after a ticket that opened its PR leaves that ticket's own hand-off alone", async () => {
         const d = deps({
             prepare: async (t) => {

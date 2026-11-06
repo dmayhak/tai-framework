@@ -44,7 +44,7 @@ const REFUSAL = /\bpermissions?\b[^\n]{0,90}\b(?:denied|refused|not granted|bloc
 const OS_ERROR = /\bEACCES\b|\bEPERM\b|publickey|permission denied(?:\s*\(|,|\.?$|\s+while)/i;
 // Backticked text counts as the refused command only when it starts like one: a tool's name or a path, not a test title or a phrase.
 const COMMAND_START = /^(?:git|npm|npx|node|tsx|yarn|pnpm|rm|mv|cp|mkdir|chmod|cat|sed|awk|curl|wget|gh|docker|make|bash|sh|python3?|pip|sudo|ssh|scp|kill|tai|bin\/tai|\.{0,2}\/\S+)(?:\s|$)/;
-const COMMAND_IN_TICKS = /`([^`\n]{2,120})`/;
+const COMMAND_IN_TICKS = /`([^`\n]{2,120})`/g;
 const COMMAND_AFTER = /\b(?:command|running|run|ran|use)[:\s]+["“']?((?:git|npm|npx|node|tsx|rm|mv|cp|curl|gh|docker|make|bash|sh)\s[^"”'\n]{1,100})/i;
 
 /** The refused command named in the end of the output, with the line that says so, or null when no line reads as a refusal. */
@@ -54,8 +54,10 @@ export function refusedCommand(output: string): { readonly command: string | nul
     for (let i = lines.length - 1; i >= Math.max(0, lines.length - REFUSAL_WINDOW); i--) {
         const line = lines[i]!;
         if (OS_ERROR.test(line) || !REFUSAL.test(line)) continue;
-        const found = COMMAND_IN_TICKS.exec(line)?.[1]?.trim() ?? COMMAND_AFTER.exec(line)?.[1]?.trim().replace(/[.,;:]+$/, "") ?? null;
-        const command = found !== null && COMMAND_START.test(found) ? found : null;
+        // Every backticked span is tried in turn ("`Bash` with command `git rm a`"); the first that starts like a command is it.
+        const ticked = [...line.matchAll(COMMAND_IN_TICKS)].map((m) => m[1]!.trim()).find((t) => COMMAND_START.test(t));
+        const after = COMMAND_AFTER.exec(line)?.[1]?.trim().replace(/[.,;:]+$/, "");
+        const command = ticked ?? (after !== undefined && COMMAND_START.test(after) ? after : null);
         return { command, line };
     }
     return null;
@@ -86,7 +88,8 @@ function sentence(text: string): string {
 export function describeStop(run: RunEnd, kind: "unfinished" | "no-pr"): StopReason {
     const { what: ended, output: raw } = split(run);
     const output = trimmedOutput(raw);
-    const refusal = refusedCommand(output);
+    // Read from the untruncated text: a command named late in a long line must not be cut off before it is looked for.
+    const refusal = refusedCommand(raw);
     const what = kind === "unfinished" ? sentence(`The build run did not finish${ended ? `: ${ended}` : ""}`) : "The build run finished but no open PR for this ticket was found.";
     const limit = run.limitNote ? "The output also mentions a usage limit that matches no known message (the output below has the line); if it was one, capture the wording for TAI-743." : "";
     if (refusal) {
