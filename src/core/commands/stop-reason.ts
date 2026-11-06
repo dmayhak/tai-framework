@@ -124,12 +124,12 @@ export function stopLines(stop: Pick<StopReason, "what" | "cause" | "next">): st
 
 /**
  * A line written for the report (markdown backticks) as Jira wiki markup, which is what a ticket comment is: backticked text becomes
- * monospace, and the markup characters in the rest (a path with underscores, an asterisk) are escaped so they stay as written.
+ * monospace, and the markup characters in the rest (a path with underscores, an asterisk, a pipe) are escaped so they stay as written.
  */
 export function forJira(text: string): string {
     return text
         .split(/(`[^`\n]+`)/)
-        .map((part) => (part.startsWith("`") && part.endsWith("`") && part.length > 2 ? `{{${part.slice(1, -1).replace(/([{}])/g, "\\$1")}}}` : part.replace(/([*_{}[\]])/g, "\\$1")))
+        .map((part) => (part.startsWith("`") && part.endsWith("`") && part.length > 2 ? `{{${part.slice(1, -1).replace(/([{}])/g, "\\$1")}}}` : part.replace(/([*_{}[\]~^+|!])/g, "\\$1")))
         .join("");
 }
 

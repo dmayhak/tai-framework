@@ -13,7 +13,7 @@
 import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
-import { describeStop, forJira, outputSection, type RunEnd, type StopReason } from "./stop-reason.js";
+import { describeStop, forJira, outputSection, stopLines, type RunEnd, type StopReason } from "./stop-reason.js";
 import { decideWait, isContinuableStage, MAX_WAITS_PER_RUN, parseWaitHours, type UsageLimit, type UsageLimitLatch } from "./usage-limit.js";
 import { sameHuman } from "../personas/roster.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
@@ -244,7 +244,7 @@ function errorText(err: unknown): string {
 /** A build run that stopped without a PR (TAI-710): the failure carries the three-line reason and the agent's own output apart from it. */
 export class StopError extends Error {
     constructor(readonly stop: StopReason) {
-        super(`${stop.what} Cause: ${stop.cause} Next: ${stop.next}`);
+        super(stopLines(stop).join(" "));
         this.name = "StopError";
     }
 }
