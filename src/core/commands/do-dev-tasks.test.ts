@@ -12,7 +12,7 @@ import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface
 import { DirtyTreeError, PrepareStopError, checkoutPosition, cutOffBranch, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "./dev-tasks-git.js";
 import { pausedAwareHandoff, pausedHandoff, UsageLimitLatch, wasPausedOnLimit, type UsageLimit } from "./usage-limit.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { noPrReason, onlyRefusal, parseDevTasksArgs, resolveYolo } from "./do-dev-tasks.js";
+import { onlyRefusal, parseDevTasksArgs, resolveYolo, storyNotInProgress } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
@@ -152,7 +152,7 @@ describe("runDevTasks (TAI-633)", () => {
 
     it("one ticket failing leaves a hand-off on it and does not stop the others", async () => {
         const d = deps({
-            build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "tests failed" } : { ok: true, summary: "" }),
+            build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "the run exited with code 1. Last output:\ntests failed", what: "the run exited with code 1", output: "tests failed" } : { ok: true, summary: "" }),
         });
         const results = await runDevTasks([task("TAI-10"), task("TAI-11")], d);
         assert.deepEqual(results.map((r) => r.outcome.state), ["failed", "pr-opened"]);
@@ -161,17 +161,78 @@ describe("runDevTasks (TAI-633)", () => {
         assert.match(d.handoffs[0]![1], /^Handoff: .*tests failed/s);
     });
 
-    it("a run that exits cleanly with no PR reports the end of its own output in the reason and the hand-off", async () => {
+    it("a run that exits cleanly with no PR gives a reason of three short lines and keeps the agent's output after them (TAI-710)", async () => {
         const d = deps({
-            build: async () => ({ ok: true, summary: "I could not run npm test: the command needs approval." }),
+            build: async () => ({ ok: true, summary: "I could not finish.\nThe tests need a fixture I do not have.", output: "I could not finish.\nThe tests need a fixture I do not have." }),
             inspect: async () => ({ prUrl: null, checkRecorded: null }),
         });
         const r = await runDevTasks([task("TAI-10")], d);
-        assert.match((r[0]!.outcome as { reason: string }).reason, /no open PR[\s\S]*needs approval/);
-        assert.match(d.handoffs[0]![1], /needs approval/);
-        assert.doesNotMatch(noPrReason("first\nsecond"), /\n/, "one line, so the report bullet stays whole");
-        assert.match(noPrReason("first\nsecond"), /first \/ second/);
-        assert.equal(noPrReason("  \n"), "The run finished but no open PR for this ticket was found.");
+        const o = r[0]!.outcome as { state: string; reason: string; cause: string; next: string };
+        assert.equal(o.state, "failed");
+        assert.equal(o.reason, "The build run finished but no open PR for this ticket was found.");
+        assert.match(o.cause, /not known/);
+        assert.match(o.next, /\/tai-work/);
+        const body = d.handoffs[0]![1];
+        const [head, tail] = body.split("The end of the run's own output:\n{noformat}\n") as [string, string];
+        assert.equal(head.trim().split("\n").filter((l) => l.trim() !== "").length, 5, "the Handoff line, the three lines and the Nothing-was line");
+        assert.match(head, /\nCause: .*\nNext: /);
+        assert.equal(tail, "I could not finish.\nThe tests need a fixture I do not have.\n{noformat}", "the output keeps its line breaks, in a no-format block");
+        assert.doesNotMatch(body, / \/ /, "never joined into one line");
+    });
+
+    it("a run-on closing text is trimmed and kept apart from the summary line", async () => {
+        const long = "x".repeat(600);
+        const closing = Array.from({ length: 12 }, (_, n) => `line ${n}`).join("\n") + `\n${long}`;
+        const d = deps({ build: async () => ({ ok: true, summary: closing, output: closing }), inspect: async () => ({ prUrl: null, checkRecorded: null }) });
+        const r = await runDevTasks([task("TAI-10")], d);
+        const reason = (r[0]!.outcome as { reason: string }).reason;
+        assert.doesNotMatch(reason, /line \d|xxx/, "none of the agent's text is in the summary line");
+        const tail = d.handoffs[0]![1].split("The end of the run's own output:\n{noformat}\n")[1]!.replace(/\n\{noformat\}$/, "");
+        assert.equal(tail.split("\n").length, 8, "the last eight lines");
+        assert.doesNotMatch(tail, /line 0\b/, "older lines are dropped");
+        assert.ok(tail.split("\n").every((l) => l.length <= 240), "each line is cut");
+    });
+
+    it("a refused command is named as a refusal, with the command, in the report and the hand-off (TAI-710)", async () => {
+        const out = "I tried to delete README.md.\nPermission to use Bash with command `git rm README.md` was denied.\nI stopped there.";
+        const d = deps({ build: async () => ({ ok: false, summary: `the run exited with code 1. Last output:\n${out}`, what: "the run exited with code 1", output: out }) });
+        const r = await runDevTasks([task("TAI-10")], d);
+        const o = r[0]!.outcome as { reason: string; cause: string };
+        assert.match(o.reason, /did not finish: the run exited with code 1/);
+        assert.match(o.cause, /permission system looks to have refused `git rm README\.md`/);
+        assert.match(d.handoffs[0]![1], /Cause: the permission system looks to have refused \{\{git rm README\.md\}\}/, "wiki markup in the comment");
+        const report = renderDevTasksReport({ tasks: [], skipped: [] }, r, { yolo: false });
+        assert.match(report, /## Failed \(1\)[\s\S]*- \*\*TAI-10\*\*[^\n]*did not finish[^\n]*\n {2}- Cause: the permission system looks to have refused `git rm README\.md`[^\n]*\n {2}- Next: /);
+    });
+
+    it("a result that has only a summary still gets its output split from the run's own end", async () => {
+        const d = deps({ build: async () => ({ ok: false, summary: "the run exited with code 2. Last output:\nboom" }) });
+        const r = await runDevTasks([task("TAI-10")], d);
+        assert.match((r[0]!.outcome as { reason: string }).reason, /exited with code 2/);
+        assert.match(d.handoffs[0]![1], /The end of the run's own output:\n\{noformat\}\nboom/);
+    });
+
+    it("reports a Story that is still not In Progress as its own line, with why (TAI-710)", async () => {
+        const story = { key: "TAI-1", status: "To Do", assignee: null } as never;
+        assert.match(storyNotInProgress(story)!, /TAI-1 is still To Do: it has no assignee/);
+        assert.match(storyNotInProgress({ key: "TAI-1", status: "To Do", assignee: { id: "u" } } as never)!, /TAI-1 is still To Do\. Move it to In Progress by hand\.$/);
+        assert.equal(storyNotInProgress({ key: "TAI-1", status: "In Progress", assignee: null } as never), null);
+        assert.equal(storyNotInProgress(null), null);
+        assert.equal(storyNotInProgress(story, { status: "To Do" } as never), null, "the Dev ticket never reached In Progress, so the Story staying put is not news");
+        assert.match(storyNotInProgress(story, { status: "In Progress" } as never)!, /no assignee/);
+        assert.doesNotMatch(storyNotInProgress({ key: "TAI-1", status: "To Do", assignee: { id: "u" } } as never)!, /assign/i, "an assigned Story is not told to get an assignee");
+        const d = deps({ storyProblem: async () => storyNotInProgress(story) });
+        const r = await runDevTasks([task("TAI-10")], d);
+        assert.equal(r[0]!.storyProblem, "TAI-1 is still To Do: it has no assignee, so it could not be moved. Assign it, then move it to In Progress by hand.");
+        const report = renderDevTasksReport({ tasks: [], skipped: [] }, r, { yolo: false });
+        assert.match(report, /## Story not In Progress \(1\)\n\n- TAI-1 is still To Do: it has no assignee.* \(for TAI-10\)$/m);
+    });
+
+    it("says nothing about the Story when the ticket never started, or the Story cannot be read", async () => {
+        const never = deps({ prepare: async () => { throw new Error("branch will not update"); }, storyProblem: async () => "TAI-1 is still To Do" });
+        assert.equal((await runDevTasks([task("TAI-10")], never))[0]!.storyProblem, undefined);
+        const unreadable = deps({ storyProblem: async () => { throw new Error("down"); } });
+        assert.equal((await runDevTasks([task("TAI-10")], unreadable))[0]!.storyProblem, undefined);
     });
 
     it("fails a ticket whose run left no open PR, and one whose tree is not clean", async () => {
@@ -186,7 +247,7 @@ describe("runDevTasks (TAI-633)", () => {
     it("still reports a failure when the hand-off cannot be posted", async () => {
         const d = deps({ build: async () => ({ ok: false, summary: "boom" }), handoff: async () => Promise.reject(new Error("jira down")) });
         const r = await runDevTasks([task("TAI-10")], d);
-        assert.match((r[0]!.outcome as { reason: string }).reason, /boom.*jira down/s);
+        assert.match((r[0]!.outcome as { reason: string }).reason, /did not finish.*jira down/s);
     });
 
     it("with dev-yolo on hands each ticket to the full run and builds nothing itself", async () => {
@@ -263,10 +324,10 @@ describe("workDevTasks looks again after each ticket (TAI-633)", () => {
 
 describe("renderDevTasksReport (TAI-633)", () => {
     it("lists what was done, what failed, what was skipped and what waits for a person", async () => {
-        const results = await runDevTasks([task("TAI-10"), task("TAI-11")], deps({ build: async (t) => ({ ok: t.issue.key === "TAI-10", summary: "tests failed" }) }));
+        const results = await runDevTasks([task("TAI-10"), task("TAI-11")], deps({ build: async (t) => (t.issue.key === "TAI-10" ? { ok: true, summary: "" } : { ok: false, summary: "the run exited with code 1. Last output:\ntests failed", what: "the run exited with code 1", output: "tests failed" }) }));
         const text = renderDevTasksReport({ tasks: [], skipped: [{ issue: task("TAI-12").issue, reason: "precedence holds it" }] }, results, { yolo: false });
         assert.match(text, /## Done \(1\)[\s\S]*TAI-10.*PR opened, check recorded — https:\/\/pr\/TAI-10/);
-        assert.match(text, /## Failed \(1\)[\s\S]*TAI-11.*tests failed/);
+        assert.match(text, /## Failed \(1\)[\s\S]*TAI-11.*did not finish: the run exited with code 1/);
         assert.match(text, /## Waiting for a person[\s\S]*TAI-10/);
         assert.match(text, /## Skipped \(1\)[\s\S]*TAI-12.*precedence holds it/);
     });
@@ -404,14 +465,31 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
 
     it("keeps the earlier failure reason when the same ticket's run also left the tree dirty", async () => {
         const d = deps({
-            build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "tests failed" } : { ok: true, summary: "" }),
+            build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "the run exited with code 1. Last output:\ntests failed", what: "the run exited with code 1", output: "tests failed" } : { ok: true, summary: "" }),
             prepare: async (t) => {
                 if (t.issue.key === "TAI-11") throw new DirtyTreeError(" M src/x.ts");
             },
         });
         await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
         const last = d.handoffs.filter(([k]) => k === "TAI-10").pop()!;
-        assert.match(last[1], /tests failed[\s\S]*also left uncommitted changes/);
+        assert.match(last[1], /exited with code 1[\s\S]*also left uncommitted changes/);
+    });
+
+    it("the replacement hand-off after a dirty tree keeps the cause, the next step and the output block", async () => {
+        const out = "I tried to run `git rm README.md` but the permission system denied it.";
+        const d = deps({
+            build: async (t) => (t.issue.key === "TAI-10" ? { ok: false, summary: "x", what: "the run exited with code 1", output: out } : { ok: true, summary: "" }),
+            prepare: async (t) => {
+                if (t.issue.key === "TAI-11") throw new DirtyTreeError(" M src/x.ts");
+            },
+        });
+        await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        const last = d.handoffs.filter(([k]) => k === "TAI-10").pop()![1];
+        assert.match(last, /\nCause: the permission system looks to have refused \{\{git rm README\.md\}\}/);
+        assert.match(last, /\nNext: if that is what happened/);
+        assert.match(last, /also left uncommitted changes/);
+        assert.match(last, /\{noformat\}\n.*permission system denied it\.\n\{noformat\}/);
+        assert.equal(last.match(/^Handoff:/gm)?.length, 1, "one current Handoff: per ticket");
     });
 
     it("a dirty tree after a ticket that opened its PR leaves that ticket's own hand-off alone", async () => {
@@ -539,10 +617,12 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         const bad = await fakeClaude("echo broke; exit 3");
         try {
             const opts = { cwd: tmpdir(), timeoutMs: 20_000 };
-            assert.deepEqual(await runHeadlessClaude("p", { ...opts, bin: ok.bin }), { ok: true, summary: "built" });
+            assert.deepEqual(await runHeadlessClaude("p", { ...opts, bin: ok.bin }), { ok: true, summary: "built", output: "built" });
             const failed = await runHeadlessClaude("p", { ...opts, bin: bad.bin });
             assert.equal(failed.ok, false);
             assert.match(failed.summary, /exited with code 3[\s\S]*broke/);
+            assert.equal(failed.what, "the run exited with code 3", "what happened, apart from the output (TAI-710)");
+            assert.equal(failed.output, "broke");
             const missing = await runHeadlessClaude("p", { ...opts, bin: path.join(tmpdir(), "no-such-claude") });
             assert.equal(missing.ok, false);
             assert.match(missing.summary, /could not start/);

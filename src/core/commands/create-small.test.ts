@@ -106,6 +106,27 @@ describe("createSmall (TAI-473 light lane)", () => {
         });
     });
 
+    it("gives the Story the Dev subtask's assignee, even when the Story's own pick is nobody or someone else (TAI-710)", async () => {
+        await withTracker(async (wt) => {
+            const pm = { assignee: { ...ME, email: "pm@b.c" } };
+            const byPersona = (persona: string) => (persona === "developer" ? { assignee: ME } : persona === "pm" ? pm : {});
+            const same = await createSmall(deps(wt, { resolveAssignee: async (persona) => byPersona(persona) }), { projectKey: "TAI", type: "story", summary: "s", description: DESC });
+            assert.equal(same.parent.assignee?.email, "a@b.c");
+            assert.equal(same.dev.assignee?.email, "a@b.c");
+            const nobody = await createSmall(deps(wt, { resolveAssignee: async (persona) => (persona === "developer" ? { assignee: ME } : { note: "no PM" }) }), { projectKey: "TAI", type: "story", summary: "s2", description: DESC });
+            assert.equal(nobody.parent.assignee?.email, "a@b.c", "the Story is not left without anyone");
+        });
+    });
+
+    it("lets the Story take its own pick when the Dev subtask has nobody", async () => {
+        await withTracker(async (wt) => {
+            const r = await createSmall(deps(wt, { resolveAssignee: async (persona) => (persona === "pm" ? { assignee: ME } : { note: "no Dev" }) }), { projectKey: "TAI", type: "story", summary: "s", description: DESC });
+            assert.equal(r.parent.assignee?.email, "a@b.c");
+            assert.equal(r.dev.assignee, null);
+            assert.ok(r.notes.includes("no Dev"));
+        });
+    });
+
     it("creates unassigned, with a note, when no assignee can be resolved", async () => {
         await withTracker(async (wt) => {
             const r = await createSmall(deps(wt, { resolveAssignee: async () => ({ note: "Created UNASSIGNED: roster unreadable." }) }), {

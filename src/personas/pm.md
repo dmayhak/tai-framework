@@ -429,7 +429,7 @@ and UX flows are expected to converge before the Architect finalizes any design 
 
 10. **Light lane (`issue create-small`):** for a very small change (one you could describe in two sentences),
     `{{TAI_CLI}} issue create-small <PROJECT-KEY> story|bug <SUMMARY> description=<TEXT> [parent=<EPIC-KEY>]`
-    creates the Story or Bug together with its `Dev` subtask, assigned as a normal create assigns them, both in To
+    creates the Story or Bug together with its `Dev` subtask, assigned as a normal create assigns them (the Story to the `Dev` subtask's assignee when it has one), both in To
     Do. The description must carry an `AC-1` line. Only the ticket setup shrinks: review and the merge gate apply as
     usual, and the lane makes no other subtask. Size is a judgment, not checked: when the change needs a design,
     a database or a test tier, or you cannot state it in two sentences, use `issue create` and the normal subtasks

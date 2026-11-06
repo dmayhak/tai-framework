@@ -13,6 +13,7 @@
 import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import { Status, StoryType, SubtaskType } from "../schema/story-schema.js";
 import { DirtyTreeError, PrepareStopError } from "./dev-tasks-git.js";
+import { describeStop, forJira, outputSection, stopLines, type RunEnd, type StopReason } from "./stop-reason.js";
 import { decideWait, isContinuableStage, MAX_WAITS_PER_RUN, parseWaitHours, type UsageLimit, type UsageLimitLatch } from "./usage-limit.js";
 import { sameHuman } from "../personas/roster.js";
 import type { GitHost, PullRequestRef, RepoId } from "../git/interface.js";
@@ -176,8 +177,9 @@ export async function onlyRefusal(found: FoundDevTasks, only: IssueKey, deps: Pi
 export type DevTaskOutcome =
     | { readonly state: "pr-opened"; readonly prUrl: string; readonly checkRecorded: boolean | null }
     | { readonly state: "handed-on"; readonly note: string }
-    | { readonly state: "waiting"; readonly reason: string }
-    | { readonly state: "failed"; readonly reason: string }
+    /** `cause` and `next` (TAI-710) are the second and third line of a stop reason; `reason` is the first. */
+    | { readonly state: "waiting"; readonly reason: string; readonly cause?: string; readonly next?: string }
+    | { readonly state: "failed"; readonly reason: string; readonly cause?: string; readonly next?: string; readonly output?: string }
     /** TAI-706: the account's usage limit was reached. Not a failure of the ticket; the batch stops here (or waits for the reset). */
     | { readonly state: "paused"; readonly limit: UsageLimit; readonly stage: string; readonly notWaited?: string; readonly carriedOn?: boolean; readonly before?: string; readonly noteNotPosted?: boolean }
     | { readonly state: "stopped"; readonly reason: string; readonly dirtyTree?: boolean };
@@ -186,7 +188,7 @@ export interface RunDevTasksDeps {
     /** Called before each ticket: the working tree must be clean and on the default branch. Throws to fail the ticket. */
     readonly prepare: (task: DevTask) => Promise<void>;
     /** Runs the build for one ticket (`dev-yolo` off). `ok: false` fails the ticket. */
-    readonly build: (task: DevTask) => Promise<{ readonly ok: boolean; readonly summary: string }>;
+    readonly build: (task: DevTask) => Promise<{ readonly ok: boolean; readonly summary: string } & Partial<RunEnd>>;
     /** What the build left: the open PR for the ticket, and whether a check result is on its head commit. */
     readonly inspect: (task: DevTask) => Promise<{ readonly prUrl: string | null; readonly checkRecorded: boolean | null }>;
     /** The full unattended run (`dev-yolo` on), when this version has one. */
@@ -209,6 +211,8 @@ export interface RunDevTasksDeps {
     readonly pausedOnLimit?: (task: DevTask) => Promise<boolean>;
     /** TAI-706: called when a ticket paused in its build run is about to be tried again in this same run, so the retry does not depend on its pause note having been posted. */
     readonly rememberPause?: (key: IssueKey) => void;
+    /** TAI-710: after a ticket's run, why its parent Story is not In Progress (null when it is, or cannot be read). Reported as its own line. */
+    readonly storyProblem?: (task: DevTask) => Promise<string | null>;
     /** TAI-706: a line for the person watching, such as "waiting until ...". */
     readonly say?: (line: string) => void;
 }
@@ -216,10 +220,42 @@ export interface RunDevTasksDeps {
 export interface DevTaskResult {
     readonly task: DevTask;
     readonly outcome: DevTaskOutcome;
+    /** TAI-710: set when the ticket's run started but its parent Story is still not In Progress, with the reason. */
+    readonly storyProblem?: string;
+}
+
+/**
+ * Why a Story the run worked under is not In Progress, or null when it is (or further on, or cannot be read). Moving a Dev subtask to
+ * In Progress moves its Story too, and a Story with nobody assigned cannot be moved: the run carries on, so this is what tells the person.
+ */
+export function storyNotInProgress(story: Pick<Issue, "key" | "status" | "assignee"> | null, dev?: Pick<Issue, "status"> | null): string | null {
+    if (story === null || (story.status !== Status.Backlog && story.status !== Status.ToDo)) return null;
+    // A Dev ticket that never reached In Progress did not ask to move its Story, so the Story staying put is not news.
+    if (dev && (dev.status === Status.Backlog || dev.status === Status.ToDo)) return null;
+    return story.assignee
+        ? `${story.key} is still ${story.status}. Move it to In Progress by hand.`
+        : `${story.key} is still ${story.status}: it has no assignee, so it could not be moved. Assign it, then move it to In Progress by hand.`;
 }
 
 function errorText(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+/** A build run that stopped without a PR (TAI-710): the failure carries the three-line reason and the agent's own output apart from it. */
+export class StopError extends Error {
+    constructor(readonly stop: StopReason) {
+        super(stopLines(stop).join(" "));
+        this.name = "StopError";
+    }
+}
+
+/** The hand-off for a ticket that stopped on a reason of three lines (TAI-710). */
+export function stopHandoff(stop: StopReason, also = ""): string {
+    return (
+        `Handoff: "Do all dev tasks" stopped on this ticket.\n\n${forJira(stop.what)}\nCause: ${forJira(stop.cause)}\nNext: ${forJira(stop.next)}\n\n` +
+        (also ? `${forJira(also)}\n\n` : "") +
+        `Nothing was reviewed, merged or closed.${outputSection(stop.output)}`
+    );
 }
 
 export function failureHandoff(reason: string): string {
@@ -233,6 +269,7 @@ export function failureHandoff(reason: string): string {
 export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<DevTaskResult> {
     let outcome: DevTaskOutcome;
     let handoffFailed = false;
+    let started = false;
     try {
         if (deps.yolo && deps.yoloGate) {
             const reasons = await deps.yoloGate(task);
@@ -250,25 +287,28 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
             if (err instanceof PrepareStopError) return { task, outcome: { state: "stopped", reason: err.message, dirtyTree: err instanceof DirtyTreeError } };
             throw err;
         }
+        started = true;
         if (deps.yolo) {
             outcome = deps.yoloRun
                 ? await deps.yoloRun(task)
                 : { state: "waiting", reason: "DEV-YOLO is on, but the full unattended run is not in this version (TAI-634), so nothing was built" };
         } else {
             const built = await deps.build(task);
-            if (!built.ok) throw new Error(built.summary);
+            if (!built.ok) throw new StopError(describeStop(built, "unfinished"));
             const found = await deps.inspect(task);
-            if (!found.prUrl) throw new Error(noPrReason(built.summary));
+            if (!found.prUrl) throw new StopError(describeStop(built, "no-pr"));
             outcome = { state: "pr-opened", prUrl: found.prUrl, checkRecorded: found.checkRecorded };
         }
     } catch (err) {
-        const reason = errorText(err);
-        outcome = { state: "failed", reason };
+        const stop = err instanceof StopError ? err.stop : null;
+        const reason = stop ? stop.what : errorText(err);
+        const lines = stop ? { cause: stop.cause, next: stop.next, output: stop.output } : {};
+        outcome = { state: "failed", reason, ...lines };
         try {
-            await deps.handoff(task.issue.key, failureHandoff(reason));
+            await deps.handoff(task.issue.key, stop ? stopHandoff(stop) : failureHandoff(reason));
         } catch (handoffErr) {
             handoffFailed = true;
-            outcome = { state: "failed", reason: `${reason} (and the hand-off comment could not be posted: ${errorText(handoffErr)})` };
+            outcome = { state: "failed", reason: `${reason} (and the hand-off comment could not be posted: ${errorText(handoffErr)})`, ...lines };
         }
     }
     // TAI-706: a run that ended on the usage limit is paused whatever else it went on to report; the hand-off it left (or this
@@ -279,18 +319,16 @@ export async function runDevTask(task: DevTask, deps: RunDevTasksDeps): Promise<
         const before = outcome.state === "pr-opened" ? `PR opened: ${outcome.prUrl}` : outcome.state === "handed-on" ? outcome.note : undefined;
         outcome = { state: "paused", limit: hit.limit, stage: hit.stage, ...(before ? { before } : {}), ...(handoffFailed ? { noteNotPosted: true } : {}) };
     }
-    return { task, outcome };
-}
-
-/** What a run that exited cleanly left behind when it opened no PR: the end of its own output, on one line, says why it stopped. */
-export function noPrDetail(runOutput: string): string {
-    const tail = runOutput.trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(" / ");
-    return tail === "" ? "no open PR for this ticket was found." : `no open PR for this ticket was found. The end of the run's output: ${tail}`;
-}
-
-/** The failure reason for that run. */
-export function noPrReason(runOutput: string): string {
-    return `The run finished but ${noPrDetail(runOutput)}`;
+    // TAI-710: the run carries on when its Story could not be moved to In Progress, so say it here.
+    let storyProblem: string | null = null;
+    if (started && outcome.state !== "paused" && deps.storyProblem) {
+        try {
+            storyProblem = await deps.storyProblem(task);
+        } catch {
+            storyProblem = null; // a Story that cannot be read is not news about this ticket
+        }
+    }
+    return { task, outcome, ...(storyProblem ? { storyProblem } : {}) };
 }
 
 export interface WorkedDevTasks {
@@ -392,11 +430,14 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             // keeping the reason it already failed for (one current Handoff: per ticket); a branch that will not update is not.
             const previous = results.length > 1 ? results[results.length - 2]! : null;
             if (previous && result.outcome.dirtyTree) {
-                const earlier = previous.outcome.state === "failed" ? `${previous.outcome.reason} ` : "";
+                const failed = previous.outcome.state === "failed" ? previous.outcome : null;
+                const earlier = failed ? `${failed.reason} ` : "";
                 // Only a ticket that failed gets a replacement Handoff:. One that opened its PR, or whose own run left a hand-off, keeps it: the note is a plain comment.
                 const note = `Its run also left uncommitted changes in the working tree, so "Do all dev tasks" stopped before the next ticket. ${result.outcome.reason}`;
                 try {
-                    await deps.handoff(previous.task.issue.key, previous.outcome.state === "failed" ? failureHandoff(`${earlier}${note}`) : `Note: ${note}\n\nThe outcome recorded for this ticket is unaffected.`);
+                    // A stop keeps its cause, next step and output: the replacement is the same hand-off with the note added, not a rebuild from the reason alone.
+                    const replacement = failed?.cause !== undefined && failed.next !== undefined ? stopHandoff({ what: failed.reason, cause: failed.cause, next: failed.next, output: failed.output ?? "" }, note) : failureHandoff(`${earlier}${note}`);
+                    await deps.handoff(previous.task.issue.key, failed ? replacement : `Note: ${note}\n\nThe outcome recorded for this ticket is unaffected.`);
                 } catch {
                     // the report below still says it
                 }
@@ -404,6 +445,18 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
             return { results, found };
         }
     }
+}
+
+interface StopLines {
+    readonly reason: string;
+    readonly cause?: string;
+    readonly next?: string;
+}
+
+/** A report bullet for a stopped ticket: the first line of its reason, and the cause and next step under it when it has them (TAI-710). */
+function reasonBullet(who: string, o: StopLines, tail = ""): string[] {
+    if (o.cause === undefined || o.next === undefined) return [`- ${who}: ${o.reason}${tail}`];
+    return [`- ${who}: ${o.reason}${tail}`, `  - Cause: ${o.cause}`, `  - Next: ${o.next}`];
 }
 
 function line(issue: Issue): string {
@@ -447,7 +500,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
             out.push(...noCheck.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { prUrl: string }).prUrl} — the run did not record its check, so the merge gate will not pass until it is run`));
         }
         out.push("", `## Failed (${failed.length})`, "");
-        out.push(...(failed.length ? failed.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason} (hand-off left on the ticket)`) : ["None."]));
+        out.push(...(failed.length ? failed.flatMap((r) => reasonBullet(line(r.task.issue), r.outcome as StopLines, " (hand-off left on the ticket)")) : ["None."]));
         const paused = results.filter((r) => r.outcome.state === "paused");
         if (paused.length) {
             out.push("", `## Paused (${paused.length})`, "");
@@ -466,10 +519,15 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
             out.push(...stopped.map((r) => `- Before ${r.task.issue.key}: ${(r.outcome as { reason: string }).reason}`));
         }
         const waiting = allOpened.map((r) => r.task.issue.key);
+        const storyProblems = results.filter((r) => r.storyProblem);
+        if (storyProblems.length) {
+            out.push("", `## Story not In Progress (${storyProblems.length})`, "");
+            out.push(...storyProblems.map((r) => `- ${r.storyProblem} (for ${r.task.issue.key})`));
+        }
         out.push("", "## Waiting for a person", "");
         const waitingLines = [
             ...(waiting.length ? [`- Review, approval and merge of the PRs for ${waiting.join(", ")}.`] : []),
-            ...waitingOnPerson.map((r) => `- ${line(r.task.issue)}: ${(r.outcome as { reason: string }).reason}`),
+            ...waitingOnPerson.flatMap((r) => reasonBullet(line(r.task.issue), r.outcome as StopLines)),
         ];
         out.push(...(waitingLines.length ? waitingLines : ["Nothing."]));
     }
