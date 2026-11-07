@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-11-06 (rev 164). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-11-06 (rev 165). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -309,7 +309,7 @@ scoped to one Epic, producing that Epic's Stories/Bugs — has the same shape**:
 
 - The Epic gets its own Kickoff Story.
 - Ada proposes the breakdown in its `Research`.
-- The human probes it and signs it off in `EpicReview`.
+- The human probes it and signs it off in `EpicReview`. The doc carries a **Design challenges** section (generic prompts, each answered or `n/a: <reason>`, with who raised it) that Ada goes through with the human; nothing checks it on approval yet.
 - Perry then creates the tickets. She does not decompose an Epic on her own in one turn.
 
 A small Epic needs only `Research` and `EpicReview`. **Perry front-loads the Kickoff's known

@@ -51,6 +51,13 @@ dedup-search-then-comment-or-subtask mechanic as Aria's altitude-inheritance pri
 UX artifacts are Confluence pages like every other persona's output; a dedicated `design` artifact
 type in the storage layer was considered and not added.
 
+## Push back, and invite it (TAI-747, found in HSA-47)
+
+The push-back on a design (edge cases, unintended consequences) lived only in how a conversation happened to go, and the
+human could not see what was asked or skipped. The human, thinking out loud, wanted both sides to challenge: the persona
+does not accept an answer that leaves a gap, and invites the human to challenge its own proposals. The same one-line
+principle is in the Analyst, PM, Architect and UX Designer docs so it reads the same everywhere. It does not override "elicits, doesn't impose": the challenge is about gaps (an edge case, who else is affected), never a visual direction.
+
 ## The shared bullets
 
 - Filing pages by type: the doc-type folder rule (brief §4), `src/core/storage/doc-folders.ts`, TAI-597.

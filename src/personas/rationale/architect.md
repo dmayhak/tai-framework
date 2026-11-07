@@ -45,6 +45,13 @@ than a checklist. The hand-off to PM uses the TAI-83 exception with a dedup sear
 hand-off (and `dba.md`'s). The point of a subtask is that a comment on an already-gated Story is easy
 to miss.
 
+## Push back, and invite it (TAI-747, found in HSA-47)
+
+The push-back on a design (edge cases, unintended consequences) lived only in how a conversation happened to go, and the
+human could not see what was asked or skipped. The human, thinking out loud, wanted both sides to challenge: the persona
+does not accept an answer that leaves a gap, and invites the human to challenge its own proposals. The same one-line
+principle is in the Analyst, PM, Architect and UX Designer docs so it reads the same everywhere. For the Architect it sits beside asking the human with alternatives: the alternatives are the challenge.
+
 ## Parent-Story links
 
 Human feedback: an ADR linked only to its authoring subtask is found by the briefing's traversal but
