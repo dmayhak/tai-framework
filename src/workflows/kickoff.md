@@ -186,11 +186,10 @@ remedy is ordinary work (a comment, a new ticket), not a reopened gate.
 - **Work-breakdown doc** (owned by Analyst) — a Confluence page attached to the Kickoff
   Story from the `Research` subtask, proposing the initial Epic/Story decomposition;
   revised in place during `EpicReview`; feeds the PRD and UX work below only once
-  `EpicReview` is Done. It carries a **Design challenges** section: generic prompts (what else touches
-  this, what happens when two things happen at once, who or what uses it before its UI exists, what
-  shared data it changes, what limits or special values it has, what we would regret in a month), each
-  answered or marked `n/a: <reason>`, with who raised it. A very small change skips it (the light lane);
-  a project may add prompts through the persona extension point. Nothing checks it on approval yet.
+  `EpicReview` is Done. It carries a **Design challenges** section: generic prompts, each answered or marked
+  `n/a: <reason>`, with who raised it. The prompts are listed in the Analyst's doc (`analyst.md`), the one
+  place that has them. A very small change skips it (the light lane); a project may add prompts through
+  the persona extension point. Nothing checks it on approval yet.
 - **EpicReview sign-off** — no doc of its own; the human stakeholder's own transition of
   the subtask to Done (TAI-354).
 - PRD (owned by PM)
