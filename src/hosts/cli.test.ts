@@ -199,7 +199,7 @@ describe("flagged= and flag markers (TAI-390)", () => {
         );
         assert.equal(renderPageLinked("68747265", "TAI-9", page), "# Page linked\n\nDraft (68747265) linked to TAI-9.");
         // The page could not be fetched: the issue's URL is still known, the page's is not.
-        assert.equal(renderPageLinked("68747265", "TAI-9", null, links as never), "# Page linked\n\n68747265 linked to TAI-9.\nIssue: https://x.atlassian.net/browse/TAI-9");
+        assert.equal(renderPageLinked("68747265", "TAI-9", null, links as never), "# Page linked\n\n68747265 linked to TAI-9.\nIssue: https://x.atlassian.net/browse/TAI-9\n(The page could not be read back, so its title and URL are not shown; the link itself was made.)");
     });
 
     it("page get shows the page's URL under the id line, and nothing extra without one (TAI-749)", () => {

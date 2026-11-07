@@ -1351,7 +1351,8 @@ export function renderPageDetail(page: Page, links?: BackendLinks): string {
 export function renderPageLinked(pageId: string, issueKey: string, page: Page | null, links?: BackendLinks): string {
     const pageUrl = page ? links?.page(page) ?? null : null;
     const issueUrl = links?.issue(toIssueKey(issueKey)) ?? null;
-    return `# Page linked\n\n${page ? `${page.title} (${pageId})` : pageId} linked to ${issueKey}.${pageUrl ? `\nPage: ${pageUrl}` : ""}${issueUrl ? `\nIssue: ${issueUrl}` : ""}`;
+    const unread = page ? "" : "\n(The page could not be read back, so its title and URL are not shown; the link itself was made.)";
+    return `# Page linked\n\n${page ? `${page.title} (${pageId})` : pageId} linked to ${issueKey}.${pageUrl ? `\nPage: ${pageUrl}` : ""}${issueUrl ? `\nIssue: ${issueUrl}` : ""}${unread}`;
 }
 
 /** TAI-275/276 ADR: visibility, not auto-retry -- prints alongside `issue transition`'s own
