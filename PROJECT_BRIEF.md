@@ -704,8 +704,9 @@ These are settled. Change them deliberately and update this file if you do.
   already prints its URL. `issue get`, `issue create`, `issue update`, `issue transition`, `page create`, `page update`,
   `page get` and `page link` print the issue's and the page's URL when the backend has one (the Jira and Confluence
   backend builds `<site>/browse/<KEY>` and `<site>/wiki/spaces/<SPACE>/pages/<ID>`; the filesystem backend has no web
-  page and prints none). When no URL is known, the key or title is given, not an id alone. Every persona doc carries a
-  one-line pointer here.
+  page and prints none). Other command output (the briefing, the ready lists, the work list) still prints keys and ids
+  alone; a persona turns those into links when it names them to the human. When no URL is known, the key or title is
+  given, not an id alone. Every persona doc carries a one-line pointer here.
 - **Writing Confluence page content.** TAI converts a persona's markdown to Confluence
   storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
   (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and
