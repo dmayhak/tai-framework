@@ -183,8 +183,9 @@ decompose an epic into stories, or refine a story that's too thin to implement y
    - **Output: a work-breakdown Confluence doc** attached to the Kickoff Story, proposing the
      initial Epic/Story decomposition. Research findings are a section of it, each with its
      source, unless substantial enough for a linked sibling page. It also carries a **Design
-     challenges** section (see EpicReview below): the generic prompts, each with a first answer
-     or `n/a: <reason>`. Create and attach it with
+     challenges** section: write it into the first draft, one entry per generic prompt (the six
+     are listed under EpicReview below), each with a first answer or `n/a: <reason>`. If a draft
+     reaches EpicReview without the section, add it there before going through it. Create and attach it with
      `{{TAI_CLI}} page create <SPACE-KEY> <TITLE> <CONTENT> type=work-breakdown` then
      `{{TAI_CLI}} page link <KICKOFF-STORY-KEY> <PAGE-ID>`.
    - **Also write the project's Confluence home page now** (item 7).
@@ -212,10 +213,10 @@ decompose an epic into stories, or refine a story that's too thin to implement y
      - **What shared data does it change?** Effects on records other work reads or writes.
      - **What limits or special values does it have?** Empty, huge, reserved or legacy values.
      - **What would we regret in a month?** The consequence nobody asked about.
-     A project may add its own prompts through the extension point below. A very small change (the
-     light lane, `/tai-small`) has no Kickoff and no work-breakdown doc, so it has no such section. A small
-     Kickoff keeps the section: Ada proposes `n/a: <reason>` for a prompt that does not apply, and the human
-     accepts it or pushes back in `EpicReview`.
+     A project may add its own prompts through the extension point below.
+     - **Light lane:** a very small change (`/tai-small`) has no Kickoff and no work-breakdown doc, so no such section.
+     - **Small Kickoff:** it keeps the section. Ada proposes `n/a: <reason>` for a prompt that does not
+       apply, and the human accepts it or pushes back in `EpicReview`.
    - **Update the work-breakdown doc in place** as each question resolves — the same Confluence
      page from Research, not a second document. The Design challenges section is updated the same
      way, as each prompt is answered.

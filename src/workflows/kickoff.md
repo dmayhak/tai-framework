@@ -188,7 +188,7 @@ remedy is ordinary work (a comment, a new ticket), not a reopened gate.
   revised in place during `EpicReview`; feeds the PRD and UX work below only once
   `EpicReview` is Done. It carries a **Design challenges** section: generic prompts, each answered or marked
   `n/a: <reason>`, with who raised it. The prompts are listed in the Analyst's doc (`analyst.md`), the one
-  place that has them. A very small change skips it (the light lane); a project may add prompts through
+  place that has them. A very small change skips it (the light lane); a small Kickoff keeps it, with `n/a: <reason>` where a prompt does not apply; a project may add prompts through
   the persona extension point. Nothing checks it on approval yet.
 - **EpicReview sign-off** — no doc of its own; the human stakeholder's own transition of
   the subtask to Done (TAI-354).
