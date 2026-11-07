@@ -1330,6 +1330,13 @@ export function renderPageRef(heading: string, page: Page, links?: BackendLinks)
     return `# ${heading}\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}${url ? `\n${url}` : ""}`;
 }
 
+/** What `page link` prints: the page's title and URL and the issue's URL when they are known, else the bare ids. */
+export function renderPageLinked(pageId: string, issueKey: string, page: Page | null, links?: BackendLinks): string {
+    const pageUrl = page ? links?.page(page) ?? null : null;
+    const issueUrl = links?.issue(toIssueKey(issueKey)) ?? null;
+    return `# Page linked\n\n${page ? `${page.title} (${pageId})` : pageId} linked to ${issueKey}.${pageUrl ? `\nPage: ${pageUrl}` : ""}${issueUrl ? `\nIssue: ${issueUrl}` : ""}`;
+}
+
 /** TAI-275/276 ADR: visibility, not auto-retry -- prints alongside `issue transition`'s own
  *  success output so a cascade failure (e.g. an unassigned parent the cascade tried and
  *  failed to move) is visible in the SAME terminal output a human is already looking at,
@@ -3142,10 +3149,9 @@ async function main(): Promise<void> {
             const [issueKey, pageId] = pageArgs;
             if (!issueKey || !pageId) throw new Error("Usage: page link <ISSUE-KEY> <PAGE-ID>");
             await config.backend.workTracker.linkPage(toIssueKey(issueKey), toPageId(pageId));
+            // The link is made; this fetch only fills in the title and URL for the output, so a failed fetch falls back to the bare id.
             const linkedPage = await config.backend.docStore.getPage({ id: toPageId(pageId) }).catch(() => null);
-            const pageUrl = linkedPage ? config.backend.links?.page(linkedPage) ?? null : null;
-            const issueUrl = config.backend.links?.issue(toIssueKey(issueKey)) ?? null;
-            console.log(`# Page linked\n\n${linkedPage ? `${linkedPage.title} (${pageId})` : pageId} linked to ${issueKey}.${pageUrl ? `\nPage: ${pageUrl}` : ""}${issueUrl ? `\nIssue: ${issueUrl}` : ""}`);
+            console.log(renderPageLinked(pageId, issueKey, linkedPage, config.backend.links));
             return;
         }
 
@@ -3164,12 +3170,13 @@ async function main(): Promise<void> {
                 console.log(`# Page not found\n\n${JSON.stringify(ref)}`);
                 return;
             }
+            const pageUrl = config.backend.links?.page(page) ?? null;
             console.log(
                 [
                     `# ${page.title}`,
                     "",
                     `id: ${page.id} | space: ${page.spaceKey} | updated: ${page.updatedAt}`,
-                    ...(config.backend.links?.page(page) ? [config.backend.links.page(page)!] : []),
+                    ...(pageUrl ? [pageUrl] : []),
                     "",
                     page.content,
                     "",
