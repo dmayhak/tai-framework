@@ -64,6 +64,7 @@ principle is in the Analyst, PM, Architect and UX Designer docs so it reads the 
 - Real links, not prose references: see `workflows/dependencies.md`'s Decided section.
 - Confluence content as unwrapped lines: TAI-397.
 - Writing for reading: TAI-475 and TAI-504.
+- A link, not a bare id: TAI-749, found in HSA-39 (a Confluence page named only by its id); the CLI now prints the URL and the brief §4 rule asks for title-or-key plus URL.
 - The hand-off comment: TAI-489.
 - Unblocking human-gated work: TAI-389/TAI-395.
 - `NEEDS CLARIFICATION:` markers blocking the Kickoff gate: brief §8.21.

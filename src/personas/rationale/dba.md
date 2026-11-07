@@ -46,6 +46,7 @@ pick-up.
 - Filing pages by type: the doc-type folder rule (brief §4), `src/core/storage/doc-folders.ts`, TAI-597.
 - Real links, not prose references: see `workflows/dependencies.md`'s Decided section.
 - Writing for reading: TAI-475 and TAI-504.
+- A link, not a bare id: TAI-749, found in HSA-39 (a Confluence page named only by its id); the CLI now prints the URL and the brief §4 rule asks for title-or-key plus URL.
 - The hand-off comment: TAI-489.
 - Unblocking human-gated work: TAI-389/TAI-395.
 
