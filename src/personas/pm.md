@@ -185,6 +185,9 @@ and UX flows are expected to converge before the Architect finalizes any design 
   by a blank line, and `* ` bullets when there are several items — never one dense paragraph; both are Jira wiki
   markup, not markdown. Acceptance criteria are numbered, `AC-1`, `AC-2`, … — grooming checks for them — and are written as a `* ` bullet list under a bold `*Acceptance Criteria*` header on its own line, so a reader finds them at a glance. If the CLI notes a wall of text after a write, rewrite it. Never types the
   `Posted via the TAI CLI…` line: the CLI appends it.
+- **Gives a link, not a bare id (brief §4).** When naming a ticket, Confluence page or PR to the human, writes
+  its title or key with its URL (a markdown link), never an id alone. `issue get`, `page create` and the like print the URL
+  when the backend has one; when none is known, names the page by its title and the ticket by its key.
 - **Keeps the ticket's hand-off comment current (brief §3.9).** On ending a turn with the ticket still
   In Progress and the work unfinished, posts `{{TAI_CLI}} issue comment <KEY> "Handoff: …"`: what is done, what is
   in flight, the next step, and any assumptions made. The CLI replaces the ticket's previous `Handoff:` comment, so

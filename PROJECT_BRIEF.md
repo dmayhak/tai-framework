@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-11-06 (rev 164). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-11-06 (rev 165). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -699,6 +699,13 @@ These are settled. Change them deliberately and update this file if you do.
   command that rewrites it. Every persona doc carries a one-line pointer here. **Acceptance criteria** in a
   Story, Bug or Spike description are numbered lines, `AC-1`, `AC-2`, …, so a reader and the grooming check can
   find and refer to each one; `verify <STORY-KEY>` (§3.9) checks the finished work against them.
+- **Naming a ticket, page or PR to the human.** A person cannot open a bare id ("Confluence page 68747265"). Anything a
+  persona or command names for the human is given as its title or key with its URL, written as a markdown link. A PR
+  already prints its URL. `issue get`, `issue create`, `issue update`, `issue transition`, `page create`, `page update`,
+  `page get` and `page link` print the issue's and the page's URL when the backend has one (the Jira and Confluence
+  backend builds `<site>/browse/<KEY>` and `<site>/wiki/spaces/<SPACE>/pages/<ID>`; the filesystem backend has no web
+  page and prints none). When no URL is known, the key or title is given, not an id alone. Every persona doc carries a
+  one-line pointer here.
 - **Writing Confluence page content.** TAI converts a persona's markdown to Confluence
   storage format, and two authoring habits quietly corrupt the result, found live repeatedly:
   (1) **hard-wrapped prose** — a line break inside a paragraph or bullet breaks hyphenated words and

@@ -5,7 +5,7 @@
  * StorageBackend the rest of TAI is written against. The default backend, brief §3.2.
  */
 
-import type { StorageBackend } from "../interface.js";
+import type { BackendLinks, StorageBackend } from "../interface.js";
 import { RestClient, apiTokenAuth, type AtlassianAuth } from "./rest-client.js";
 import { createJiraWorkTracker, discoverFlaggedFieldId, discoverPersonaFieldId } from "./work-tracker.js";
 import { createConfluenceDocStore } from "./doc-store.js";
@@ -55,6 +55,16 @@ export async function createJiraBackend(config: JiraBackendConfig): Promise<Stor
         kind: "jira",
         workTracker: createJiraWorkTracker(client, { personaFieldId, flaggedFieldId, docStore, spaceKey: config.spaceKey, aliases }),
         docStore,
+        links: jiraLinks(config.siteUrl),
+    };
+}
+
+/** The Jira browse address of an issue and the Confluence address of a page, on `siteUrl`. */
+export function jiraLinks(siteUrl: string): BackendLinks {
+    const site = siteUrl.replace(/\/+$/, "");
+    return {
+        issue: (key) => `${site}/browse/${key}`,
+        page: (page) => `${site}/wiki/spaces/${page.spaceKey}/pages/${page.id}`,
     };
 }
 
