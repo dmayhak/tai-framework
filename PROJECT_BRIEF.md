@@ -701,8 +701,8 @@ These are settled. Change them deliberately and update this file if you do.
   find and refer to each one; `verify <STORY-KEY>` (§3.9) checks the finished work against them.
 - **Naming a ticket, page or PR to the human.** A person cannot open a bare id ("Confluence page 68747265"). Anything a
   persona or command names for the human is given as its title or key with its URL, written as a markdown link. A PR
-  already prints its URL. `issue get`, `issue create`, `issue update`, `issue transition`, `page create`, `page update`,
-  `page get` and `page link` print the issue's and the page's URL when the backend has one (the Jira and Confluence
+  already prints its URL. `issue get`, `issue create`, `issue update`, `issue transition`, `issue assign`, `page create`,
+  `page update`, `page get`, `page file` and `page link` print the issue's and the page's URL when the backend has one (the Jira and Confluence
   backend builds `<site>/browse/<KEY>` and `<site>/wiki/spaces/<SPACE>/pages/<ID>`; the filesystem backend has no web
   page and prints none). Other command output (the briefing, the ready lists, the work list) still prints keys and ids
   alone; a persona turns those into links when it names them to the human. When no URL is known, the key or title is
