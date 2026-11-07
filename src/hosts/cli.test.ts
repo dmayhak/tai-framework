@@ -34,6 +34,7 @@ import {
     renderLinkedIssues,
     renderIssueDetail,
     renderIssueRef,
+    renderPageDetail,
     renderPageLinked,
     renderPageRef,
     renderReadyWork,
@@ -199,6 +200,13 @@ describe("flagged= and flag markers (TAI-390)", () => {
         assert.equal(renderPageLinked("68747265", "TAI-9", page), "# Page linked\n\nDraft (68747265) linked to TAI-9.");
         // The page could not be fetched: the issue's URL is still known, the page's is not.
         assert.equal(renderPageLinked("68747265", "TAI-9", null, links as never), "# Page linked\n\n68747265 linked to TAI-9.\nIssue: https://x.atlassian.net/browse/TAI-9");
+    });
+
+    it("page get shows the page's URL under the id line, and nothing extra without one (TAI-749)", () => {
+        const page = { id: "68747265", spaceKey: "TA", title: "Draft", updatedAt: "2026-11-07", content: "Body", comments: [] } as never;
+        const url = "https://x.atlassian.net/wiki/spaces/TA/pages/68747265";
+        assert.equal(renderPageDetail(page, links as never), `# Draft\n\nid: 68747265 | space: TA | updated: 2026-11-07\n${url}\n\nBody\n\n## Comments (0)\n\n_(no comments)_`);
+        assert.ok(!renderPageDetail(page).includes("http"));
     });
 
     it("issue get shows the issue's URL and each linked page with its URL (TAI-749)", async () => {

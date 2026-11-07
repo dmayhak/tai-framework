@@ -1330,6 +1330,23 @@ export function renderPageRef(heading: string, page: Page, links?: BackendLinks)
     return `# ${heading}\n\n**${page.title}**\nid: ${page.id}\nspace: ${page.spaceKey}${url ? `\n${url}` : ""}`;
 }
 
+/** What `page get` prints: the page, its URL when the backend has one, and its comments. */
+export function renderPageDetail(page: Page, links?: BackendLinks): string {
+    const url = links?.page(page) ?? null;
+    return [
+        `# ${page.title}`,
+        "",
+        `id: ${page.id} | space: ${page.spaceKey} | updated: ${page.updatedAt}`,
+        ...(url ? [url] : []),
+        "",
+        page.content,
+        "",
+        `## Comments (${page.comments.length})`,
+        "",
+        page.comments.length ? page.comments.map((c) => `### ${c.author.displayName} — ${c.createdAt}\n\n${c.body}`).join("\n\n") : "_(no comments)_",
+    ].join("\n");
+}
+
 /** What `page link` prints: the page's title and URL and the issue's URL when they are known, else the bare ids. */
 export function renderPageLinked(pageId: string, issueKey: string, page: Page | null, links?: BackendLinks): string {
     const pageUrl = page ? links?.page(page) ?? null : null;
@@ -3170,23 +3187,7 @@ async function main(): Promise<void> {
                 console.log(`# Page not found\n\n${JSON.stringify(ref)}`);
                 return;
             }
-            const pageUrl = config.backend.links?.page(page) ?? null;
-            console.log(
-                [
-                    `# ${page.title}`,
-                    "",
-                    `id: ${page.id} | space: ${page.spaceKey} | updated: ${page.updatedAt}`,
-                    ...(pageUrl ? [pageUrl] : []),
-                    "",
-                    page.content,
-                    "",
-                    `## Comments (${page.comments.length})`,
-                    "",
-                    page.comments.length
-                        ? page.comments.map((c) => `### ${c.author.displayName} — ${c.createdAt}\n\n${c.body}`).join("\n\n")
-                        : "_(no comments)_",
-                ].join("\n")
-            );
+            console.log(renderPageDetail(page, config.backend.links));
             return;
         }
 
