@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-11-06 (rev 165). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-11-06 (rev 166). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -466,6 +466,7 @@ did not look must not be indistinguishable.
   searched the branch (`git grep`, `git ls-tree`, `git log -S`, or `git show` of an unchanged file — TAI-541), and add a
   line counting verified claims that give no how (no dash or colon before it). `comment-findings` refuses
   findings written for a different PR. The coverage is self-declared; the point is that it is on the record.
+- **The options list carries a recap of the findings (TAI-750).** The numbered list that ends `render-findings`' output starts with one line per finding (severity and title, in the order of the review), or one line saying there are none, so a session that shows only the list still shows what the choice is about. The recap is in the terminal preview only, never in the comment posted to the PR.
 - **The findings are rendered before they are posted or decided on (TAI-575).** `render-findings` records a hash of what it rendered for the PR
   in this clone (next to the review manifest); `comment-findings` refuses, and posts nothing, unless the findings it is asked to post hash the same.
   `git-pr review` (approve or request changes) refuses once `review-prep` has run for the PR here until findings were rendered; a human who

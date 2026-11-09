@@ -364,7 +364,9 @@ function prSkillBody(taiHome: string): string {
         "file, with the `coverage` block required and true, then stops and returns the path of that file. It must not run " +
         "`git-pr review`, `git-pr comment` or `git-pr comment-findings`, and it cannot ask the human anything: " +
         "posting and the decision stay in this session. When it returns, the main session runs `git-pr render-findings` " +
-        "on the file, pastes its output verbatim and stops for the human, exactly as the review-prep steps say. " +
+        "on the file, pastes its output verbatim and stops for the human, exactly as the review-prep steps say. The " +
+        "numbered list at the end starts with a one-line recap of the findings; it is a recap, not a replacement, so the " +
+        "findings in full still come first and the whole output is pasted. " +
         "In Gemini CLI there is no subagent: run the steps yourself as above. In Claude Code too, review in the " +
         "current session only when the human asks in their own words (\"review it here\"); that is a convention, " +
         "not enforced in code.\n\n" +

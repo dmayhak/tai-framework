@@ -2,6 +2,10 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 166 (2026-11-07)
+
+**TAI-751 (Story TAI-750): the review options list starts with a recap of the findings.** Found on PR 54: the review ran in a fresh-context subagent, and the session showed the human only the numbered "what would you like to do?" list, so they chose an option without seeing what the review found. The skill already says to paste the whole `render-findings` output; nothing in code made the findings travel with the list. The list now starts with one line per finding (severity and title, in the order of the review), or "The review found nothing to report." when there are none. `renderFindingsNextSteps` takes the findings, so the list cannot be built without them. The recap is in the terminal preview only; the comment posted to the PR is unchanged. The tai-pr skill's fresh-context paragraph says the recap does not replace the findings. Tests: `review-findings.test.ts`.
+
 ## rev 165 (2026-11-06)
 
 **TAI-749 (Story TAI-748): a link, not a bare id, for a Jira ticket and a Confluence page.** Found in HSA-39: the output named a Confluence page by its id, which a person cannot open. A PR already printed its URL; a ticket and a page did not. `StorageBackend` has an optional `links` (an issue's and a page's web address); the Jira and Confluence backend builds `<site>/browse/<KEY>` and `<site>/wiki/spaces/<SPACE>/pages/<ID>`, and the filesystem backend has none. `issue get`, `create`, `update`, `transition`, `assign`, `page create`, `update`, `get` (the "Page filed" form too) and `page link` print the URL when there is one, and the "Linked pages" list in `issue get` shows each page with its URL; with no URL the output is as before. Brief §4 and every persona doc say that a ticket, page or PR named to the human is given as its title or key with its URL, never an id alone; the reason is in every persona's rationale file.

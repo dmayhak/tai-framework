@@ -398,6 +398,19 @@ const NEXT_STEP_OPTIONS: readonly { readonly text: string; readonly suggestedFor
 ];
 
 /**
+ * TAI-750: one line per finding, in the order of the review, at the top of the options list. A session once showed the human
+ * only the options (the review ran in a fresh-context subagent and its findings never reached the screen), so the list now
+ * carries what the choice is about and cannot be shown without it. The findings in full are still printed above it.
+ */
+export function renderFindingsRecap(findings: readonly ReviewFinding[]): string[] {
+    if (findings.length === 0) return ["The review found nothing to report."];
+    return [
+        "What the review found (in full above):",
+        ...findings.map((f) => `- ${SEVERITY_EMOJI[f.severity]} ${f.severity[0]!.toUpperCase()}${f.severity.slice(1)}: ${f.title}`),
+    ];
+}
+
+/**
  * TAI-411: the numbered "what next?" list shown after the findings preview. The review flow
  * deliberately stops after printing the findings (TAI-202/203/209 -- no same-turn question), so this
  * list is what tells the human what they can say next. It is produced HERE, deterministically, and
@@ -407,13 +420,13 @@ const NEXT_STEP_OPTIONS: readonly { readonly text: string; readonly suggestedFor
  * `renderReviewFindings`, which `comment-findings` posts to the PR: this list is for the human at the
  * terminal, not part of the review.
  */
-export function renderFindingsNextSteps(leaning: ReviewLeaning): string {
+export function renderFindingsNextSteps(leaning: ReviewLeaning, findings: readonly ReviewFinding[]): string {
     const lines = NEXT_STEP_OPTIONS.map(
         (o, i) => `${i + 1}. ${o.text}${o.suggestedFor === leaning ? " (suggested)" : ""}`
     );
     // "neither" is the reviewer's own position (it neither recommends approving nor blocking), not "no opinion": say so where it is suggested.
     const note = leaning === "neither" ? ["The reviewer's leaning is neither: it does not recommend approving or blocking, and leaves the call to you.", ""] : [];
-    return ["---", "Nothing has been posted yet. What would you like to do? Reply with a number or plain words:", ...note, ...lines].join("\n");
+    return ["---", ...renderFindingsRecap(findings), "", "Nothing has been posted yet. What would you like to do? Reply with a number or plain words:", ...note, ...lines].join("\n");
 }
 
 /**
@@ -426,7 +439,7 @@ export const SHOW_THE_HUMAN_REMINDER =
 
 /** `git-pr render-findings`' output: the rendered findings, then the next-step options. */
 export function renderFindingsPreview(findings: ReviewFindings, manifest: ReviewManifest | null = null, liveCommit?: string | null): string {
-    return `${renderReviewFindings(findings, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`;
+    return `${renderReviewFindings(findings, manifest, liveCommit)}\n\n${renderFindingsNextSteps(findings.leaning, findings.findings)}\n\n${SHOW_THE_HUMAN_REMINDER}`;
 }
 
 /**
