@@ -26,6 +26,7 @@ import {
     unrenderedFindingsRefusal,
     unrenderedDecisionRefusal,
     SHOW_THE_HUMAN_REMINDER,
+    type ReviewFinding,
     type ReviewFindings,
     type ReviewManifest,
 } from "./review-findings.js";
@@ -213,7 +214,7 @@ describe("render-findings next-step options (TAI-411)", () => {
     const optionLines = (text: string) => text.split("\n").filter((l) => /^\d\. /.test(l));
 
     it("lists the five numbered options and says nothing has been posted yet", () => {
-        const out = renderFindingsNextSteps("approve");
+        const out = renderFindingsNextSteps("approve", validFindings.findings);
         assert.match(out, /Nothing has been posted yet\./);
         assert.deepEqual(
             optionLines(out).map((l) => l.replace(" (suggested)", "")),
@@ -229,29 +230,57 @@ describe("render-findings next-step options (TAI-411)", () => {
 
     it("marks exactly the option matching the leaning as suggested", () => {
         const suggested = (leaning: "approve" | "requestChanges" | "neither") =>
-            optionLines(renderFindingsNextSteps(leaning)).filter((l) => l.includes("(suggested)"));
+            optionLines(renderFindingsNextSteps(leaning, validFindings.findings)).filter((l) => l.includes("(suggested)"));
         assert.deepEqual(suggested("approve"), ["1. post and approve (suggested)"]);
         assert.deepEqual(suggested("requestChanges"), ["4. post and request changes (suggested)"]);
         assert.deepEqual(suggested("neither"), ["5. neither (post nothing, record no decision) (suggested)"]);
     });
 
     it("explains a neither leaning, and only then", () => {
-        assert.match(renderFindingsNextSteps("neither"), /leaning is neither: it does not recommend approving or blocking, and leaves the call to you/);
-        assert.doesNotMatch(renderFindingsNextSteps("approve"), /leaning is neither/);
-        assert.doesNotMatch(renderFindingsNextSteps("requestChanges"), /leaning is neither/);
+        assert.match(renderFindingsNextSteps("neither", validFindings.findings), /leaning is neither: it does not recommend approving or blocking, and leaves the call to you/);
+        assert.doesNotMatch(renderFindingsNextSteps("approve", validFindings.findings), /leaning is neither/);
+        assert.doesNotMatch(renderFindingsNextSteps("requestChanges", validFindings.findings), /leaning is neither/);
+    });
+
+    it("starts with one line per finding, severity and title, most serious first, as in the findings above (TAI-750)", () => {
+        const all: ReviewFinding[] = [
+            { severity: "good", category: "Style", title: "Tidy split", file: "a.ts", issue: "x" },
+            { severity: "critical", category: "Security", title: "SQL injection", file: "a.ts", issue: "x" },
+            { severity: "suggestion", category: "Design", title: "Extract it", file: "a.ts", issue: "x" },
+            { severity: "nitpick", category: "Style", title: "Naming", file: "a.ts", issue: "x" },
+        ];
+        const out = renderFindingsNextSteps("approve", all).split("\n");
+        assert.deepEqual(out.filter((l) => l.startsWith("- ")), ["- 🔴 Critical: SQL injection", "- 🟡 Suggestion: Extract it", "- 🔵 Nitpick: Naming", "- 🟢 Good: Tidy split"]);
+        assert.ok(out.indexOf("- 🔵 Nitpick: Naming") < out.findIndex((l) => l.startsWith("Nothing has been posted yet")), "the recap comes before the options");
+    });
+
+    it("keeps a recap line to one line when a title has a line break (TAI-750)", () => {
+        const out = renderFindingsNextSteps("approve", [{ severity: "nitpick", category: "Style", title: "Two\nlines  here", file: "a.ts", issue: "x" }]);
+        assert.ok(out.split("\n").includes("- 🔵 Nitpick: Two lines here"));
+    });
+
+    it("says so in one line when the review has no findings (TAI-750)", () => {
+        const out = renderFindingsNextSteps("approve", []);
+        assert.match(out, /The review found nothing to report\./);
+        assert.ok(!out.split("\n").some((l) => l.startsWith("- ")));
+    });
+
+    it("the recap is in the preview and not in the comment posted to the PR (TAI-750)", () => {
+        assert.match(renderFindingsPreview(validFindings), /What the review found:\n- 🔴 Critical: SQL injection/);
+        assert.doesNotMatch(renderReviewFindings(validFindings), /What the review found/);
     });
 
     it("the preview is the rendered findings followed by the options", () => {
         const preview = renderFindingsPreview(validFindings);
         assert.ok(preview.startsWith(renderReviewFindings(validFindings)));
-        assert.ok(preview.endsWith(`${renderFindingsNextSteps(validFindings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`), "the options, then the reminder (TAI-575)");
+        assert.ok(preview.endsWith(`${renderFindingsNextSteps(validFindings.leaning, validFindings.findings)}\n\n${SHOW_THE_HUMAN_REMINDER}`), "the options, then the reminder (TAI-575)");
     });
 
     it("the preview lists every finding once, critical ones included, and adds only the options and the reminder (TAI-678)", () => {
         const preview = renderFindingsPreview(validFindings);
-        assert.equal(preview.split("**SQL injection**").length - 1, 1, "listed once, not again in a separate block");
+        assert.equal(preview.split("User input is concatenated directly into the query.").length - 1, 1, "listed in full once, not again in a separate block (the recap only repeats the title)");
         assert.ok(!preview.includes("Will be posted inline"));
-        assert.equal(preview, `${renderReviewFindings(validFindings)}\n\n${renderFindingsNextSteps(validFindings.leaning)}\n\n${SHOW_THE_HUMAN_REMINDER}`);
+        assert.equal(preview, `${renderReviewFindings(validFindings)}\n\n${renderFindingsNextSteps(validFindings.leaning, validFindings.findings)}\n\n${SHOW_THE_HUMAN_REMINDER}`);
     });
 
     it("what is posted to the PR lists the critical finding in full too (TAI-678)", () => {

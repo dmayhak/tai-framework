@@ -253,6 +253,8 @@ describe("renderGlobalSkillFiles", () => {
             assert.match(pr, /main session runs `git-pr render-findings`/);
             assert.match(pr, /pastes its output verbatim/);
             assert.match(pr, /stops for the human/);
+            // TAI-750: the list's recap is not a replacement for the findings
+            assert.match(pr, /recap of the findings; it is a recap, not a replacement/);
             // AC-3: Gemini CLI unchanged; inline only on the human's request
             assert.match(pr, /In Gemini CLI there is no subagent: run the steps yourself as above/);
             assert.match(pr, /only when the human asks in their own words/);
