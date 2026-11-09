@@ -261,7 +261,7 @@ describe("render-findings next-step options (TAI-411)", () => {
     });
 
     it("the recap is in the preview and not in the comment posted to the PR (TAI-750)", () => {
-        assert.match(renderFindingsPreview(validFindings), /What the review found \(in full above\):\n- 🔴 Critical: SQL injection/);
+        assert.match(renderFindingsPreview(validFindings), /What the review found:\n- 🔴 Critical: SQL injection/);
         assert.doesNotMatch(renderReviewFindings(validFindings), /What the review found/);
     });
 

@@ -405,7 +405,7 @@ const NEXT_STEP_OPTIONS: readonly { readonly text: string; readonly suggestedFor
 export function renderFindingsRecap(findings: readonly ReviewFinding[]): string[] {
     if (findings.length === 0) return ["The review found nothing to report."];
     return [
-        "What the review found (in full above):",
+        "What the review found:",
         ...findings.map((f) => `- ${SEVERITY_EMOJI[f.severity]} ${f.severity[0]!.toUpperCase()}${f.severity.slice(1)}: ${f.title}`),
     ];
 }
