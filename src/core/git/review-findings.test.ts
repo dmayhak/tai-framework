@@ -254,6 +254,11 @@ describe("render-findings next-step options (TAI-411)", () => {
         assert.ok(out.indexOf("- 🔵 Nitpick: Naming") < out.findIndex((l) => l.startsWith("Nothing has been posted yet")), "the recap comes before the options");
     });
 
+    it("keeps a recap line to one line when a title has a line break (TAI-750)", () => {
+        const out = renderFindingsNextSteps("approve", [{ severity: "nitpick", category: "Style", title: "Two\nlines  here", file: "a.ts", issue: "x" }]);
+        assert.ok(out.split("\n").includes("- 🔵 Nitpick: Two lines here"));
+    });
+
     it("says so in one line when the review has no findings (TAI-750)", () => {
         const out = renderFindingsNextSteps("approve", []);
         assert.match(out, /The review found nothing to report\./);
