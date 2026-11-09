@@ -242,7 +242,7 @@ describe("render-findings next-step options (TAI-411)", () => {
         assert.doesNotMatch(renderFindingsNextSteps("requestChanges", validFindings.findings), /leaning is neither/);
     });
 
-    it("starts with one line per finding, severity and title, in the order of the review (TAI-750)", () => {
+    it("starts with one line per finding, severity and title, most serious first, as in the findings above (TAI-750)", () => {
         const all: ReviewFinding[] = [
             { severity: "good", category: "Style", title: "Tidy split", file: "a.ts", issue: "x" },
             { severity: "critical", category: "Security", title: "SQL injection", file: "a.ts", issue: "x" },
@@ -250,7 +250,7 @@ describe("render-findings next-step options (TAI-411)", () => {
             { severity: "nitpick", category: "Style", title: "Naming", file: "a.ts", issue: "x" },
         ];
         const out = renderFindingsNextSteps("approve", all).split("\n");
-        assert.deepEqual(out.filter((l) => l.startsWith("- ")), ["- 🟢 Good: Tidy split", "- 🔴 Critical: SQL injection", "- 🟡 Suggestion: Extract it", "- 🔵 Nitpick: Naming"]);
+        assert.deepEqual(out.filter((l) => l.startsWith("- ")), ["- 🔴 Critical: SQL injection", "- 🟡 Suggestion: Extract it", "- 🔵 Nitpick: Naming", "- 🟢 Good: Tidy split"]);
         assert.ok(out.indexOf("- 🔵 Nitpick: Naming") < out.findIndex((l) => l.startsWith("Nothing has been posted yet")), "the recap comes before the options");
     });
 

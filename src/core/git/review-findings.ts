@@ -398,7 +398,7 @@ const NEXT_STEP_OPTIONS: readonly { readonly text: string; readonly suggestedFor
 ];
 
 /**
- * TAI-750: one line per finding, in the order of the review, at the top of the options list. A session once showed the human
+ * TAI-750: one line per finding, most serious first as in the findings above (critical, suggestion, nitpick, good; the review's own order within a severity), at the top of the options list. A session once showed the human
  * only the options (the review ran in a fresh-context subagent and its findings never reached the screen), so the list now
  * carries what the choice is about and cannot be shown without it. The findings in full are still printed above it.
  */
@@ -406,7 +406,7 @@ export function renderFindingsRecap(findings: readonly ReviewFinding[]): string[
     if (findings.length === 0) return ["The review found nothing to report."];
     return [
         "What the review found:",
-        ...findings.map((f) => `- ${SEVERITY_EMOJI[f.severity]} ${f.severity[0]!.toUpperCase()}${f.severity.slice(1)}: ${f.title.replace(/\s+/g, " ").trim()}`),
+        ...SEVERITY_ORDER.flatMap((severity) => findings.filter((f) => f.severity === severity)).map((f) => `- ${SEVERITY_EMOJI[f.severity]} ${f.severity[0]!.toUpperCase()}${f.severity.slice(1)}: ${f.title.replace(/\s+/g, " ").trim()}`),
     ];
 }
 
