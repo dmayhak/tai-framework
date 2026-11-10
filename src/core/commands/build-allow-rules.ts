@@ -24,7 +24,9 @@
  * is not refused. The allow side names `--as developer` and not `--as=developer`, since the prompts TAI writes use the space
  * form. Combined short flags on a push are denied only as `-uf` and `-f*`, not in every combination, and on a branch delete
  * only as `-D`, `-d`, `-f` and `-M` at the start (`git branch -vD x`, `-rD` and `-fd` reach a delete or a force and are not
- * refused). A checkout that discards a file's changes is refused in its `-- <path>` forms (any commit before the `--`) and
+ * refused). A force option abbreviated to `--f`, `--fo`, `--for` or `--forc` is refused for push, branch, checkout, switch, rm and mv
+ * (TAI-712). Only a spelling of the force option itself: `--follow-tags` and `--format=...` are allowed, and a bundle of short flags with the f after another letter stays
+ * as described above. A checkout that discards a file's changes is refused in its `-- <path>` forms (any commit before the `--`) and
  * `.` or `./...`, not in every spelling. The deny entries spell out
  * every persona name `--as` takes (the built-in ids, their short names and the project's own, when its personas page can be
  * read) and never a `*`, since a `*` spans spaces and `--as * init *` would refuse any command that merely contains the word.
@@ -74,6 +76,16 @@ const GIT_ALLOW: readonly string[] = [
 ];
 
 /**
+ * Git takes any unambiguous prefix of a long option, so `--forc` forces as `--force` does (TAI-712). For each subcommand with a
+ * force option: `*--forc*` refuses `--forc`, `--force` and `--force-with-lease`, and `--f`, `--fo` and `--for` are refused only as
+ * whole words, so `git branch --format=...` and a path or branch such as `feature/foo` still pass.
+ */
+const FORCE_DENIES: readonly string[] = ["push", "branch", "checkout", "switch", "rm", "mv"].flatMap((sub) => [
+    `git ${sub} *--forc*`,
+    ...["--f", "--fo", "--for"].flatMap((flag) => [`git ${sub} *${flag}`, `git ${sub} *${flag} *`]),
+]);
+
+/**
  * What a build never does with git: a force push in any spelling (the flags, and a `+` before a refspec), a push with
  * `--delete`, `--mirror` or `--prune`, a push to `main` or `master`, a branch delete, a forced or resetting checkout or
  * switch, a checkout that discards work, an interactive rebase or one with `--onto`, `--root` or `--exec` (TAI-725; `git rebase origin/*` and `git merge origin/*` are allowed), and a forced `git rm` or `git mv` (`git rm` and `git mv` themselves are allowed, TAI-709; `-f` is refused in any position and as `-rf` or `-fr`, but a bundle with the f after another letter (`-qrf`, `-nf`) is not, as with the branch-delete flags). A delete by refspec (`git push origin :branch`) is not refused: its pattern
@@ -81,6 +93,7 @@ const GIT_ALLOW: readonly string[] = [
  */
 const GIT_DENY: readonly string[] = [
     "git push *--force*",
+    ...FORCE_DENIES,
     "git push * -f*",
     "git push -f*",
     "git push *+*",

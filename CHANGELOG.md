@@ -2,6 +2,14 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 167 (2026-11-10)
+
+**TAI-712 (Story TAI-712, Dev TAI-713): the build and DEV-YOLO deny rules refuse abbreviated force options.** Git accepts any unambiguous prefix of a long option, so `git push --forc`, `git rm --fo x` and `git mv --f a b` forced the operation and matched none of the denies, which looked for the full `--force` (found in the PR 38 review, TAI-709).
+
+* For each of `push`, `branch`, `checkout`, `switch`, `rm` and `mv`, `*--forc*` refuses `--forc`, `--force` and `--force-with-lease`, and `--f`, `--fo` and `--for` are refused as whole words, so `git checkout feature/foo`, `git rm -r old/file` and `git branch --format=...` still pass. `git switch --force` was not refused before and is now.
+* A project whose settings lack the new rules sees them in the readiness warning.
+* Not covered, and said in the module comment and the brief: a short-flag bundle with the `f` after another letter, as before.
+
 ## rev 166 (2026-11-09)
 
 **TAI-751 (Story TAI-750): the review options list starts with a recap of the findings.** Found on PR 54: the review ran in a fresh-context subagent, and the session showed the human only the numbered "what would you like to do?" list, so they chose an option without seeing what the review found. The skill already says to paste the whole `render-findings` output; nothing in code made the findings travel with the list. The list now starts with one line per finding (severity and title, most serious first, as in the findings above it), or "The review found nothing to report." when there are none. `renderFindingsNextSteps` takes the findings, so the list cannot be built without them. The recap is in the terminal preview only; the comment posted to the PR is unchanged. The tai-pr skill's fresh-context paragraph says the recap does not replace the findings. Tests: `review-findings.test.ts`.

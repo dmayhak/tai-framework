@@ -180,6 +180,31 @@ describe("build allow rules (TAI-649)", () => {
         }
     });
 
+    it("refuses every abbreviated spelling of a force option for push, branch, checkout, switch, rm and mv, and nothing ordinary (TAI-712)", () => {
+        const subs: Record<string, string> = { push: "origin x", branch: "x", checkout: "x", switch: "x", rm: "a.txt", mv: "a b" };
+        for (const rules of [buildRunRules(HOME), buildRunRules(HOME, null, [], true)]) {
+            for (const [sub, args] of Object.entries(subs)) {
+                for (const flag of ["--f", "--fo", "--for", "--forc", "--force"]) {
+                    for (const c of [`git ${sub} ${flag} ${args}`, `git ${sub} ${args} ${flag}`, `git ${sub} -q ${flag} ${args}`]) assert.equal(commandVerdict(rules, c), "refused", c);
+                }
+            }
+            for (const c of ["git checkout feature/foo", "git rm -r old/file", "git branch --format=%(refname)", "git push origin forced-fix", "git push origin --follow-tags", "git mv for.txt fo.txt", "git switch fo", "git checkout --"]) assert.notEqual(commandVerdict(rules, c), "refused", c);
+            assert.equal(commandVerdict(rules, "git checkout feature/foo"), "allowed");
+            assert.equal(commandVerdict(rules, "git rm -r old/file"), "allowed");
+        }
+    });
+
+    it("the readiness warning lists the abbreviated-force denies when a project's settings lack them (TAI-712)", () => {
+        const rules = buildRunRules(HOME);
+        const have = { allow: rules.allow, deny: rules.deny.filter((r) => !r.includes("--f")) };
+        const gaps = missingRules(rules, have);
+        for (const sub of ["push", "branch", "checkout", "switch", "rm", "mv"]) {
+            assert.ok(gaps.deny.includes(`Bash(git ${sub} *--forc*)`), sub);
+            assert.ok(gaps.deny.includes(`Bash(git ${sub} *--fo)`), sub);
+        }
+        assert.match(readinessWarning(gaps, true, false)!, /git push \*--forc\*/);
+    });
+
     it("lets a run rebase or merge a remote branch into its own and back out of a conflict, and refuses the rebase forms that run a command or rewrite elsewhere (TAI-725)", () => {
         for (const rules of [buildRunRules(HOME), buildRunRules(HOME, null, [], true)]) {
             for (const c of ["git rebase origin/main", "git merge origin/main", "git merge origin/main --no-edit", "git rebase origin/TAI-9-x", "git rebase --abort", "git merge --abort"]) assert.equal(commandVerdict(rules, c), "allowed", c);
