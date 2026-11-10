@@ -6,9 +6,9 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 **TAI-712 (Story TAI-712, Dev TAI-713): the build and DEV-YOLO deny rules refuse abbreviated force options.** Git accepts any unambiguous prefix of a long option, so `git push --forc`, `git rm --fo x` and `git mv --f a b` forced the operation and matched none of the denies, which looked for the full `--force` (found in the PR 38 review, TAI-709).
 
-* For each of `push`, `branch`, `checkout`, `switch`, `rm` and `mv`, `*--forc*` refuses `--forc`, `--force` and `--force-with-lease`, and `--f`, `--fo` and `--for` are refused as whole words, so `git checkout feature/foo`, `git rm -r old/file` and `git branch --format=...` still pass. `git switch --force` was not refused before and is now.
+* For each of `push`, `branch`, `checkout`, `switch`, `rm` and `mv`, `*--forc*` refuses `--forc`, `--force` and `--force-with-lease`, and `--f`, `--fo` and `--for` are refused as a word on their own and as the end of a word (`x--fo`), so `git checkout feature/foo`, `git rm -r old/file` and `git branch --format=...` still pass. `git switch --force` was not refused before and is now.
 * A project whose settings lack the new rules sees them in the readiness warning.
-* Not covered, and said in the module comment and the brief: a short-flag bundle with the `f` after another letter, as before.
+* Not covered, and said in the module comment and the brief: the same abbreviation of `--delete`, `--mirror`, `--prune` and `--discard-changes` (a separate ticket), and a short-flag bundle with the `f` after another letter, as before.
 
 ## rev 166 (2026-11-09)
 
