@@ -320,7 +320,7 @@ function prSkillBody(taiHome: string): string {
         "present on the ticket Done, a UAT subtask on the ticket Done unless it carries the " +
         "`uat-after-merge` label, a check result on the current commit when the project has a check command " +
         "(`git-pr check`), and a finished, successful CI run on the commit (none yet, or still running, refuses; " +
-        "the project's `require-ci` setting turns the need for a run off when CI cannot run on the account, and a failed run still blocks). When it refuses, report the reasons it printed and " +
+        "the person's own `require-ci` setting (settings are per person) turns the need for a run off when CI cannot run on the account, and a failed run still blocks). When it refuses, report the reasons it printed and " +
         "get what is missing; do not work around it. `force=true` merges past everything but a failed or running status and " +
         "leaves a stamped override comment on the PR — use it on your own ONLY for the very minor fix " +
         "described next, and otherwise only when the human explicitly says so.\n\n" +
@@ -401,8 +401,8 @@ function initSkillBody(taiHome: string): string {
         `\`${taiHome}/bin/tai-link\` (it links them into \`~/.local/bin\`, or into a directory they name on their path, never replaces a file that ` +
         `is not its own, and \`${taiHome}/bin/tai-link --remove\` takes them off). Each takes \`--project <path>\` or \`TAI_PROJECT\` and otherwise ` +
         "runs from the current directory. You keep using the long form.\n\n" +
-        "**CI and `require-ci` (TAI-714):** the merge gate needs a finished, successful CI run on the commit. If the project's CI cannot run " +
-        "(Bitbucket out of Pipelines minutes, a private GitHub repo out of Actions minutes), the human turns that need off with " +
+        "**CI and `require-ci` (TAI-714):** the merge gate needs a finished, successful CI run on the commit. If CI cannot run " +
+        "(Bitbucket out of Pipelines minutes, a private GitHub repo out of Actions minutes), the human turns that need off for themselves (each person's settings are their own, so a teammate sets theirs too) with " +
         "`tai-settings set require-ci false`, from a plain terminal and as an Autonomy admin; never change it yourself. A failed CI run still blocks either way.\n\n" +
         "**Target-project setup (TAI-116 piece 3, TAI-130, TAI-368):** once the bootstrap above is " +
         "done, check whether the CURRENT project (cwd) still needs onboarding:\n\n" +

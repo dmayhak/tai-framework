@@ -351,7 +351,7 @@ something** with the merge gate's reasons. Picking a number does what that secti
 one finished and successful. A commit with none yet (CI has not registered, right after a push) or with CI still running is
 refused, saying which, and `/tai-ready` lists the PR as waiting with the same sentence. A DEV-YOLO run waits up to five minutes for
 CI to appear and finish before it stops and hands the ticket on. If CI cannot run on your account (Bitbucket out of Pipelines
-minutes, a private GitHub repo out of Actions minutes), turn the requirement off with `tai-settings set require-ci false`: no CI run
+minutes, a private GitHub repo out of Actions minutes), turn the requirement off with `tai-settings set require-ci false` (settings are per person, so each teammate sets their own): no CI run
 is then needed, but one that is there and failed still blocks. It is an autonomy setting, so only a person on the Autonomy admins
 list can change it, from a plain terminal.
 

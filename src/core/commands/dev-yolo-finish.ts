@@ -122,6 +122,9 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             const wait = deps.ciWait ?? DEFAULT_CI_WAIT;
             // TAI-714: a CI run that has not appeared or has not finished is waited for, up to a bound; one that failed stops at once.
             let statuses: readonly CommitStatus[] = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
+            // The check-result rule does not depend on the wait (CI appearing cannot supply TAI's own result), so it stops first.
+            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers: [], checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
+            if (!proceed) return await say(`the merge gate refused: ${blockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
             let ci = ciVerdict(statuses, requireCi, live.sourceCommit);
             let waited = 0;
             while (!ci.ok && ci.kind !== "failed" && waited < wait.maxMs) {
@@ -138,8 +141,6 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
                     ? await say(`CI has not started on ${live.sourceCommit} ${bound}.`, "start or fix CI and merge through the gate, or turn `require-ci` off if CI cannot run on this account.")
                     : await say(`CI did not finish on ${live.sourceCommit} ${bound} (${list}).`, "wait for CI to finish, then merge through the gate.");
             }
-            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers: [], checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
-            if (!proceed) return await say(`the merge gate refused: ${blockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
             // A tree the earlier runs left dirty is found now, while the PR is still open, and not after the merge.
             try {
                 await deps.assertClean();

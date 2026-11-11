@@ -144,6 +144,15 @@ describe("finishApproved CI wait (TAI-714)", () => {
             assert.match(handoffs[0]!, /the merge gate refused/);
         }));
 
+    it("a commit with no check result stops before any CI wait when the project has a check command", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /No check result is recorded for the current commit/);
+        }));
+
     it("does not wait for a CI status that already failed", () =>
         world(async ({ deps, task, log, handoffs, pr }) => {
             pr.statuses = [{ key: "ci", state: "failed" }];
