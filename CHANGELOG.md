@@ -2,6 +2,16 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 168 (2026-11-11)
+
+**TAI-714 (Story TAI-714, Dev TAI-715): the merge gate requires the CI run to exist and finish, with a setting to turn that off.** The gate treated a commit with no statuses as green, which is also what a fresh push looks like before the host has registered its CI run, so a merge right after a push could pass before CI reported. Found while answering whether TAI checks GitHub CI. This reverses TAI-230/250's rule that an empty list is green (Pipelines had become manual-only then).
+
+* New autonomy setting `require-ci`, on by default (Autonomy admins only, plain terminal: the `dev-yolo` guard).
+* On: the commit needs at least one CI status (any status that is not `tai-check`) and every one finished and successful. None is "No CI run on this commit yet"; queued or running is "Waiting for CI". Off: no CI run need exist, but a present status that failed or is still running still blocks. `tai-check` is unchanged and required either way.
+* One verdict, `ciVerdict`, replaces `isGreen` in `git-pr merge`, `/tai-ready` (a PR waiting on CI is listed as waiting, with the same sentence) and the DEV-YOLO finish step, which waits up to five minutes (every 15 seconds) for CI to appear and finish, then stops with a hand-off naming "CI has not started" or "CI did not finish". A failed status stops at once and stays out of `/tai-ready`'s lists, as before.
+* A settings page that cannot be read counts as `require-ci` on. `force=true` does not pass the CI rule.
+* README, the `tai-init` and `tai-pr` skill text and the brief say what it does and when to turn it off (CI cannot run on the account).
+
 ## rev 167 (2026-11-10)
 
 **TAI-712 (Story TAI-712, Dev TAI-713): the build and DEV-YOLO deny rules refuse abbreviated force options.** Git accepts any unambiguous prefix of a long option, so `git push --forc`, `git rm --fo x` and `git mv --f a b` forced the operation and matched none of the denies, which looked for the full `--force` (found in the PR 38 review, TAI-709).

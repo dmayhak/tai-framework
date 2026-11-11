@@ -347,6 +347,14 @@ when a git host is configured, **PRs ready for your review** (including a re-rev
 commits landed after your decision), **PRs ready to merge**, and approved PRs **waiting on
 something** with the merge gate's reasons. Picking a number does what that section says.
 
+**CI and the merge gate.** A merge needs a CI result on the commit: at least one status that is not TAI's own check, and every
+one finished and successful. A commit with none yet (CI has not registered, right after a push) or with CI still running is
+refused, saying which, and `/tai-ready` lists the PR as waiting with the same sentence. A DEV-YOLO run waits up to five minutes for
+CI to appear and finish before it stops and hands the ticket on. If CI cannot run on your account (Bitbucket out of Pipelines
+minutes, a private GitHub repo out of Actions minutes), turn the requirement off with `tai-settings set require-ci false`: no CI run
+is then needed, but one that is there and failed still blocks. It is an autonomy setting, so only a person on the Autonomy admins
+list can change it, from a plain terminal.
+
 Claude Code and Gemini CLI both run every command. The one difference is that in Claude Code
 the code review runs in a fresh-context subagent by default; Gemini runs the same steps in the
 same session.

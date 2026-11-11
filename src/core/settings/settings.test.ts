@@ -19,6 +19,9 @@ describe("parseSettingValue", () => {
         assert.equal(parseSettingValue(findSetting("dev-yolo")!, "ON"), "true");
         assert.equal(parseSettingValue(findSetting("dev-yolo")!, " no "), "false");
         assert.equal(findSetting("review-rounds")!.default, "4");
+        assert.equal(findSetting("require-ci")!.default, "true");
+        assert.equal(findSetting("require-ci")!.autonomy, true);
+        assert.equal(parseSettingValue(findSetting("require-ci")!, "Off"), "false");
         assert.equal(parseSettingValue(findSetting("review-rounds")!, "3"), "3");
         assert.equal(parseSettingValue(findSetting("reviewer")!, "Claude"), "claude");
     });

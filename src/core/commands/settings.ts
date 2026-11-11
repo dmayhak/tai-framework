@@ -196,3 +196,15 @@ export async function readSettingValue(docStore: DocStore, spaceKey: string, ema
     if (!view) throw new Error(`Unknown setting "${key}".`);
     return view.value;
 }
+
+/**
+ * Whether the merge gate needs a CI run on the commit (`require-ci`, TAI-714). Errs toward requiring it: a page that cannot be
+ * read is not a reason to let a merge through without CI.
+ */
+export async function readRequireCi(docStore: DocStore, spaceKey: string, email: string | null): Promise<boolean> {
+    try {
+        return (await readSettingValue(docStore, spaceKey, email, "require-ci")) !== "false";
+    } catch {
+        return true;
+    }
+}

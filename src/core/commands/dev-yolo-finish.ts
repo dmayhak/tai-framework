@@ -8,7 +8,7 @@
  */
 
 import type { CommitStatus, GitHost, PullRequestRef } from "../git/interface.js";
-import { isGreen, findLinkedIssueForPR } from "./git-pr.js";
+import { ciVerdict, findLinkedIssueForPR } from "./git-pr.js";
 import { checkMergeGate } from "../git/merge-gate.js";
 import { mergeBlockersWithCheck } from "../git/local-check.js";
 import { Status } from "../schema/story-schema.js";
@@ -19,6 +19,20 @@ import { isMergeConflict } from "./git-pr.js";
 import { yoloHandoff, type ConflictStop } from "./dev-yolo.js";
 import { stampedAs } from "../storage/stamp.js";
 
+/** TAI-714: the bounded wait for a CI run. The elapsed time is the sum of the sleeps, so no clock is involved. */
+export interface CiWait {
+    readonly maxMs: number;
+    readonly intervalMs: number;
+    readonly sleep: (ms: number) => Promise<void>;
+}
+
+export const DEFAULT_CI_WAIT: CiWait = { maxMs: 5 * 60_000, intervalMs: 15_000, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
+
+function minutes(ms: number): string {
+    const m = ms / 60_000;
+    return m >= 1 ? `${Number.isInteger(m) ? m : m.toFixed(1)} minute${m === 1 ? "" : "s"}` : `${Math.round(ms / 1000)} seconds`;
+}
+
 export interface FinishDeps {
     readonly gitHost: Pick<GitHost, "getPullRequest" | "getCommitStatuses" | "listPullRequestActivity" | "mergePullRequest" | "addPullRequestComment">;
     readonly workTracker: Pick<WorkTracker, "search" | "getRemoteLinks" | "getIssue" | "transition">;
@@ -28,6 +42,10 @@ export interface FinishDeps {
     /** The project's check command (`TAI_CHECK_COMMAND`), or null: with one, a commit with no check result blocks the merge. */
     readonly checkCommand: string | null;
     readonly requiredApprovals?: number;
+    /** TAI-714: the `require-ci` setting. Default true: the merge needs a finished, successful CI run on the commit. */
+    readonly requireCi?: boolean;
+    /** TAI-714: how long to wait for CI to appear and finish. Defaults to `DEFAULT_CI_WAIT`; the sleep is injectable for tests. */
+    readonly ciWait?: CiWait;
     /** The automated reviewer's account, named in the merge comment. */
     readonly reviewer: () => Promise<Pick<HumanRef, "id" | "displayName">>;
     /** Signs a comment as the Developer persona. */
@@ -90,9 +108,25 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             const pr = await deps.pullRequest(task);
             const live = await deps.gitHost.getPullRequest(pr.repo, pr.id);
             if (!live || live.state !== "open") return await say("the PR is no longer open.", "check what happened to it.");
-            const statuses: readonly CommitStatus[] = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
-            if (!isGreen(statuses)) {
-                return await say(`the check is not green on ${live.sourceCommit} (${statuses.map((s) => `${s.key}: ${s.state}`).join(", ")}).`, "fix the check and merge through the gate.");
+            const requireCi = deps.requireCi !== false;
+            const wait = deps.ciWait ?? DEFAULT_CI_WAIT;
+            // TAI-714: a CI run that has not appeared or has not finished is waited for, up to a bound; one that failed stops at once.
+            let statuses: readonly CommitStatus[] = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
+            let ci = ciVerdict(statuses, requireCi, live.sourceCommit);
+            let waited = 0;
+            while (!ci.ok && ci.kind !== "failed" && waited < wait.maxMs) {
+                await wait.sleep(wait.intervalMs);
+                waited += wait.intervalMs;
+                statuses = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
+                ci = ciVerdict(statuses, requireCi, live.sourceCommit);
+            }
+            if (!ci.ok) {
+                const list = statuses.map((s) => `${s.key}: ${s.state}`).join(", ");
+                if (ci.kind === "failed") return await say(`the check is not green on ${live.sourceCommit} (${list}).`, "fix the check and merge through the gate.");
+                const bound = `after waiting ${minutes(waited)} (the bound is ${minutes(wait.maxMs)})`;
+                return ci.kind === "no-ci"
+                    ? await say(`CI has not started on ${live.sourceCommit} ${bound}.`, "start or fix CI and merge through the gate, or turn `require-ci` off if CI cannot run on this account.")
+                    : await say(`CI did not finish on ${live.sourceCommit} ${bound} (${list}).`, "wait for CI to finish, then merge through the gate.");
             }
             const linked = (await findLinkedIssueForPR(deps.workTracker, deps.projectKey, live.url).catch(() => null)) ?? key;
             devKey = linked;

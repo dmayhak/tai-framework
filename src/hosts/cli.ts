@@ -93,7 +93,7 @@ import {
     parseMergeArgs,
     parseCommentArgs,
     parseFindingsCommentArgs,
-    isGreen,
+    ciVerdict,
     isMergeConflict,
     findLinkedIssueForPR,
     resolveStoryKeyForPr,
@@ -171,7 +171,7 @@ import { loadRoster, type Roster } from "../core/personas/roster.js";
 import { resolveAssignment, type AssignmentResolution } from "../core/personas/assignment-helper.js";
 import { areaWindowDaysFromEnv, createEvidenceCache } from "../core/personas/assignee-evidence.js";
 import { suggestAssignees } from "../core/commands/suggest-assignee.js";
-import { allowYoloForOneRun, showSettings, setSetting, changeAdmin, inAiSession, readSettingValue } from "../core/commands/settings.js";
+import { allowYoloForOneRun, showSettings, setSetting, changeAdmin, inAiSession, readSettingValue, readRequireCi } from "../core/commands/settings.js";
 import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
@@ -645,6 +645,7 @@ async function tryResolveReadyGitDeps(
           readonly repos: readonly RepoId[];
           readonly requiredApprovals?: number;
           readonly checkRequired?: boolean;
+          readonly requireCi?: boolean;
           readonly currentHuman?: HumanRef;
           readonly prReviewers?: readonly HumanRef[];
           readonly authorMayReview?: boolean;
@@ -700,6 +701,7 @@ async function tryResolveReadyGitDeps(
         ...(requiredApprovals !== undefined ? { requiredApprovals } : {}),
         // TAI-534: with a check command configured, ready-to-merge needs a result on the commit too.
         checkRequired: checkCommandFromEnv() !== null,
+        requireCi: await readRequireCi(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null),
         currentHuman,
         ...(prReviewers ? { prReviewers } : {}),
         // TAI-585: GitHub refuses an author's own approval unless TAI_PR_SELF_REVIEW records it as a self-review.
@@ -2232,16 +2234,10 @@ async function main(): Promise<void> {
             const pr = await gitHost.getPullRequest(repo, prId);
             if (!pr) throw new Error(`PR ${prId} not found on ${repo}.`);
             const statuses = await gitHost.getCommitStatuses(repo, pr.sourceCommit);
-            if (!isGreen(statuses)) {
-                // TAI-230/250: isGreen only fails here when at least one status EXISTS and
-                // isn't successful — zero statuses is green now (Pipelines is manual-only),
-                // so `statuses` is never empty in this branch.
-                const result: GitMutationResult = {
-                    ok: false,
-                    reason: `CI status not green for ${pr.sourceCommit} — ${statuses
-                        .map((s) => `${s.key}: ${s.state}`)
-                        .join(", ")}.`,
-                };
+            // TAI-714: CI must exist and be finished and successful, unless `require-ci` is off for this project; a failed one blocks either way.
+            const ci = ciVerdict(statuses, await readRequireCi(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null), pr.sourceCommit);
+            if (!ci.ok) {
+                const result: GitMutationResult = { ok: false, reason: ci.reason };
                 console.log(renderGitMutationResult(result, personaId));
                 return;
             }
@@ -2517,6 +2513,7 @@ async function main(): Promise<void> {
                   finish: {
                       checkCommand: checkCommandFromEnv(),
                       ...requiredApprovalsFromEnv(),
+                      requireCi: await readRequireCi(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null),
                       stamp: (body: string) => stampComment(body, developer),
                       assertClean: () => assertCleanTree(process.cwd(), config.taiRoot),
                       prepare: () => prepareCleanDefaultBranch(process.cwd(), config.taiRoot),

@@ -27,7 +27,7 @@ import {
     parseMergeArgs,
     parseCommentArgs,
     parseFindingsCommentArgs,
-    isGreen,
+    ciVerdict,
     isMergeConflict,
     findLinkedIssueForPR,
     resolveStoryKeyForPr,
@@ -194,21 +194,61 @@ function statusFixture(state: CommitStatus["state"]): CommitStatus {
     return { key: "build", name: "build", state };
 }
 
-describe("isGreen", () => {
-    it("true when there are no statuses at all (TAI-230/250: Pipelines is manual-only now, so nobody having run one is the ordinary case, not a block)", () => {
-        assert.equal(isGreen([]), true);
+describe("ciVerdict (TAI-714)", () => {
+    const own = (state: CommitStatus["state"]): CommitStatus => ({ key: "tai-check", name: "tai-check", state });
+    const C = "abc123";
+
+    it("require-ci on: no status at all is refused as no CI run yet", () => {
+        const v = ciVerdict([], true, C);
+        assert.equal(v.ok, false);
+        assert.equal(!v.ok && v.kind, "no-ci");
+        assert.match(!v.ok ? v.reason : "", /No CI run on this commit yet \(abc123\)/);
     });
 
-    it("true when every status succeeded", () => {
-        assert.equal(isGreen([statusFixture("successful"), statusFixture("successful")]), true);
+    it("require-ci on: only TAI's own check is not a CI run", () => {
+        const v = ciVerdict([own("successful")], true, C);
+        assert.equal(!v.ok && v.kind, "no-ci");
     });
 
-    it("false when any status failed", () => {
-        assert.equal(isGreen([statusFixture("successful"), statusFixture("failed")]), false);
+    it("require-ci on: queued or running CI is refused as waiting for CI", () => {
+        const v = ciVerdict([statusFixture("inProgress")], true, C);
+        assert.equal(!v.ok && v.kind, "waiting");
+        assert.match(!v.ok ? v.reason : "", /Waiting for CI/);
     });
 
-    it("false when a status is still in progress", () => {
-        assert.equal(isGreen([statusFixture("inProgress")]), false);
+    it("require-ci on: successful CI passes, with or without tai-check", () => {
+        assert.equal(ciVerdict([statusFixture("successful")], true, C).ok, true);
+        assert.equal(ciVerdict([statusFixture("successful"), own("successful")], true, C).ok, true);
+    });
+
+    it("require-ci on: one successful and one still running is refused", () => {
+        assert.equal(ciVerdict([statusFixture("successful"), { ...statusFixture("inProgress"), key: "lint" }], true, C).ok, false);
+    });
+
+    it("failed CI is refused with the status named, on or off", () => {
+        for (const on of [true, false]) {
+            const v = ciVerdict([statusFixture("successful"), { ...statusFixture("failed"), key: "lint" }], on, C);
+            assert.equal(!v.ok && v.kind, "failed");
+            assert.match(!v.ok ? v.reason : "", /CI status not green for abc123 — lint: failed/);
+        }
+    });
+
+    it("a stopped CI run counts as failed", () => {
+        assert.equal(ciVerdict([statusFixture("stopped")], true, C).ok, false);
+    });
+
+    it("require-ci off: no status at all passes", () => {
+        assert.equal(ciVerdict([], false, C).ok, true);
+    });
+
+    it("require-ci off: a CI run that is present but still running is still refused", () => {
+        assert.equal(ciVerdict([statusFixture("inProgress")], false, C).ok, false);
+    });
+
+    it("tai-check must be successful either way", () => {
+        assert.equal(ciVerdict([own("failed")], false, C).ok, false);
+        assert.equal(ciVerdict([own("inProgress")], false, C).ok, false);
+        assert.equal(ciVerdict([own("successful")], false, C).ok, true);
     });
 });
 

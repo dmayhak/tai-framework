@@ -4,7 +4,7 @@
 > vision, design decisions, and open questions. Every persona and every AI session must
 > read this file first. When decisions change, update this file — do not let it drift.
 >
-> **Last updated:** 2026-11-10 (rev 167). The revision history is in `CHANGELOG.md`; this file states what is
+> **Last updated:** 2026-11-11 (rev 168). The revision history is in `CHANGELOG.md`; this file states what is
 > true now. A change to the brief adds an entry there, not here.
 >
 > **Working title:** Team AI · **Package/repo:** `tai-framework` · **Command prefix:** `/tai_`
@@ -1042,10 +1042,15 @@ decision.**
      at all on the commit refuses the merge. It is how a
      project with no CI on pull requests gets its suite run before a merge; the result is self-attested. A
      project that sets no check command skips this rule.
-  6. **CI**, as before: any commit status that exists must be successful, whether a pipeline or `git-pr
-     check` produced it.
+  6. **CI** (`ciVerdict` in `core/commands/git-pr.ts`, TAI-714): with the `require-ci` setting on (the default), the commit
+     needs at least one CI status (any status that is not TAI's own `tai-check`) and every one must be finished and
+     successful. None yet is refused as "No CI run on this commit yet" (a fresh push has none until the host registers its
+     run), queued or running CI as "Waiting for CI". With `require-ci` off (CI cannot run on the account) no CI run need exist,
+     but a status that is present and failed or still running still blocks. `tai-check`, when present, must be successful
+     either way. `git-pr merge`, `/tai-ready` (a PR waiting on CI is listed as waiting with the same sentence; a PR whose CI
+     failed stays out of both lists, as before) and the DEV-YOLO finish step all use the one verdict.
 
-  `git-pr merge … force=true` merges past rules 1 to 5 (never a failed or running status) and leaves a stamped `Merge-gate override:`
+  `git-pr merge … force=true` merges past rules 1 to 5 (never rule 6: no CI run, a failed or a running status) and leaves a stamped `Merge-gate override:`
   comment on the PR listing what was not met. It **replaces the old "very minor fix → fix, test, merge"
   judgment rule**: a fix pushed after approval makes that approval stale, so the merge is refused; for a very
   minor fix (a typo or wording, no behavior change) the one merging uses `force=true` and the override is on
@@ -1230,7 +1235,7 @@ comment's content.
 - **Settings are a typed `Settings` page, shown and changed with `tai-settings`.** The page sits in the `Config`
   folder and is read through the DocStore like `Personas` and `PR Reviewers`, so both backends behave the same.
   Its table holds per-user values keyed by email; its `Autonomy admins` list names the humans who may change an
-  autonomy setting. `core/settings/settings.ts` defines each setting (`dev-yolo`, `review-rounds`, `reviewer`)
+  autonomy setting. `core/settings/settings.ts` defines each setting (`dev-yolo`, `review-rounds`, `reviewer`, `require-ci`)
   with a type, default and meaning, and refuses an unknown key or a bad value; a hand-edited bad row is ignored and
   reported. `settings` shows every setting with its value and default, `settings set <key> <value>` changes one, and
   `settings admins add|remove <email>` edits the list (`core/commands/settings.ts`). An autonomy change is refused
@@ -1239,7 +1244,7 @@ comment's content.
   against accidental self-escalation, not a defence against a session set on evading it. The `Autonomy admins` list is
   the same: anyone who can edit the Confluence page can edit it by hand, so it gates this command and is not proof of a
   human decision. A save changes only the rows and admin entries TAI understands and keeps every other row and line
-  of the page. Only `do-dev-tasks` reads a setting so far (`dev-yolo`, to choose between its two modes, and with it on, the unattended run below). `review-rounds` defaults to 4. A change to an autonomy setting through
+  of the page. `do-dev-tasks` reads `dev-yolo` (to choose between its two modes, and with it on, the unattended run below) and `review-rounds` (default 4); `git-pr merge`, `/tai-ready` and the DEV-YOLO finish step read `require-ci` (default on, an autonomy setting: Autonomy admins only, in a plain terminal, the `dev-yolo` guard); a settings page that cannot be read counts as on. A change to an autonomy setting through
   `settings set` also records, in `.tai/autonomy-attestations.json` on that machine (`core/settings/attestation.ts`), that this
   person set it, even when the page already held the value. The unattended Dev run (Epic TAI-625) does not treat the page
   alone as proof that a person turned autonomy on: `core/commands/yolo-checks.ts` stops a ticket unless DEV-YOLO is on for
@@ -1265,8 +1270,8 @@ comment's content.
   above Suggestion, a request for changes, no approval on the PR's current commit, an approval whose findings do not lean `approve` (the unattended reviewer sets its `leaning` by the same bar, `requestChanges` on a critical finding and `approve` otherwise, never `neither`); the reviewer is also given the Story's numbered acceptance criteria as data, and a criterion the change does not meet is a critical finding, so the run stops for a person (a Story with no criteria, or whose criteria cannot be read, reviews as before and the review says so), a failed run, or the last round ending
   in a push with no fresh review stops that ticket with a `Handoff:` for a person and the batch goes on. The findings must name the PR's current commit, and the PR must not move during the review. `git-pr review` and `git-pr comment-findings` refuse a PR that is merged or closed (as `review-prep` does), so a reviewer run that outlives the merge posts no second review or approval. A fix that pushed
   needs a fresh review; one that pushed nothing keeps the approval. An approved PR is then merged by `core/commands/dev-yolo-finish.ts`: only through the same gate as `git-pr merge`
-  (the check green, the gate met, a check result present when a check command is set, and the approval on the current commit
-  the automated reviewer's own), on the commit the gate checked, never with force. A merge the host refuses because the PR conflicts with the default branch is not a stop when a review round is left: a Developer run merges the default branch into the PR's branch (a merge commit, never a rebase or a force push), resolves the conflicts that are mechanical (both sides kept, a number that must stay unique renumbered), runs the checks, pushes and posts a `Conflict resolution:` comment saying how each file was resolved; a conflict in the logic of the same lines on both sides makes the run abort the merge and push nothing. The push is a new commit, so it goes back to the review loop for a fresh review (the reviewer is told to check the resolution against that comment and to make one that dropped behaviour a finding), and the merge goes through the gate as before; a conflict found in the last round, or one the run cannot resolve, stops with a `Handoff:` naming the files. The working tree must be clean before the merge, so a dirty one stops the ticket while the PR is still open. A PR comment records that the approval was
+  (the CI verdict above, the gate met, a check result present when a check command is set, and the approval on the current commit
+  the automated reviewer's own), on the commit the gate checked, never with force. With `require-ci` on it first waits up to five minutes (polling every 15 seconds) for CI to appear and finish, then stops with a hand-off saying "CI has not started" or "CI did not finish" and the wait; a CI status that already failed stops at once. A merge the host refuses because the PR conflicts with the default branch is not a stop when a review round is left: a Developer run merges the default branch into the PR's branch (a merge commit, never a rebase or a force push), resolves the conflicts that are mechanical (both sides kept, a number that must stay unique renumbered), runs the checks, pushes and posts a `Conflict resolution:` comment saying how each file was resolved; a conflict in the logic of the same lines on both sides makes the run abort the merge and push nothing. The push is a new commit, so it goes back to the review loop for a fresh review (the reviewer is told to check the resolution against that comment and to make one that dropped behaviour a finding), and the merge goes through the gate as before; a conflict found in the last round, or one the run cannot resolve, stops with a `Handoff:` naming the files. The working tree must be clean before the merge, so a dirty one stops the ticket while the PR is still open. A PR comment records that the approval was
   automated, by which account and on which commit. The linked ticket goes to Done as `git-pr merge` does, the checkout is
   brought to the updated default branch, and a fresh Tester run verifies the Story or Bug against its criteria. The Story or Bug is closed only when
   that run posts a `Verified:` comment as its first line, stamped as the Tester and new during the run, with no `Not verified:` among the new ones, and no other subtask of the Story still open; `Not verified:`, no verdict or any refusal leaves it

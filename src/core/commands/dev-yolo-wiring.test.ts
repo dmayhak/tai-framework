@@ -51,7 +51,7 @@ async function world(run: (w: { wiring: YoloWiring; task: DevTask; handoffs: str
             getPullRequest: async () => ({ ...pr, sourceCommit: heads.shift() ?? HEAD, ...(over.approved ? { reviewers: [{ human: BOT, status: "approved" }] } : {}) }),
             mergePullRequest: async () => over.mergeResult ?? { ok: true, pullRequest: pr },
             getCurrentUser: async () => ME,
-            getCommitStatuses: async () => [],
+            getCommitStatuses: async () => [{ key: "ci", name: "ci", state: "successful" }],
             // The first read is before the reviewer run, the later ones after it.
             listPullRequestActivity: async () =>
                 activityReads++ === 0

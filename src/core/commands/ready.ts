@@ -59,7 +59,7 @@ import { findNotVerified, findReadyToClose } from "../storage/verification.js";
 import { findDesignWithoutDev, type DesignWithoutDev } from "../storage/design-without-dev.js";
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { CommitSha, GitHost, PullRequestRef, RepoId } from "../git/interface.js";
-import { isGreen } from "./git-pr.js";
+import { ciVerdict } from "./git-pr.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
 import { checkMergeGate, DEFAULT_REQUIRED_APPROVALS, lastDecisionBy, sameCommit } from "../git/merge-gate.js";
 import { sameHuman } from "../personas/roster.js";
@@ -94,6 +94,8 @@ export interface FindReadyWorkDeps {
     readonly requiredApprovals?: number;
     /** TAI-534: the project has a check command, so a PR whose commit has no status is not ready to merge. */
     readonly checkRequired?: boolean;
+    /** TAI-714: whether the merge gate needs a CI run (the `require-ci` setting). Default true, as in `git-pr merge`. */
+    readonly requireCi?: boolean;
     /** rev 52: the current human (resolved from BITBUCKET_EMAIL), for readyToReview's
      *  eligibility check. readyToReview is empty without this. */
     readonly currentHuman?: HumanRef;
@@ -612,7 +614,7 @@ async function syncTestTiersToToDo(
  *  (TAI-211/212), neither of which needs `taiRoot` for this part. */
 type PRSectionDeps = Pick<
     FindReadyWorkDeps,
-    "workTracker" | "projectKey" | "gitHost" | "repos" | "requiredApprovals" | "checkRequired" | "currentHuman" | "prReviewers" | "authorMayReview"
+    "workTracker" | "projectKey" | "gitHost" | "repos" | "requiredApprovals" | "checkRequired" | "requireCi" | "currentHuman" | "prReviewers" | "authorMayReview"
 >;
 
 interface PRSections {
@@ -675,9 +677,16 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
                 continue;
             }
             const statuses = await deps.gitHost.getCommitStatuses(c.pullRequest.repo, c.pullRequest.sourceCommit);
+            // TAI-714: the same CI verdict `git-pr merge` gives. A PR still waiting on CI is listed as waiting, with the gate's sentence.
+            const ci = ciVerdict(statuses, deps.requireCi !== false, c.pullRequest.sourceCommit);
+            if (!ci.ok) {
+                // A failed run has its own state on the PR and stays out of both lists, as before.
+                if (ci.kind !== "failed") waiting.push({ ...c, blockers: [ci.reason] });
+                continue;
+            }
             // TAI-534: with a check command configured, "no result at all" is not ready either.
             if (deps.checkRequired && statuses.length === 0) continue;
-            if (isGreen(statuses)) merge.push(c);
+            merge.push(c);
         }
         readyToMerge = merge;
         waitingToMerge = waiting;
@@ -963,6 +972,8 @@ export interface FindReadyPRWorkDeps {
     readonly requiredApprovals?: number;
     /** TAI-534: the project has a check command, so a PR whose commit has no status is not ready to merge. */
     readonly checkRequired?: boolean;
+    /** TAI-714: whether the merge gate needs a CI run (the `require-ci` setting). Default true, as in `git-pr merge`. */
+    readonly requireCi?: boolean;
     readonly currentHuman?: HumanRef;
     readonly prReviewers?: readonly HumanRef[];
     readonly authorMayReview?: boolean;
