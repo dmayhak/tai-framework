@@ -8,7 +8,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 
 * New autonomy setting `require-ci`, on by default (Autonomy admins only, plain terminal: the `dev-yolo` guard).
 * On: the commit needs at least one CI status (any status that is not `tai-check`) and every one finished and successful. None is "No CI run on this commit yet"; queued or running is "Waiting for CI". Off: no CI run need exist, but a present status that failed or is still running still blocks. `tai-check` is unchanged and required either way.
-* One verdict, `ciVerdict`, replaces `isGreen` in `git-pr merge`, `/tai-ready` (a PR waiting on CI is listed as waiting, with the same sentence) and the DEV-YOLO finish step, which waits up to five minutes (every 15 seconds) for CI to appear and finish, then stops with a hand-off naming "CI has not started" or "CI did not finish". A failed status stops at once and stays out of `/tai-ready`'s lists, as before.
+* One verdict, `ciVerdict`, replaces `isGreen` in `git-pr merge`, `/tai-ready` (a PR waiting on CI is listed as waiting, with the same sentence) and the DEV-YOLO finish step, which runs the gate's other rules first (a ticket the gate refuses stops without waiting), then waits up to five minutes (every 15 seconds) for CI to appear and finish, then stops with a hand-off naming "CI has not started" or "CI did not finish". A failed status stops at once and stays out of `/tai-ready`'s lists, as before.
 * A settings page that cannot be read counts as `require-ci` on. `force=true` does not pass the CI rule.
 * README, the `tai-init` and `tai-pr` skill text and the brief say what it does and when to turn it off (CI cannot run on the account).
 

@@ -108,6 +108,16 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             const pr = await deps.pullRequest(task);
             const live = await deps.gitHost.getPullRequest(pr.repo, pr.id);
             if (!live || live.state !== "open") return await say("the PR is no longer open.", "check what happened to it.");
+            const linked = (await findLinkedIssueForPR(deps.workTracker, deps.projectKey, live.url).catch(() => null)) ?? key;
+            devKey = linked;
+            const verdict = await checkMergeGate({ gitHost: deps.gitHost, workTracker: deps.workTracker, ...(deps.requiredApprovals !== undefined ? { requiredApprovals: deps.requiredApprovals } : {}) }, live, linked as IssueKey);
+            // The approval that carries the merge must be the automated reviewer's own, on this commit.
+            const reviewer = await deps.reviewer();
+            const gateBlockers = verdict.freshApprovals.some((h) => String(h.id).toLowerCase() === String(reviewer.id).toLowerCase())
+                ? verdict.blockers
+                : [...verdict.blockers, `The automated reviewer (${String(reviewer.id)}) has no approval on the current commit (${live.sourceCommit}).`];
+            // TAI-714 (PR 58 review): a ticket the gate refuses anyway stops now, without waiting for CI first.
+            if (gateBlockers.length > 0) return await say(`the merge gate refused: ${gateBlockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
             const requireCi = deps.requireCi !== false;
             const wait = deps.ciWait ?? DEFAULT_CI_WAIT;
             // TAI-714: a CI run that has not appeared or has not finished is waited for, up to a bound; one that failed stops at once.
@@ -128,15 +138,7 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
                     ? await say(`CI has not started on ${live.sourceCommit} ${bound}.`, "start or fix CI and merge through the gate, or turn `require-ci` off if CI cannot run on this account.")
                     : await say(`CI did not finish on ${live.sourceCommit} ${bound} (${list}).`, "wait for CI to finish, then merge through the gate.");
             }
-            const linked = (await findLinkedIssueForPR(deps.workTracker, deps.projectKey, live.url).catch(() => null)) ?? key;
-            devKey = linked;
-            const verdict = await checkMergeGate({ gitHost: deps.gitHost, workTracker: deps.workTracker, ...(deps.requiredApprovals !== undefined ? { requiredApprovals: deps.requiredApprovals } : {}) }, live, linked as IssueKey);
-            // The approval that carries the merge must be the automated reviewer's own, on this commit.
-            const reviewer = await deps.reviewer();
-            const gateBlockers = verdict.freshApprovals.some((h) => String(h.id).toLowerCase() === String(reviewer.id).toLowerCase())
-                ? verdict.blockers
-                : [...verdict.blockers, `The automated reviewer (${String(reviewer.id)}) has no approval on the current commit (${live.sourceCommit}).`];
-            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers, checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
+            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers: [], checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
             if (!proceed) return await say(`the merge gate refused: ${blockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
             // A tree the earlier runs left dirty is found now, while the PR is still open, and not after the merge.
             try {

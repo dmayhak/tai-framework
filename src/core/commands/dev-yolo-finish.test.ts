@@ -134,6 +134,16 @@ describe("finishApproved CI wait (TAI-714)", () => {
             assert.ok(log.some((l) => l.startsWith("merge")));
         }));
 
+    it("a ticket the merge gate refuses stops before any CI wait", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [];
+            pr.approvedBy = [];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /the merge gate refused/);
+        }));
+
     it("does not wait for a CI status that already failed", () =>
         world(async ({ deps, task, log, handoffs, pr }) => {
             pr.statuses = [{ key: "ci", state: "failed" }];
