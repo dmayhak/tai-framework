@@ -110,14 +110,18 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             if (!live || live.state !== "open") return await say("the PR is no longer open.", "check what happened to it.");
             const linked = (await findLinkedIssueForPR(deps.workTracker, deps.projectKey, live.url).catch(() => null)) ?? key;
             devKey = linked;
-            const verdict = await checkMergeGate({ gitHost: deps.gitHost, workTracker: deps.workTracker, ...(deps.requiredApprovals !== undefined ? { requiredApprovals: deps.requiredApprovals } : {}) }, live, linked as IssueKey);
-            // The approval that carries the merge must be the automated reviewer's own, on this commit.
+            // The gate's own rules, read from the PR as it is now. The approval that carries the merge must be the automated reviewer's own, on this commit.
             const reviewer = await deps.reviewer();
-            const gateBlockers = verdict.freshApprovals.some((h) => String(h.id).toLowerCase() === String(reviewer.id).toLowerCase())
-                ? verdict.blockers
-                : [...verdict.blockers, `The automated reviewer (${String(reviewer.id)}) has no approval on the current commit (${live.sourceCommit}).`];
+            const gateRefusal = async (pull: PullRequestRef): Promise<string | null> => {
+                const verdict = await checkMergeGate({ gitHost: deps.gitHost, workTracker: deps.workTracker, ...(deps.requiredApprovals !== undefined ? { requiredApprovals: deps.requiredApprovals } : {}) }, pull, linked as IssueKey);
+                const gateBlockers = verdict.freshApprovals.some((h) => String(h.id).toLowerCase() === String(reviewer.id).toLowerCase())
+                    ? verdict.blockers
+                    : [...verdict.blockers, `The automated reviewer (${String(reviewer.id)}) has no approval on the current commit (${pull.sourceCommit}).`];
+                return gateBlockers.length > 0 ? `the merge gate refused: ${gateBlockers.map((b) => b.replace(/\.$/, "")).join("; ")}.` : null;
+            };
             // TAI-714 (PR 58 review): a ticket the gate refuses anyway stops now, without waiting for CI first.
-            if (gateBlockers.length > 0) return await say(`the merge gate refused: ${gateBlockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
+            const refusedEarly = await gateRefusal(live);
+            if (refusedEarly) return await say(refusedEarly, "meet what the gate names, then merge it.");
             const requireCi = deps.requireCi !== false;
             const wait = deps.ciWait ?? DEFAULT_CI_WAIT;
             // TAI-714: a CI run that has not appeared or has not finished is waited for, up to a bound; one that failed stops at once.
@@ -141,6 +145,14 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
                 return ci.kind === "no-ci"
                     ? await say(`CI has not started on ${live.sourceCommit} ${bound}.`, "start or fix CI and merge through the gate, or turn `require-ci` off if CI cannot run on this account.")
                     : await say(`CI did not finish on ${live.sourceCommit} ${bound} (${list}).`, "wait for CI to finish, then merge through the gate.");
+            }
+            // The wait can last minutes: a request for changes, a withdrawn approval or a push made meanwhile must be seen before the merge, so the PR and the gate are read again.
+            if (waited > 0) {
+                const fresh = await deps.gitHost.getPullRequest(live.repo, live.id);
+                if (!fresh || fresh.state !== "open") return await say("the PR is no longer open.", "check what happened to it.");
+                if (fresh.sourceCommit !== live.sourceCommit) return await say(`the PR moved to ${fresh.sourceCommit} while waiting for CI on ${live.sourceCommit}.`, "run the ticket again so the new commit is reviewed.");
+                const refusedLate = await gateRefusal(fresh);
+                if (refusedLate) return await say(refusedLate, "meet what the gate names, then merge it.");
             }
             // A tree the earlier runs left dirty is found now, while the PR is still open, and not after the merge.
             try {

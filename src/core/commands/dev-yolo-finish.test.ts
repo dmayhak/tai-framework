@@ -172,6 +172,62 @@ describe("finishApproved CI wait (TAI-714)", () => {
             assert.match(handoffs[0]!, /tai-check: inProgress/);
         }));
 
+    const duringWait = (deps: FinishDeps, change: () => void): FinishDeps => {
+        const base = deps.ciWait!;
+        return {
+            ...deps,
+            ciWait: {
+                ...base,
+                sleep: async (ms) => {
+                    await base.sleep(ms);
+                    change();
+                },
+            },
+        };
+    };
+
+    it("reads the gate again after a wait: an approval withdrawn meanwhile stops the merge", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved(
+                duringWait(deps, () => {
+                    pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }];
+                    pr.approvedBy = [];
+                })
+            )(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /the merge gate refused/);
+        }));
+
+    it("a push made during the wait stops the ticket, naming both commits", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved(
+                duringWait(deps, () => {
+                    pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }];
+                    pr.sourceCommit = "fff9999aaa";
+                })
+            )(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /moved to fff9999aaa while waiting for CI on abc1234def/);
+        }));
+
+    it("a PR closed during the wait is not merged", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved(
+                duringWait(deps, () => {
+                    pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }];
+                    pr.state = "closed";
+                })
+            )(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /the PR is no longer open/);
+        }));
+
     it("does not wait for a CI status that already failed", () =>
         world(async ({ deps, task, log, handoffs, pr }) => {
             pr.statuses = [{ key: "ci", state: "failed" }, { key: "tai-check", state: "successful" }];
