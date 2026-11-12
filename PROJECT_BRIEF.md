@@ -1038,8 +1038,8 @@ decision.**
      commit, or it refuses — and records the outcome on the commit as a status naming who ran it and where
      (`git/local-check.ts`, ADR page 55672833). The tree is read again after the command: if it changed
      tracked files or the head moved, nothing is recorded. The command runs without TAI's own settings (no
-     `TAI_*` or `BITBUCKET_*` variable, nor `GITHUB_TOKEN` or `GH_TOKEN`, reaches it), so the PR's code does not see TAI's credentials. No status
-     at all on the commit refuses the merge. It is how a
+     `TAI_*` or `BITBUCKET_*` variable, nor `GITHUB_TOKEN` or `GH_TOKEN`, reaches it), so the PR's code does not see TAI's credentials. No `tai-check`
+     status on the commit refuses the merge (a CI status does not stand in for it). It is how a
      project with no CI on pull requests gets its suite run before a merge; the result is self-attested. A
      project that sets no check command skips this rule.
   6. **CI** (`ciVerdict` in `core/commands/git-pr.ts`, TAI-714): with the `require-ci` setting on (the default), the commit

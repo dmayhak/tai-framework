@@ -144,11 +144,11 @@ export function renderCheckResult(run: CheckRun, commit: string, prId: string, n
 
 /**
  * The merge-gate blocker for a missing check result, or `null`. Only when the project has a check
- * command and the commit has no status at all: a status that exists and is not successful is the
- * CI rule's business, and that one cannot be overridden.
+ * command and the commit has no `tai-check` status (TAI-714: a CI status does not stand in for it). A `tai-check`
+ * that exists and is not successful is the CI rule's business (`ciVerdict`), and that one cannot be overridden.
  */
 export function missingCheckBlocker(checkCommand: string | null, statuses: readonly CommitStatus[], commit: string): string | null {
-    if (!checkCommand || statuses.length > 0) return null;
+    if (!checkCommand || statuses.some((s) => s.key === CHECK_STATUS_KEY)) return null;
     return `No check result is recorded for the current commit (${commit}). Run \`git-pr check <REPO> [PR-ID]\` from a clean checkout of the PR's branch.`;
 }
 

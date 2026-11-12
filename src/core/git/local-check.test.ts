@@ -100,7 +100,13 @@ describe("the merge gate's missing-check blocker (TAI-534)", () => {
         assert.match(blocker, /^No check result is recorded for the current commit \(abc123def456\)\. Run `git-pr check <REPO> \[PR-ID\]`/);
     });
 
-    it("does not block once any status exists: a failed one is the CI rule's, which cannot be overridden", () => {
+    it("a CI status does not stand in for the check result (TAI-714): only a tai-check status satisfies it", () => {
+        const ci: CommitStatus = { key: "build", name: "build", state: "successful" };
+        assert.match(missingCheckBlocker("npm test", [ci], "abc123def456")!, /No check result is recorded/);
+        assert.equal(missingCheckBlocker("npm test", [ci, passed], "abc123def456"), null);
+    });
+
+    it("does not block once a tai-check status exists: a failed one is the CI rule's, which cannot be overridden", () => {
         assert.equal(missingCheckBlocker("npm test", [passed], "abc123def456"), null);
         assert.equal(missingCheckBlocker("npm test", [{ ...passed, state: "failed" }], "abc123def456"), null);
     });

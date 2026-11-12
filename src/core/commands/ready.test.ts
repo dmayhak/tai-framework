@@ -701,6 +701,10 @@ describe("readyToMerge and a required check result (TAI-534)", () => {
         assert.equal(await run([passed, ci], true), 1);
     });
 
+    test("a successful CI run is not a check result: with a check command configured it is not ready (TAI-714)", async () => {
+        assert.equal(await run([ci], true), 0);
+    });
+
     test("TAI's own check result is not a CI run: with require-ci on (the default) it alone is not ready (TAI-714)", async () => {
         assert.equal(await run([passed], true), 0);
     });

@@ -60,6 +60,7 @@ import { findDesignWithoutDev, type DesignWithoutDev } from "../storage/design-w
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { CommitSha, GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { ciVerdict } from "./git-pr.js";
+import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
 import { checkMergeGate, DEFAULT_REQUIRED_APPROVALS, lastDecisionBy, sameCommit } from "../git/merge-gate.js";
 import { sameHuman } from "../personas/roster.js";
@@ -684,8 +685,8 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
                 if (ci.kind !== "failed") waiting.push({ ...c, blockers: [ci.reason] });
                 continue;
             }
-            // TAI-534: with a check command configured, "no result at all" is not ready either. With require-ci on, ciVerdict has already refused an empty list above, so this line now only matters when require-ci is off.
-            if (deps.checkRequired && statuses.length === 0) continue;
+            // TAI-534: with a check command configured, a commit with no `tai-check` result is not ready either, whatever CI says (TAI-714).
+            if (deps.checkRequired && !statuses.some((s) => s.key === CHECK_STATUS_KEY)) continue;
             merge.push(c);
         }
         readyToMerge = merge;

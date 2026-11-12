@@ -108,7 +108,7 @@ describe("finishApproved CI wait (TAI-714)", () => {
 
     it("stops with 'CI did not finish' when CI stays running", () =>
         world(async ({ deps, task, handoffs, pr }) => {
-            pr.statuses = [{ key: "ci", state: "inProgress" }];
+            pr.statuses = [{ key: "ci", state: "inProgress" }, { key: "tai-check", state: "successful" }];
             const out = await finishApproved(deps)(task, "https://pr/7");
             assert.equal(out.state, "waiting");
             assert.match(handoffs[0]!, /CI did not finish on abc1234def after waiting 1 minute .*ci: inProgress/);
@@ -153,13 +153,23 @@ describe("finishApproved CI wait (TAI-714)", () => {
             assert.match(handoffs[0]!, /No check result is recorded for the current commit/);
         }));
 
-    it("does not wait for a CI status that already failed", () =>
+    it("a successful CI run with no tai-check result stops at the check rule, before any wait", () =>
         world(async ({ deps, task, log, handoffs, pr }) => {
-            pr.statuses = [{ key: "ci", state: "failed" }];
+            pr.statuses = [{ key: "ci", state: "successful" }];
             const out = await finishApproved(deps)(task, "https://pr/7");
             assert.equal(out.state, "waiting");
             assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
-            assert.match(handoffs[0]!, /the check is not green on abc1234def \(ci: failed\)/);
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /No check result is recorded for the current commit/);
+        }));
+
+    it("does not wait for a CI status that already failed", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "ci", state: "failed" }, { key: "tai-check", state: "successful" }];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /the check is not green on abc1234def \(ci: failed, tai-check: successful\)/);
         }));
 
     it("require-ci off: no CI status needs no wait and the merge goes ahead; a failed one still stops", () =>
