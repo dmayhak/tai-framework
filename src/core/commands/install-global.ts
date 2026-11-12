@@ -321,7 +321,7 @@ function prSkillBody(taiHome: string): string {
         "`uat-after-merge` label, a check result on the current commit when the project has a check command " +
         "(`git-pr check`), and a finished, successful CI run on the commit (none yet, or still running, refuses; " +
         "the person's own `require-ci` setting (settings are per person) turns the need for a run off when CI cannot run on the account, and a failed run still blocks). When it refuses, report the reasons it printed and " +
-        "get what is missing; do not work around it. `force=true` merges past everything but a failed or running status and " +
+        "get what is missing; do not work around it. `force=true` merges past everything but the CI rule (no CI run yet when `require-ci` is on, a failed or a running status) and " +
         "leaves a stamped override comment on the PR — use it on your own ONLY for the very minor fix " +
         "described next, and otherwise only when the human explicitly says so.\n\n" +
         "**Comments-before-merge (TAI-382/383) — even an approved PR:** an approval is a decision, " +

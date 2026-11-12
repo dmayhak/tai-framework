@@ -684,7 +684,7 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
                 if (ci.kind !== "failed") waiting.push({ ...c, blockers: [ci.reason] });
                 continue;
             }
-            // TAI-534: with a check command configured, "no result at all" is not ready either.
+            // TAI-534: with a check command configured, "no result at all" is not ready either. With require-ci on, ciVerdict has already refused an empty list above, so this line now only matters when require-ci is off.
             if (deps.checkRequired && statuses.length === 0) continue;
             merge.push(c);
         }
