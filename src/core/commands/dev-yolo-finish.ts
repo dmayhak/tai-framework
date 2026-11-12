@@ -8,7 +8,7 @@
  */
 
 import type { CommitStatus, GitHost, PullRequestRef } from "../git/interface.js";
-import { isGreen, findLinkedIssueForPR } from "./git-pr.js";
+import { ciVerdict, findLinkedIssueForPR } from "./git-pr.js";
 import { checkMergeGate } from "../git/merge-gate.js";
 import { mergeBlockersWithCheck } from "../git/local-check.js";
 import { Status } from "../schema/story-schema.js";
@@ -19,6 +19,20 @@ import { isMergeConflict } from "./git-pr.js";
 import { yoloHandoff, type ConflictStop } from "./dev-yolo.js";
 import { stampedAs } from "../storage/stamp.js";
 
+/** TAI-714: the bounded wait for a CI run. The elapsed time is the sum of the sleeps, so no clock is involved. */
+export interface CiWait {
+    readonly maxMs: number;
+    readonly intervalMs: number;
+    readonly sleep: (ms: number) => Promise<void>;
+}
+
+export const DEFAULT_CI_WAIT: CiWait = { maxMs: 5 * 60_000, intervalMs: 15_000, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
+
+function minutes(ms: number): string {
+    const m = ms / 60_000;
+    return m >= 1 ? `${Number.isInteger(m) ? m : m.toFixed(1)} minute${m === 1 ? "" : "s"}` : `${Math.round(ms / 1000)} seconds`;
+}
+
 export interface FinishDeps {
     readonly gitHost: Pick<GitHost, "getPullRequest" | "getCommitStatuses" | "listPullRequestActivity" | "mergePullRequest" | "addPullRequestComment">;
     readonly workTracker: Pick<WorkTracker, "search" | "getRemoteLinks" | "getIssue" | "transition">;
@@ -28,6 +42,10 @@ export interface FinishDeps {
     /** The project's check command (`TAI_CHECK_COMMAND`), or null: with one, a commit with no check result blocks the merge. */
     readonly checkCommand: string | null;
     readonly requiredApprovals?: number;
+    /** TAI-714: the `require-ci` setting. Default true: the merge needs a finished, successful CI run on the commit. */
+    readonly requireCi?: boolean;
+    /** TAI-714: how long to wait for CI to appear and finish. Defaults to `DEFAULT_CI_WAIT`; the sleep is injectable for tests. */
+    readonly ciWait?: CiWait;
     /** The automated reviewer's account, named in the merge comment. */
     readonly reviewer: () => Promise<Pick<HumanRef, "id" | "displayName">>;
     /** Signs a comment as the Developer persona. */
@@ -90,20 +108,52 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             const pr = await deps.pullRequest(task);
             const live = await deps.gitHost.getPullRequest(pr.repo, pr.id);
             if (!live || live.state !== "open") return await say("the PR is no longer open.", "check what happened to it.");
-            const statuses: readonly CommitStatus[] = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
-            if (!isGreen(statuses)) {
-                return await say(`the check is not green on ${live.sourceCommit} (${statuses.map((s) => `${s.key}: ${s.state}`).join(", ")}).`, "fix the check and merge through the gate.");
-            }
             const linked = (await findLinkedIssueForPR(deps.workTracker, deps.projectKey, live.url).catch(() => null)) ?? key;
             devKey = linked;
-            const verdict = await checkMergeGate({ gitHost: deps.gitHost, workTracker: deps.workTracker, ...(deps.requiredApprovals !== undefined ? { requiredApprovals: deps.requiredApprovals } : {}) }, live, linked as IssueKey);
-            // The approval that carries the merge must be the automated reviewer's own, on this commit.
+            // The gate's own rules, read from the PR as it is now. The approval that carries the merge must be the automated reviewer's own, on this commit.
             const reviewer = await deps.reviewer();
-            const gateBlockers = verdict.freshApprovals.some((h) => String(h.id).toLowerCase() === String(reviewer.id).toLowerCase())
-                ? verdict.blockers
-                : [...verdict.blockers, `The automated reviewer (${String(reviewer.id)}) has no approval on the current commit (${live.sourceCommit}).`];
-            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers, checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
+            const gateRefusal = async (pull: PullRequestRef): Promise<string | null> => {
+                const verdict = await checkMergeGate({ gitHost: deps.gitHost, workTracker: deps.workTracker, ...(deps.requiredApprovals !== undefined ? { requiredApprovals: deps.requiredApprovals } : {}) }, pull, linked as IssueKey);
+                const gateBlockers = verdict.freshApprovals.some((h) => String(h.id).toLowerCase() === String(reviewer.id).toLowerCase())
+                    ? verdict.blockers
+                    : [...verdict.blockers, `The automated reviewer (${String(reviewer.id)}) has no approval on the current commit (${pull.sourceCommit}).`];
+                return gateBlockers.length > 0 ? `the merge gate refused: ${gateBlockers.map((b) => b.replace(/\.$/, "")).join("; ")}.` : null;
+            };
+            // TAI-714 (PR 58 review): a ticket the gate refuses anyway stops now, without waiting for CI first.
+            const refusedEarly = await gateRefusal(live);
+            if (refusedEarly) return await say(refusedEarly, "meet what the gate names, then merge it.");
+            const requireCi = deps.requireCi !== false;
+            const wait = deps.ciWait ?? DEFAULT_CI_WAIT;
+            // TAI-714: a CI run that has not appeared or has not finished is waited for, up to a bound; one that failed stops at once.
+            let statuses: readonly CommitStatus[] = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
+            // The check-result rule does not depend on the wait (CI appearing cannot supply TAI's own result), so it stops first.
+            const { blockers, proceed } = mergeBlockersWithCheck({ gateBlockers: [], checkCommand: deps.checkCommand, statuses, commit: live.sourceCommit, force: false });
             if (!proceed) return await say(`the merge gate refused: ${blockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
+            let ci = ciVerdict(statuses, requireCi, live.sourceCommit);
+            let waited = 0;
+            while (!ci.ok && (ci.kind === "no-ci" || ci.kind === "waiting") && waited < wait.maxMs) {
+                await wait.sleep(wait.intervalMs);
+                waited += wait.intervalMs;
+                statuses = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
+                ci = ciVerdict(statuses, requireCi, live.sourceCommit);
+            }
+            if (!ci.ok) {
+                const list = statuses.map((s) => `${s.key}: ${s.state}`).join(", ");
+                if (ci.kind === "failed" || ci.kind === "check-unfinished") return await say(`the check is not green on ${live.sourceCommit} (${list}).`, "fix the check and merge through the gate.");
+                // The wait is the sum of the sleeps, so the real time is a little longer (each status read takes some): say "at least".
+                const bound = `after waiting at least ${minutes(waited)} (the bound is ${minutes(wait.maxMs)})`;
+                return ci.kind === "no-ci"
+                    ? await say(`CI has not started on ${live.sourceCommit} ${bound}.`, "start or fix CI and merge through the gate, or turn `require-ci` off if CI cannot run on this account.")
+                    : await say(`CI did not finish on ${live.sourceCommit} ${bound} (${list}).`, "wait for CI to finish, then merge through the gate.");
+            }
+            // The wait can last minutes: a request for changes, a withdrawn approval or a push made meanwhile must be seen before the merge, so the PR and the gate are read again.
+            if (waited > 0) {
+                const fresh = await deps.gitHost.getPullRequest(live.repo, live.id);
+                if (!fresh || fresh.state !== "open") return await say("the PR is no longer open.", "check what happened to it.");
+                if (fresh.sourceCommit !== live.sourceCommit) return await say(`the PR moved to ${fresh.sourceCommit} while waiting for CI on ${live.sourceCommit}.`, "run the ticket again so the new commit is reviewed.");
+                const refusedLate = await gateRefusal(fresh);
+                if (refusedLate) return await say(refusedLate, "meet what the gate names, then merge it.");
+            }
             // A tree the earlier runs left dirty is found now, while the PR is still open, and not after the merge.
             try {
                 await deps.assertClean();

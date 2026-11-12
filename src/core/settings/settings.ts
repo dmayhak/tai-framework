@@ -36,6 +36,14 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = [
         meaning: "Let a Dev ticket run unattended from build to merge, verify and close, when it passes every stop check.",
     },
     {
+        key: "require-ci",
+        type: "boolean",
+        default: "true",
+        autonomy: true,
+        meaning:
+            "The merge gate needs a finished, successful CI run on the commit. Turn it off only when CI cannot run on the account (out of Pipelines or Actions minutes); a CI run that is there and failed still blocks.",
+    },
+    {
         key: "review-rounds",
         type: "integer",
         default: "4",

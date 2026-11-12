@@ -17,6 +17,7 @@
  * enough detail to act on, rather than picking one.
  */
 
+import { CHECK_STATUS_KEY } from "../git/local-check.js";
 import type { CommitStatus, MergeStrategy, PullRequestId, RepoId } from "../git/interface.js";
 import type { GitHost } from "../git/interface.js";
 import { toPullRequestId } from "../git/interface.js";
@@ -43,27 +44,47 @@ export async function resolvePullRequestId(
     return open[0]!.id;
 }
 
-// ---------- CI-status gating (TAI-107/TAI-108, revised TAI-230/250) ----------
+// ---------- CI-status gating (TAI-107/TAI-108, revised TAI-230/250, TAI-714) ----------
 //
 // Brief §5.4: "Merge/Deploy -> GitHost.mergePullRequest, gated on GitHost.getCommitStatuses
-// being green first." Confirmed live (2026-08-20) that nothing in the codebase actually did
-// this — both this session's real merges (PR #16, #17) went through with zero CI check.
+// being green first."
 //
-// REVISED (TAI-230/250, human-confirmed 2026-08-27): the original rule treated zero statuses
-// as failing, on the assumption Pipelines always auto-ran on push so an empty list meant
-// something was wrong. That assumption no longer holds — `bitbucket-pipelines.yml` is now a
-// `custom:` (manual-only) pipeline after hitting the 50 build-minute/month free-tier quota
-// twice, so zero statuses is the ORDINARY case for every commit unless a human deliberately
-// triggers a run. A merge must not be held up over a pipeline nobody asked to run.
+// History: TAI-230/250 made an empty status list green because Pipelines had become manual-only.
+// TAI-714 reverses the default: an empty list is also what a fresh push looks like before the host
+// has registered its CI run, so a merge right after a push could pass before CI reported. The gate
+// now needs a CI result unless the project's `require-ci` setting is off (CI cannot run on the
+// account). A status that exists and is not successful blocks either way.
+
+export type CiVerdict =
+    | { readonly ok: true }
+    | {
+          readonly ok: false;
+          /** `no-ci`: nothing reported yet. `waiting`: reported but not finished. `failed`: a status ended unsuccessfully. `check-unfinished`: TAI's own check is recorded but not finished (a local command sets it, so waiting does not help). */
+          readonly kind: "no-ci" | "waiting" | "failed" | "check-unfinished";
+          readonly reason: string;
+      };
 
 /**
- * "Green" per brief §5.4's merge gate: no EXISTING status may be non-successful (failed,
- * in-progress) — but an empty list is vacuously green, since Pipelines is manual-only and
- * most commits will never have a status at all. A pipeline that WAS actually triggered still
- * gates the merge on its real outcome; only the "nobody ran anything" case stopped blocking.
+ * The CI part of the merge gate, from the commit's statuses.
+ *
+ * A CI status is any status that is not TAI's own `tai-check`. With `requireCi` on, at least one must
+ * exist and every one must be finished and successful. With it off, none need exist; one that is present
+ * and failed (or still running) still blocks. `tai-check`, when present, must be successful either way; one that
+ * is recorded but unfinished is its own kind, since only a local command can change it and waiting would not help.
+ * Failure is reported before waiting, and waiting before absence, so the most final cause is named.
  */
-export function isGreen(statuses: readonly CommitStatus[]): boolean {
-    return statuses.every((s) => s.state === "successful");
+export function ciVerdict(statuses: readonly CommitStatus[], requireCi: boolean, commit: string): CiVerdict {
+    const list = (xs: readonly CommitStatus[]) => xs.map((s) => `${s.key}: ${s.state}`).join(", ");
+    const bad = statuses.filter((s) => s.state === "failed" || s.state === "stopped");
+    if (bad.length > 0) return { ok: false, kind: "failed", reason: `CI status not green for ${commit} — ${list(bad)}.` };
+    const ownUnfinished = statuses.filter((s) => s.key === CHECK_STATUS_KEY && s.state !== "successful");
+    if (ownUnfinished.length > 0) return { ok: false, kind: "check-unfinished", reason: `The TAI check is not finished for ${commit} — ${list(ownUnfinished)}. Run \`git-pr check\` again.` };
+    const unfinished = statuses.filter((s) => s.state !== "successful");
+    if (unfinished.length > 0) return { ok: false, kind: "waiting", reason: `Waiting for CI on ${commit} — ${list(unfinished)}.` };
+    if (requireCi && !statuses.some((s) => s.key !== CHECK_STATUS_KEY)) {
+        return { ok: false, kind: "no-ci", reason: `No CI run on this commit yet (${commit}). Wait for CI to start, or turn \`require-ci\` off if CI cannot run on this account.` };
+    }
+    return { ok: true };
 }
 
 /**
@@ -71,7 +92,7 @@ export function isGreen(statuses: readonly CommitStatus[]): boolean {
  * raw rejection text — `rest-client.ts`'s `extractReason`) means a merge conflict specifically,
  * as opposed to any other denial (branch restriction, insufficient approvals, ...). Bitbucket's
  * own conflict message is "You can't merge until you resolve all merge conflicts." (TAI-217/219,
- * confirmed live) — a simple case-insensitive substring check, same pragmatism as `isGreen`'s
+ * confirmed live) — a simple case-insensitive substring check, same pragmatism as `ciVerdict`'s
  * own state check, rather than parsing a structured error code Bitbucket doesn't expose here.
  */
 export function isMergeConflict(reason: string): boolean {

@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { toHumanId } from "../storage/interface.js";
 import { createFilesystemBackend } from "../storage/filesystem-backend.js";
-import { allowYoloForOneRun, changeAdmin, inAiSession, readSettingValue, setSetting, showSettings, type SettingsContext } from "./settings.js";
+import { allowYoloForOneRun, changeAdmin, inAiSession, readRequireCi, readSettingValue, setSetting, showSettings, type SettingsContext } from "./settings.js";
 
 async function withStore(run: (make: (over?: Partial<SettingsContext>) => SettingsContext) => Promise<void>): Promise<void> {
     const dir = await mkdtemp(path.join(tmpdir(), "tai-settings-"));
@@ -45,6 +45,30 @@ describe("tai-settings", () => {
             assert.match(await showSettings(make()), /dev-yolo +true \(default false\)/);
             assert.match(await setSetting(make(), "dev-yolo", "true"), /already true/);
         }));
+
+    it("lists require-ci with its default and meaning, marked as an autonomy setting (TAI-714)", () =>
+        withStore(async (make) => {
+            const out = await showSettings(make());
+            assert.match(out, /require-ci +true \(default\) {2}\[autonomy: admins only\]\n +The merge gate needs a finished, successful CI run/);
+        }));
+
+    it("require-ci: changing it is refused from an AI session, an acting persona, a non-admin and with an empty list; an admin in a plain terminal may (TAI-714)", () =>
+        withStore(async (make) => {
+            await assert.rejects(setSetting(make(), "require-ci", "false"), /Autonomy admins list is empty/);
+            await changeAdmin(make(), "add", "del@mayhak.com");
+            await assert.rejects(setSetting(make({ aiSession: true }), "require-ci", "false"), /AI session/);
+            await assert.rejects(setSetting(make({ actingPersona: "developer" }), "require-ci", "false"), /acting as a persona/);
+            await assert.rejects(setSetting(make({ email: "sam@mayhak.com" }), "require-ci", "false"), /not on the Autonomy admins list/);
+            assert.equal(await readRequireCi(make().docStore, "TAIT", "del@mayhak.com"), true);
+            assert.match(await setSetting(make(), "require-ci", "off"), /require-ci for del@mayhak.com: true -> false/);
+            assert.equal(await readRequireCi(make().docStore, "TAIT", "del@mayhak.com"), false);
+            assert.equal(await readRequireCi(make().docStore, "TAIT", "sam@mayhak.com"), true);
+        }));
+
+    it("readRequireCi requires CI when the settings page cannot be read (TAI-714)", async () => {
+        const broken = { getPage: async () => { throw new Error("down"); } } as unknown as SettingsContext["docStore"];
+        assert.equal(await readRequireCi(broken, "TAIT", "del@mayhak.com"), true);
+    });
 
     it("refuses a bad value and an unknown key without writing the page", () =>
         withStore(async (make) => {

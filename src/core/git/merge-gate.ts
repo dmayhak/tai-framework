@@ -17,7 +17,7 @@
  *  4. A UAT subtask present on the ticket is Done (or Canceled), unless it carries the
  *     `uat-after-merge` label (TAI-507; UAT is before the merge by default, TAI-456).
  *
- * CI is checked next to this, as before (`isGreen`), and is not part of the override.
+ * CI is checked next to this, as before (`ciVerdict`, `require-ci`), and is not part of the override.
  *
  * Crisp rules, so they are checked rather than left to prose (TAI-455) — and the way past
  * them is an explicit, stamped override in `git-pr merge`, not a judgment call nobody sees.

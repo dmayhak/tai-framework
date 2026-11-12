@@ -63,7 +63,7 @@ describe("bitbucket GitHost: tai-framework (live, read-only)", { skip }, () => {
         // TAI-37 master had multiple green builds. REVISED (TAI-230, 2026-08-27): the
         // pipeline is now `custom:` (manual-only) after hitting the 50 build-minute/month
         // free-tier quota twice — a commit with zero statuses is the ordinary case now, not
-        // a sign something's wrong (see isGreen, TAI-230/250). This just confirms the call
+        // a sign something's wrong (TAI-230/250; the rule is now ciVerdict's, TAI-714). This just confirms the call
         // itself works against the real repo; it no longer asserts statuses exist.
         assert.ok(Array.isArray(statuses));
     });

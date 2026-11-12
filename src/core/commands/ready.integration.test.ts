@@ -18,8 +18,8 @@
  * backend test). Split honestly instead:
  *   - The "no CI info => not surfaced" negative path is proven for real, end-to-end, against
  *     TAIT (search -> getRemoteLinks -> real listPullRequests match -> real
- *     getCommitStatuses -> isGreen, all real calls).
- *   - `isGreen`'s positive (green) interpretation is proven separately, read-only, against
+ *     getCommitStatuses -> ciVerdict, all real calls).
+ *   - `ciVerdict`'s positive (green) interpretation is proven separately, read-only, against
  *     `tai-framework`'s own real, always-green `master` HEAD — same reason
  *     `bitbucket-git-host.integration.test.ts` uses it read-only for exactly this: repeatedly
  *     opening new PRs against the real project repo would spend its real PR history /
@@ -44,7 +44,7 @@ import {
 import { createBitbucketBackend, apiTokenAuth as bitbucketApiTokenAuth } from "../git/bitbucket/bitbucket-backend.js";
 import { RestClient } from "../git/bitbucket/rest-client.js";
 import { findReadyWork } from "./ready.js";
-import { isGreen } from "./git-pr.js";
+import { ciVerdict } from "./git-pr.js";
 
 const JIRA_SITE_URL = process.env["TAI_TEST_JIRA_SITE_URL"];
 const JIRA_EMAIL = process.env["TAI_TEST_JIRA_EMAIL"];
@@ -176,7 +176,7 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
         // configured" test established, re-confirmed here on this specific fixture's commit.
         const statuses = await gitHost.getCommitStatuses(repo, pr.sourceCommit);
         assert.deepEqual([...statuses], []);
-        assert.equal(isGreen(statuses), false);
+        assert.equal(ciVerdict(statuses, true, pr.sourceCommit).ok, false);
 
         const result = await findReadyWork({
             workTracker,
@@ -246,20 +246,20 @@ describe("approved-PR-merge surfacing/trigger against real backends (TAIT)", { s
     });
 });
 
-// ---------- isGreen() against real, known-green CI data ----------
+// ---------- ciVerdict() against real, known-green CI data ----------
 
 const skipReadOnly =
     BB_EMAIL && BB_API_TOKEN && BB_WORKSPACE
         ? false
         : "TAI_TEST_BITBUCKET_EMAIL/API_TOKEN/WORKSPACE not set — set them to run this suite.";
 
-describe("isGreen against tai-framework's own real pipeline (live, read-only)", { skip: skipReadOnly }, () => {
+describe("ciVerdict against tai-framework's own real pipeline (live, read-only)", { skip: skipReadOnly }, () => {
     // Deliberately the real project repo, deliberately read-only (no PR opened here) — same
     // reasoning as bitbucket-git-host.integration.test.ts's own read-only section: this
     // project's own bitbucket-pipelines.yml runs on every push to master, so master's HEAD
     // always has real, genuinely green commit statuses to assert against, without spending
     // any of the real repo's PR-history/pipeline-minutes budget to get them.
-    test("isGreen(true) on tai-framework master's real HEAD commit statuses", async () => {
+    test("ciVerdict is ok on tai-framework master's real HEAD commit statuses", async () => {
         const gitHost = createBitbucketBackend({
             auth: bitbucketApiTokenAuth(BB_EMAIL ?? "", BB_API_TOKEN ?? ""),
         }).gitHost;
@@ -271,6 +271,6 @@ describe("isGreen against tai-framework's own real pipeline (live, read-only)", 
         );
         const statuses = await gitHost.getCommitStatuses(repo, toCommitSha(branch.target.hash));
         assert.ok(statuses.length > 0, "expected at least one real commit status on master's HEAD");
-        assert.equal(isGreen(statuses), true, "master's HEAD must be green by the time this test exists");
+        assert.equal(ciVerdict(statuses, true, branch.target.hash).ok, true, "master's HEAD must be green by the time this test exists");
     });
 });

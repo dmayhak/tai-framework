@@ -44,7 +44,7 @@ async function world(run: (r: Run) => Promise<void>, over: { subtask?: SubtaskTy
         const log: string[] = [];
         const handoffs: string[] = [];
         const keys: string[] = [];
-        const state: Run["pr"] = { sourceCommit: HEAD, state: "open", statuses: [{ key: "tai-check", state: "successful" }], approvedBy: [BOT], mergeResult: { ok: true } };
+        const state: Run["pr"] = { sourceCommit: HEAD, state: "open", statuses: [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }], approvedBy: [BOT], mergeResult: { ok: true } };
         const verdict: Run["verdict"] = { text: "Verified: all 1 criteria met", ok: true };
         const ref = () => ({
             id: 7, repo: "o/r", title: "t", sourceCommit: state.sourceCommit, state: state.state, url: "https://pr/7", sourceBranch: "b", destinationBranch: "main", author: ME, createdAt: "", updatedAt: "",
@@ -73,6 +73,8 @@ async function world(run: (r: Run) => Promise<void>, over: { subtask?: SubtaskTy
             projectKey: "TAI",
             pullRequest: async () => ref(),
             checkCommand: "npm test",
+            // TAI-714: no real waiting in a test; each sleep is logged so a test can count them.
+            ciWait: { maxMs: 60_000, intervalMs: 20_000, sleep: async (ms) => void log.push(`sleep ${ms}`) },
             reviewer: async () => BOT,
             stamp: (b) => `${b}\n\n[stamp]`,
             prepare: async () => void log.push("prepare"),
@@ -92,6 +94,157 @@ async function world(run: (r: Run) => Promise<void>, over: { subtask?: SubtaskTy
         await rm(dir, { recursive: true, force: true });
     }
 }
+
+describe("finishApproved CI wait (TAI-714)", () => {
+    it("stops with 'CI has not started' after the bounded wait when no CI status ever appears", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), ["sleep 20000", "sleep 20000", "sleep 20000"]);
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /CI has not started on abc1234def after waiting at least 1 minute \(the bound is 1 minute\)/);
+        }));
+
+    it("stops with 'CI did not finish' when CI stays running", () =>
+        world(async ({ deps, task, handoffs, pr }) => {
+            pr.statuses = [{ key: "ci", state: "inProgress" }, { key: "tai-check", state: "successful" }];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.match(handoffs[0]!, /CI did not finish on abc1234def after waiting at least 1 minute .*ci: inProgress/);
+        }));
+
+    it("goes on to merge when CI appears and succeeds during the wait", () =>
+        world(async ({ deps, task, log, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const base = deps.ciWait!;
+            const withArrival: FinishDeps = {
+                ...deps,
+                ciWait: {
+                    ...base,
+                    sleep: async (ms) => {
+                        await base.sleep(ms);
+                        pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }];
+                    },
+                },
+            };
+            const out = await finishApproved(withArrival)(task, "https://pr/7");
+            assert.equal(out.state, "handed-on");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), ["sleep 20000"]);
+            assert.ok(log.some((l) => l.startsWith("merge")));
+        }));
+
+    it("a ticket the merge gate refuses stops before any CI wait", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [];
+            pr.approvedBy = [];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /the merge gate refused/);
+        }));
+
+    it("a commit with no check result stops before any CI wait when the project has a check command", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /No check result is recorded for the current commit/);
+        }));
+
+    it("a successful CI run with no tai-check result stops at the check rule, before any wait", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "ci", state: "successful" }];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /No check result is recorded for the current commit/);
+        }));
+
+    it("does not wait for a tai-check that is recorded but unfinished", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "inProgress" }];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /tai-check: inProgress/);
+        }));
+
+    const duringWait = (deps: FinishDeps, change: () => void): FinishDeps => {
+        const base = deps.ciWait!;
+        return {
+            ...deps,
+            ciWait: {
+                ...base,
+                sleep: async (ms) => {
+                    await base.sleep(ms);
+                    change();
+                },
+            },
+        };
+    };
+
+    it("reads the gate again after a wait: an approval withdrawn meanwhile stops the merge", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved(
+                duringWait(deps, () => {
+                    pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }];
+                    pr.approvedBy = [];
+                })
+            )(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /the merge gate refused/);
+        }));
+
+    it("a push made during the wait stops the ticket, naming both commits", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved(
+                duringWait(deps, () => {
+                    pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }];
+                    pr.sourceCommit = "fff9999aaa";
+                })
+            )(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /moved to fff9999aaa while waiting for CI on abc1234def/);
+        }));
+
+    it("a PR closed during the wait is not merged", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved(
+                duringWait(deps, () => {
+                    pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "successful" }];
+                    pr.state = "closed";
+                })
+            )(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.ok(!log.some((l) => l.startsWith("merge")));
+            assert.match(handoffs[0]!, /the PR is no longer open/);
+        }));
+
+    it("does not wait for a CI status that already failed", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "ci", state: "failed" }, { key: "tai-check", state: "successful" }];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /the check is not green on abc1234def \(ci: failed, tai-check: successful\)/);
+        }));
+
+    it("require-ci off: no CI status needs no wait and the merge goes ahead; a failed one still stops", () =>
+        world(async ({ deps, task, log, pr }) => {
+            pr.statuses = [{ key: "tai-check", state: "successful" }];
+            const out = await finishApproved({ ...deps, requireCi: false })(task, "https://pr/7");
+            assert.equal(out.state, "handed-on");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+        }));
+});
 
 describe("finishApproved (TAI-634)", () => {
     it("merges through the gate on the checked commit, says the approval was automated, verifies, and closes the Story only on Verified:", () =>

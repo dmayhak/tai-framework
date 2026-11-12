@@ -691,24 +691,97 @@ describe("readyToMerge and a required check result (TAI-534)", () => {
         return count;
     };
     const passed: CommitStatus = { key: "tai-check", name: "TAI check", state: "successful" };
+    const ci: CommitStatus = { key: "build", name: "build", state: "successful" };
 
     test("an approved PR with no status at all is not ready when the project requires a check", async () => {
         assert.equal(await run([], true), 0);
     });
 
-    test("it is ready once the commit has a successful result", async () => {
-        assert.equal(await run([passed], true), 1);
+    test("it is ready once the commit has a successful check result and a successful CI run", async () => {
+        assert.equal(await run([passed, ci], true), 1);
     });
 
-    test("a project that requires no check behaves as before: no status at all is ready", async () => {
-        assert.equal(await run([], false), 1);
-        assert.equal(await run([], undefined), 1);
+    test("a successful CI run is not a check result: with a check command configured it is not ready (TAI-714)", async () => {
+        assert.equal(await run([ci], true), 0);
+    });
+
+    test("...and it is listed as waiting with the sentence git-pr merge gives, not dropped", async () => {
+        let blockers: readonly string[] = [];
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost: new FakeGitHost(new Map([[repo, [pr]]]), [ci]),
+                repos: [repo],
+                checkRequired: true,
+            });
+            blockers = result.waitingToMerge.flatMap((w) => w.blockers);
+        });
+        assert.match(blockers.join("\n"), /^No check result is recorded for the current commit \(/);
+    });
+
+    test("TAI's own check result is not a CI run: with require-ci on (the default) it alone is not ready (TAI-714)", async () => {
+        assert.equal(await run([passed], true), 0);
+    });
+
+    test("a project that requires no check: a successful CI run is ready, no status at all is not (require-ci default on)", async () => {
+        assert.equal(await run([ci], false), 1);
+        assert.equal(await run([ci], undefined), 1);
+        assert.equal(await run([], false), 0);
     });
 
     test("a failed result is never ready, required or not", async () => {
         const failed: CommitStatus = { ...passed, state: "failed" };
         assert.equal(await run([failed], true), 0);
         assert.equal(await run([failed], false), 0);
+    });
+});
+
+describe("readyToMerge and require-ci (TAI-714)", () => {
+    const repo = toRepoId("dmayhak/tai-framework");
+    const ci = (state: CommitStatus["state"]): CommitStatus => ({ key: "build", name: "build", state });
+    const run = async (statuses: readonly CommitStatus[], requireCi: boolean | undefined) => {
+        let out: { ready: number; waiting: readonly string[] } = { ready: -1, waiting: [] };
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost: new FakeGitHost(new Map([[repo, [pr]]]), statuses),
+                repos: [repo],
+                ...(requireCi !== undefined ? { requireCi } : {}),
+            });
+            out = { ready: result.readyToMerge.length, waiting: result.waitingToMerge.flatMap((w) => w.blockers) };
+        });
+        return out;
+    };
+
+    test("no CI run on the commit: waiting, with the same sentence git-pr merge gives", async () => {
+        const r = await run([], undefined);
+        assert.equal(r.ready, 0);
+        assert.match(r.waiting.join("\n"), /No CI run on this commit yet/);
+    });
+
+    test("CI still running: waiting for CI", async () => {
+        const r = await run([ci("inProgress")], true);
+        assert.equal(r.ready, 0);
+        assert.match(r.waiting.join("\n"), /Waiting for CI/);
+    });
+
+    test("successful CI: ready", async () => {
+        assert.deepEqual(await run([ci("successful")], true), { ready: 1, waiting: [] });
+    });
+
+    test("require-ci off: no CI run is ready; a failed one is still not", async () => {
+        assert.deepEqual(await run([], false), { ready: 1, waiting: [] });
+        assert.equal((await run([ci("failed")], false)).ready, 0);
     });
 });
 
