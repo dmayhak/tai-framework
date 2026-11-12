@@ -148,8 +148,9 @@ never created for new work):
   subtask merges, always**: `git-pr merge <DEV-SUBTASK-KEY> <REPO> ...`. The gate (brief §5.4, TAI-462):
   the configured number of approvals cast on the PR's current commit, no request-changes left standing,
   every test tier present on the ticket Done, a `UAT` subtask on the ticket Done unless it carries the
-  `uat-after-merge` label (TAI-507), and `GitHost.getCommitStatuses` green (CI is load-bearing, not
-  advisory). Real practice, not self-certification (`cannotApprove: own-output` is
+  `uat-after-merge` label (TAI-507), and a finished, successful CI run on the commit from `GitHost.getCommitStatuses` (none yet,
+  or still running, refuses; a failed one always blocks; the person's `require-ci` setting turns the need for a run
+  off when CI cannot run on the account, TAI-714). CI is load-bearing, not advisory. Real practice, not self-certification (`cannotApprove: own-output` is
   untouched) — the approval already happened as a separate, independent review action.
   **This same command also transitions the `Dev` subtask itself to Done**, as a second
   write in the same call — the actual completion signal for the unit of work.

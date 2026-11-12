@@ -60,7 +60,7 @@ import { findDesignWithoutDev, type DesignWithoutDev } from "../storage/design-w
 import { normalizeSubtaskTypeToken, skippedSubtaskTypeTokens } from "../storage/comment-markers.js";
 import type { CommitSha, GitHost, PullRequestRef, RepoId } from "../git/interface.js";
 import { ciVerdict } from "./git-pr.js";
-import { CHECK_STATUS_KEY } from "../git/local-check.js";
+import { CHECK_STATUS_KEY, missingCheckSentence } from "../git/local-check.js";
 import { isEligibleReviewer } from "../git/pr-reviewers.js";
 import { checkMergeGate, DEFAULT_REQUIRED_APPROVALS, lastDecisionBy, sameCommit } from "../git/merge-gate.js";
 import { sameHuman } from "../personas/roster.js";
@@ -686,7 +686,11 @@ async function computePRSections(deps: PRSectionDeps): Promise<PRSections> {
                 continue;
             }
             // TAI-534: with a check command configured, a commit with no `tai-check` result is not ready either, whatever CI says (TAI-714).
-            if (deps.checkRequired && !statuses.some((s) => s.key === CHECK_STATUS_KEY)) continue;
+            // Listed as waiting with the gate's own sentence, so the list and `git-pr merge` agree.
+            if (deps.checkRequired && !statuses.some((s) => s.key === CHECK_STATUS_KEY)) {
+                waiting.push({ ...c, blockers: [missingCheckSentence(c.pullRequest.sourceCommit)] });
+                continue;
+            }
             merge.push(c);
         }
         readyToMerge = merge;

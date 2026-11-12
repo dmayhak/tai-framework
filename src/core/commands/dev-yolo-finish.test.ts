@@ -163,6 +163,15 @@ describe("finishApproved CI wait (TAI-714)", () => {
             assert.match(handoffs[0]!, /No check result is recorded for the current commit/);
         }));
 
+    it("does not wait for a tai-check that is recorded but unfinished", () =>
+        world(async ({ deps, task, log, handoffs, pr }) => {
+            pr.statuses = [{ key: "ci", state: "successful" }, { key: "tai-check", state: "inProgress" }];
+            const out = await finishApproved(deps)(task, "https://pr/7");
+            assert.equal(out.state, "waiting");
+            assert.deepEqual(log.filter((l) => l.startsWith("sleep")), []);
+            assert.match(handoffs[0]!, /tai-check: inProgress/);
+        }));
+
     it("does not wait for a CI status that already failed", () =>
         world(async ({ deps, task, log, handoffs, pr }) => {
             pr.statuses = [{ key: "ci", state: "failed" }, { key: "tai-check", state: "successful" }];

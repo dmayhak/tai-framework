@@ -127,7 +127,7 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             if (!proceed) return await say(`the merge gate refused: ${blockers.map((b) => b.replace(/\.$/, "")).join("; ")}.`, "meet what the gate names, then merge it.");
             let ci = ciVerdict(statuses, requireCi, live.sourceCommit);
             let waited = 0;
-            while (!ci.ok && ci.kind !== "failed" && waited < wait.maxMs) {
+            while (!ci.ok && (ci.kind === "no-ci" || ci.kind === "waiting") && waited < wait.maxMs) {
                 await wait.sleep(wait.intervalMs);
                 waited += wait.intervalMs;
                 statuses = await deps.gitHost.getCommitStatuses(live.repo, live.sourceCommit);
@@ -135,7 +135,7 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             }
             if (!ci.ok) {
                 const list = statuses.map((s) => `${s.key}: ${s.state}`).join(", ");
-                if (ci.kind === "failed") return await say(`the check is not green on ${live.sourceCommit} (${list}).`, "fix the check and merge through the gate.");
+                if (ci.kind === "failed" || ci.kind === "check-unfinished") return await say(`the check is not green on ${live.sourceCommit} (${list}).`, "fix the check and merge through the gate.");
                 const bound = `after waiting ${minutes(waited)} (the bound is ${minutes(wait.maxMs)})`;
                 return ci.kind === "no-ci"
                     ? await say(`CI has not started on ${live.sourceCommit} ${bound}.`, "start or fix CI and merge through the gate, or turn `require-ci` off if CI cannot run on this account.")

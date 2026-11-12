@@ -149,6 +149,11 @@ export function renderCheckResult(run: CheckRun, commit: string, prId: string, n
  */
 export function missingCheckBlocker(checkCommand: string | null, statuses: readonly CommitStatus[], commit: string): string | null {
     if (!checkCommand || statuses.some((s) => s.key === CHECK_STATUS_KEY)) return null;
+    return missingCheckSentence(commit);
+}
+
+/** The sentence for a commit with no check result: one wording for `git-pr merge`, the finish step and `/tai-ready`. */
+export function missingCheckSentence(commit: string): string {
     return `No check result is recorded for the current commit (${commit}). Run \`git-pr check <REPO> [PR-ID]\` from a clean checkout of the PR's branch.`;
 }
 

@@ -245,6 +245,13 @@ describe("ciVerdict (TAI-714)", () => {
         assert.equal(ciVerdict([statusFixture("inProgress")], false, C).ok, false);
     });
 
+    it("an unfinished tai-check is its own kind, not 'waiting for CI' (a local command sets it, so waiting does not help)", () => {
+        const v = ciVerdict([statusFixture("successful"), own("inProgress")], true, C);
+        assert.equal(!v.ok && v.kind, "check-unfinished");
+        assert.match(!v.ok ? v.reason : "", /The TAI check is not finished for abc123/);
+        assert.doesNotMatch(!v.ok ? v.reason : "", /Waiting for CI/);
+    });
+
     it("tai-check must be successful either way", () => {
         assert.equal(ciVerdict([own("failed")], false, C).ok, false);
         assert.equal(ciVerdict([own("inProgress")], false, C).ok, false);

@@ -59,8 +59,8 @@ export type CiVerdict =
     | { readonly ok: true }
     | {
           readonly ok: false;
-          /** `no-ci`: nothing reported yet. `waiting`: reported but not finished. `failed`: a status ended unsuccessfully. */
-          readonly kind: "no-ci" | "waiting" | "failed";
+          /** `no-ci`: nothing reported yet. `waiting`: reported but not finished. `failed`: a status ended unsuccessfully. `check-unfinished`: TAI's own check is recorded but not finished (a local command sets it, so waiting does not help). */
+          readonly kind: "no-ci" | "waiting" | "failed" | "check-unfinished";
           readonly reason: string;
       };
 
@@ -69,13 +69,16 @@ export type CiVerdict =
  *
  * A CI status is any status that is not TAI's own `tai-check`. With `requireCi` on, at least one must
  * exist and every one must be finished and successful. With it off, none need exist; one that is present
- * and failed (or still running) still blocks. `tai-check`, when present, must be successful either way.
+ * and failed (or still running) still blocks. `tai-check`, when present, must be successful either way; one that
+ * is recorded but unfinished is its own kind, since only a local command can change it and waiting would not help.
  * Failure is reported before waiting, and waiting before absence, so the most final cause is named.
  */
 export function ciVerdict(statuses: readonly CommitStatus[], requireCi: boolean, commit: string): CiVerdict {
     const list = (xs: readonly CommitStatus[]) => xs.map((s) => `${s.key}: ${s.state}`).join(", ");
     const bad = statuses.filter((s) => s.state === "failed" || s.state === "stopped");
     if (bad.length > 0) return { ok: false, kind: "failed", reason: `CI status not green for ${commit} — ${list(bad)}.` };
+    const ownUnfinished = statuses.filter((s) => s.key === CHECK_STATUS_KEY && s.state !== "successful");
+    if (ownUnfinished.length > 0) return { ok: false, kind: "check-unfinished", reason: `The TAI check is not finished for ${commit} — ${list(ownUnfinished)}. Run \`git-pr check\` again.` };
     const unfinished = statuses.filter((s) => s.state !== "successful");
     if (unfinished.length > 0) return { ok: false, kind: "waiting", reason: `Waiting for CI on ${commit} — ${list(unfinished)}.` };
     if (requireCi && !statuses.some((s) => s.key !== CHECK_STATUS_KEY)) {

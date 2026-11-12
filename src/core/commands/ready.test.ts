@@ -705,6 +705,25 @@ describe("readyToMerge and a required check result (TAI-534)", () => {
         assert.equal(await run([ci], true), 0);
     });
 
+    test("...and it is listed as waiting with the sentence git-pr merge gives, not dropped", async () => {
+        let blockers: readonly string[] = [];
+        await withBackend(async (backend, taiRoot) => {
+            const dev = await inProgressDev(backend, "Dev");
+            const pr = prFixture({ reviewers: [{ human: REVIEWER_A, status: "approved" }] });
+            await backend.workTracker.createRemoteLink(dev.key, pr.url, "PR");
+            const result = await findReadyWork({
+                workTracker: backend.workTracker,
+                taiRoot,
+                projectKey: "TAI",
+                gitHost: new FakeGitHost(new Map([[repo, [pr]]]), [ci]),
+                repos: [repo],
+                checkRequired: true,
+            });
+            blockers = result.waitingToMerge.flatMap((w) => w.blockers);
+        });
+        assert.match(blockers.join("\n"), /^No check result is recorded for the current commit \(/);
+    });
+
     test("TAI's own check result is not a CI run: with require-ci on (the default) it alone is not ready (TAI-714)", async () => {
         assert.equal(await run([passed], true), 0);
     });
