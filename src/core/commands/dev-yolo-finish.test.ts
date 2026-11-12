@@ -103,7 +103,7 @@ describe("finishApproved CI wait (TAI-714)", () => {
             assert.equal(out.state, "waiting");
             assert.deepEqual(log.filter((l) => l.startsWith("sleep")), ["sleep 20000", "sleep 20000", "sleep 20000"]);
             assert.ok(!log.some((l) => l.startsWith("merge")));
-            assert.match(handoffs[0]!, /CI has not started on abc1234def after waiting 1 minute \(the bound is 1 minute\)/);
+            assert.match(handoffs[0]!, /CI has not started on abc1234def after waiting at least 1 minute \(the bound is 1 minute\)/);
         }));
 
     it("stops with 'CI did not finish' when CI stays running", () =>
@@ -111,7 +111,7 @@ describe("finishApproved CI wait (TAI-714)", () => {
             pr.statuses = [{ key: "ci", state: "inProgress" }, { key: "tai-check", state: "successful" }];
             const out = await finishApproved(deps)(task, "https://pr/7");
             assert.equal(out.state, "waiting");
-            assert.match(handoffs[0]!, /CI did not finish on abc1234def after waiting 1 minute .*ci: inProgress/);
+            assert.match(handoffs[0]!, /CI did not finish on abc1234def after waiting at least 1 minute .*ci: inProgress/);
         }));
 
     it("goes on to merge when CI appears and succeeds during the wait", () =>

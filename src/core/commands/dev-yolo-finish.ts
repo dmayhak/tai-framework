@@ -136,7 +136,8 @@ export function finishApproved(deps: FinishDeps): (task: DevTask, prUrl: string)
             if (!ci.ok) {
                 const list = statuses.map((s) => `${s.key}: ${s.state}`).join(", ");
                 if (ci.kind === "failed" || ci.kind === "check-unfinished") return await say(`the check is not green on ${live.sourceCommit} (${list}).`, "fix the check and merge through the gate.");
-                const bound = `after waiting ${minutes(waited)} (the bound is ${minutes(wait.maxMs)})`;
+                // The wait is the sum of the sleeps, so the real time is a little longer (each status read takes some): say "at least".
+                const bound = `after waiting at least ${minutes(waited)} (the bound is ${minutes(wait.maxMs)})`;
                 return ci.kind === "no-ci"
                     ? await say(`CI has not started on ${live.sourceCommit} ${bound}.`, "start or fix CI and merge through the gate, or turn `require-ci` off if CI cannot run on this account.")
                     : await say(`CI did not finish on ${live.sourceCommit} ${bound} (${list}).`, "wait for CI to finish, then merge through the gate.");
