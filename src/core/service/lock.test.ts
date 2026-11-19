@@ -105,3 +105,22 @@ describe("acquireLock: a lock file still being written", () => {
         assert.equal(later.acquired, true);
     });
 });
+
+describe("acquireLock: a take-over file still being written", () => {
+    it("is waited for, not deleted: a start that lost the race leaves a fresh empty take-over file in place", async () => {
+        await acquireLock(dir, { pid: 100, now: at("2026-11-18T10:00:00Z"), isAlive: () => true });
+        await writeFile(join(dir, `${LOCK_FILE}.takeover`), "");
+        const loser = await acquireLock(dir, { pid: 200, now: () => new Date(), isAlive: () => false });
+        // The dead lock stays, the take-over file is the winner's, and the loser never got the lock.
+        assert.equal(loser.acquired, false);
+        assert.equal(await readFile(join(dir, `${LOCK_FILE}.takeover`), "utf8"), "");
+        assert.equal(JSON.parse(await readFile(join(dir, LOCK_FILE), "utf8")).pid, 100);
+    });
+
+    it("removes a take-over file that has sat empty (its start died)", async () => {
+        await acquireLock(dir, { pid: 100, now: at("2026-11-18T10:00:00Z"), isAlive: () => true });
+        await writeFile(join(dir, `${LOCK_FILE}.takeover`), "");
+        const later = await acquireLock(dir, { pid: 200, now: () => new Date(Date.now() + 60_000), isAlive: () => false });
+        assert.equal(later.acquired, true);
+    });
+});

@@ -45,6 +45,13 @@ function parseLock(text: string): LockInfo | null {
 /** How long an empty or unreadable lock file is taken to be one that its owner is still writing. */
 const WRITING_GRACE_MS = 5000;
 
+/** When `path` was written, if that was within the grace period (so its owner may still be filling it in); otherwise null. */
+async function freshlyWritten(path: string, now: Date): Promise<Date | null> {
+    const written = await stat(path).then((s) => s.mtime, () => null);
+    const age = written ? now.getTime() - written.getTime() : Infinity;
+    return written && age >= 0 && age < WRITING_GRACE_MS ? written : null;
+}
+
 /** The lock file's contents: whether it exists, and what it says when it parses. */
 async function readLock(path: string): Promise<{ readonly exists: boolean; readonly info: LockInfo | null }> {
     try {
@@ -91,9 +98,8 @@ export async function acquireLock(stateDir: string, deps: LockDeps): Promise<Loc
         if (current.info && !(await isStale(current.info))) return { acquired: false, held: current.info };
         // `wx` creates the file before its contents are written: a fresh file that does not parse yet is a start in the middle of taking the lock.
         if (current.exists && !current.info) {
-            const written = await stat(path).then((s) => s.mtime, () => null);
-            const age = written ? deps.now().getTime() - written.getTime() : Infinity;
-            if (written && age >= 0 && age < WRITING_GRACE_MS) return { acquired: false, held: { pid: 0, startedAt: written.toISOString() } };
+            const written = await freshlyWritten(path, deps.now());
+            if (written) return { acquired: false, held: { pid: 0, startedAt: written.toISOString() } };
         }
         // Stale or unreadable. Only the holder of the take-over file may remove it.
         try {
@@ -102,7 +108,9 @@ export async function acquireLock(stateDir: string, deps: LockDeps): Promise<Loc
             if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
             // Another start is taking over; if it died doing so, its file is stale too.
             const other = await readLock(takeoverPath);
-            if (await isStale(other.info)) await unlink(takeoverPath).catch(() => undefined);
+            // The same gap as the lock's own: the winner's file exists but is not written yet. Wait for it; do not delete it.
+            if (other.exists && !other.info && (await freshlyWritten(takeoverPath, deps.now()))) await pause(25);
+            else if (await isStale(other.info)) await unlink(takeoverPath).catch(() => undefined);
             else await pause(25);
             continue;
         }
