@@ -95,3 +95,13 @@ describe("acquireLock: several starts at once over one dead lock", () => {
         assert.equal(results.filter((r) => r.acquired).length, 1);
     });
 });
+
+describe("acquireLock: a lock file still being written", () => {
+    it("holds against an empty lock file that was just created, and takes over one that has sat empty", async () => {
+        await writeFile(join(dir, LOCK_FILE), "");
+        const fresh = await acquireLock(dir, { pid: 200, now: () => new Date(), isAlive: () => false });
+        assert.equal(fresh.acquired, false);
+        const later = await acquireLock(dir, { pid: 200, now: () => new Date(Date.now() + 60_000), isAlive: () => false });
+        assert.equal(later.acquired, true);
+    });
+});

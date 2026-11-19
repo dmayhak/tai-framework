@@ -6,7 +6,7 @@
  * The clock and the "is this process alive" check are injected, so the rules are tested without a real second process.
  */
 
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const LOCK_FILE = "run.lock";
@@ -30,7 +30,7 @@ export type LockResult =
 
 /** What a second start prints: it exits 0 (so the timer unit is not marked failed) and says who holds the lock. */
 export function alreadyRunningMessage(held: LockInfo): string {
-    return `A run is already going (started ${held.startedAt}, pid ${held.pid}); nothing started.`;
+    return `A run is already going (started ${held.startedAt}${held.pid > 0 ? `, pid ${held.pid}` : ""}); nothing started.`;
 }
 
 function parseLock(text: string): LockInfo | null {
@@ -41,6 +41,9 @@ function parseLock(text: string): LockInfo | null {
         return null;
     }
 }
+
+/** How long an empty or unreadable lock file is taken to be one that its owner is still writing. */
+const WRITING_GRACE_MS = 5000;
 
 /** The lock file's contents: whether it exists, and what it says when it parses. */
 async function readLock(path: string): Promise<{ readonly exists: boolean; readonly info: LockInfo | null }> {
@@ -86,6 +89,12 @@ export async function acquireLock(stateDir: string, deps: LockDeps): Promise<Loc
         }
         const current = await readLock(path);
         if (current.info && !(await isStale(current.info))) return { acquired: false, held: current.info };
+        // `wx` creates the file before its contents are written: a fresh file that does not parse yet is a start in the middle of taking the lock.
+        if (current.exists && !current.info) {
+            const written = await stat(path).then((s) => s.mtime, () => null);
+            const age = written ? deps.now().getTime() - written.getTime() : Infinity;
+            if (written && age >= 0 && age < WRITING_GRACE_MS) return { acquired: false, held: { pid: 0, startedAt: written.toISOString() } };
+        }
         // Stale or unreadable. Only the holder of the take-over file may remove it.
         try {
             await writeFile(takeoverPath, JSON.stringify(mine), { flag: "wx" });

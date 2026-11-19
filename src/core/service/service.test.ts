@@ -271,6 +271,11 @@ describe("the clone's environment", () => {
         for (const leaked of ["TAI_REVIEWER_GITHUB_TOKEN", "BITBUCKET_API_TOKEN", "CLAUDECODE"]) assert.equal(env[leaked], undefined, `${leaked} must not reach the clone`);
     });
 
+    it("passes the run's time limit, so a limit set for the unit is not dropped", async () => {
+        const { env } = await cloneEnvironment(dir, { TAI_DEV_RUN_TIMEOUT_MIN: "20", TAI_OTHER: "x" });
+        assert.deepEqual([env["TAI_DEV_RUN_TIMEOUT_MIN"], env["TAI_OTHER"]], ["20", undefined]);
+    });
+
     it("passes the variables Claude signs in with (OAuth token, config directory) but not the AI-session marker", async () => {
         const { env } = await cloneEnvironment(dir, { CLAUDE_CODE_OAUTH_TOKEN: "tok", CLAUDE_CONFIG_DIR: "/cfg", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDECODE: "1" });
         assert.deepEqual([env["CLAUDE_CODE_OAUTH_TOKEN"], env["CLAUDE_CONFIG_DIR"]], ["tok", "/cfg"]);

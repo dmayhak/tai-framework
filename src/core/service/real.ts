@@ -74,12 +74,12 @@ async function exists(path: string, kind: "file" | "dir"): Promise<boolean> {
 
 /**
  * The system variables a child may inherit: where programs and the home directory are, the locale, the terminal, the proxy and
- * certificate settings, git's and ssh's own, and the ones Claude signs in with (`ANTHROPIC_*`, the OAuth token, the config directory). Everything else the launching shell holds, above all a TAI_*, JIRA, GITHUB or BITBUCKET
+ * certificate settings, git's and ssh's own, and the ones Claude signs in with (`ANTHROPIC_*`, the OAuth token, the config directory), and the run's time limit (`TAI_DEV_RUN_TIMEOUT_MIN`). Everything else the launching shell holds, above all a TAI_*, JIRA, GITHUB or BITBUCKET
  * credential that came from whatever directory the command was started in, is left out, so the clone sees ONLY the credentials in
  * its own `.env`. A missing role then shows as missing instead of being filled from the wrong place. The AI-session markers are
  * not in the list on purpose.
  */
-const INHERITED = /^(PATH|HOME|USER|LOGNAME|SHELL|LANG|LANGUAGE|TERM|TZ|TMPDIR|PWD|SSH_AUTH_SOCK|LC_.*|XDG_.*|NODE_.*|GIT_.*|SSL_CERT_.*|NO_PROXY|no_proxy|HTTPS?_PROXY|https?_proxy|ALL_PROXY|all_proxy|ANTHROPIC_.*|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR)$/;
+const INHERITED = /^(PATH|HOME|USER|LOGNAME|SHELL|LANG|LANGUAGE|TERM|TZ|TMPDIR|PWD|SSH_AUTH_SOCK|LC_.*|XDG_.*|NODE_.*|GIT_.*|SSL_CERT_.*|NO_PROXY|no_proxy|HTTPS?_PROXY|https?_proxy|ALL_PROXY|all_proxy|ANTHROPIC_.*|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR|TAI_DEV_RUN_TIMEOUT_MIN)$/;
 
 /** The environment of the run in the clone: the allowlisted system variables of `base`, with the clone's own `.env` laid over them. */
 export async function cloneEnvironment(clonePath: string, base: Env): Promise<{ readonly envFileFound: boolean; readonly env: NodeJS.ProcessEnv }> {
