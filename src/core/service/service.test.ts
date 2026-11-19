@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { acquireLock, LOCK_FILE } from "./lock.js";
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs } from "./real.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, runCloneWork } from "./real.js";
 import { checkFailure, credentialVariables, localPreflightFailure, missingCredential, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
 import { readLastRun, readLimitedUntil, readPreflightNote, writeLimitedUntil } from "./state.js";
@@ -288,5 +288,30 @@ describe("the clone's environment", () => {
         await mkdir(join(dir, ".git"));
         assert.equal(await cloneIsGitRepo(dir), true);
         assert.equal(await cloneIsGitRepo(join(dir, "nope")), false);
+    });
+});
+
+describe("runCloneWork", () => {
+    // A stand-in for `do-dev-tasks`: it writes its result file (the `result=` argument) when it is told to stop, then exits.
+    const fakeRun = (script: string) => (args: readonly string[]) => ({ command: process.execPath, args: ["-e", script, ...args] });
+    const onStop = `
+        const file = process.argv.find((a) => a.startsWith("result=")).slice(7);
+        process.on("SIGTERM", () => { require("node:fs").writeFileSync(file, JSON.stringify({ outcome: "stopped" })); process.exit(0); });
+        console.error("ready");
+        setInterval(() => {}, 1000);
+    `;
+
+    it("passes a stop sent to this process on to the run, and waits for it to end (no run outlives its command)", async () => {
+        const before = process.listenerCount("SIGTERM");
+        const work = runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, fakeRun(onStop));
+        await new Promise((r) => setTimeout(r, 1500));
+        process.emit("SIGTERM");
+        const summary = (await work) as unknown as { outcome: string };
+        assert.equal(summary.outcome, "stopped");
+        assert.equal(process.listenerCount("SIGTERM"), before, "the forwarding is removed once the run has ended");
+    });
+
+    it("rejects when the run leaves no summary", async () => {
+        await assert.rejects(runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, fakeRun("process.exit(3)")), /exited 3 and left no summary/);
     });
 });

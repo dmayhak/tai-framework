@@ -153,19 +153,36 @@ export async function runCloneCheck(clonePath: string, env: NodeJS.ProcessEnv, t
     });
 }
 
+/** The stops that are passed on to a run in the clone. */
+const FORWARDED_SIGNALS: readonly NodeJS.Signals[] = ["SIGTERM", "SIGINT", "SIGHUP"];
+
 /**
  * `do-dev-tasks wait=<h> max=<n> result=<file>` in the clone, its output going to this process's own (the journal under a unit). Rejects
  * when the run left no summary, which is how a crash looks from here.
  */
-export async function runCloneWork(clonePath: string, stateDir: string, env: NodeJS.ProcessEnv, options: { readonly waitHours: number; readonly cap: number }): Promise<WorkSummary> {
+export async function runCloneWork(clonePath: string, stateDir: string, env: NodeJS.ProcessEnv, options: { readonly waitHours: number; readonly cap: number }, launch: typeof selfCommand = selfCommand): Promise<WorkSummary> {
     await mkdir(stateDir, { recursive: true });
     const resultPath = join(stateDir, RESULT_FILE);
     await rm(resultPath, { force: true });
-    const { command, args } = selfCommand(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`]);
+    const { command, args } = launch(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`]);
     const code = await new Promise<number | null>((done, fail) => {
         const child = spawn(command, args, { cwd: clonePath, env, stdio: "inherit" });
-        child.on("error", fail);
-        child.on("close", (c) => done(c));
+        // A stop sent to this process (a `kill`, Ctrl-C, a closed terminal) goes on to the run, which is then waited for: no run may outlive
+        // its command, and the lock stays ours until the run has ended, so the next tick cannot start a second one beside it.
+        const forwarded = FORWARDED_SIGNALS.map((signal) => {
+            const forward = (): void => void child.kill(signal);
+            process.on(signal, forward);
+            return [signal, forward] as const;
+        });
+        const stopForwarding = (): void => forwarded.forEach(([signal, forward]) => process.off(signal, forward));
+        child.on("error", (e) => {
+            stopForwarding();
+            fail(e);
+        });
+        child.on("close", (c) => {
+            stopForwarding();
+            done(c);
+        });
     });
     let summary: RunSummary;
     try {
