@@ -176,7 +176,14 @@ import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
-import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey } from "../core/commands/do-dev-tasks.js";
+import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey, summarizeWorked, type RunSummary } from "../core/commands/do-dev-tasks.js";
+import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
+import { processIsAlive } from "../core/service/lock.js";
+import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
+import { refreshClone } from "../core/service/refresh.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, realRefreshGit, runCloneCheck, runCloneWork } from "../core/service/real.js";
+import { runServiceTick } from "../core/service/run.js";
+import { writeFile } from "node:fs/promises";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
 import { assertCleanTree, checkoutPosition, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
 import { buildStageAfterLimit, PauseReads, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
@@ -1677,9 +1684,12 @@ export function renderUsage(): string {
         "  work <ISSUE-KEY>             Load a ticket's briefing and hand it to its persona",
         "  ready [persona]              Show what's ready to work on",
         "  do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>] [wait=<hours>]",
+        "               [max=<tickets>] [result=<file>]",
         "                               Run the ready Dev tasks unattended (DEV-YOLO)",
         "  do-dev-tasks rules [yolo=true|false]",
         "                               Print the permission rules those runs use",
+        "  service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]",
+        "                               One guarded tick of the unattended Dev service",
         "  verify <STORY-KEY>           Check a Story's work against its acceptance criteria",
         "  pr-ready                     List PRs ready to review or merge",
         "",
@@ -1897,6 +1907,33 @@ async function main(): Promise<void> {
         throw new Error(
             `Unknown init action "${action}" -- expected "status", "run", "jira", "confluence", "bitbucket", "github", "env", "claude-md", "gemini-md", or "project-context".`
         );
+    }
+
+    // TAI-770: `service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]` is one guarded tick of the unattended Dev service: the
+    // command both the timer and kick-off-now call. It needs no config of its own (the clone has its own .env, and the checks that read
+    // Jira run IN the clone as `service check`), so it comes before resolveConfig(). A second start while a run is going exits 0.
+    if (subcommand === "service" && arg === "run") {
+        const { clonePath, stateDir, waitHours, cap } = parseServiceRunArgs(rest, process.env);
+        const result = await runServiceTick({
+            stateDir,
+            waitHours,
+            cap,
+            lock: { pid: process.pid, now: () => new Date(), isAlive: processIsAlive },
+            now: () => new Date(),
+            say: (line) => console.log(`${new Date().toISOString()} ${line}`),
+            preflight: async () => {
+                const { envFileFound, env } = await cloneEnvironment(clonePath, process.env);
+                const local = localPreflightFailure({ aiSession: inAiSession(), clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
+                return local ?? checkFailure(await runCloneCheck(clonePath, env));
+            },
+            refresh: () => refreshClone(realRefreshGit(clonePath)),
+            work: async (options) => runCloneWork(clonePath, stateDir, (await cloneEnvironment(clonePath, process.env)).env, options),
+        });
+        process.exitCode = result.exitCode;
+        return;
+    }
+    if (subcommand === "service" && arg !== "check") {
+        throw new Error(`Unknown service action "${arg ?? ""}" -- expected "run" or "check".`);
     }
 
     // TAI-126: any missing required env var here means this project hasn't been
@@ -2395,10 +2432,24 @@ async function main(): Promise<void> {
 
     // TAI-633: `do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>] [wait=<hours>]` (and `do-dev-tasks rules [yolo=true|false]`) works the current user's In Progress and To Do Dev subtasks one at a time, each in
     // its own headless Claude run. With dev-yolo off it builds, opens the PR and records the check; review and merge stay with people.
+    // TAI-770: `service check` runs IN the service's clone and answers one JSON line: whether an unattended run may start. It is what
+    // `service run` cannot ask itself, because it reads Jira and the clone's own permission rules. Not for people; `service run` runs it.
+    if (subcommand === "service" && arg === "check") {
+        const reasons: string[] = [...(await yoloSettingReasons({ workTracker: config.backend.workTracker, docStore: config.backend.docStore, spaceKey: config.spaceKey, projectKey: config.projectKey, taiDir: resolvePath(config.taiRoot), email: config.currentHuman?.email ?? null }))];
+        const gaps = missingRules(buildRunRules(defaultTaiHome(), checkCommandFromEnv(), await projectPersonaIdsOrNone(config), true), await readPermissionFiles(process.cwd()));
+        // Only the allow rules: a missing one stalls every ticket at a permission prompt. A missing deny is a safety extra a person may have left out on purpose.
+        if (gaps.allow.length > 0) {
+            reasons.push(`${gaps.allow.length} permission rule${gaps.allow.length === 1 ? "" : "s"} the unattended run needs ${gaps.allow.length === 1 ? "is" : "are"} missing from ${process.cwd()}/.claude/settings.local.json: print them with \`tai do-dev-tasks rules yolo=true\` and add them yourself`);
+        }
+        console.log(JSON.stringify({ ok: reasons.length === 0, reasons }));
+        process.exitCode = reasons.length === 0 ? 0 : 1;
+        return;
+    }
+
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        const { dryRun, yolo: yoloArg, only, waitHours } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
+        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
             // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
@@ -2465,7 +2516,12 @@ async function main(): Promise<void> {
             console.log(renderDevTasksReport(found, null, { yolo, openPullRequestsChecked: gitDeps !== undefined, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
             return;
         }
+        // TAI-770: `result=<file>` leaves what the run did as JSON, for the unattended service to read.
+        const writeResult = async (summary: RunSummary): Promise<void> => {
+            if (resultPath) await writeFile(resultPath, `${JSON.stringify(summary)}\n`);
+        };
         if (found.tasks.length === 0) {
+            await writeResult(summarizeWorked({ results: [] }));
             console.log(renderDevTasksReport(found, [], { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
             return;
         }
@@ -2529,6 +2585,7 @@ async function main(): Promise<void> {
             interrupted: wasInterrupted,
             limitLatch,
             ...(waitHours !== undefined ? { waitHours } : {}),
+            ...(maxTickets !== undefined ? { maxTickets } : {}),
             sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
             say: (line) => console.log(line),
             prepare: async (task) => {
@@ -2544,6 +2601,7 @@ async function main(): Promise<void> {
                 await postIssueComment(config.backend.workTracker, key as IssueKey, stampComment(body, developer));
             }, () => checkoutPosition(process.cwd())),
         }, found);
+        await writeResult(summarizeWorked(worked));
         console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
         return;
     }

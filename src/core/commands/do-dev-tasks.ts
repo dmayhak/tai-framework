@@ -204,6 +204,8 @@ export interface RunDevTasksDeps {
     readonly limitLatch?: UsageLimitLatch;
     /** TAI-706: `wait=<hours>`: sleep until the reset when it is within this many hours. Without it a limit stops the batch. */
     readonly waitHours?: number;
+    /** TAI-770: `max=<n>`: the most tickets this run starts. A ticket that is paused and carried on after a wait counts once. The rest wait for the next run. */
+    readonly maxTickets?: number;
     /** TAI-706: sleeps for the given milliseconds; ends early (resolving) on an interrupt. Without it nothing is waited for. */
     readonly sleep?: (ms: number) => Promise<void>;
     readonly now?: () => Date;
@@ -335,6 +337,8 @@ export interface WorkedDevTasks {
     readonly results: readonly DevTaskResult[];
     /** What `find` last returned: the tickets still held back once the run is over, with what each waits on. */
     readonly found: FoundDevTasks;
+    /** TAI-770: the run stopped because it had started `maxTickets` tickets and another was ready. */
+    readonly capReached?: boolean;
 }
 
 /**
@@ -381,6 +385,7 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
         last = found;
         const next = await pickNext(found.tasks, attempted, deps, pausedKnown);
         if (!next) return { results, found };
+        if (deps.maxTickets !== undefined && attempted.size >= deps.maxTickets) return { results, found, capReached: true };
         attempted.add(next.issue.key);
         deps.limitLatch?.clear();
         const result = await runDevTask(next, deps);
@@ -547,19 +552,31 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 export function parseDevTasksArgs(
     args: readonly (string | undefined)[],
     options: { readonly rules?: boolean } = {}
-): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number } {
+): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
     const onlyArgs = given.filter((a) => a.startsWith("only="));
     const waitArgs = options.rules ? [] : given.filter((a) => a.startsWith("wait="));
-    const unknown = given.filter((a) => !known.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")));
+    const maxArgs = options.rules ? [] : given.filter((a) => a.startsWith("max="));
+    const resultArgs = options.rules ? [] : given.filter((a) => a.startsWith("result="));
+    const unknown = given.filter((a) => !known.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")) && !maxArgs.includes(a) && !resultArgs.includes(a));
     if (unknown.length > 0) {
         throw new Error(
-            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY> and wait=<hours>"} (got: ${unknown.join(" ")}).`
+            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets> and result=<file>"} (got: ${unknown.join(" ")}).`
         );
     }
     if (onlyArgs.length > 1) throw new Error(`do-dev-tasks takes only one only=<DEV-KEY> (got: ${onlyArgs.join(" ")}).`);
     if (waitArgs.length > 1) throw new Error(`do-dev-tasks takes only one wait=<hours> (got: ${waitArgs.join(" ")}).`);
+    if (maxArgs.length > 1) throw new Error(`do-dev-tasks takes only one max=<tickets> (got: ${maxArgs.join(" ")}).`);
+    if (resultArgs.length > 1) throw new Error(`do-dev-tasks takes only one result=<file> (got: ${resultArgs.join(" ")}).`);
+    let maxTickets: number | undefined;
+    if (maxArgs.length === 1) {
+        const value = maxArgs[0]!.slice("max=".length);
+        if (!/^[1-9][0-9]*$/.test(value)) throw new Error(`max= takes a whole number of tickets, 1 or more (got: ${value === "" ? "nothing" : value}).`);
+        maxTickets = Number(value);
+    }
+    const resultPath = resultArgs.length === 1 ? resultArgs[0]!.slice("result=".length) : undefined;
+    if (resultPath === "") throw new Error("result= takes a file path.");
     // TAI-706: a mistyped or empty value is refused, because it would otherwise silently mean "do not wait" or "wait forever".
     const waitHours = waitArgs.length === 1 ? parseWaitHours(waitArgs[0]!.slice("wait=".length)) : undefined;
     let only: IssueKey | undefined;
@@ -574,7 +591,7 @@ export function parseDevTasksArgs(
     let yolo: boolean | undefined;
     if (wantsOn) yolo = true;
     else if (wantsOff) yolo = false;
-    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }) };
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }) };
 }
 
 /**
@@ -584,4 +601,45 @@ export function parseDevTasksArgs(
  */
 export async function resolveYolo(arg: boolean | undefined, stored: () => Promise<boolean>): Promise<{ readonly yolo: boolean; readonly oneRun: boolean; readonly thisRunOnly: boolean }> {
     return { yolo: arg ?? (await stored()), oneRun: arg === true, thisRunOnly: arg !== undefined };
+}
+
+/** TAI-770: what a run did, in the plain shape the unattended service reads from `result=<file>` (the file is JSON of this). */
+export interface RunSummary {
+    readonly tickets: readonly { readonly key: string; readonly state: DevTaskOutcome["state"]; readonly detail?: string }[];
+    /** The run stopped at `max=<tickets>` with another ticket ready. */
+    readonly capReached: boolean;
+    /** Set when the run ENDED on the account's usage limit (a limit it waited through is not here). `resetsAt` is an ISO time when the message gave one. */
+    readonly limit: { readonly text: string; readonly resetsAt?: string } | null;
+    /** The reason a ticket's stop ended the whole run (a tree that cannot be prepared), when one did. */
+    readonly stopReason: string | null;
+}
+
+function outcomeDetail(outcome: DevTaskOutcome): string | undefined {
+    switch (outcome.state) {
+        case "pr-opened":
+            return outcome.prUrl;
+        case "handed-on":
+            return outcome.note;
+        case "waiting":
+        case "failed":
+        case "stopped":
+            return outcome.reason;
+        case "paused":
+            return `paused at ${outcome.stage}: ${outcome.limit.text}`;
+    }
+}
+
+/** What `worked` came to, for `result=<file>`. A pure function of the run's results. */
+export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached">): RunSummary {
+    const last = worked.results.at(-1)?.outcome;
+    const ended = last?.state === "paused" && !last.carriedOn ? last : null;
+    return {
+        tickets: worked.results.map((r) => {
+            const detail = outcomeDetail(r.outcome);
+            return { key: r.task.issue.key, state: r.outcome.state, ...(detail === undefined ? {} : { detail }) };
+        }),
+        capReached: worked.capReached === true,
+        limit: ended ? { text: ended.limit.text, ...(ended.limit.resetsAt ? { resetsAt: ended.limit.resetsAt.toISOString() } : {}) } : null,
+        stopReason: last?.state === "stopped" ? last.reason : null,
+    };
 }

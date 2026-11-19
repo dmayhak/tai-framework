@@ -12,7 +12,7 @@ import { toHumanId, type HumanRef, type WorkTracker } from "../storage/interface
 import { DirtyTreeError, PrepareStopError, checkoutPosition, cutOffBranch, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "./dev-tasks-git.js";
 import { pausedAwareHandoff, pausedHandoff, UsageLimitLatch, wasPausedOnLimit, type UsageLimit } from "./usage-limit.js";
 import { findDevTasks, findOpenPullRequest, listOpenPullRequests, renderDevTasksReport, titleNamesKey, workDevTasks, type DevTask, type DevTaskOutcome, type DevTaskResult, type FoundDevTasks, type RunDevTasksDeps } from "./do-dev-tasks.js";
-import { onlyRefusal, parseDevTasksArgs, resolveYolo, storyNotInProgress } from "./do-dev-tasks.js";
+import { onlyRefusal, parseDevTasksArgs, resolveYolo, storyNotInProgress, summarizeWorked } from "./do-dev-tasks.js";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, redactSecrets, runHeadlessClaude, stopActiveRuns, stopActiveRunsHard } from "./headless-claude.js";
 
 const ME: HumanRef = { id: toHumanId("a@b.c"), displayName: "A", email: "a@b.c" };
@@ -712,7 +712,7 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.deepEqual(parseDevTasksArgs(["yolo=true"]), { dryRun: false, yolo: true });
         assert.deepEqual(parseDevTasksArgs(["yolo=false"]), { dryRun: false, yolo: false });
         assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
-        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY> and wait=<hours>/);
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets> and result=<file>/);
         assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
     });
 
@@ -1317,5 +1317,73 @@ describe("pausing on a usage limit (TAI-706)", () => {
         assert.deepEqual(results.map((r) => r.outcome.state), ["paused"]);
         assert.equal((results[0]!.outcome as { notWaited?: string }).notWaited, "the run was interrupted during the wait");
         assert.match(renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: false }), /## Paused \(1\)[\s\S]*interrupted during the wait/);
+    });
+});
+
+describe("max=<tickets> and result=<file> (TAI-770 AC-4)", () => {
+    it("parses max= and result=, and refuses a value that is not a whole number of tickets", () => {
+        assert.deepEqual(parseDevTasksArgs(["max=3", "result=/tmp/r.json"]), { dryRun: false, maxTickets: 3, resultPath: "/tmp/r.json" });
+        for (const bad of ["max=0", "max=", "max=two", "max=1.5", "max=-1"]) assert.throws(() => parseDevTasksArgs([bad]), /max= takes a whole number/);
+        assert.throws(() => parseDevTasksArgs(["max=1", "max=2"]), /only one max=/);
+        assert.throws(() => parseDevTasksArgs(["result="]), /result= takes a file path/);
+        assert.throws(() => parseDevTasksArgs(["rules", "max=2"], { rules: true }), /rules takes only/);
+    });
+
+    const three = [task("TAI-1"), task("TAI-2"), task("TAI-3")];
+
+    it("stops at the cap with a ticket still ready, and says the cap was reached", async () => {
+        const d = deps({ maxTickets: 2 });
+        const worked = await workDevTasks(async () => ({ tasks: three.slice(0), skipped: [] }), d);
+        assert.deepEqual(worked.results.map((r) => r.task.issue.key), ["TAI-1", "TAI-2"]);
+        assert.equal(worked.capReached, true);
+        assert.ok(!d.calls.some((c) => c.includes("TAI-3")));
+    });
+
+    it("does not say the cap was reached when nothing else was ready", async () => {
+        const worked = await workDevTasks(async () => ({ tasks: three.slice(0, 2), skipped: [] }), deps({ maxTickets: 2 }));
+        assert.equal(worked.results.length, 2);
+        assert.notEqual(worked.capReached, true);
+    });
+
+    it("works everything ready when there is no cap", async () => {
+        const worked = await workDevTasks(async () => ({ tasks: three.slice(0), skipped: [] }), deps());
+        assert.equal(worked.results.length, 3);
+        assert.notEqual(worked.capReached, true);
+    });
+});
+
+describe("summarizeWorked (TAI-770 AC-5, AC-6)", () => {
+    const result = (key: string, outcome: DevTaskOutcome): DevTaskResult => ({ task: task(key), outcome });
+    const limit = { text: "Weekly limit reached", resetsAt: new Date("2026-11-20T17:00:00Z") };
+
+    it("lists each ticket's state and detail, and the cap", () => {
+        const s = summarizeWorked({ capReached: true, results: [result("TAI-1", { state: "pr-opened", prUrl: "https://x/pr/1", checkRecorded: true }), result("TAI-2", { state: "failed", reason: "build failed" })] });
+        assert.deepEqual(s, {
+            tickets: [
+                { key: "TAI-1", state: "pr-opened", detail: "https://x/pr/1" },
+                { key: "TAI-2", state: "failed", detail: "build failed" },
+            ],
+            capReached: true,
+            limit: null,
+            stopReason: null,
+        });
+    });
+
+    it("reports a run that ENDED on a usage limit, with its reset time, and not one that carried on after waiting", () => {
+        const paused = { state: "paused", limit, stage: "build run" } as const;
+        const ended = summarizeWorked({ results: [result("TAI-1", paused)] });
+        assert.deepEqual(ended.limit, { text: "Weekly limit reached", resetsAt: "2026-11-20T17:00:00.000Z" });
+        const carried = summarizeWorked({ results: [result("TAI-1", { ...paused, carriedOn: true }), result("TAI-2", { state: "handed-on", note: "done" })] });
+        assert.equal(carried.limit, null);
+    });
+
+    it("carries a limit with no reset time without inventing one", () => {
+        const s = summarizeWorked({ results: [result("TAI-1", { state: "paused", limit: { text: "Your usage limit has been reached." }, stage: "build run" })] });
+        assert.deepEqual(s.limit, { text: "Your usage limit has been reached." });
+    });
+
+    it("carries the reason a stop ended the run", () => {
+        const s = summarizeWorked({ results: [result("TAI-1", { state: "stopped", reason: "Could not bring main up to date" })] });
+        assert.equal(s.stopReason, "Could not bring main up to date");
     });
 });
