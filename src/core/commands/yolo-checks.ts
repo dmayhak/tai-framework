@@ -33,8 +33,12 @@ export interface YoloCheckDeps {
     readonly oneRun?: boolean;
 }
 
-/** Why `task` may not run unattended; empty when it may. */
-export async function yoloStopReasons(deps: YoloCheckDeps, task: DevTask): Promise<readonly string[]> {
+/**
+ * Why DEV-YOLO may not run for this person at all, whatever the ticket: the setting, the Autonomy admins list and the attestation
+ * record. Empty when it may. `yoloStopReasons` adds the checks that depend on the ticket; the unattended service (TAI-770) asks only
+ * this much, before it starts any run.
+ */
+export async function yoloSettingReasons(deps: YoloCheckDeps): Promise<readonly string[]> {
     const reasons: string[] = [];
     if (!deps.email) {
         return ["no user is configured for this session, so TAI cannot tell whose DEV-YOLO setting applies"];
@@ -53,6 +57,14 @@ export async function yoloStopReasons(deps: YoloCheckDeps, task: DevTask): Promi
     if (!deps.oneRun && !(await hasAttestation(deps.taiDir, email, "dev-yolo", "true"))) {
         reasons.push("this machine has no record that you turned DEV-YOLO on; run `tai-settings set dev-yolo true` yourself in a plain terminal");
     }
+    return reasons;
+}
+
+/** Why `task` may not run unattended; empty when it may. */
+export async function yoloStopReasons(deps: YoloCheckDeps, task: DevTask): Promise<readonly string[]> {
+    const reasons: string[] = [...(await yoloSettingReasons(deps))];
+    // No user configured: nothing below can be asked either.
+    if (!deps.email) return reasons;
     const siblings = await deps.workTracker.search({ projectKey: deps.projectKey, parentKey: task.parent.key, exhaustive: true, readYourWrites: true });
     for (const sibling of siblings) {
         const what = NEEDS_A_PERSON.get(sibling.issueType);

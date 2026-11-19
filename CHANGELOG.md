@@ -2,6 +2,16 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 169 (2026-11-18)
+
+**TAI-770 (Story TAI-770, Dev TAI-774): one guarded run of the unattended Dev service, `tai service run`.** First Story of Epic TAI-763: the single command a timer and kick-off-now will both call. It takes a run lock, skips while a usage limit has not reset, checks the preflight, refreshes the service's own clone, runs `do-dev-tasks` with a cap and records what happened. Design: the work-breakdown page for the Epic and its EpicReview (TAI-766).
+
+* `core/service/`: `lock.ts` (a second start exits 0 with the "already going" message; a dead run's lock is taken over), `state.ts` (`limited-until.json`, `last-run.json`, `preflight.json`), `preflight.ts` (credentials by role), `refresh.ts` (fast-forward only a clean tree on the default branch), `run.ts` (the order of a tick; every step that touches Claude, git, Jira or the clock is injected) and `real.ts` (arguments, the clone's environment, the two child commands).
+* `do-dev-tasks` takes `max=<tickets>` and `result=<file>`; `summarizeWorked` is the one place that turns a run into that JSON. `yoloSettingReasons` is split out of `yoloStopReasons` so the preflight asks the setting, admins and attestation checks without a ticket.
+* The run in the clone sees only the clone's own `.env` and a short list of system variables (found in a smoke test: the launching directory's `.env` had filled in a missing reviewer credential). The preflight's permission check fails on missing ALLOW rules only: this repo's own settings deliberately leave out the merge denies.
+* Two points where the Story text and the design disagree, decided here and to be confirmed in review: the run does not pass `yolo=true` (the preflight requires the setting and its attestation, so a one-run override would make them moot); and "clone clean" is not a preflight failure, because a paused ticket's cut-off work leaves the tree dirty on purpose, so the refresh decides and leaves it alone.
+* Not built yet (the Epic's other Stories): `service setup`, the timer and kick-off-now, status and pause, and the pickup rule.
+
 ## rev 168 (2026-11-11)
 
 **TAI-714 (Story TAI-714, Dev TAI-715): the merge gate requires the CI run to exist and finish, with a setting to turn that off.** The gate treated a commit with no statuses as green, which is also what a fresh push looks like before the host has registered its CI run, so a merge right after a push could pass before CI reported. Found while answering whether TAI checks GitHub CI. This reverses TAI-230/250's rule that an empty list is green (Pipelines had become manual-only then).

@@ -29,7 +29,7 @@ export class DirtyTreeError extends PrepareStopError {
 }
 
 /** The default branch name from `origin/HEAD`, or `main` when the clone does not record one. */
-async function defaultBranch(cwd: string): Promise<string> {
+export async function defaultBranch(cwd: string): Promise<string> {
     try {
         const ref = (await execFileAsync("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { cwd })).stdout.trim();
         return ref.replace(/^origin\//, "") || "main";
