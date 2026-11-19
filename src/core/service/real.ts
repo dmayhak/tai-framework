@@ -74,12 +74,12 @@ async function exists(path: string, kind: "file" | "dir"): Promise<boolean> {
 
 /**
  * The system variables a child may inherit: where programs and the home directory are, the locale, the terminal, the proxy and
- * certificate settings, git's and ssh's own. Everything else the launching shell holds, above all a TAI_*, JIRA, GITHUB or BITBUCKET
+ * certificate settings, git's and ssh's own, and the ones Claude signs in with (`ANTHROPIC_*`, the OAuth token, the config directory). Everything else the launching shell holds, above all a TAI_*, JIRA, GITHUB or BITBUCKET
  * credential that came from whatever directory the command was started in, is left out, so the clone sees ONLY the credentials in
  * its own `.env`. A missing role then shows as missing instead of being filled from the wrong place. The AI-session markers are
  * not in the list on purpose.
  */
-const INHERITED = /^(PATH|HOME|USER|LOGNAME|SHELL|LANG|LANGUAGE|TERM|TZ|TMPDIR|PWD|SSH_AUTH_SOCK|LC_.*|XDG_.*|NODE_.*|GIT_.*|SSL_CERT_.*|NO_PROXY|no_proxy|HTTPS?_PROXY|https?_proxy|ALL_PROXY|all_proxy|ANTHROPIC_.*)$/;
+const INHERITED = /^(PATH|HOME|USER|LOGNAME|SHELL|LANG|LANGUAGE|TERM|TZ|TMPDIR|PWD|SSH_AUTH_SOCK|LC_.*|XDG_.*|NODE_.*|GIT_.*|SSL_CERT_.*|NO_PROXY|no_proxy|HTTPS?_PROXY|https?_proxy|ALL_PROXY|all_proxy|ANTHROPIC_.*|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR)$/;
 
 /** The environment of the run in the clone: the allowlisted system variables of `base`, with the clone's own `.env` laid over them. */
 export async function cloneEnvironment(clonePath: string, base: Env): Promise<{ readonly envFileFound: boolean; readonly env: NodeJS.ProcessEnv }> {
@@ -117,17 +117,30 @@ function selfCommand(args: readonly string[]): { readonly command: string; reado
     return { command: process.execPath, args: [...process.execArgv, process.argv[1]!, ...args] };
 }
 
+/** How long `service check` may take before it is stopped: it holds the run lock, so a hung Jira call must not hold it for ever. */
+const CHECK_TIMEOUT_MS = 2 * 60 * 1000;
+
 /** `service check` in the clone: the checks that read Jira and the permission rules. Its answer is one JSON line on stdout. */
-export async function runCloneCheck(clonePath: string, env: NodeJS.ProcessEnv): Promise<{ readonly ok: boolean; readonly reasons: readonly string[] }> {
+export async function runCloneCheck(clonePath: string, env: NodeJS.ProcessEnv, timeoutMs = CHECK_TIMEOUT_MS): Promise<{ readonly ok: boolean; readonly reasons: readonly string[] }> {
     const { command, args } = selfCommand(["service", "check"]);
     return new Promise((done) => {
         const child = spawn(command, args, { cwd: clonePath, env, stdio: ["ignore", "pipe", "pipe"] });
+        let timedOut = false;
+        const timer = setTimeout(() => {
+            timedOut = true;
+            child.kill("SIGKILL");
+        }, timeoutMs);
         let out = "";
         let err = "";
         child.stdout.on("data", (d: Buffer) => (out += d.toString()));
         child.stderr.on("data", (d: Buffer) => (err = (err + d.toString()).slice(-2000)));
-        child.on("error", (e) => done({ ok: false, reasons: [`the check in the clone could not start: ${e.message}`] }));
+        child.on("error", (e) => {
+            clearTimeout(timer);
+            done({ ok: false, reasons: [`the check in the clone could not start: ${e.message}`] });
+        });
         child.on("close", () => {
+            clearTimeout(timer);
+            if (timedOut) return done({ ok: false, reasons: [`the check in the clone did not answer within ${Math.round(timeoutMs / 1000)} seconds`] });
             const line = out.trim().split("\n").at(-1) ?? "";
             try {
                 const v = JSON.parse(line) as { ok?: unknown; reasons?: unknown };

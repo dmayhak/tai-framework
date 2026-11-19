@@ -1,10 +1,11 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { acquireLock, LOCK_FILE } from "./lock.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs } from "./real.js";
 import { checkFailure, credentialVariables, localPreflightFailure, missingCredential, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
 import { readLastRun, readLimitedUntil, readPreflightNote, writeLimitedUntil } from "./state.js";
@@ -230,9 +231,6 @@ describe("runServiceTick", () => {
     });
 });
 
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs } from "./real.js";
-import { mkdir } from "node:fs/promises";
-
 describe("parseServiceRunArgs", () => {
     it("takes the clone, defaults the state to its parent, the wait to 5 hours and the cap to 3 (AC-6)", () => {
         assert.deepEqual(parseServiceRunArgs(["clone=/data/tai/proj/repo"]), { clonePath: "/data/tai/proj/repo", stateDir: "/data/tai/proj", waitHours: 5, cap: 3 });
@@ -271,6 +269,12 @@ describe("the clone's environment", () => {
         assert.deepEqual([env["TAI_JIRA_EMAIL"], env["GITHUB_TOKEN"]], ["clone@b.c", "from-clone"]);
         assert.deepEqual([env["PATH"], env["HOME"], env["LC_ALL"], env["HTTPS_PROXY"]], ["/usr/bin", "/home/x", "C", "http://p"]);
         for (const leaked of ["TAI_REVIEWER_GITHUB_TOKEN", "BITBUCKET_API_TOKEN", "CLAUDECODE"]) assert.equal(env[leaked], undefined, `${leaked} must not reach the clone`);
+    });
+
+    it("passes the variables Claude signs in with (OAuth token, config directory) but not the AI-session marker", async () => {
+        const { env } = await cloneEnvironment(dir, { CLAUDE_CODE_OAUTH_TOKEN: "tok", CLAUDE_CONFIG_DIR: "/cfg", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDECODE: "1" });
+        assert.deepEqual([env["CLAUDE_CODE_OAUTH_TOKEN"], env["CLAUDE_CONFIG_DIR"]], ["tok", "/cfg"]);
+        assert.deepEqual([env["CLAUDE_CODE_ENTRYPOINT"], env["CLAUDECODE"]], [undefined, undefined]);
     });
 
     it("says there is no .env, keeping only the system variables", async () => {

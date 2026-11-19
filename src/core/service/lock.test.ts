@@ -66,8 +66,32 @@ describe("acquireLock (TAI-770 AC-1)", () => {
 });
 
 describe("processIsAlive", () => {
-    it("is true for this process and false for a pid that cannot exist", () => {
-        assert.equal(processIsAlive(process.pid), true);
-        assert.equal(processIsAlive(2 ** 22 + 12345), false);
+    it("is true for this process and false for a pid that cannot exist", async () => {
+        assert.equal(await processIsAlive(process.pid, new Date().toISOString()), true);
+        assert.equal(await processIsAlive(2 ** 22 + 12345, new Date().toISOString()), false);
+    });
+
+    it("is false when the process started after the lock was written: the pid was reused", async () => {
+        if (process.platform !== "linux") return;
+        assert.equal(await processIsAlive(process.pid, "2000-01-01T00:00:00.000Z"), false);
+    });
+});
+
+describe("acquireLock: several starts at once over one dead lock", () => {
+    it("lets exactly one of them take it", async () => {
+        await acquireLock(dir, { pid: 100, now: at("2026-11-18T10:00:00Z"), isAlive: () => true });
+        const alive = new Set<number>();
+        const start = (pid: number) =>
+            acquireLock(dir, {
+                pid,
+                now: at("2026-11-18T11:00:00Z"),
+                isAlive: (p) => alive.has(p),
+            });
+        const results = await Promise.all([200, 201, 202, 203, 204].map(async (pid) => {
+            const r = await start(pid);
+            if (r.acquired) alive.add(pid);
+            return r;
+        }));
+        assert.equal(results.filter((r) => r.acquired).length, 1);
     });
 });
