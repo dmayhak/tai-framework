@@ -712,7 +712,7 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.deepEqual(parseDevTasksArgs(["yolo=true"]), { dryRun: false, yolo: true });
         assert.deepEqual(parseDevTasksArgs(["yolo=false"]), { dryRun: false, yolo: false });
         assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
-        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets> and result=<file>/);
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file> and pickup=service/);
         assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
     });
 
@@ -1366,7 +1366,21 @@ describe("summarizeWorked (TAI-770 AC-5, AC-6)", () => {
             capReached: true,
             limit: null,
             stopReason: null,
+            skipped: [],
         });
+    });
+
+    it("lists the tickets the service's pickup rule left alone or passed over, and no other skipped ticket (TAI-773 AC-6)", () => {
+        const issue = (key: string) => ({ key }) as never;
+        const s = summarizeWorked({
+            results: [],
+            found: { tasks: [], skipped: [{ issue: issue("TAI-7"), reason: "a person has touched it (service pickup rule)", byPickupRule: true }, { issue: issue("TAI-8"), reason: "flagged" }] },
+            passedOver: [{ issue: issue("TAI-9"), reason: "it is no longer To Do (service pickup rule)", byPickupRule: true }],
+        });
+        assert.deepEqual(s.skipped, [
+            { key: "TAI-9", reason: "it is no longer To Do (service pickup rule)" },
+            { key: "TAI-7", reason: "a person has touched it (service pickup rule)" },
+        ]);
     });
 
     it("reports a run that ENDED on a usage limit, with its reset time, and not one that carried on after waiting", () => {
@@ -1385,5 +1399,114 @@ describe("summarizeWorked (TAI-770 AC-5, AC-6)", () => {
     it("carries the reason a stop ended the run", () => {
         const s = summarizeWorked({ results: [result("TAI-1", { state: "stopped", reason: "Could not bring main up to date" })] });
         assert.equal(s.stopReason, "Could not bring main up to date");
+    });
+});
+
+describe("the service pickup rule in do-dev-tasks (TAI-773)", () => {
+    it("without the service rule, every In Progress ticket of mine is worked as before (AC-5)", async () => {
+        await withTracker(async (wt) => {
+            const story = await mk(wt, { issueType: StoryType.Story });
+            const dev = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            await wt.transition(dev.key, Status.InProgress);
+            const { tasks, skipped } = await find(wt);
+            assert.deepEqual(tasks.map((t) => t.issue.key), [dev.key]);
+            assert.deepEqual(skipped, []);
+        });
+    });
+
+    it("with the service rule, an In Progress ticket it gives a reason for is left alone and marked, one it clears is kept, and a To Do ticket is not asked (AC-1, AC-2)", async () => {
+        await withTracker(async (wt) => {
+            const mkDev = async () => mk(wt, { issueType: SubtaskType.Dev, parentKey: (await mk(wt, { issueType: StoryType.Story })).key, assignee: ME });
+            const hand = await mkDev();
+            const own = await mkDev();
+            const todo = await mkDev();
+            await wt.transition(hand.key, Status.InProgress);
+            await wt.transition(own.key, Status.InProgress);
+            await wt.transition(todo.key, Status.ToDo);
+            const asked: string[] = [];
+            const found = await findDevTasks({
+                workTracker: wt,
+                projectKey: "TAI",
+                currentHuman: ME,
+                servicePickup: async (issue) => (asked.push(issue.key), issue.key === hand.key ? "a person has touched it" : null),
+            });
+            assert.deepEqual(found.tasks.map((t) => t.issue.key).sort(), [own.key, todo.key].sort());
+            assert.deepEqual(asked.sort(), [hand.key, own.key].sort());
+            assert.equal(found.skipped.length, 1);
+            assert.equal(found.skipped[0]!.issue.key, hand.key);
+            assert.equal(found.skipped[0]!.byPickupRule, true);
+            assert.match(found.skipped[0]!.reason, /a person has touched it \(service pickup rule\)/);
+        });
+    });
+
+    it("a rule that cannot read a ticket leaves it alone rather than working it", async () => {
+        await withTracker(async (wt) => {
+            const story = await mk(wt, { issueType: StoryType.Story });
+            const dev = await mk(wt, { issueType: SubtaskType.Dev, parentKey: story.key, assignee: ME });
+            await wt.transition(dev.key, Status.InProgress);
+            const found = await findDevTasks({ workTracker: wt, projectKey: "TAI", currentHuman: ME, servicePickup: async () => Promise.reject(new Error("jira down")) });
+            assert.deepEqual(found.tasks, []);
+            assert.match(found.skipped[0]!.reason, /could not read it \(jira down\), so it is left alone/);
+        });
+    });
+
+    it("a To Do ticket whose status changed before it starts is passed over, not moved, not counted against the cap, and the run goes on (AC-3)", async () => {
+        const d = deps({ maxTickets: 1, recheckToDo: async (t) => (t.issue.key === "TAI-10" ? "it is no longer To Do (it is In Progress), so a person has started it" : null) });
+        const said: string[] = [];
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), { ...d, say: (l) => void said.push(l) });
+        assert.deepEqual(d.calls, ["prepare TAI-11", "build TAI-11"], "TAI-10 was never prepared or built");
+        assert.deepEqual(worked.results.map((r) => r.task.issue.key), ["TAI-11"]);
+        assert.equal(worked.passedOver?.length, 1);
+        assert.equal(worked.passedOver?.[0]?.issue.key, "TAI-10");
+        assert.equal(worked.passedOver?.[0]?.byPickupRule, true);
+        assert.ok(said.some((l) => l.startsWith("Passing over TAI-10:")));
+        assert.equal(worked.capReached, undefined, "the passed-over ticket did not use the cap");
+    });
+
+    it("lists a ticket once when it was passed over and a later look skipped it again, with the first reason (review fix)", () => {
+        const issue = { key: "TAI-9" } as never;
+        const s = summarizeWorked({
+            results: [],
+            found: { tasks: [], skipped: [{ issue, reason: "second", byPickupRule: true }] },
+            passedOver: [{ issue, reason: "first", byPickupRule: true }],
+        });
+        assert.deepEqual(s.skipped, [{ key: "TAI-9", reason: "first" }]);
+    });
+
+    it("does not list a ticket this run worked and stopped as left alone (review fix)", () => {
+        const s = summarizeWorked({
+            results: [{ task: { issue: { key: "TAI-9" } }, outcome: { state: "handed-on", note: "stopped" } } as never],
+            found: { tasks: [], skipped: [{ issue: { key: "TAI-9" } as never, reason: "a person is working it (service pickup rule)", byPickupRule: true }] },
+        });
+        assert.deepEqual(s.skipped, []);
+        assert.deepEqual(s.tickets.map((t) => t.key), ["TAI-9"]);
+    });
+
+    it("does not re-read a To Do ticket's status when the cap is already reached (review fix)", async () => {
+        const reads: string[] = [];
+        const d = deps({ maxTickets: 1, recheckToDo: async (t) => (reads.push(t.issue.key), null) });
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.deepEqual(reads, ["TAI-10"], "only the ticket that was started was read again");
+        assert.equal(worked.capReached, true);
+    });
+
+    it("a status that cannot be read again passes the ticket over too", async () => {
+        const d = deps({ recheckToDo: async () => Promise.reject(new Error("jira down")) });
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.deepEqual(d.calls, []);
+        assert.match(worked.passedOver?.[0]?.reason ?? "", /status could not be read again \(jira down\)/);
+    });
+
+    it("without recheckToDo nothing is re-read and passedOver is absent (AC-5)", async () => {
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), deps());
+        assert.equal(worked.passedOver, undefined);
+    });
+
+    it("parses pickup=service, refuses any other value or a repeat, and ignores it for `rules`", () => {
+        assert.equal(parseDevTasksArgs(["pickup=service"]).pickup, "service");
+        assert.equal(parseDevTasksArgs([]).pickup, undefined);
+        assert.throws(() => parseDevTasksArgs(["pickup=all"]), /pickup= takes only service/);
+        assert.throws(() => parseDevTasksArgs(["pickup=service", "pickup=service"]), /only one pickup=service/);
+        assert.throws(() => parseDevTasksArgs(["pickup=service"], { rules: true }), /rules takes only/);
     });
 });

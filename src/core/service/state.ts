@@ -51,6 +51,8 @@ export interface LastRun {
     readonly started: string;
     readonly ended: string;
     readonly tickets: readonly { readonly key: string; readonly state: string; readonly detail?: string }[];
+    /** TAI-777: tickets the pickup rule left alone because a person is working them, with why. Absent when none. */
+    readonly skipped?: readonly { readonly key: string; readonly reason: string }[];
     /** Why the run ended: "cap reached", "usage limit ...", "no more ready tickets", a stop, or why it did not run. */
     readonly stopReason: string;
 }

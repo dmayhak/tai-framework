@@ -174,6 +174,16 @@ describe("runServiceTick", () => {
         assert.equal(last?.tickets[0]?.state, "handed-on");
     });
 
+    it("logs each ticket the pickup rule left alone and records them in last-run.json (TAI-773 AC-6)", async () => {
+        const { deps, calls } = setup({}, { tickets: [], capReached: false, limit: null, stopReason: null, skipped: [{ key: "TAI-9", reason: "a comment came after the pause note (service pickup rule)" }] });
+        await runServiceTick(deps);
+        assert.ok(calls.say.includes("Left alone TAI-9: a comment came after the pause note (service pickup rule)."));
+        assert.deepEqual((await readLastRun(dir))?.skipped, [{ key: "TAI-9", reason: "a comment came after the pause note (service pickup rule)" }]);
+        const quiet = setup();
+        await runServiceTick(quiet.deps);
+        assert.equal((await readLastRun(dir))?.skipped, undefined, "no skipped key when nothing was left alone");
+    });
+
     it("ends 'no ready tickets' when there was nothing to do", async () => {
         const { deps } = setup();
         assert.equal((await runServiceTick(deps) as { stopReason: string }).stopReason, "no ready tickets");
@@ -314,6 +324,14 @@ describe("runCloneWork", () => {
         const summary = (await work) as unknown as { outcome: string };
         assert.equal(summary.outcome, "stopped");
         assert.equal(process.listenerCount("SIGTERM"), before, "the forwarding is removed once the run has ended");
+    });
+
+    it("starts the run in the service pickup mode (TAI-773 AC-6)", async () => {
+        let seen: readonly string[] = [];
+        const launch = (args: readonly string[]) => ((seen = args), { command: process.execPath, args: ["-e", `require("node:fs").writeFileSync(process.argv.find((a) => a.startsWith("result=")).slice(7), JSON.stringify({ tickets: [], capReached: false, limit: null, stopReason: null }))`, ...args] });
+        await runCloneWork(dir, dir, process.env, { waitHours: 2, cap: 4 }, launch);
+        assert.ok(seen.includes("pickup=service"));
+        assert.ok(seen.includes("wait=2") && seen.includes("max=4"));
     });
 
     it("rejects when the run leaves no summary", async () => {

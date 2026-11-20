@@ -107,3 +107,22 @@ export async function prepareCleanDefaultBranch(cwd: string, taiRoot: string): P
         throw new PrepareStopError(`Could not bring ${branch} up to date, so no run can start: ${detail}`);
     }
 }
+
+/**
+ * TAI-777: whether the branch on `origin` has commits the checkout did not have when a pause note recorded `commit` (a short hash):
+ * someone committed to the ticket's branch from outside the clone. `false` when the branch is not on `origin` (nothing was pushed);
+ * `null` when git cannot say (the recorded commit is not in this clone), which the caller treats as "cannot tell".
+ */
+export async function branchHasCommitsBeyond(cwd: string, branch: string, commit: string): Promise<boolean | null> {
+    try {
+        await execFileAsync("git", ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], { cwd });
+    } catch {
+        return false;
+    }
+    try {
+        const ahead = (await execFileAsync("git", ["rev-list", "--count", `${commit}..refs/remotes/origin/${branch}`], { cwd })).stdout.trim();
+        return Number(ahead) > 0;
+    } catch {
+        return null;
+    }
+}

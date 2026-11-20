@@ -70,6 +70,8 @@ export interface SkippedDevTask {
     readonly reason: string;
     /** The tickets it waits on, so the report can say when one of them is a ticket this run worked. */
     readonly waitingOn?: readonly IssueKey[];
+    /** TAI-777: left alone by the service's pickup rule (a person's own ticket), so the service's record can say so. */
+    readonly byPickupRule?: true;
 }
 
 export interface FoundDevTasks {
@@ -86,6 +88,11 @@ export interface FindDevTasksDeps {
     readonly openPullRequests?: () => Promise<(issue: Issue) => string | null>;
     /** `only=<KEY>` (TAI-695): work this one ticket. Every other ticket is listed as skipped, "not selected". */
     readonly only?: IssueKey;
+    /**
+     * TAI-777: the unattended service's pickup rule (`pickup=service`). Asked for each In Progress ticket: a reason to leave it alone,
+     * or null when it is the service's own paused ticket. Absent for a person's own run, which works every In Progress ticket of theirs.
+     */
+    readonly servicePickup?: (issue: Issue) => Promise<string | null>;
 }
 
 /**
@@ -127,6 +134,18 @@ export async function findDevTasks(deps: FindDevTasksDeps): Promise<FoundDevTask
         if (!parent || (parent.issueType !== StoryType.Story && parent.issueType !== StoryType.Bug)) {
             skipped.push({ issue, reason: `its parent ${issue.parentKey} is not a Story or a Bug` });
             continue;
+        }
+        if (issue.status === Status.InProgress && deps.servicePickup) {
+            let leave: string | null;
+            try {
+                leave = await deps.servicePickup(issue);
+            } catch (err) {
+                leave = `the pickup rule could not read it (${errorText(err)}), so it is left alone`;
+            }
+            if (leave) {
+                skipped.push({ issue, reason: `${leave} (service pickup rule)`, byPickupRule: true });
+                continue;
+            }
         }
         if (issue.status === Status.ToDo) {
             let siblings = siblingsOf.get(parent.key);
@@ -204,6 +223,8 @@ export interface RunDevTasksDeps {
     readonly limitLatch?: UsageLimitLatch;
     /** TAI-706: `wait=<hours>`: sleep until the reset when it is within this many hours. Without it a limit stops the batch. */
     readonly waitHours?: number;
+    /** TAI-777: for the service, a To Do ticket's status read again just before it is started: why to skip it (a person started it), or null. */
+    readonly recheckToDo?: (task: DevTask) => Promise<string | null>;
     /** TAI-770: `max=<n>`: the most tickets this run starts. A ticket that is paused and carried on after a wait counts once. The rest wait for the next run. */
     readonly maxTickets?: number;
     /** TAI-706: sleeps for the given milliseconds; ends early (resolving) on an interrupt. Without it nothing is waited for. */
@@ -339,6 +360,8 @@ export interface WorkedDevTasks {
     readonly found: FoundDevTasks;
     /** TAI-770: the run stopped because it had started `maxTickets` tickets and another was ready. */
     readonly capReached?: boolean;
+    /** TAI-777: To Do tickets the run did not start because their status had changed since the search (a person started them). */
+    readonly passedOver?: readonly SkippedDevTask[];
 }
 
 /**
@@ -371,6 +394,12 @@ async function pickNext(tasks: readonly DevTask[], attempted: ReadonlySet<IssueK
  * attempted once per run, so a failed one is never retried in a loop and one whose PR is still open is not rebuilt.
  */
 export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDeps, firstLook?: FoundDevTasks): Promise<WorkedDevTasks> {
+    const passedOver: SkippedDevTask[] = [];
+    const worked = await workLoop(find, deps, firstLook, passedOver);
+    return passedOver.length > 0 ? { ...worked, passedOver } : worked;
+}
+
+async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDeps, firstLook: FoundDevTasks | undefined, passedOver: SkippedDevTask[]): Promise<WorkedDevTasks> {
     const attempted = new Set<IssueKey>();
     const pausedKnown = new Map<IssueKey, boolean>();
     const results: DevTaskResult[] = [];
@@ -383,9 +412,25 @@ export async function workDevTasks(find: () => Promise<FoundDevTasks>, deps: Run
         const found = pending ?? (await find());
         pending = undefined;
         last = found;
-        const next = await pickNext(found.tasks, attempted, deps, pausedKnown);
+        const passed = new Set(passedOver.map((p) => p.issue.key));
+        const next = await pickNext(found.tasks, new Set([...attempted, ...passed]), deps, pausedKnown);
         if (!next) return { results, found };
         if (deps.maxTickets !== undefined && attempted.size >= deps.maxTickets) return { results, found, capReached: true };
+        // TAI-777: a To Do ticket is read again just before it is started; a person may have started it since the search. It is passed over
+        // (not counted against the cap) and the run looks for another.
+        if (deps.recheckToDo && next.issue.status === Status.ToDo) {
+            let why: string | null;
+            try {
+                why = await deps.recheckToDo(next);
+            } catch (err) {
+                why = `its status could not be read again (${errorText(err)})`;
+            }
+            if (why) {
+                deps.say?.(`Passing over ${next.issue.key}: ${why}.`);
+                passedOver.push({ issue: next.issue, reason: `${why} (service pickup rule)`, byPickupRule: true });
+                continue;
+            }
+        }
         attempted.add(next.issue.key);
         deps.limitLatch?.clear();
         const result = await runDevTask(next, deps);
@@ -552,23 +597,26 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 export function parseDevTasksArgs(
     args: readonly (string | undefined)[],
     options: { readonly rules?: boolean } = {}
-): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string } {
+): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string; readonly pickup?: "service" } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
     const onlyArgs = given.filter((a) => a.startsWith("only="));
     const waitArgs = options.rules ? [] : given.filter((a) => a.startsWith("wait="));
     const maxArgs = options.rules ? [] : given.filter((a) => a.startsWith("max="));
     const resultArgs = options.rules ? [] : given.filter((a) => a.startsWith("result="));
-    const unknown = given.filter((a) => !known.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")) && !maxArgs.includes(a) && !resultArgs.includes(a));
+    const pickupArgs = options.rules ? [] : given.filter((a) => a.startsWith("pickup="));
+    const unknown = given.filter((a) => !known.includes(a) && !pickupArgs.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")) && !maxArgs.includes(a) && !resultArgs.includes(a));
     if (unknown.length > 0) {
         throw new Error(
-            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets> and result=<file>"} (got: ${unknown.join(" ")}).`
+            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file> and pickup=service"} (got: ${unknown.join(" ")}).`
         );
     }
     if (onlyArgs.length > 1) throw new Error(`do-dev-tasks takes only one only=<DEV-KEY> (got: ${onlyArgs.join(" ")}).`);
     if (waitArgs.length > 1) throw new Error(`do-dev-tasks takes only one wait=<hours> (got: ${waitArgs.join(" ")}).`);
     if (maxArgs.length > 1) throw new Error(`do-dev-tasks takes only one max=<tickets> (got: ${maxArgs.join(" ")}).`);
     if (resultArgs.length > 1) throw new Error(`do-dev-tasks takes only one result=<file> (got: ${resultArgs.join(" ")}).`);
+    if (pickupArgs.length > 1) throw new Error(`do-dev-tasks takes only one pickup=service (got: ${pickupArgs.join(" ")}).`);
+    if (pickupArgs.length === 1 && pickupArgs[0] !== "pickup=service") throw new Error(`pickup= takes only service (got: ${pickupArgs[0]!.slice("pickup=".length) || "nothing"}).`);
     let maxTickets: number | undefined;
     if (maxArgs.length === 1) {
         const value = maxArgs[0]!.slice("max=".length);
@@ -591,7 +639,7 @@ export function parseDevTasksArgs(
     let yolo: boolean | undefined;
     if (wantsOn) yolo = true;
     else if (wantsOff) yolo = false;
-    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }) };
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }), ...(pickupArgs.length === 1 ? { pickup: "service" as const } : {}) };
 }
 
 /**
@@ -612,6 +660,8 @@ export interface RunSummary {
     readonly limit: { readonly text: string; readonly resetsAt?: string } | null;
     /** The reason a ticket's stop ended the whole run (a tree that cannot be prepared), when one did. */
     readonly stopReason: string | null;
+    /** TAI-777: tickets the service's pickup rule left alone (a person's own), with why. Empty for a person's own run. */
+    readonly skipped: readonly { readonly key: string; readonly reason: string }[];
 }
 
 function outcomeDetail(outcome: DevTaskOutcome): string | undefined {
@@ -629,8 +679,22 @@ function outcomeDetail(outcome: DevTaskOutcome): string | undefined {
     }
 }
 
+/**
+ * The tickets the service's pickup rule left alone. A ticket passed over before its start can be skipped again by a later look (it is
+ * In Progress by then), so each key is listed once, with the first reason. A ticket this run worked and stopped is In Progress too, but it is
+ * in `tickets`, not "left alone".
+ */
+function leftAlone(worked: Partial<Pick<WorkedDevTasks, "found" | "passedOver" | "results">>): { readonly key: string; readonly reason: string }[] {
+    const byKey = new Map<string, string>();
+    const workedKeys = new Set((worked.results ?? []).map((r) => r.task.issue.key as string));
+    for (const s of [...(worked.passedOver ?? []), ...(worked.found?.skipped ?? [])]) {
+        if (s.byPickupRule && !workedKeys.has(s.issue.key) && !byKey.has(s.issue.key)) byKey.set(s.issue.key, s.reason);
+    }
+    return [...byKey].map(([key, reason]) => ({ key, reason }));
+}
+
 /** What `worked` came to, for `result=<file>`. A pure function of the run's results. */
-export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached">): RunSummary {
+export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached"> & Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): RunSummary {
     const last = worked.results.at(-1)?.outcome;
     const ended = last?.state === "paused" && !last.carriedOn ? last : null;
     return {
@@ -641,5 +705,6 @@ export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capRea
         capReached: worked.capReached === true,
         limit: ended ? { text: ended.limit.text, ...(ended.limit.resetsAt ? { resetsAt: ended.limit.resetsAt.toISOString() } : {}) } : null,
         stopReason: last?.state === "stopped" ? last.reason : null,
+        skipped: leftAlone(worked),
     };
 }

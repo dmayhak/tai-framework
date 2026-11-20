@@ -2,6 +2,15 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 170 (2026-11-19)
+
+**TAI-773 (Dev TAI-777): the pickup rule of the unattended Dev service.** Fourth Story of Epic TAI-763 and the one that blocks the timer. The service runs as the same Jira user as the person, so an In Progress ticket the service paused on a usage limit and one the person started by hand look the same. `service run` now starts `do-dev-tasks` with `pickup=service`.
+
+* In that mode an In Progress Dev subtask is resumed only when its newest comment of any kind is the service's own usage-limit pause note (a run started with `pickup=service` writes it with the line `Run by: the unattended service.`; a person's own run writes the same note without it, so a ticket a person paused is left alone) and `origin/<branch>` has no commit beyond the commit the note recorded. Anything else (a later comment, another stop, an outside commit, a note with no position, a position off the Story's branch, an unknown position, an unreadable ticket) is left alone, with the reason, in the log, `result=` and `last-run.json` (`skipped`).
+* A To Do ticket's status is read again just before the run starts it; if a person has started it since, it is passed over and does not count against the cap.
+* `wasPausedOnLimit` is unchanged (its existing tests already tell a usage-limit pause from a review-rounds or failure stop); the service uses the stricter `newestCommentIsOwnPause`, because for the service a later plain comment is a person's touch.
+* Decided here, to confirm in review: the re-read happens in the run just before the ticket's build starts, but the move to In Progress itself is made by the build run a moment later, so a person who starts the ticket in that gap is not seen; and a person's unpushed commit is not seen.
+
 ## rev 169 (2026-11-18)
 
 **TAI-770 (Story TAI-770, Dev TAI-774): one guarded run of the unattended Dev service, `tai service run`.** First Story of Epic TAI-763: the single command a timer and kick-off-now will both call. It takes a run lock, skips while a usage limit has not reset, checks the preflight, refreshes the service's own clone, runs `do-dev-tasks` with a cap and records what happened. Design: the work-breakdown page for the Epic and its EpicReview (TAI-766).

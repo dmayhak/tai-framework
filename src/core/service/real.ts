@@ -164,7 +164,7 @@ export async function runCloneWork(clonePath: string, stateDir: string, env: Nod
     await mkdir(stateDir, { recursive: true });
     const resultPath = join(stateDir, RESULT_FILE);
     await rm(resultPath, { force: true });
-    const { command, args } = launch(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`]);
+    const { command, args } = launch(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`, "pickup=service"]);
     const code = await new Promise<number | null>((done, fail) => {
         const child = spawn(command, args, { cwd: clonePath, env, stdio: "inherit" });
         // A stop sent to this process (a `kill`, Ctrl-C, a closed terminal) goes on to the run, which is then waited for: no run may outlive
