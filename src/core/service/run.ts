@@ -18,6 +18,8 @@ export interface WorkSummary {
     readonly capReached: boolean;
     readonly limit: { readonly text: string; readonly resetsAt?: string } | null;
     readonly stopReason: string | null;
+    /** TAI-777: In Progress tickets the pickup rule left alone (a person's own), with why. */
+    readonly skipped?: readonly { readonly key: string; readonly reason: string }[];
 }
 
 export interface ServiceTickDeps {
@@ -108,8 +110,9 @@ export async function runServiceTick(deps: ServiceTickDeps): Promise<TickResult>
             deps.say(`Usage limit reached (${summary.limit.text}): limited until ${limitedUntil}; later ticks skip until then.`);
         }
         if (summary.capReached) deps.say(`Cap reached: ${summary.tickets.length} ticket${summary.tickets.length === 1 ? "" : "s"} worked (cap ${deps.cap}); the rest wait for the next tick.`);
+        for (const left of summary.skipped ?? []) deps.say(`Left alone ${left.key}: ${sentence(left.reason)}.`);
         const stopReason = endReason(summary, limitedUntil);
-        await writeLastRun(deps.stateDir, { started: started.toISOString(), ended: deps.now().toISOString(), tickets: summary.tickets, stopReason });
+        await writeLastRun(deps.stateDir, { started: started.toISOString(), ended: deps.now().toISOString(), tickets: summary.tickets, ...(summary.skipped && summary.skipped.length > 0 ? { skipped: summary.skipped } : {}), stopReason });
         deps.say(`Run ended: ${stopReason}.`);
         return { status: "ran", exitCode: 0, stopReason };
     } finally {

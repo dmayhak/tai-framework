@@ -269,6 +269,29 @@ export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue"
 }
 
 /**
+ * TAI-777: whether the NEWEST comment of any kind on a ticket is the service's own usage-limit pause note, the one that says the run
+ * continues the ticket. Stricter than `wasPausedOnLimit`, which looks at hand-offs only: for the unattended service a later plain
+ * comment is a person's touch and means the ticket is not the service's to resume. The recorded `Position:` is returned for the
+ * check on commits made since.
+ */
+export function newestCommentIsOwnPause(comments: readonly { readonly body: string; readonly createdAt?: string }[]): { readonly ok: true; readonly position: string | undefined } | { readonly ok: false; readonly reason: string } {
+    if (comments.length === 0) return { ok: false, reason: "it has no comments, so there is no usage-limit pause note to resume from" };
+    if (comments.length > 1 && comments.some((c) => Number.isNaN(timeOf(c.createdAt)))) return { ok: false, reason: "a comment's time cannot be read, so the newest comment cannot be told" };
+    const ordered = [...comments].sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
+    const newest = ordered[ordered.length - 1]!;
+    const isPause = (body: string): boolean => body.includes(PAUSED_NOTE_START) && body.includes(CONTINUES_MARK);
+    if (!isPause(newest.body)) {
+        return {
+            ok: false,
+            reason: ordered.some((c) => isPause(c.body))
+                ? "a comment came after the service's usage-limit pause note, so a person has touched it"
+                : "its newest comment is not the service's usage-limit pause note, so a person is working it or it stopped for another reason",
+        };
+    }
+    return { ok: true, position: new RegExp(`^${POSITION_PREFIX}(\\S+)$`, "m").exec(newest.body)?.[1] };
+}
+
+/**
  * Whether each ticket was paused on a limit, with the lifetime of every answer stated. The answer read while picking the next ticket is used
  * once, by that ticket's preparation; the answer preparation settled on is used once, by that attempt's build. A later attempt reads afresh.
  */

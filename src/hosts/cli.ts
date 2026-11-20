@@ -176,7 +176,8 @@ import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
 import { resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
-import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey, summarizeWorked, type RunSummary } from "../core/commands/do-dev-tasks.js";
+import { servicePickupReason, stillToDoReason } from "../core/commands/service-pickup.js";
+import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey, summarizeWorked, type DevTask, type RunSummary } from "../core/commands/do-dev-tasks.js";
 import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
 import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
@@ -185,7 +186,7 @@ import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, realRefreshGit, 
 import { runServiceTick } from "../core/service/run.js";
 import { writeFile } from "node:fs/promises";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
-import { assertCleanTree, checkoutPosition, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
+import { assertCleanTree, branchHasCommitsBeyond, checkoutPosition, resumeBranchFor, prepareCleanDefaultBranch, prepareForTicket } from "../core/commands/dev-tasks-git.js";
 import { buildStageAfterLimit, PauseReads, pausedAwareHandoff, sleepUnlessInterrupted, UsageLimitLatch, wasPausedOnLimit } from "../core/commands/usage-limit.js";
 import { findGroomingWork, renderGroomingBriefing, staleBacklogDaysFromEnv } from "../core/commands/groom.js";
 import { findKickoffContext, renderKickoffBriefing } from "../core/commands/kickoff.js";
@@ -1684,7 +1685,7 @@ export function renderUsage(): string {
         "  work <ISSUE-KEY>             Load a ticket's briefing and hand it to its persona",
         "  ready [persona]              Show what's ready to work on",
         "  do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>] [wait=<hours>]",
-        "               [max=<tickets>] [result=<file>]",
+        "               [max=<tickets>] [result=<file>] [pickup=service]",
         "                               Run the ready Dev tasks unattended (DEV-YOLO)",
         "  do-dev-tasks rules [yolo=true|false]",
         "                               Print the permission rules those runs use",
@@ -2449,7 +2450,7 @@ async function main(): Promise<void> {
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
+        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath, pickup } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
             // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
@@ -2479,6 +2480,13 @@ async function main(): Promise<void> {
                 projectKey: config.projectKey,
                 currentHuman: config.currentHuman,
                 ...(only ? { only } : {}),
+                // TAI-777: the service leaves a person's own In Progress ticket alone; a person's own run does not use this.
+                ...(pickup === "service"
+                    ? {
+                          servicePickup: (issue: Issue) =>
+                              servicePickupReason({ workTracker: config.backend.workTracker, branchHasCommitsBeyond: (branch, commit) => branchHasCommitsBeyond(process.cwd(), branch, commit) }, issue),
+                      }
+                    : {}),
                 ...(gitDeps
                     ? {
                           openPullRequests: async () => {
@@ -2521,7 +2529,7 @@ async function main(): Promise<void> {
             if (resultPath) await writeFile(resultPath, `${JSON.stringify(summary)}\n`);
         };
         if (found.tasks.length === 0) {
-            await writeResult(summarizeWorked({ results: [] }));
+            await writeResult(summarizeWorked({ results: [], found }));
             console.log(renderDevTasksReport(found, [], { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
             return;
         }
@@ -2586,6 +2594,7 @@ async function main(): Promise<void> {
             limitLatch,
             ...(waitHours !== undefined ? { waitHours } : {}),
             ...(maxTickets !== undefined ? { maxTickets } : {}),
+            ...(pickup === "service" ? { recheckToDo: (task: DevTask) => stillToDoReason(config.backend.workTracker, task.issue) } : {}),
             sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
             say: (line) => console.log(line),
             prepare: async (task) => {
