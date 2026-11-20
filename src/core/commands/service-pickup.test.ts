@@ -86,6 +86,14 @@ describe("servicePickupReason (TAI-773 AC-1, AC-2)", () => {
         assert.match(why ?? "", /a person is working it or it stopped for another reason/);
     });
 
+    it("names a pause recorded before the Story's branch existed, and does not compare it with origin", async () => {
+        const t = { getIssue: async () => ({ parentKey: "TAI-5", comments: [comment(pause("main@abc1234"), 1)] }) as never };
+        const why = await servicePickupReason({ workTracker: t, branchHasCommitsBeyond: never }, { key: "TAI-10" as never });
+        assert.match(why ?? "", /recorded on main, not on its Story's branch \(TAI-5-\.\.\.\)/);
+        const own = { getIssue: async () => ({ parentKey: "TAI-5", comments: [comment(pause("TAI-5-x@abc1234"), 1)] }) as never };
+        assert.equal(await servicePickupReason({ workTracker: own, branchHasCommitsBeyond: async () => false }, { key: "TAI-10" as never }), null);
+    });
+
     it("leaves a ticket alone when the branch has a commit from outside the clone since the pause", async () => {
         const why = await servicePickupReason({ workTracker: tracker(comment(pause("TAI-5-x@abc1234"), 1)), branchHasCommitsBeyond: async () => true }, { key: "TAI-10" as never });
         assert.match(why ?? "", /a commit on TAI-5-x came from outside the service's clone/);

@@ -26,6 +26,11 @@ export async function servicePickupReason(deps: ServicePickupDeps, issue: Pick<I
     if (!note.ok) return note.reason;
     const at = note.position ? /^(.+)@([0-9a-f]+)$/.exec(note.position) : null;
     if (!at) return "its pause note records no checkout position, so it cannot be told whether a person has committed since";
+    // A cut-off before the ticket's branch existed records the default branch; comparing that against origin would call every later fast-forward "a person's commit".
+    const story = fresh.parentKey;
+    if (story && at[1] !== story && !at[1]!.startsWith(`${story}-`)) {
+        return `its pause was recorded on ${at[1]}, not on its Story's branch (${story}-...), so it cannot be told whether a person has committed since; a person should look`;
+    }
     const beyond = await deps.branchHasCommitsBeyond(at[1]!, at[2]!);
     if (beyond === true) return `a commit on ${at[1]} came from outside the service's clone after the pause, so a person is working it`;
     if (beyond === null) return `its recorded position (${note.position}) is not in this clone, so it cannot be told whether a person has committed since`;
