@@ -56,6 +56,12 @@ describe("newestCommentIsOwnPause (TAI-773 AC-1, AC-2)", () => {
         assert.equal(newestCommentIsOwnPause([]).ok, false);
     });
 
+    it("counts a note edited in place from its edit time, so it is newer than a comment made after it was first posted", () => {
+        const edited = { body: pause("TAI-5-x@abc1234"), createdAt: at(1), updatedAt: at(5) };
+        assert.equal(newestCommentIsOwnPause([edited, comment("Perry: a note", 3)]).ok, true);
+        assert.equal(newestCommentIsOwnPause([edited, comment("later", 6)]).ok, false);
+    });
+
     it("orders by the comment's own time, not the list order, and cannot tell when a time is unreadable", () => {
         assert.equal(newestCommentIsOwnPause([comment(pause("a@b"), 2), comment("later person comment", 3)]).ok, false);
         assert.equal(newestCommentIsOwnPause([comment("earlier", 1), comment(pause("a@b"), 2)]).ok, true);

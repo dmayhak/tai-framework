@@ -681,12 +681,14 @@ function outcomeDetail(outcome: DevTaskOutcome): string | undefined {
 
 /**
  * The tickets the service's pickup rule left alone. A ticket passed over before its start can be skipped again by a later look (it is
- * In Progress by then), so each key is listed once, with the first reason.
+ * In Progress by then), so each key is listed once, with the first reason. A ticket this run worked and stopped is In Progress too, but it is
+ * in `tickets`, not "left alone".
  */
-function leftAlone(worked: Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): { readonly key: string; readonly reason: string }[] {
+function leftAlone(worked: Partial<Pick<WorkedDevTasks, "found" | "passedOver" | "results">>): { readonly key: string; readonly reason: string }[] {
     const byKey = new Map<string, string>();
+    const workedKeys = new Set((worked.results ?? []).map((r) => r.task.issue.key as string));
     for (const s of [...(worked.passedOver ?? []), ...(worked.found?.skipped ?? [])]) {
-        if (s.byPickupRule && !byKey.has(s.issue.key)) byKey.set(s.issue.key, s.reason);
+        if (s.byPickupRule && !workedKeys.has(s.issue.key) && !byKey.has(s.issue.key)) byKey.set(s.issue.key, s.reason);
     }
     return [...byKey].map(([key, reason]) => ({ key, reason }));
 }

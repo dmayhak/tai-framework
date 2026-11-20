@@ -281,10 +281,12 @@ export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue"
  * comment is a person's touch and means the ticket is not the service's to resume. The recorded `Position:` is returned for the
  * check on commits made since.
  */
-export function newestCommentIsOwnPause(comments: readonly { readonly body: string; readonly createdAt?: string }[]): { readonly ok: true; readonly position: string | undefined } | { readonly ok: false; readonly reason: string } {
+export function newestCommentIsOwnPause(comments: readonly { readonly body: string; readonly createdAt?: string; readonly updatedAt?: string }[]): { readonly ok: true; readonly position: string | undefined } | { readonly ok: false; readonly reason: string } {
     if (comments.length === 0) return { ok: false, reason: "it has no comments, so there is no usage-limit pause note to resume from" };
+    // A pause note replaces the ticket's earlier hand-off in place and keeps its first createdAt, so a comment counts from its later edit time.
+    const touched = (c: { readonly createdAt?: string; readonly updatedAt?: string }): number => Math.max(timeOf(c.createdAt), Number.isNaN(timeOf(c.updatedAt)) ? -Infinity : timeOf(c.updatedAt));
     if (comments.length > 1 && comments.some((c) => Number.isNaN(timeOf(c.createdAt)))) return { ok: false, reason: "a comment's time cannot be read, so the newest comment cannot be told" };
-    const ordered = [...comments].sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
+    const ordered = [...comments].sort((a, b) => touched(a) - touched(b));
     const newest = ordered[ordered.length - 1]!;
     const isPause = (body: string): boolean => body.includes(PAUSED_NOTE_START) && body.includes(CONTINUES_MARK) && body.includes(SERVICE_MARK);
     if (!isPause(newest.body)) {

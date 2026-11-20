@@ -1473,6 +1473,15 @@ describe("the service pickup rule in do-dev-tasks (TAI-773)", () => {
         assert.deepEqual(s.skipped, [{ key: "TAI-9", reason: "first" }]);
     });
 
+    it("does not list a ticket this run worked and stopped as left alone (review fix)", () => {
+        const s = summarizeWorked({
+            results: [{ task: { issue: { key: "TAI-9" } }, outcome: { state: "handed-on", note: "stopped" } } as never],
+            found: { tasks: [], skipped: [{ issue: { key: "TAI-9" } as never, reason: "a person is working it (service pickup rule)", byPickupRule: true }] },
+        });
+        assert.deepEqual(s.skipped, []);
+        assert.deepEqual(s.tickets.map((t) => t.key), ["TAI-9"]);
+    });
+
     it("does not re-read a To Do ticket's status when the cap is already reached (review fix)", async () => {
         const reads: string[] = [];
         const d = deps({ maxTickets: 1, recheckToDo: async (t) => (reads.push(t.issue.key), null) });
