@@ -2559,6 +2559,7 @@ async function main(): Promise<void> {
                   projectKey: config.projectKey,
                   taiDir: resolvePath(config.taiRoot),
                   limitLatch,
+                  ...(pickup === "service" ? { byService: true } : {}),
                   pausedOnLimit: (key: IssueKey) => pauses.forBuild(key),
                   email: config.currentHuman?.email ?? null,
                   ...(oneRun ? { oneRun: true } : {}),
@@ -2608,7 +2609,7 @@ async function main(): Promise<void> {
             inspect: (task) => findOpenPullRequest(gitDeps.gitHost, gitDeps.repos, task.issue.key, { checkConfigured }),
             handoff: pausedAwareHandoff(limitLatch, async (key, body) => {
                 await postIssueComment(config.backend.workTracker, key as IssueKey, stampComment(body, developer));
-            }, () => checkoutPosition(process.cwd())),
+            }, () => checkoutPosition(process.cwd()), pickup === "service"),
         }, found);
         await writeResult(summarizeWorked(worked));
         console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));

@@ -415,6 +415,7 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
         const passed = new Set(passedOver.map((p) => p.issue.key));
         const next = await pickNext(found.tasks, new Set([...attempted, ...passed]), deps, pausedKnown);
         if (!next) return { results, found };
+        if (deps.maxTickets !== undefined && attempted.size >= deps.maxTickets) return { results, found, capReached: true };
         // TAI-777: a To Do ticket is read again just before it is started; a person may have started it since the search. It is passed over
         // (not counted against the cap) and the run looks for another.
         if (deps.recheckToDo && next.issue.status === Status.ToDo) {
@@ -430,7 +431,6 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
                 continue;
             }
         }
-        if (deps.maxTickets !== undefined && attempted.size >= deps.maxTickets) return { results, found, capReached: true };
         attempted.add(next.issue.key);
         deps.limitLatch?.clear();
         const result = await runDevTask(next, deps);
@@ -679,6 +679,18 @@ function outcomeDetail(outcome: DevTaskOutcome): string | undefined {
     }
 }
 
+/**
+ * The tickets the service's pickup rule left alone. A ticket passed over before its start can be skipped again by a later look (it is
+ * In Progress by then), so each key is listed once, with the first reason.
+ */
+function leftAlone(worked: Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): { readonly key: string; readonly reason: string }[] {
+    const byKey = new Map<string, string>();
+    for (const s of [...(worked.passedOver ?? []), ...(worked.found?.skipped ?? [])]) {
+        if (s.byPickupRule && !byKey.has(s.issue.key)) byKey.set(s.issue.key, s.reason);
+    }
+    return [...byKey].map(([key, reason]) => ({ key, reason }));
+}
+
 /** What `worked` came to, for `result=<file>`. A pure function of the run's results. */
 export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached"> & Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): RunSummary {
     const last = worked.results.at(-1)?.outcome;
@@ -691,6 +703,6 @@ export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capRea
         capReached: worked.capReached === true,
         limit: ended ? { text: ended.limit.text, ...(ended.limit.resetsAt ? { resetsAt: ended.limit.resetsAt.toISOString() } : {}) } : null,
         stopReason: last?.state === "stopped" ? last.reason : null,
-        skipped: [...(worked.found?.skipped ?? []), ...(worked.passedOver ?? [])].filter((s) => s.byPickupRule).map((s) => ({ key: s.issue.key, reason: s.reason })),
+        skipped: leftAlone(worked),
     };
 }

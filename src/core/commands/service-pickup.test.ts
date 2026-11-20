@@ -7,11 +7,11 @@ import { execFileSync } from "node:child_process";
 
 import { Status } from "../schema/story-schema.js";
 import { branchHasCommitsBeyond } from "./dev-tasks-git.js";
-import { newestCommentIsOwnPause, pausedHandoff } from "./usage-limit.js";
+import { newestCommentIsOwnPause, pausedAwareHandoff, pausedHandoff, SERVICE_MARK, UsageLimitLatch } from "./usage-limit.js";
 import { servicePickupReason, stillToDoReason } from "./service-pickup.js";
 
 const limit = { text: "5-hour limit reached" };
-const pause = (position?: string, stage = "build run") => pausedHandoff(limit, stage, position);
+const pause = (position?: string, stage = "build run") => pausedHandoff(limit, stage, position, true);
 const at = (minutes: number): string => new Date(Date.UTC(2026, 10, 19, 10, minutes)).toISOString();
 const comment = (body: string, minutes: number) => ({ body, createdAt: at(minutes) });
 
@@ -25,6 +25,26 @@ describe("newestCommentIsOwnPause (TAI-773 AC-1, AC-2)", () => {
         const r = newestCommentIsOwnPause([comment(pause("TAI-5-x@abc1234"), 1), comment("I'm looking at this one myself", 2)]);
         assert.equal(r.ok, false);
         assert.match((r as { reason: string }).reason, /came after the service's usage-limit pause note/);
+    });
+
+    it("is not ok for a pause note a person's own run wrote (no service line), though it is the same note otherwise", () => {
+        const persons = pausedHandoff(limit, "build run", "TAI-5-x@abc1234");
+        assert.doesNotMatch(persons, new RegExp(SERVICE_MARK));
+        const r = newestCommentIsOwnPause([comment(persons, 1)]);
+        assert.equal(r.ok, false);
+        assert.match((r as { reason: string }).reason, /not the service's usage-limit pause note/);
+    });
+
+    it("the service line is written only when the run is the service's, by both note writers", async () => {
+        assert.match(pausedHandoff(limit, "build run", undefined, true), new RegExp(SERVICE_MARK));
+        assert.doesNotMatch(pausedHandoff(limit, "build run"), new RegExp(SERVICE_MARK));
+        for (const byService of [true, false]) {
+            const latch = new UsageLimitLatch();
+            latch.hit(limit, "build run");
+            let posted = "";
+            await pausedAwareHandoff(latch, async (_k, body) => void (posted = body), async () => "TAI-5-x@abc1234", byService)("TAI-10", "Handoff: anything");
+            assert.equal(posted.includes(SERVICE_MARK), byService);
+        }
     });
 
     it("is not ok when the newest hand-off is another stop, or there are no comments", () => {

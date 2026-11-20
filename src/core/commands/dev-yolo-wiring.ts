@@ -33,6 +33,8 @@ export interface YoloWiring {
     readonly limitLatch?: UsageLimitLatch;
     /** TAI-706: whether the ticket was paused on a usage limit, as already read for this attempt. Without it the ticket is read here. */
     readonly pausedOnLimit?: (key: IssueKey) => Promise<boolean>;
+    /** TAI-777: this run is the unattended service's (`pickup=service`), so its pause note carries the service's own line. */
+    readonly byService?: boolean;
     readonly email: string | null;
     /** DEV-YOLO is on for this run only (`do-dev-tasks yolo=true`), not by the stored setting. */
     readonly oneRun?: boolean;
@@ -107,7 +109,7 @@ export function yoloRun(w: YoloWiring): (task: DevTask) => Promise<DevTaskOutcom
         if (result.limit) w.limitLatch?.hit(result.limit, typeof stage === "string" ? stage : await stage());
         return result;
     };
-    const handoff = pausedAwareHandoff(w.limitLatch, w.handoff, () => checkoutPosition(w.cwd));
+    const handoff = pausedAwareHandoff(w.limitLatch, w.handoff, () => checkoutPosition(w.cwd), w.byService === true);
     // The PR is listed once per ticket; every later read of it is by id, and the head is always read the same way.
     const found = new Map<string, PullRequestRef>();
     const pullRequest = async (task: DevTask): Promise<PullRequestRef> => {

@@ -226,10 +226,16 @@ const POSITION_PREFIX = "Position: ";
 const PAUSED_NOTE_START = "Handoff: DEV-YOLO paused on a usage limit.";
 /** The part of the continues line that has no quote marks, so a tracker that rewrites quotes in a comment cannot hide it. */
 const CONTINUES_MARK = "The run continues this ticket on its branch.";
+/**
+ * TAI-777: the line a pause note carries when the unattended service's run wrote it. The service resumes only notes with this line,
+ * because a person's own run that hit a limit writes the same note under the same Jira user, and its cut-off work is in the person's
+ * checkout, not the service's clone.
+ */
+export const SERVICE_MARK = "Run by: the unattended service.";
 const CONTINUES_LINE = `Next: once the limit has reset, run "Do all dev tasks" again. ${CONTINUES_MARK}`;
 
 /** The note left on a ticket whose run was cut off by a usage limit. Neutral: the ticket did nothing wrong. */
-export function pausedHandoff(limit: UsageLimit, stage: string, position?: string): string {
+export function pausedHandoff(limit: UsageLimit, stage: string, position?: string, byService = false): string {
     const reset = limit.resetsAt ? ` It resets at ${limit.resetsAt.toISOString()}.` : "";
     const next = isContinuableStage(stage)
         ? CONTINUES_LINE
@@ -240,6 +246,7 @@ export function pausedHandoff(limit: UsageLimit, stage: string, position?: strin
         `${PAUSED_NOTE_START} The account's usage limit was reached while this ticket's ${stage} was running: "${limit.text}".${reset}\n\n` +
         "This is not a failure of the ticket. The branch and any uncommitted work were left as they were.\n\n" +
         (position ? `${POSITION_PREFIX}${position}\n\n` : "") +
+        (byService ? `${SERVICE_MARK}\n\n` : "") +
         next
     );
 }
@@ -270,7 +277,7 @@ export async function wasPausedOnLimit(workTracker: Pick<WorkTracker, "getIssue"
 
 /**
  * TAI-777: whether the NEWEST comment of any kind on a ticket is the service's own usage-limit pause note, the one that says the run
- * continues the ticket. Stricter than `wasPausedOnLimit`, which looks at hand-offs only: for the unattended service a later plain
+ * continues the ticket and carries the service's own line (`SERVICE_MARK`: a person's own paused run writes the same note without it). Stricter than `wasPausedOnLimit`, which looks at hand-offs only: for the unattended service a later plain
  * comment is a person's touch and means the ticket is not the service's to resume. The recorded `Position:` is returned for the
  * check on commits made since.
  */
@@ -279,7 +286,7 @@ export function newestCommentIsOwnPause(comments: readonly { readonly body: stri
     if (comments.length > 1 && comments.some((c) => Number.isNaN(timeOf(c.createdAt)))) return { ok: false, reason: "a comment's time cannot be read, so the newest comment cannot be told" };
     const ordered = [...comments].sort((a, b) => timeOf(a.createdAt) - timeOf(b.createdAt));
     const newest = ordered[ordered.length - 1]!;
-    const isPause = (body: string): boolean => body.includes(PAUSED_NOTE_START) && body.includes(CONTINUES_MARK);
+    const isPause = (body: string): boolean => body.includes(PAUSED_NOTE_START) && body.includes(CONTINUES_MARK) && body.includes(SERVICE_MARK);
     if (!isPause(newest.body)) {
         return {
             ok: false,
@@ -341,7 +348,7 @@ export class PauseReads {
  * Wraps a hand-off poster so that, once a run has hit the usage limit, whatever hand-off the ticket's code goes on to write (a failure
  * hand-off, a "run did not finish" note) is replaced by the neutral paused note: the ticket did not fail.
  */
-export function pausedAwareHandoff(latch: UsageLimitLatch | undefined, post: (key: string, body: string) => Promise<void>, position?: () => Promise<string | undefined>): (key: string, body: string) => Promise<void> {
+export function pausedAwareHandoff(latch: UsageLimitLatch | undefined, post: (key: string, body: string) => Promise<void>, position?: () => Promise<string | undefined>, byService = false): (key: string, body: string) => Promise<void> {
     return async (key, body) => {
         const hit = latch?.current();
         if (!hit) return post(key, body);
@@ -351,7 +358,7 @@ export function pausedAwareHandoff(latch: UsageLimitLatch | undefined, post: (ke
         } catch {
             where = undefined; // the note is still posted, without the position
         }
-        return post(key, pausedHandoff(hit.limit, hit.stage, where));
+        return post(key, pausedHandoff(hit.limit, hit.stage, where, byService));
     };
 }
 
