@@ -5,8 +5,8 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { findProject, parseProjects, resolveServiceRoot, runServiceSetup, sameRemote, type PathState, type SetupDeps } from "./setup.js";
-import { realSetupFs } from "./real.js";
+import { findProject, parseProjects, redactRemote, resolveServiceRoot, runServiceSetup, sameRemote, shellQuote, type PathState, type SetupDeps } from "./setup.js";
+import { realSetupFs, setupStillMissing } from "./real.js";
 
 const ROOT = "/svc";
 const CONFIG = `${ROOT}/projects.json`;
@@ -76,8 +76,42 @@ function fake(state: Record<string, PathState>, files: Record<string, string>) {
     return { deps, changes, said, files };
 }
 
-const ARGS = { project: "tai", root: ROOT, from: "/me/checkout", attestCommand: (clone: string) => `tai --project ${clone} settings set dev-yolo true` };
+const ARGS = { project: "tai", root: ROOT, from: "/me/checkout" };
 const PROJECTS = JSON.stringify({ projects: [ENTRY, { key: "second", remote: "git@github.com:x/second.git" }] });
+
+describe("what setup prints is safe to read and to paste (TAI-775 review)", () => {
+    it("quotes a path only when it needs it", () => {
+        assert.equal(shellQuote("/svc/tai/repo"), "/svc/tai/repo");
+        assert.equal(shellQuote("/my svc/repo"), "'/my svc/repo'");
+        assert.equal(shellQuote("/it's/repo"), `'/it'\\''s/repo'`);
+    });
+
+    it("leaves credentials written into a remote URL out of what it prints", () => {
+        assert.equal(redactRemote("https://user:tok-1@github.com/x/tai.git"), "https://github.com/x/tai.git");
+        assert.equal(redactRemote("git@github.com:x/tai.git"), "git@github.com:x/tai.git");
+    });
+
+    it("prints no credential from the remote, on a fresh clone, a re-run or a refusal", async () => {
+        const remote = "https://user:tok-77@github.com/x/tai.git";
+        const projects = JSON.stringify({ projects: [{ key: "tai", remote }] });
+        const f = fake({}, { [CONFIG]: projects });
+        await runServiceSetup(ARGS, f.deps);
+        await runServiceSetup(ARGS, f.deps);
+        const other = fake({ "/svc/tai/repo": { kind: "clone", remote: "https://u:tok-88@github.com/x/else.git" } }, { [CONFIG]: projects });
+        const refusal = await runServiceSetup(ARGS, other.deps).then(() => "", (e: Error) => e.message);
+        assert.ok(!`${f.said.join("\n")}${refusal}`.match(/tok-77|tok-88/));
+        assert.match(refusal, /github\.com\/x\/else/);
+    });
+
+    it("quotes the clone path in the run command it prints, and says what `tai` is", async () => {
+        const f = fake({}, { "/my svc/projects.json": PROJECTS });
+        await runServiceSetup({ ...ARGS, root: "/my svc" }, { ...f.deps, stillMissing: async () => null });
+        const out = f.said.join("\n");
+        assert.match(out, /service run clone='\/my svc\/tai\/repo'/);
+        assert.match(out, /tai --project '\/my svc\/tai\/repo' settings set dev-yolo true/);
+        assert.match(out, /bin\/tai-link/);
+    });
+});
 
 describe("service setup (TAI-771)", () => {
     it("clones the entry's remote to its path, gives the clone its own .tai and copies the permission rules (AC-1, AC-3)", async () => {
@@ -193,6 +227,62 @@ describe("service setup (TAI-771)", () => {
         const f = fake({}, { [CONFIG]: PROJECTS });
         await runServiceSetup({ ...ARGS, project: "second" }, f.deps);
         assert.equal(f.changes[0], "clone git@github.com:x/second.git /svc/second/repo");
+    });
+});
+
+describe("setup end to end over real directories and a local repository, and its closing check (offline)", () => {
+    let dir: string;
+    beforeEach(async () => {
+        dir = await mkdtemp(join(tmpdir(), "tai-setup-e2e-"));
+    });
+    afterEach(async () => {
+        await rm(dir, { recursive: true, force: true });
+    });
+
+    it("makes the clone, copies the rules and not the .env, and a second run changes nothing", async () => {
+        const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
+        const origin = join(dir, "origin");
+        await mkdir(origin);
+        execFileSync("git", ["init", "-q"], { cwd: origin });
+        await writeFile(join(origin, "a.txt"), "a");
+        execFileSync("git", ["add", "."], { cwd: origin });
+        execFileSync("git", ["commit", "-q", "-m", "first"], { cwd: origin, env });
+        const mine = join(dir, "my checkout");
+        await mkdir(join(mine, ".claude"), { recursive: true });
+        await writeFile(join(mine, ".claude", "settings.local.json"), '{"permissions":{}}');
+        await writeFile(join(mine, ".env"), "TAI_JIRA_API_TOKEN=tok-5");
+        const root = join(dir, "root");
+        await mkdir(root);
+        await writeFile(join(root, "projects.json"), JSON.stringify({ projects: [{ key: "demo", remote: origin }] }));
+
+        const said: string[] = [];
+        const deps = { ...realSetupFs, say: (l: string) => said.push(l), stillMissing: (c: string) => setupStillMissing(c, {}) };
+        assert.equal((await runServiceSetup({ project: "demo", root, from: mine }, deps)).changed, true);
+        const clone = join(root, "demo", "repo");
+        assert.equal(await readFile(join(clone, ".claude", "settings.local.json"), "utf8"), '{"permissions":{}}');
+        assert.ok((await stat(join(clone, ".tai"))).isDirectory());
+        await assert.rejects(stat(join(clone, ".env")));
+        assert.match(said.join("\n"), /Still missing: the clone has no \.env/);
+
+        said.length = 0;
+        assert.equal((await runServiceSetup({ project: "demo", root, from: mine }, deps)).changed, false);
+        assert.match(said.join("\n"), /Nothing changed/);
+    });
+
+    it("the closing check names the clone, then the .env, as the preflight does, and skips the AI-session check", async () => {
+        assert.match((await setupStillMissing(join(dir, "none"), { CLAUDECODE: "1" }))!, /is missing or is not a git repository/);
+        await mkdir(join(dir, "c", ".git"), { recursive: true });
+        assert.match((await setupStillMissing(join(dir, "c"), { CLAUDECODE: "1" }))!, /no \.env/);
+        await writeFile(join(dir, "c", ".env"), "TAI_JIRA_SITE_URL=https://x\n");
+        assert.match((await setupStillMissing(join(dir, "c"), {}))!, /jira credential is incomplete/);
+    });
+
+    it("runs the Jira-reading check only when the local pieces pass, and reports its first reason", async () => {
+        await mkdir(join(dir, "c", ".git"), { recursive: true });
+        const all = "TAI_JIRA_SITE_URL=https://x\nTAI_JIRA_EMAIL=a@b.c\nTAI_JIRA_API_TOKEN=t\nBITBUCKET_EMAIL=a@b.c\nBITBUCKET_API_TOKEN=t\nTAI_REVIEWER_GITHUB_TOKEN=r\nTAI_REVIEWER_EMAIL=r@b.c\n";
+        await writeFile(join(dir, "c", ".env"), all);
+        assert.equal(await setupStillMissing(join(dir, "c"), {}, async () => ({ ok: true, reasons: [] })), null);
+        assert.equal(await setupStillMissing(join(dir, "c"), {}, async () => ({ ok: false, reasons: ["the attestation is missing", "x"] })), "the attestation is missing");
     });
 });
 

@@ -16,7 +16,7 @@ import { readWorkingTree } from "../git/local-check.js";
 import { parseWaitHours } from "../commands/usage-limit.js";
 import type { RunSummary } from "../commands/do-dev-tasks.js";
 import type { ClonePosition, RefreshGit } from "./refresh.js";
-import type { Env } from "./preflight.js";
+import { checkFailure, localPreflightFailure, type Env } from "./preflight.js";
 import type { WorkSummary } from "./run.js";
 import type { PathState, SetupDeps } from "./setup.js";
 
@@ -258,3 +258,14 @@ export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
         await copyFile(from, to);
     },
 };
+
+/**
+ * What `service setup` ends with: the first piece the unattended run's preflight would still find missing in the clone, by the same
+ * checks, except the AI-session one (setup may be run from a session; the run may not). The checks that read Jira run only when the
+ * local ones pass.
+ */
+export async function setupStillMissing(clonePath: string, base: Env, check: typeof runCloneCheck = runCloneCheck): Promise<string | null> {
+    const { envFileFound, env } = await cloneEnvironment(clonePath, base);
+    const local = localPreflightFailure({ aiSession: false, clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
+    return local ?? checkFailure(await check(clonePath, env));
+}

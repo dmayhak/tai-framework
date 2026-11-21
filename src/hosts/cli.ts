@@ -182,7 +182,7 @@ import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
 import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, realRefreshGit, realSetupFs, runCloneCheck, runCloneWork } from "../core/service/real.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, realRefreshGit, realSetupFs, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
 import { resolveServiceRoot, runServiceSetup } from "../core/service/setup.js";
 import { runServiceTick } from "../core/service/run.js";
 import { writeFile } from "node:fs/promises";
@@ -1940,20 +1940,7 @@ async function main(): Promise<void> {
     // `<root>/projects.json`. Like `run` it needs no config of its own (the clone has its own .env), so it comes before resolveConfig().
     if (subcommand === "service" && arg === "setup") {
         const { project, root, from } = parseServiceSetupArgs(rest, process.cwd());
-        const shellQuote = (path: string): string => (/^[A-Za-z0-9_./:@%+=,-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`);
-        await runServiceSetup(
-            { project, root: resolveServiceRoot(root, process.env), from, attestCommand: (clone) => `tai --project ${shellQuote(clone)} settings set dev-yolo true` },
-            {
-                ...realSetupFs,
-                say: (line) => console.log(line),
-                // The same checks the unattended run starts with, minus the AI-session one (setup may be run from a session; the run may not).
-                stillMissing: async (clonePath) => {
-                    const { envFileFound, env } = await cloneEnvironment(clonePath, process.env);
-                    const local = localPreflightFailure({ aiSession: false, clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
-                    return local ?? checkFailure(await runCloneCheck(clonePath, env));
-                },
-            }
-        );
+        await runServiceSetup({ project, root: resolveServiceRoot(root, process.env), from }, { ...realSetupFs, say: (line) => console.log(line), stillMissing: (clonePath) => setupStillMissing(clonePath, process.env) });
         return;
     }
     if (subcommand === "service" && arg !== "check") {

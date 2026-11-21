@@ -89,6 +89,16 @@ export function sameRemote(a: string, b: string): boolean {
     return normalizeRemote(a) === normalizeRemote(b);
 }
 
+/** A remote as it may be printed: any `user:token@` written into a URL is left out, because secrets live in `.env`, not in a terminal or a log. */
+export function redactRemote(remote: string): string {
+    return remote.replace(/\/\/[^/@\s]*@/, "//");
+}
+
+/** A path as one word in a command a person pastes: left bare when it is plain, else single-quoted. */
+export function shellQuote(path: string): string {
+    return /^[A-Za-z0-9_./:@%+=,-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`;
+}
+
 /** What is at the clone path. A clone with no `origin` is `remote: null`. */
 export type PathState = { readonly kind: "absent" } | { readonly kind: "empty-dir" } | { readonly kind: "clone"; readonly remote: string | null } | { readonly kind: "other" };
 
@@ -111,8 +121,6 @@ export interface SetupArgs {
     readonly root: string;
     /** The person's own checkout, where the permission rules are copied from. */
     readonly from: string;
-    /** The exact command that turns DEV-YOLO on against the clone's own `.tai/`. */
-    readonly attestCommand: (clonePath: string) => string;
 }
 
 const SETTINGS_FILE = ".claude/settings.local.json";
@@ -139,17 +147,17 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
 
     // Decide everything that can refuse before changing anything.
     const found = await deps.inspect(clonePath);
-    if (found.kind === "other") throw new Error(`${clonePath} exists and is not a clone of ${entry.remote}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
+    if (found.kind === "other") throw new Error(`${clonePath} exists and is not a clone of ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
     if (found.kind === "clone" && (found.remote === null || !sameRemote(found.remote, entry.remote))) {
-        throw new Error(`${clonePath} is a git clone of ${found.remote ?? "no remote"}, not ${entry.remote}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
+        throw new Error(`${clonePath} is a git clone of ${found.remote === null ? "no remote" : redactRemote(found.remote)}, not ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
     }
 
     const done: string[] = [];
     const kept: string[] = [];
-    if (found.kind === "clone") kept.push(`the clone ${clonePath} (${entry.remote})`);
+    if (found.kind === "clone") kept.push(`the clone ${clonePath} (${redactRemote(entry.remote)})`);
     else {
         await deps.clone(entry.remote, clonePath);
-        done.push(`cloned ${entry.remote} to ${clonePath}`);
+        done.push(`cloned ${redactRemote(entry.remote)} to ${clonePath}`);
     }
 
     const taiDir = join(clonePath, ".tai");
@@ -180,11 +188,12 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     for (const line of envLines(clonePath)) deps.say(line);
     deps.say("");
     deps.say("Then turn DEV-YOLO on for the clone. The attestation is not written here: type this in a plain terminal (not an AI session), against the clone's own .tai/:");
-    deps.say(`  ${args.attestCommand(clonePath)}`);
+    deps.say(`  tai --project ${shellQuote(clonePath)} settings set dev-yolo true`);
+    deps.say("(`tai` is the short command that `bin/tai-link` in the TAI checkout puts on your path; until it is linked, run `bin/tai` from that checkout in its place.)");
     deps.say("");
 
     const missing = await deps.stillMissing(clonePath);
-    deps.say(missing === null ? `Nothing is missing: \`tai service run clone=${clonePath}\` can start a run.` : `Still missing: ${missing}.`);
+    deps.say(missing === null ? `Nothing is missing: \`tai service run clone=${shellQuote(clonePath)}\` can start a run.` : `Still missing: ${missing}.`);
     deps.say("Work on a branch, not main, in your own checkout: the service fast-forwards main in its clone and merges to it often, so commits made on main there would conflict when you pull.");
     return { changed: done.length > 0, clonePath };
 }
