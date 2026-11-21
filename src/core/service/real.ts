@@ -18,7 +18,7 @@ import type { RunSummary } from "../commands/do-dev-tasks.js";
 import type { ClonePosition, RefreshGit } from "./refresh.js";
 import { checkFailure, localPreflightFailure, type Env } from "./preflight.js";
 import type { WorkSummary } from "./run.js";
-import type { PathState, SetupDeps } from "./setup.js";
+import { redactRemote, type PathState, type SetupDeps } from "./setup.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -243,7 +243,15 @@ export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
         }
         return (await readdir(path)).length === 0 ? { kind: "empty-dir" } : { kind: "other" };
     },
-    clone: async (remote, path) => void (await execFileAsync("git", ["clone", "--", remote, path])),
+    clone: async (remote, path) => {
+        try {
+            await execFileAsync("git", ["clone", "--", remote, path]);
+        } catch (e) {
+            // execFile's own message holds the whole command line, remote included, so it is not passed on as it is.
+            const said = String((e as { stderr?: unknown }).stderr ?? "").trim() || (e instanceof Error ? e.message.split("\n")[0]! : String(e));
+            throw new Error(`git clone of ${redactRemote(remote)} to ${path} failed: ${redactRemote(said).replaceAll(remote, redactRemote(remote))}`, { cause: e });
+        }
+    },
     makeDir: async (path) => void (await mkdir(path, { recursive: true })),
     fileExists: async (path) => {
         try {

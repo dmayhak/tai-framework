@@ -47,6 +47,13 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
         assert.ok(sameRemote("https://github.com/x/tai/", "https://github.com/x/tai.git"));
         assert.ok(!sameRemote("https://github.com/x/tai", "https://github.com/x/other"));
     });
+
+    it("lower-cases the host but not the path, which a host may keep case-sensitive", () => {
+        assert.ok(sameRemote("https://GitHub.com/x/tai", "https://github.com/x/tai"));
+        assert.ok(sameRemote("git@GitHub.com:x/tai.git", "git@github.com:x/tai"));
+        assert.ok(!sameRemote("https://github.com/x/Tai", "https://github.com/x/tai"));
+        assert.ok(!sameRemote("/srv/Repos/tai", "/srv/repos/tai"));
+    });
 });
 
 /** An in-memory file system and git, recording every change so a test can say what was touched. */
@@ -321,6 +328,13 @@ describe("the real file system and git behind setup (offline)", () => {
         await mkdir(bare);
         git(bare, "init", "-q");
         assert.deepEqual(await realSetupFs.inspect(bare), { kind: "clone", remote: null });
+    });
+
+    it("a failed clone says why without printing the credentials in the remote", async () => {
+        const remote = "https://user:tok-31@127.0.0.1:1/x/tai.git";
+        const message = await realSetupFs.clone(remote, join(dir, "c")).then(() => "", (e: Error) => e.message);
+        assert.match(message, /^git clone of https:\/\/127\.0\.0\.1:1\/x\/tai\.git to .* failed: .+/);
+        assert.ok(!message.includes("tok-31"), message);
     });
 
     it("copies a file into a directory that does not exist yet, and makes a directory once", async () => {

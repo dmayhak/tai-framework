@@ -82,7 +82,14 @@ export function findProject(entries: readonly ProjectEntry[], key: string, confi
     throw new Error(`No project "${key}" in ${configPath}. Projects listed there: ${entries.length === 0 ? "none" : entries.map((p) => p.key).join(", ")}. Add an entry: ${ENTRY_SHAPE}`);
 }
 
-const normalizeRemote = (remote: string): string => remote.trim().replace(/\/+$/, "").replace(/\.git$/, "").toLowerCase();
+/** Without a closing slash or `.git`, and with the host (not the path, which a host may keep case-sensitive) in lower case. */
+function normalizeRemote(remote: string): string {
+    const bare = remote.trim().replace(/\/+$/, "").replace(/\.git$/, "");
+    const url = /^([a-z][a-z0-9+.-]*:\/\/[^/]*)(.*)$/i.exec(bare);
+    if (url) return `${url[1]!.toLowerCase()}${url[2]}`;
+    const scp = /^([^/:]+:)(.*)$/.exec(bare);
+    return scp ? `${scp[1]!.toLowerCase()}${scp[2]}` : bare;
+}
 
 /** One remote written with or without `.git` or a closing slash is still that remote. */
 export function sameRemote(a: string, b: string): boolean {
