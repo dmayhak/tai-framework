@@ -2,6 +2,15 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 171 (2026-11-20)
+
+**TAI-771 (Dev TAI-775): `tai service setup`, the service's own clone.** Second Story of Epic TAI-763 to land; `service run` (rev 169) had no way to make the clone it works in. Design: the work-breakdown page for the Epic (research finding 4, EpicReview decision 3).
+
+* `core/service/setup.ts`: the project list (`<root>/projects.json`, parsed and checked), the clone step and the printed hand-off. Every step that touches git or the file system is injected (`SetupDeps`); `real.ts` holds the real ones and the argument parser, and one test runs them against real temporary directories and a local git repository.
+* The role table is shared: `CREDENTIAL_ROLES` is now exported from `preflight.ts` and setup prints from it.
+* Decided here, to confirm in review: a re-run copies `settings.local.json` only when the clone has none, so it never overwrites a clone's own edits and a retry after a partial run still finishes the job; the "still missing" line runs the preflight's checks without the AI-session one; the attestation command is printed as `tai --project <clone> settings set dev-yolo true`, after the `.env` step, because `settings` needs the clone's `.env` to read its configuration.
+* Not built yet (the Epic's remaining Stories): the timer and kick-off-now, status and pause.
+
 ## rev 170 (2026-11-19)
 
 **TAI-773 (Dev TAI-777): the pickup rule of the unattended Dev service.** Fourth Story of Epic TAI-763 and the one that blocks the timer. The service runs as the same Jira user as the person, so an In Progress ticket the service paused on a usage limit and one the person started by hand look the same. `service run` now starts `do-dev-tasks` with `pickup=service`.

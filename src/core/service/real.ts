@@ -7,7 +7,7 @@
  */
 
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv, promisify } from "node:util";
 
@@ -18,6 +18,7 @@ import type { RunSummary } from "../commands/do-dev-tasks.js";
 import type { ClonePosition, RefreshGit } from "./refresh.js";
 import type { Env } from "./preflight.js";
 import type { WorkSummary } from "./run.js";
+import type { PathState, SetupDeps } from "./setup.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -192,3 +193,68 @@ export async function runCloneWork(clonePath: string, stateDir: string, env: Nod
     }
     return summary;
 }
+
+/**
+ * `service setup <project> [root=<dir>] [from=<path>]`: root is where `projects.json` is (default TAI_SERVICE_ROOT, then
+ * `~/.local/share/tai-service`), from is the checkout the permission rules are copied from (default the current directory).
+ * A mistyped flag is refused, because setup makes a clone.
+ */
+export function parseServiceSetupArgs(args: readonly (string | undefined)[], cwd: string): { readonly project: string; readonly root: string | undefined; readonly from: string } {
+    const given = args.filter((a): a is string => a !== undefined && a !== "");
+    const values = new Map<string, string>();
+    const positional: string[] = [];
+    for (const a of given) {
+        const m = /^(root|from)=(.*)$/.exec(a);
+        if (!m) {
+            positional.push(a);
+            continue;
+        }
+        if (values.has(m[1]!)) throw new Error(`service setup takes only one ${m[1]}= (got it twice).`);
+        values.set(m[1]!, m[2]!);
+    }
+    if (positional.length !== 1) throw new Error("Usage: service setup <project> [root=<dir>] [from=<path>]");
+    const from = values.get("from");
+    return { project: positional[0]!, root: values.get("root"), from: from ? resolve(from) : cwd };
+}
+
+/** The git and file-system pieces of setup, in a form a test can try against real temporary directories. */
+export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
+    readFile: async (path) => {
+        try {
+            return await readFile(path, "utf8");
+        } catch {
+            return null;
+        }
+    },
+    inspect: async (path): Promise<PathState> => {
+        let s;
+        try {
+            s = await stat(path);
+        } catch {
+            return { kind: "absent" };
+        }
+        if (!s.isDirectory()) return { kind: "other" };
+        if (await cloneIsGitRepo(path)) {
+            try {
+                return { kind: "clone", remote: (await execFileAsync("git", ["remote", "get-url", "origin"], { cwd: path })).stdout.trim() || null };
+            } catch {
+                return { kind: "clone", remote: null };
+            }
+        }
+        return (await readdir(path)).length === 0 ? { kind: "empty-dir" } : { kind: "other" };
+    },
+    clone: async (remote, path) => void (await execFileAsync("git", ["clone", "--", remote, path])),
+    makeDir: async (path) => void (await mkdir(path, { recursive: true })),
+    fileExists: async (path) => {
+        try {
+            await stat(path);
+            return true;
+        } catch {
+            return false;
+        }
+    },
+    copyFile: async (from, to) => {
+        await mkdir(dirname(to), { recursive: true });
+        await copyFile(from, to);
+    },
+};

@@ -31,11 +31,12 @@ export function credentialVariables(role: CredentialRole, env: Env): readonly st
     }
 }
 
-const ROLE_ORDER: readonly CredentialRole[] = ["jira", "git-host", "reviewer", "merge"];
+/** The roles in the order the preflight checks them, and the order setup lists them. */
+export const CREDENTIAL_ROLES: readonly CredentialRole[] = ["jira", "git-host", "reviewer", "merge"];
 
 /** The first role with a variable missing, and which ones, or null when every role is complete. */
 export function missingCredential(env: Env): { readonly role: CredentialRole; readonly variables: readonly string[] } | null {
-    for (const role of ROLE_ORDER) {
+    for (const role of CREDENTIAL_ROLES) {
         const missing = credentialVariables(role, env).filter((name) => !present(env, name));
         if (missing.length > 0) return { role, variables: missing };
     }

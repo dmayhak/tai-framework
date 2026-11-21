@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { acquireLock, LOCK_FILE } from "./lock.js";
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, runCloneWork } from "./real.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, runCloneWork } from "./real.js";
 import { checkFailure, credentialVariables, localPreflightFailure, missingCredential, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
 import { readLastRun, readLimitedUntil, readPreflightNote, writeLimitedUntil } from "./state.js";
@@ -336,5 +336,19 @@ describe("runCloneWork", () => {
 
     it("rejects when the run leaves no summary", async () => {
         await assert.rejects(runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, fakeRun("process.exit(3)")), /exited 3 and left no summary/);
+    });
+});
+
+describe("service setup arguments (TAI-771)", () => {
+    it("takes the project, root= and from=, and defaults from to the current directory", () => {
+        assert.deepEqual(parseServiceSetupArgs(["tai"], "/here"), { project: "tai", root: undefined, from: "/here" });
+        assert.deepEqual(parseServiceSetupArgs(["root=/r", "tai", "from=/p"], "/here"), { project: "tai", root: "/r", from: "/p" });
+    });
+
+    it("refuses no project, two projects, a repeated flag or a mistyped one", () => {
+        assert.throws(() => parseServiceSetupArgs([], "/h"), /Usage/);
+        assert.throws(() => parseServiceSetupArgs(["a", "b"], "/h"), /Usage/);
+        assert.throws(() => parseServiceSetupArgs(["a", "from=/x", "from=/y"], "/h"), /only one from=/);
+        assert.throws(() => parseServiceSetupArgs(["a", "form=/x"], "/h"), /Usage/);
     });
 });
