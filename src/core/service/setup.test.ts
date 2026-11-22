@@ -96,6 +96,8 @@ describe("what setup prints is safe to read and to paste (TAI-775 review)", () =
     it("leaves credentials written into a remote URL out of what it prints", () => {
         assert.equal(redactRemote("https://user:tok-1@github.com/x/tai.git"), "https://github.com/x/tai.git");
         assert.equal(redactRemote("git@github.com:x/tai.git"), "git@github.com:x/tai.git");
+        assert.equal(redactRemote("https://user:p@ss@github.com/x/tai"), "https://github.com/x/tai");
+        assert.equal(redactRemote("https://github.com/x/tai@v1"), "https://github.com/x/tai@v1");
     });
 
     it("prints no credential from the remote, on a fresh clone, a re-run or a refusal", async () => {
@@ -224,6 +226,14 @@ describe("service setup (TAI-771)", () => {
         assert.match(lines.at(-1)!, /branch, not main.*your own checkout/);
     });
 
+    it("a closing check that cannot answer is said, after the hand-off, and does not end the command in an error", async () => {
+        const f = fake({}, { [CONFIG]: PROJECTS });
+        const result = await runServiceSetup(ARGS, { ...f.deps, stillMissing: async () => Promise.reject(new Error("Jira did not answer")) });
+        assert.equal(result.changed, true);
+        assert.match(f.said.at(-2)!, /Still missing: could not check what is still missing \(Jira did not answer\)/);
+        assert.match(f.said.at(-1)!, /branch, not main/);
+    });
+
     it("says nothing is missing when the check passes (AC-6)", async () => {
         const f = fake({}, { [CONFIG]: PROJECTS });
         await runServiceSetup(ARGS, { ...f.deps, stillMissing: async () => null });
@@ -328,6 +338,17 @@ describe("the real file system and git behind setup (offline)", () => {
         await mkdir(bare);
         git(bare, "init", "-q");
         assert.deepEqual(await realSetupFs.inspect(bare), { kind: "clone", remote: null });
+    });
+
+    it("reads the remote as it is stored, not as the person's insteadOf rewriting turns it", async () => {
+        const origin = join(dir, "o");
+        await mkdir(origin);
+        execFileSync("git", ["init", "-q"], { cwd: origin });
+        const clone = join(dir, "c");
+        execFileSync("git", ["init", "-q", clone]);
+        execFileSync("git", ["remote", "add", "origin", "https://example.com/x/tai"], { cwd: clone });
+        execFileSync("git", ["config", "url.ssh://git@example.com/.insteadOf", "https://example.com/"], { cwd: clone });
+        assert.deepEqual(await realSetupFs.inspect(clone), { kind: "clone", remote: "https://example.com/x/tai" });
     });
 
     it("a failed clone says why without printing the credentials in the remote", async () => {

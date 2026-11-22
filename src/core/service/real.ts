@@ -236,7 +236,8 @@ export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
         if (!s.isDirectory()) return { kind: "other" };
         if (await cloneIsGitRepo(path)) {
             try {
-                return { kind: "clone", remote: (await execFileAsync("git", ["remote", "get-url", "origin"], { cwd: path })).stdout.trim() || null };
+                // The stored URL, not `get-url`, which applies the person's `url.<base>.insteadOf` rewriting and so differs from what clone was given.
+                return { kind: "clone", remote: (await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd: path })).stdout.trim() || null };
             } catch {
                 return { kind: "clone", remote: null };
             }

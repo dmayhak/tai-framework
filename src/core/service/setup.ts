@@ -96,9 +96,9 @@ export function sameRemote(a: string, b: string): boolean {
     return normalizeRemote(a) === normalizeRemote(b);
 }
 
-/** A remote as it may be printed: any `user:token@` written into a URL is left out, because secrets live in `.env`, not in a terminal or a log. */
+/** A remote as it may be printed: any `user:token@` written into a URL is left out (up to the last `@` before the path, so a password holding an `@` is left out whole), because secrets live in `.env`, not in a terminal or a log. */
 export function redactRemote(remote: string): string {
-    return remote.replace(/\/\/[^/@\s]*@/, "//");
+    return remote.replace(/\/\/[^/\s]*@/, "//");
 }
 
 /** A path as one word in a command a person pastes: left bare when it is plain, else single-quoted. */
@@ -199,7 +199,13 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     deps.say("(`tai` is the short command that `bin/tai-link` in the TAI checkout puts on your path; until it is linked, run `bin/tai` from that checkout in its place.)");
     deps.say("");
 
-    const missing = await deps.stillMissing(clonePath);
+    // The work is done by now; a check that cannot answer is said, not allowed to end the command in an error after the hand-off.
+    let missing: string | null;
+    try {
+        missing = await deps.stillMissing(clonePath);
+    } catch (e) {
+        missing = `could not check what is still missing (${e instanceof Error ? e.message : String(e)}); run \`tai service run clone=${shellQuote(clonePath)}\` to see it`;
+    }
     deps.say(missing === null ? `Nothing is missing: \`tai service run clone=${shellQuote(clonePath)}\` can start a run.` : `Still missing: ${missing}.`);
     deps.say("Work on a branch, not main, in your own checkout: the service fast-forwards main in its clone and merges to it often, so commits made on main there would conflict when you pull.");
     return { changed: done.length > 0, clonePath };
