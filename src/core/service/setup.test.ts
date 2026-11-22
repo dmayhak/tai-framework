@@ -353,7 +353,9 @@ describe("the real file system and git behind setup (offline)", () => {
 
     it("a failed clone says why without printing the credentials in the remote", async () => {
         const remote = "https://user:tok-31@127.0.0.1:1/x/tai.git";
-        const message = await realSetupFs.clone(remote, join(dir, "c")).then(() => "", (e: Error) => e.message);
+        const failure = await realSetupFs.clone(remote, join(dir, "c")).then(() => null, (e: Error) => e);
+        const message = failure!.message;
+        assert.ok(!JSON.stringify(failure!.cause, Object.getOwnPropertyNames(failure!.cause)).includes("tok-31"), "the cause holds no credential either");
         assert.match(message, /^git clone of https:\/\/127\.0\.0\.1:1\/x\/tai\.git to .* failed: .+/);
         assert.ok(!message.includes("tok-31"), message);
     });

@@ -217,6 +217,16 @@ export function parseServiceSetupArgs(args: readonly (string | undefined)[], cwd
     return { project: positional[0]!, root: values.get("root"), from: from ? resolve(from) : cwd };
 }
 
+/**
+ * A failed `git clone` as an error that names the reason without the remote's credentials. execFile's own error holds the whole command
+ * line (`cmd` and the message), remote included, so neither it nor its message is passed on: the cause is a clean copy of the reason.
+ */
+export function cloneFailure(remote: string, path: string, e: unknown): Error {
+    const said = String((e as { stderr?: unknown }).stderr ?? "").trim() || (e instanceof Error ? e.message.split("\n")[0]! : String(e));
+    const reason = redactRemote(said).replaceAll(remote, redactRemote(remote));
+    return new Error(`git clone of ${redactRemote(remote)} to ${path} failed: ${reason}`, { cause: new Error(reason) });
+}
+
 /** The git and file-system pieces of setup, in a form a test can try against real temporary directories. */
 export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
     readFile: async (path) => {
@@ -248,9 +258,7 @@ export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
         try {
             await execFileAsync("git", ["clone", "--", remote, path]);
         } catch (e) {
-            // execFile's own message holds the whole command line, remote included, so it is not passed on as it is.
-            const said = String((e as { stderr?: unknown }).stderr ?? "").trim() || (e instanceof Error ? e.message.split("\n")[0]! : String(e));
-            throw new Error(`git clone of ${redactRemote(remote)} to ${path} failed: ${redactRemote(said).replaceAll(remote, redactRemote(remote))}`, { cause: e });
+            throw cloneFailure(remote, path, e);
         }
     },
     makeDir: async (path) => void (await mkdir(path, { recursive: true })),
