@@ -37,7 +37,7 @@ describe("preflight (TAI-770 AC-2)", () => {
 
     it("names the first missing piece, in order: AI session, clone, .env, then the credentials", () => {
         assert.match(localPreflightFailure({ ...FACTS, aiSession: true, cloneIsGitRepo: false })!, /AI session/);
-        assert.match(localPreflightFailure({ ...FACTS, cloneIsGitRepo: false, envFileFound: false })!, /clone \/c\/repo is missing.*git clone/);
+        assert.match(localPreflightFailure({ ...FACTS, cloneIsGitRepo: false, envFileFound: false })!, /clone \/c\/repo is missing.*tai service setup <project>/);
         assert.match(localPreflightFailure({ ...FACTS, envFileFound: false })!, /no \.env \(\/c\/repo\/\.env\)/);
     });
 

@@ -24,6 +24,13 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
         assert.equal(b!.clone, "/svc/b-clone");
     });
 
+    it("expands a leading ~ in a clone path to the home directory", () => {
+        const [a, b, c] = parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "~/work/tai" }, { key: "b", remote: "r", clone: "~" }, { key: "c", remote: "r", clone: "~x/c" }] }), ROOT, CONFIG, "/home/u");
+        assert.equal(a!.clone, "/home/u/work/tai");
+        assert.equal(b!.clone, "/home/u");
+        assert.equal(c!.clone, "/svc/~x/c");
+    });
+
     it("refuses what cannot be read, naming the file", () => {
         for (const text of ["not json", "[]", "{}", JSON.stringify({ projects: [{ key: "a" }] }), JSON.stringify({ projects: [{ ...ENTRY, cap: 0 }] }), JSON.stringify({ projects: [{ ...ENTRY, carp: 2 }] }), JSON.stringify({ projects: [{ ...ENTRY, key: "../x" }] }), JSON.stringify({ projects: [ENTRY, ENTRY] })]) {
             assert.throws(() => parseProjects(text, ROOT, CONFIG), new RegExp(CONFIG.replace(/\./g, "\\.")), text);
@@ -97,6 +104,7 @@ describe("what setup prints is safe to read and to paste (TAI-775 review)", () =
         assert.equal(redactRemote("https://user:tok-1@github.com/x/tai.git"), "https://github.com/x/tai.git");
         assert.equal(redactRemote("git@github.com:x/tai.git"), "git@github.com:x/tai.git");
         assert.equal(redactRemote("https://user:p@ss@github.com/x/tai"), "https://github.com/x/tai");
+        assert.equal(redactRemote("fatal: https://u:t1@a.com/x then https://u:t2@b.com/y"), "fatal: https://a.com/x then https://b.com/y");
         assert.equal(redactRemote("https://github.com/x/tai@v1"), "https://github.com/x/tai@v1");
     });
 

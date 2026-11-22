@@ -46,8 +46,8 @@ function positive(value: unknown, field: string, whole: boolean, where: string):
     return value;
 }
 
-/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root. */
-export function parseProjects(text: string, root: string, configPath: string): readonly ProjectEntry[] {
+/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root; a leading `~/` is the home directory. */
+export function parseProjects(text: string, root: string, configPath: string, home: string = homedir()): readonly ProjectEntry[] {
     let data: unknown;
     try {
         data = JSON.parse(text);
@@ -71,7 +71,8 @@ export function parseProjects(text: string, root: string, configPath: string): r
         const waitHours = positive(e["waitHours"], "waitHours", false, where);
         const cap = positive(e["cap"], "cap", true, where);
         const given = e["clone"] as string | undefined;
-        const clone = given === undefined ? join(root, e["key"], "repo") : isAbsolute(given) ? given : resolve(root, given);
+        const path = given === undefined ? undefined : given === "~" ? home : given.startsWith("~/") ? join(home, given.slice(2)) : given;
+        const clone = path === undefined ? join(root, e["key"], "repo") : isAbsolute(path) ? path : resolve(root, path);
         return { key: e["key"], remote: e["remote"].trim(), clone, ...(intervalMinutes === undefined ? {} : { intervalMinutes }), ...(waitHours === undefined ? {} : { waitHours }), ...(cap === undefined ? {} : { cap }) };
     });
 }
@@ -96,9 +97,9 @@ export function sameRemote(a: string, b: string): boolean {
     return normalizeRemote(a) === normalizeRemote(b);
 }
 
-/** A remote as it may be printed: any `user:token@` written into a URL is left out (up to the last `@` before the path, so a password holding an `@` is left out whole), because secrets live in `.env`, not in a terminal or a log. */
+/** A remote as it may be printed: any `user:token@` written into a URL is left out (up to the last `@` before the path, so a password holding an `@` is left out whole, and every URL in a text, not only the first), because secrets live in `.env`, not in a terminal or a log. */
 export function redactRemote(remote: string): string {
-    return remote.replace(/\/\/[^/\s]*@/, "//");
+    return remote.replace(/\/\/[^/\s]*@/g, "//");
 }
 
 /** A path as one word in a command a person pastes: left bare when it is plain, else single-quoted. */

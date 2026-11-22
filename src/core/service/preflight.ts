@@ -59,7 +59,7 @@ export function localPreflightFailure(facts: LocalPreflightFacts): string | null
         return "this is an AI session, which the unattended run refuses: run `tai service run` from a plain terminal, or let the timer start it";
     }
     if (!facts.cloneIsGitRepo) {
-        return `the clone ${facts.clonePath} is missing or is not a git repository: make it with \`git clone <remote> ${facts.clonePath}\` (\`tai service setup\` will do this)`;
+        return `the clone ${facts.clonePath} is missing or is not a git repository: make it with \`tai service setup <project>\` (or \`git clone <remote> ${facts.clonePath}\`)`;
     }
     if (!facts.envFileFound) {
         return `the clone has no .env (${facts.clonePath}/.env): write it in your own editor with the credentials the unattended run needs`;
