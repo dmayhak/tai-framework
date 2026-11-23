@@ -182,7 +182,8 @@ import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
 import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, realRefreshGit, runCloneCheck, runCloneWork } from "../core/service/real.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, realRefreshGit, realSetupFs, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
+import { resolveServiceRoot, runServiceSetup } from "../core/service/setup.js";
 import { runServiceTick } from "../core/service/run.js";
 import { writeFile } from "node:fs/promises";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
@@ -1691,6 +1692,8 @@ export function renderUsage(): string {
         "                               Print the permission rules those runs use",
         "  service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]",
         "                               One guarded tick of the unattended Dev service",
+        "  service setup <project> [root=<dir>] [from=<path>]",
+        "                               Make the service's own clone of a listed project",
         "  verify <STORY-KEY>           Check a Story's work against its acceptance criteria",
         "  pr-ready                     List PRs ready to review or merge",
         "",
@@ -1933,8 +1936,15 @@ async function main(): Promise<void> {
         process.exitCode = result.exitCode;
         return;
     }
+    // TAI-771: `service setup <project> [root=<dir>] [from=<path>]` makes the service's own clone from the project's entry in
+    // `<root>/projects.json`. Like `run` it needs no config of its own (the clone has its own .env), so it comes before resolveConfig().
+    if (subcommand === "service" && arg === "setup") {
+        const { project, root, from } = parseServiceSetupArgs(rest, process.cwd());
+        await runServiceSetup({ project, root: resolveServiceRoot(root, process.env), from }, { ...realSetupFs, say: (line) => console.log(line), stillMissing: (clonePath) => setupStillMissing(clonePath, process.env) });
+        return;
+    }
     if (subcommand === "service" && arg !== "check") {
-        throw new Error(`Unknown service action "${arg ?? ""}" -- expected "run" or "check".`);
+        throw new Error(`Unknown service action "${arg ?? ""}" -- expected "run", "setup" or "check".`);
     }
 
     // TAI-126: any missing required env var here means this project hasn't been

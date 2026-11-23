@@ -2,6 +2,20 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 171 (2026-11-20)
+
+**TAI-771 (Dev TAI-775): `tai service setup`, the service's own clone.** Second Story of Epic TAI-763 to land; `service run` (rev 169) had no way to make the clone it works in. Design: the work-breakdown page for the Epic (research finding 4, EpicReview decision 3).
+
+* `core/service/setup.ts`: the project list (`<root>/projects.json`, parsed and checked), the clone step and the printed hand-off. Every step that touches git or the file system is injected (`SetupDeps`); `real.ts` holds the real ones and the argument parser, and one test runs them against real temporary directories and a local git repository.
+* Refusals come before any change. A project with no entry, a path that exists and is not that clone (another remote, no remote, or a `.tai` that is a file) and a bad project list are refused naming the file or path; a re-run changes nothing and says so. Remotes are compared as written, apart from `.git`, a closing slash and the host's case (the user and the path keep theirs), and a clone's remote is read as stored (`git config --get remote.origin.url`), not through the person's `insteadOf` rewriting.
+* Nothing secret is printed or copied. A `user:token@` in a remote URL is left out of everything setup prints, including a failed clone's message and its `cause` (execFile's own error holds the whole command line, remote included); the advice to set an entry's `remote` back names the stored remote only when printing it loses nothing. `.env` is never copied and the attestation never written.
+* The copied `.claude/settings.local.json` is added to the clone's own `.git/info/exclude` (never committed), because a project that does not ignore that file would show the clone as dirty and the service would never fast-forward main (the clone's dirty check excludes only `.tai`).
+* Printed commands are shell-quoted the same way; a leading `~/` is the home directory in a `clone` path, `root=`, `from=` and `TAI_SERVICE_ROOT` (a shell does not expand one after an `=`); the closing check is `setupStillMissing` in `real.ts`, and one that cannot answer is reported as "Still missing: could not check ..." after the hand-off instead of ending the command in an error; the preflight's missing-clone message names `tai service setup <project>`.
+* The brief's service paragraph is split into one bullet each for the run, the pickup rule and the setup (text unchanged).
+* The role table is shared: `CREDENTIAL_ROLES` is now exported from `preflight.ts` and setup prints from it.
+* Decided here, to confirm in review: a re-run copies `settings.local.json` only when the clone has none, so it never overwrites a clone's own edits and a retry after a partial run still finishes the job; the "still missing" line runs the preflight's checks without the AI-session one; the attestation command is printed as `tai --project <clone> settings set dev-yolo true`, after the `.env` step, because `settings` needs the clone's `.env` to read its configuration.
+* Not built yet (the Epic's remaining Stories): the timer and kick-off-now, status and pause.
+
 ## rev 170 (2026-11-19)
 
 **TAI-773 (Dev TAI-777): the pickup rule of the unattended Dev service.** Fourth Story of Epic TAI-763 and the one that blocks the timer. The service runs as the same Jira user as the person, so an In Progress ticket the service paused on a usage limit and one the person started by hand look the same. `service run` now starts `do-dev-tasks` with `pickup=service`.

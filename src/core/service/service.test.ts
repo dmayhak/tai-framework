@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { acquireLock, LOCK_FILE } from "./lock.js";
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, runCloneWork } from "./real.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, runCloneWork } from "./real.js";
 import { checkFailure, credentialVariables, localPreflightFailure, missingCredential, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
 import { readLastRun, readLimitedUntil, readPreflightNote, writeLimitedUntil } from "./state.js";
@@ -37,7 +37,7 @@ describe("preflight (TAI-770 AC-2)", () => {
 
     it("names the first missing piece, in order: AI session, clone, .env, then the credentials", () => {
         assert.match(localPreflightFailure({ ...FACTS, aiSession: true, cloneIsGitRepo: false })!, /AI session/);
-        assert.match(localPreflightFailure({ ...FACTS, cloneIsGitRepo: false, envFileFound: false })!, /clone \/c\/repo is missing.*git clone/);
+        assert.match(localPreflightFailure({ ...FACTS, cloneIsGitRepo: false, envFileFound: false })!, /clone \/c\/repo is missing.*tai service setup <project>/);
         assert.match(localPreflightFailure({ ...FACTS, envFileFound: false })!, /no \.env \(\/c\/repo\/\.env\)/);
     });
 
@@ -336,5 +336,24 @@ describe("runCloneWork", () => {
 
     it("rejects when the run leaves no summary", async () => {
         await assert.rejects(runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, fakeRun("process.exit(3)")), /exited 3 and left no summary/);
+    });
+});
+
+describe("service setup arguments (TAI-771)", () => {
+    it("takes the project, root= and from=, and defaults from to the current directory", () => {
+        assert.deepEqual(parseServiceSetupArgs(["tai"], "/here"), { project: "tai", root: undefined, from: "/here" });
+        assert.deepEqual(parseServiceSetupArgs(["root=/r", "tai", "from=/p"], "/here"), { project: "tai", root: "/r", from: "/p" });
+    });
+
+    it("expands a leading ~ in from=", () => {
+        assert.equal(parseServiceSetupArgs(["tai", "from=~/work/tai"], "/here", "/home/u").from, "/home/u/work/tai");
+        assert.equal(parseServiceSetupArgs(["tai", "from=~x/tai"], "/here", "/home/u").from, `${process.cwd()}/~x/tai`);
+    });
+
+    it("refuses no project, two projects, a repeated flag or a mistyped one", () => {
+        assert.throws(() => parseServiceSetupArgs([], "/h"), /Usage/);
+        assert.throws(() => parseServiceSetupArgs(["a", "b"], "/h"), /Usage/);
+        assert.throws(() => parseServiceSetupArgs(["a", "from=/x", "from=/y"], "/h"), /only one from=/);
+        assert.throws(() => parseServiceSetupArgs(["a", "form=/x"], "/h"), /Usage/);
     });
 });

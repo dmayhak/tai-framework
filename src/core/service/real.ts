@@ -7,7 +7,7 @@
  */
 
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv, promisify } from "node:util";
 
@@ -16,8 +16,9 @@ import { readWorkingTree } from "../git/local-check.js";
 import { parseWaitHours } from "../commands/usage-limit.js";
 import type { RunSummary } from "../commands/do-dev-tasks.js";
 import type { ClonePosition, RefreshGit } from "./refresh.js";
-import type { Env } from "./preflight.js";
+import { checkFailure, localPreflightFailure, type Env } from "./preflight.js";
 import type { WorkSummary } from "./run.js";
+import { expandHome, redactRemote, type PathState, type SetupDeps } from "./setup.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -191,4 +192,112 @@ export async function runCloneWork(clonePath: string, stateDir: string, env: Nod
         throw new Error(`do-dev-tasks exited ${code ?? "on a signal"} and left no summary`);
     }
     return summary;
+}
+
+/**
+ * `service setup <project> [root=<dir>] [from=<path>]`: root is where `projects.json` is (default TAI_SERVICE_ROOT, then
+ * `~/.local/share/tai-service`), from is the checkout the permission rules are copied from (default the current directory).
+ * A mistyped flag is refused, because setup makes a clone.
+ */
+export function parseServiceSetupArgs(args: readonly (string | undefined)[], cwd: string, home?: string): { readonly project: string; readonly root: string | undefined; readonly from: string } {
+    const given = args.filter((a): a is string => a !== undefined && a !== "");
+    const values = new Map<string, string>();
+    const positional: string[] = [];
+    for (const a of given) {
+        const m = /^(root|from)=(.*)$/.exec(a);
+        if (!m) {
+            positional.push(a);
+            continue;
+        }
+        if (values.has(m[1]!)) throw new Error(`service setup takes only one ${m[1]}= (got it twice).`);
+        values.set(m[1]!, m[2]!);
+    }
+    if (positional.length !== 1) throw new Error("Usage: service setup <project> [root=<dir>] [from=<path>]");
+    const from = values.get("from");
+    return { project: positional[0]!, root: values.get("root"), from: from ? resolve(expandHome(from, home)) : cwd };
+}
+
+/**
+ * A failed `git clone` as an error that names the reason without the remote's credentials. execFile's own error holds the whole command
+ * line (`cmd` and the message), remote included, so neither it nor its message is passed on: the cause is a clean copy of the reason.
+ */
+export function cloneFailure(remote: string, path: string, e: unknown): Error {
+    const said = String((e as { stderr?: unknown }).stderr ?? "").trim() || (e instanceof Error ? e.message.split("\n")[0]! : String(e));
+    const reason = redactRemote(said).replaceAll(remote, redactRemote(remote));
+    return new Error(`git clone of ${redactRemote(remote)} to ${path} failed: ${reason}`, { cause: new Error(reason) });
+}
+
+/** The git and file-system pieces of setup, in a form a test can try against real temporary directories. */
+export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
+    readFile: async (path) => {
+        try {
+            return await readFile(path, "utf8");
+        } catch {
+            return null;
+        }
+    },
+    inspect: async (path): Promise<PathState> => {
+        let s;
+        try {
+            s = await stat(path);
+        } catch {
+            return { kind: "absent" };
+        }
+        if (!s.isDirectory()) return { kind: "other" };
+        if (await cloneIsGitRepo(path)) {
+            try {
+                // The stored URL, not `get-url`, which applies the person's `url.<base>.insteadOf` rewriting and so differs from what clone was given.
+                return { kind: "clone", remote: (await execFileAsync("git", ["config", "--get", "remote.origin.url"], { cwd: path })).stdout.trim() || null };
+            } catch {
+                return { kind: "clone", remote: null };
+            }
+        }
+        return (await readdir(path)).length === 0 ? { kind: "empty-dir" } : { kind: "other" };
+    },
+    clone: async (remote, path) => {
+        try {
+            await execFileAsync("git", ["clone", "--", remote, path]);
+        } catch (e) {
+            throw cloneFailure(remote, path, e);
+        }
+    },
+    makeDir: async (path) => void (await mkdir(path, { recursive: true })),
+    fileExists: async (path) => {
+        try {
+            await stat(path);
+            return true;
+        } catch {
+            return false;
+        }
+    },
+    ignoreLocally: async (clonePath, pattern) => {
+        const rel = (await execFileAsync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd: clonePath })).stdout.trim();
+        const file = resolve(clonePath, rel);
+        let text = "";
+        try {
+            text = await readFile(file, "utf8");
+        } catch {
+            // no exclude file yet: it is made below
+        }
+        if (text.split("\n").some((line) => line.trim() === pattern)) return false;
+        await mkdir(dirname(file), { recursive: true });
+        await appendFile(file, `${text === "" || text.endsWith("\n") ? "" : "\n"}${pattern}\n`);
+        return true;
+    },
+    isDirectory: (path) => exists(path, "dir"),
+    copyFile: async (from, to) => {
+        await mkdir(dirname(to), { recursive: true });
+        await copyFile(from, to);
+    },
+};
+
+/**
+ * What `service setup` ends with: the first piece the unattended run's preflight would still find missing in the clone, by the same
+ * checks, except the AI-session one (setup may be run from a session; the run may not). The checks that read Jira run only when the
+ * local ones pass.
+ */
+export async function setupStillMissing(clonePath: string, base: Env, check: typeof runCloneCheck = runCloneCheck): Promise<string | null> {
+    const { envFileFound, env } = await cloneEnvironment(clonePath, base);
+    const local = localPreflightFailure({ aiSession: false, clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
+    return local ?? checkFailure(await check(clonePath, env));
 }
