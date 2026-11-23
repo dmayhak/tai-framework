@@ -8,7 +8,7 @@ import { acquireLock } from "./lock.js";
 import { parseServiceUnitArgs } from "./real.js";
 import type { ProjectEntry } from "./setup.js";
 import { readPause, writeLastRun, writeLimitedUntil, noteFailedPreflight } from "./state.js";
-import { installTimer, kickService, nextTickFrom, pauseProjects, renderUnits, resumeProjects, serviceStatus, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
+import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
 
 let root: string;
 beforeEach(async () => {
@@ -19,6 +19,7 @@ afterEach(async () => {
 });
 
 const entry = (over: Partial<ProjectEntry> = {}): ProjectEntry => ({ key: "tai", remote: "git@x:y/z.git", clone: "/data/svc/tai/repo", ...over });
+const SVC = "/data/svc";
 const OK: SystemctlResult = { code: 0, stdout: "", stderr: "" };
 
 /** A fake machine: files in a map, `systemctl` calls recorded, and every answer settable. */
@@ -53,9 +54,9 @@ function fake(over: Partial<TimerDeps> & { listTimers?: string; systemctl?: (arg
 
 describe("unit files (TAI-772 AC-1)", () => {
     it("writes the oneshot service with the clone, state, wait and cap from the entry, and the timer from OnUnitInactiveSec", () => {
-        const { service, timer } = renderUnits(entry({ intervalMinutes: 45, waitHours: 2, cap: 5 }), ["/usr/bin/node", "/opt/tai/cli.ts"], "/usr/bin");
+        const { service, timer } = renderUnits(entry({ intervalMinutes: 45, waitHours: 2, cap: 5 }), ["/usr/bin/node", "/opt/tai/cli.ts"], "/usr/bin", SVC);
         assert.match(service, /Type=oneshot/);
-        assert.match(service, /ExecStart=\/usr\/bin\/node \/opt\/tai\/cli\.ts service run clone=\/data\/svc\/tai\/repo state=\/data\/svc\/tai wait=2 cap=5/);
+        assert.match(service, /ExecStart=\/usr\/bin\/node \/opt\/tai\/cli\.ts service run clone=\/data\/svc\/tai\/repo state=\/data\/svc\/tai root=\/data\/svc wait=2 cap=5/);
         assert.match(service, /Environment=PATH=\/usr\/bin/);
         assert.match(timer, /OnBootSec=2min/);
         assert.match(timer, /OnUnitInactiveSec=45min/);
@@ -64,11 +65,11 @@ describe("unit files (TAI-772 AC-1)", () => {
     });
 
     it("defaults to 30 minutes, 5 hours and 3 tickets, and is the same text every time", () => {
-        const a = renderUnits(entry(), ["/n"], undefined);
+        const a = renderUnits(entry(), ["/n"], undefined, SVC);
         assert.match(a.timer, /OnUnitInactiveSec=30min/);
         assert.match(a.service, /wait=5 cap=3/);
         assert.doesNotMatch(a.service, /Environment=/);
-        assert.deepEqual(renderUnits(entry(), ["/n"], undefined), a);
+        assert.deepEqual(renderUnits(entry(), ["/n"], undefined, SVC), a);
     });
 
     it("quotes a word with a space and doubles the characters systemd reads", () => {
@@ -81,12 +82,12 @@ describe("unit files (TAI-772 AC-1)", () => {
 
     it("install writes both units, reloads and enables the timer, and a re-run gives the same files without a reload", async () => {
         const { deps, files, calls, said } = fake();
-        assert.deepEqual(await installTimer(entry(), deps), { changed: true });
+        assert.deepEqual(await installTimer(entry(), deps, SVC), { changed: true });
         assert.deepEqual([...files.keys()].sort(), ["/home/u/.config/systemd/user/tai-dev@tai.service", "/home/u/.config/systemd/user/tai-dev@tai.timer"]);
         assert.deepEqual(calls.slice(-2), ["daemon-reload", "enable --now tai-dev@tai.timer"]);
         const before = new Map(files);
         calls.length = 0;
-        assert.deepEqual(await installTimer(entry(), deps), { changed: false });
+        assert.deepEqual(await installTimer(entry(), deps, SVC), { changed: false });
         assert.deepEqual(files, before);
         assert.ok(!calls.includes("daemon-reload"), "nothing changed, so nothing to reload");
         assert.ok(said.some((l) => /Already installed/.test(l)));
@@ -94,38 +95,38 @@ describe("unit files (TAI-772 AC-1)", () => {
 
     it("install prints the linger line when linger is off, and not when it is on or cannot be told", async () => {
         const off = fake({ lingerEnabled: async () => false });
-        await installTimer(entry(), off.deps);
+        await installTimer(entry(), off.deps, SVC);
         assert.ok(off.said.some((l) => l.includes("loginctl enable-linger u")));
         for (const answer of [true, null]) {
             const f = fake({ lingerEnabled: async () => answer });
-            await installTimer(entry(), f.deps);
+            await installTimer(entry(), f.deps, SVC);
             assert.ok(!f.said.some((l) => l.includes("enable-linger")));
         }
     });
 
     it("refuses on another OS, or without systemctl --user, and changes nothing", async () => {
         const mac = fake({ platform: "darwin" });
-        await assert.rejects(installTimer(entry(), mac.deps), /Linux systemd only \(this is darwin\); nothing was changed/);
+        await assert.rejects(installTimer(entry(), mac.deps, SVC), /Linux systemd only \(this is darwin\); nothing was changed/);
         assert.equal(mac.files.size, 0);
         assert.equal(mac.calls.length, 0);
         const none = fake({ systemctl: async () => Promise.reject(Object.assign(new Error("spawn systemctl ENOENT"), { code: "ENOENT" })) });
-        await assert.rejects(installTimer(entry(), none.deps), /`systemctl --user` is not available here; nothing was changed/);
+        await assert.rejects(installTimer(entry(), none.deps, SVC), /`systemctl --user` is not available here; nothing was changed/);
         assert.equal(none.files.size, 0);
         const nobus = fake({ systemctl: async (a) => (a[0] === "is-system-running" ? { code: 1, stdout: "", stderr: "Failed to connect to bus: No medium found" } : OK) });
-        await assert.rejects(installTimer(entry(), nobus.deps), /cannot reach a user manager/);
+        await assert.rejects(installTimer(entry(), nobus.deps, SVC), /cannot reach a user manager/);
         assert.equal(nobus.files.size, 0);
     });
 
     it("a failing systemctl call is reported with its message", async () => {
         const { deps } = fake({ systemctl: async (a) => (a[0] === "enable" ? { code: 1, stdout: "", stderr: "Unit file is masked" } : OK) });
-        await assert.rejects(installTimer(entry(), deps), /`systemctl --user enable --now tai-dev@tai\.timer` failed \(exit 1\): Unit file is masked/);
+        await assert.rejects(installTimer(entry(), deps, SVC), /`systemctl --user enable --now tai-dev@tai\.timer` failed \(exit 1\): Unit file is masked/);
     });
 });
 
 describe("uninstall (TAI-772 AC-2)", () => {
     it("stops, disables and removes both units, then reloads", async () => {
         const { deps, files, calls } = fake();
-        await installTimer(entry(), deps);
+        await installTimer(entry(), deps, SVC);
         calls.length = 0;
         assert.deepEqual(await uninstallTimer(entry(), deps), { removed: true });
         assert.equal(files.size, 0);
@@ -143,51 +144,73 @@ describe("uninstall (TAI-772 AC-2)", () => {
 describe("kick (TAI-772 AC-3)", () => {
     it("starts the same service unit the timer starts", async () => {
         const { deps, calls } = fake();
-        await installTimer(entry(), deps);
+        await installTimer(entry(), deps, SVC);
         calls.length = 0;
-        await kickService(entry(), deps);
+        await kickService(entry(), deps, SVC);
         assert.ok(calls.includes("start --no-block tai-dev@tai.service"));
     });
 
     it("is refused from an AI session with the reason, and starts nothing", async () => {
         const { deps, calls } = fake({ aiSession: () => true });
-        await assert.rejects(kickService(entry(), deps), /refused from an AI session.*plain terminal/);
+        await assert.rejects(kickService(entry(), deps, SVC), /refused from an AI session.*plain terminal/);
         assert.equal(calls.length, 0);
     });
 
     it("says to install first when the unit is not there", async () => {
         const { deps } = fake();
-        await assert.rejects(kickService(entry(), deps), /tai-dev@tai\.service is not installed: run `tai service install tai` first/);
+        await assert.rejects(kickService(entry(), deps, SVC), /tai-dev@tai\.service is not installed: run `tai service install tai` first/);
+    });
+
+    it("says so when every project is paused", async () => {
+        const e = entry({ clone: join(root, "tai", "repo") });
+        const { deps, said } = fake();
+        await installTimer(e, deps, root);
+        await pauseAll(root, deps);
+        await kickService(e, deps, root);
+        assert.ok(said.some((l) => /Every project is paused .*will start nothing.*`tai service resume` first/.test(l)));
     });
 
     it("says so when the project is paused, because the run will start nothing", async () => {
         const state = join(root, "tai");
         const e = entry({ clone: join(state, "repo") });
         const { deps, said } = fake();
-        await installTimer(e, deps);
+        await installTimer(e, deps, root);
         await pauseProjects([e], deps);
-        await kickService(e, deps);
+        await kickService(e, deps, root);
         assert.ok(said.some((l) => /tai is paused .*will start nothing/.test(l)));
     });
 });
 
 describe("pause and resume (TAI-772 AC-4)", () => {
-    it("works per project and for a list, keeps the first time, and resume undoes it", async () => {
+    it("a project's pause is its own file, keeps its first time, and resume undoes it", async () => {
         const a = entry({ key: "a", clone: join(root, "a", "repo") });
         const b = entry({ key: "b", clone: join(root, "b", "repo") });
         const { deps, said } = fake();
         await pauseProjects([a], deps);
         assert.notEqual(await readPause(join(root, "a")), null);
         assert.equal(await readPause(join(root, "b")), null, "only the named project");
-        await pauseProjects([a, b], deps);
+        await pauseProjects([a], deps);
         assert.ok(said.includes("a was already paused."));
-        assert.notEqual(await readPause(join(root, "b")), null, "none named: every project in the list");
-        said.length = 0;
-        await resumeProjects([a, b], deps);
+        await resumeProjects([a], deps);
         assert.equal(await readPause(join(root, "a")), null);
-        assert.equal(await readPause(join(root, "b")), null);
         await resumeProjects([a], deps);
         assert.ok(said.includes("a was not paused."));
+        assert.equal(b.key, "b");
+    });
+
+    it("a pause for every project is one file in the service root, apart from the projects' own, and survives a project being added", async () => {
+        const a = entry({ key: "a", clone: join(root, "a", "repo") });
+        const { deps, said } = fake();
+        await pauseProjects([a], deps);
+        await pauseAll(root, deps);
+        assert.notEqual(await readPause(root), null);
+        await pauseAll(root, deps);
+        assert.ok(said.includes("Every project was already paused."));
+        await resumeAll(root, deps);
+        assert.equal(await readPause(root), null, "the pause for all is lifted");
+        assert.notEqual(await readPause(join(root, "a")), null, "the project's own pause is still there");
+        await resumeAll(root, deps);
+        assert.ok(said.some((l) => /no pause for all was set/.test(l)));
     });
 });
 
@@ -202,10 +225,10 @@ describe("status (TAI-772 AC-6)", () => {
         await acquireLock(state, { pid: 4242, now: () => new Date("2026-11-22T11:30:00Z"), isAlive: () => true });
         const listing = "Sun 2026-11-22 12:30:00 UTC 29min left Sun 2026-11-22 10:20:00 UTC 1h 40min ago tai-dev@tai.timer tai-dev@tai.service\n";
         const { deps, said, files } = fake({ listTimers: listing });
-        await installTimer(e, deps);
+        await installTimer(e, deps, root);
         await pauseProjects([e], deps);
         said.length = 0;
-        await serviceStatus(e, deps);
+        await serviceStatus(e, deps, root);
         const out = said.join("\n");
         assert.match(out, /Next tick: Sun 2026-11-22 12:30:00 UTC 29min left Sun 2026-11-22 10:20:00 UTC 1h 40min ago$/m);
         assert.match(out, /Running now: pid 4242, started 2026-11-22T11:30:00\.000Z \(30 min ago\)/);
@@ -218,10 +241,20 @@ describe("status (TAI-772 AC-6)", () => {
         assert.ok(files.size === 2);
     });
 
+    it("shows a pause for every project apart from the project's own", async () => {
+        const e = entry({ clone: join(root, "tai", "repo") });
+        const { deps, said } = fake();
+        await pauseAll(root, deps);
+        said.length = 0;
+        await serviceStatus(e, deps, root);
+        assert.match(said.join("\n"), /Pause: PAUSED for every project since .*`tai service resume` lifts it/);
+        assert.doesNotMatch(said.join("\n"), /Pause: none/);
+    });
+
     it("says what is not there: no timer, no run, no pause, no limit, no failure", async () => {
         const e = entry({ clone: join(root, "tai", "repo") });
         const { deps, said } = fake();
-        await serviceStatus(e, deps);
+        await serviceStatus(e, deps, root);
         const out = said.join("\n");
         assert.match(out, /Timer: not installed \(`tai service install tai`\)/);
         assert.match(out, /no run holds the lock/);
@@ -236,9 +269,9 @@ describe("status (TAI-772 AC-6)", () => {
         const e = entry({ clone: join(state, "repo") });
         await acquireLock(state, { pid: 4242, now: () => new Date("2026-11-22T11:30:00Z"), isAlive: () => true });
         const { deps, said } = fake({ isAlive: () => false, systemctl: async (a) => (a[0] === "list-timers" ? Promise.reject(new Error("boom")) : OK) });
-        await installTimer(e, deps);
+        await installTimer(e, deps, root);
         said.length = 0;
-        await serviceStatus(e, deps);
+        await serviceStatus(e, deps, root);
         assert.match(said.join("\n"), /no run holds the lock/);
         assert.match(said.join("\n"), /Next tick: not scheduled/);
     });

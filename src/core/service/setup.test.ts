@@ -248,10 +248,15 @@ describe("service setup (TAI-771)", () => {
         assert.ok(f.changes.every((c) => !c.startsWith("copy")));
     });
 
-    it("does not copy a file onto itself when from= is the clone", async () => {
-        const f = fake({}, { [CONFIG]: PROJECTS });
-        await runServiceSetup({ ...ARGS, from: "/svc/tai/repo" }, f.deps);
-        assert.ok(f.changes.every((c) => !c.startsWith("copy")));
+    it("refuses when from= is the clone or a folder inside it: the clone is the service's own, not a checkout you work in", async () => {
+        for (const from of ["/svc/tai/repo", "/svc/tai/repo/src/core"]) {
+            const f = fake({}, { [CONFIG]: PROJECTS });
+            await assert.rejects(runServiceSetup({ ...ARGS, from }, f.deps), /is inside the clone \/svc\/tai\/repo.*must not be a checkout you work in.*Nothing was changed/);
+            assert.deepEqual(f.changes, [], `nothing changed for ${from}`);
+        }
+        const near = fake({}, { [CONFIG]: PROJECTS });
+        await runServiceSetup({ ...ARGS, from: "/svc/tai/repo-other" }, near.deps);
+        assert.ok(near.changes.length > 0, "a sibling folder with the same prefix is not inside it");
     });
 
     it("does not write the attestation; it prints the command for a plain terminal against the clone (AC-4)", async () => {

@@ -603,7 +603,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 export function parseDevTasksArgs(
     args: readonly (string | undefined)[],
     options: { readonly rules?: boolean } = {}
-): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string; readonly pickup?: "service"; readonly stopFile?: string } {
+): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string; readonly pickup?: "service"; readonly stopFiles?: readonly string[] } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
     const onlyArgs = given.filter((a) => a.startsWith("only="));
@@ -622,9 +622,8 @@ export function parseDevTasksArgs(
     if (waitArgs.length > 1) throw new Error(`do-dev-tasks takes only one wait=<hours> (got: ${waitArgs.join(" ")}).`);
     if (maxArgs.length > 1) throw new Error(`do-dev-tasks takes only one max=<tickets> (got: ${maxArgs.join(" ")}).`);
     if (resultArgs.length > 1) throw new Error(`do-dev-tasks takes only one result=<file> (got: ${resultArgs.join(" ")}).`);
-    if (stopArgs.length > 1) throw new Error(`do-dev-tasks takes only one stopfile=<file> (got: ${stopArgs.join(" ")}).`);
-    const stopFile = stopArgs.length === 1 ? stopArgs[0]!.slice("stopfile=".length) : undefined;
-    if (stopFile === "") throw new Error("stopfile= takes a file path.");
+    const stopFiles = stopArgs.map((a) => a.slice("stopfile=".length));
+    if (stopFiles.includes("")) throw new Error("stopfile= takes a file path.");
     if (pickupArgs.length > 1) throw new Error(`do-dev-tasks takes only one pickup=service (got: ${pickupArgs.join(" ")}).`);
     if (pickupArgs.length === 1 && pickupArgs[0] !== "pickup=service") throw new Error(`pickup= takes only service (got: ${pickupArgs[0]!.slice("pickup=".length) || "nothing"}).`);
     let maxTickets: number | undefined;
@@ -649,7 +648,7 @@ export function parseDevTasksArgs(
     let yolo: boolean | undefined;
     if (wantsOn) yolo = true;
     else if (wantsOff) yolo = false;
-    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }), ...(pickupArgs.length === 1 ? { pickup: "service" as const } : {}), ...(stopFile === undefined ? {} : { stopFile }) };
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }), ...(pickupArgs.length === 1 ? { pickup: "service" as const } : {}), ...(stopFiles.length === 0 ? {} : { stopFiles }) };
 }
 
 /**

@@ -11,7 +11,7 @@
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { CREDENTIAL_ROLES, credentialVariables, type Env } from "./preflight.js";
+import { CREDENTIAL_ROLES, credentialVariables, isInside, type Env } from "./preflight.js";
 
 export const PROJECTS_FILE = "projects.json";
 export const DEFAULT_ROOT_UNDER_HOME = ".local/share/tai-service";
@@ -180,6 +180,10 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const clonePath = entry.clone;
 
     // Decide everything that can refuse before changing anything.
+    // The clone is the service's own folder: it fast-forwards main there and builds and merges in it. A checkout a person works in is never it.
+    if (isInside(args.from, clonePath)) {
+        throw new Error(`${args.from} is inside the clone ${clonePath}: the clone is the service's own folder, and the service builds and merges in it, so it must not be a checkout you work in. Nothing was changed. Set another "clone" path for ${entry.key} in ${configPath}, or run setup from your own checkout (from=<path>).`);
+    }
     const found = await deps.inspect(clonePath);
     if (found.kind === "other") throw new Error(`${clonePath} exists and is not a clone of ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
     if (found.kind === "clone" && (found.remote === null || !sameRemote(found.remote, entry.remote))) {
@@ -208,8 +212,7 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const source = join(args.from, SETTINGS_FILE);
     const target = join(clonePath, SETTINGS_FILE);
     const notes: string[] = [];
-    if (resolve(args.from) === resolve(clonePath)) notes.push(`${SETTINGS_FILE}: from= is the clone itself, so there is nothing to copy.`);
-    else if (await deps.fileExists(target)) kept.push(`its ${SETTINGS_FILE}`);
+    if (await deps.fileExists(target)) kept.push(`its ${SETTINGS_FILE}`);
     else if (await deps.fileExists(source)) {
         await deps.copyFile(source, target);
         done.push(`copied ${SETTINGS_FILE} from ${args.from} (permission rules, no secrets)`);

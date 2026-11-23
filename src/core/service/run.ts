@@ -24,6 +24,8 @@ export interface WorkSummary {
 
 export interface ServiceTickDeps {
     readonly stateDir: string;
+    /** The service root, where a pause for every project (`tai service pause` with no project) is kept. */
+    readonly rootDir?: string;
     readonly waitHours: number;
     readonly cap: number;
     /** How long ticks skip when a limit gave no reset time. */
@@ -41,7 +43,7 @@ export interface ServiceTickDeps {
 
 export type TickResult =
     | { readonly status: "locked"; readonly exitCode: 0 }
-    | { readonly status: "paused"; readonly exitCode: 0; readonly since: string }
+    | { readonly status: "paused"; readonly exitCode: 0; readonly since: string; readonly scope: "all" | "project" }
     | { readonly status: "limited"; readonly exitCode: 0; readonly until: string }
     | { readonly status: "preflight-failed"; readonly exitCode: 0; readonly message: string }
     | { readonly status: "refresh-failed"; readonly exitCode: 1; readonly why: string }
@@ -69,10 +71,12 @@ export async function runServiceTick(deps: ServiceTickDeps): Promise<TickResult>
         if (lock.tookOver) deps.say(`Took over a lock left by pid ${lock.tookOver.pid} (started ${lock.tookOver.startedAt}), which is no longer running.`);
 
         // TAI-772: a pause (`tai service pause`) starts nothing, and says so in the log on every tick so a forgotten one is seen.
-        const paused = await readPause(deps.stateDir);
+        const pausedAll = deps.rootDir ? await readPause(deps.rootDir) : null;
+        const paused = pausedAll ?? (await readPause(deps.stateDir));
         if (paused) {
-            deps.say(`Skipping: paused by \`tai service pause\` since ${paused.since}; \`tai service resume\` lets the next tick run.`);
-            return { status: "paused", exitCode: 0, since: paused.since };
+            const scope = pausedAll ? "all" : "project";
+            deps.say(`Skipping: ${scope === "all" ? "every project is" : "this project is"} paused by \`tai service pause\` since ${paused.since}; \`tai service resume${scope === "all" ? "" : " <project>"}\` lets the next tick run.`);
+            return { status: "paused", exitCode: 0, since: paused.since, scope };
         }
 
         const limited = await readLimitedUntil(deps.stateDir, deps.now());

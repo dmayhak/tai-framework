@@ -181,7 +181,7 @@ import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resol
 import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
 import { pauseStopReason } from "../core/service/state.js";
-import { installTimer, kickService, pauseProjects, resumeProjects, serviceStatus, uninstallTimer } from "../core/service/timer.js";
+import { installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatus, uninstallTimer } from "../core/service/timer.js";
 import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, parseServiceUnitArgs, realRefreshGit, realSetupFs, realTimerDeps, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
@@ -1923,9 +1923,10 @@ async function main(): Promise<void> {
     // command both the timer and kick-off-now call. It needs no config of its own (the clone has its own .env, and the checks that read
     // Jira run IN the clone as `service check`), so it comes before resolveConfig(). A second start while a run is going exits 0.
     if (subcommand === "service" && arg === "run") {
-        const { clonePath, stateDir, waitHours, cap } = parseServiceRunArgs(rest, process.env);
+        const { clonePath, stateDir, rootDir, waitHours, cap } = parseServiceRunArgs(rest, process.env);
         const result = await runServiceTick({
             stateDir,
+            rootDir,
             waitHours,
             cap,
             lock: { pid: process.pid, now: () => new Date(), isAlive: processIsAlive },
@@ -1933,11 +1934,11 @@ async function main(): Promise<void> {
             say: (line) => console.log(`${new Date().toISOString()} ${line}`),
             preflight: async () => {
                 const { envFileFound, env } = await cloneEnvironment(clonePath, process.env);
-                const local = localPreflightFailure({ aiSession: inAiSession(), clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
+                const local = localPreflightFailure({ aiSession: inAiSession(), startedIn: process.cwd(), clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
                 return local ?? checkFailure(await runCloneCheck(clonePath, env));
             },
             refresh: () => refreshClone(realRefreshGit(clonePath)),
-            work: async (options) => runCloneWork(clonePath, stateDir, (await cloneEnvironment(clonePath, process.env)).env, options),
+            work: async (options) => runCloneWork(clonePath, stateDir, (await cloneEnvironment(clonePath, process.env)).env, { ...options, rootDir }),
         });
         process.exitCode = result.exitCode;
         return;
@@ -1960,12 +1961,13 @@ async function main(): Promise<void> {
         const entries = parseProjects(text, root, configPath);
         const chosen: readonly ProjectEntry[] = project === undefined ? entries : [findProject(entries, project, configPath)];
         const deps = realTimerDeps(process.env, (line) => console.log(line), inAiSession);
-        if (arg === "pause") await pauseProjects(chosen, deps);
-        else if (arg === "resume") await resumeProjects(chosen, deps);
-        else if (arg === "status") for (const entry of chosen) await serviceStatus(entry, deps);
-        else if (arg === "install") await installTimer(chosen[0]!, deps);
+        // `pause` and `resume` with no project act on the pause for every project, which lives in the service root; with one, on that project's own.
+        if (arg === "pause") await (project === undefined ? pauseAll(root, deps) : pauseProjects(chosen, deps));
+        else if (arg === "resume") await (project === undefined ? resumeAll(root, deps) : resumeProjects(chosen, deps));
+        else if (arg === "status") for (const entry of chosen) await serviceStatus(entry, deps, root);
+        else if (arg === "install") await installTimer(chosen[0]!, deps, root);
         else if (arg === "uninstall") await uninstallTimer(chosen[0]!, deps);
-        else await kickService(chosen[0]!, deps);
+        else await kickService(chosen[0]!, deps, root);
         return;
     }
     if (subcommand === "service" && arg !== "check") {
@@ -2485,7 +2487,7 @@ async function main(): Promise<void> {
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath, pickup, stopFile } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
+        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath, pickup, stopFiles } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
             // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
@@ -2627,7 +2629,7 @@ async function main(): Promise<void> {
             storyProblem: async (task) => storyNotInProgress(await config.backend.workTracker.getIssue(task.parent.key), await config.backend.workTracker.getIssue(task.issue.key)),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
-            ...(stopFile ? { stopRequested: () => pauseStopReason(stopFile) } : {}),
+            ...(stopFiles ? { stopRequested: async () => { for (const f of stopFiles) { const why = await pauseStopReason(f); if (why) return why; } return null; } } : {}),
             limitLatch,
             ...(waitHours !== undefined ? { waitHours } : {}),
             ...(maxTickets !== undefined ? { maxTickets } : {}),

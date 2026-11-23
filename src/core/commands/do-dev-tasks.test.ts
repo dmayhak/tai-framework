@@ -1526,11 +1526,11 @@ describe("the service pickup rule in do-dev-tasks (TAI-773)", () => {
         assert.throws(() => parseDevTasksArgs(["pickup=service"], { rules: true }), /rules takes only/);
     });
 
-    it("parses stopfile=<file>, refuses an empty value or a repeat, and ignores it for `rules` (TAI-772)", () => {
-        assert.equal(parseDevTasksArgs(["stopfile=/s/paused.json"]).stopFile, "/s/paused.json");
-        assert.equal(parseDevTasksArgs([]).stopFile, undefined);
+    it("parses stopfile=<file> (more than one may be given), refuses an empty value, and ignores it for `rules` (TAI-772)", () => {
+        assert.deepEqual(parseDevTasksArgs(["stopfile=/s/paused.json"]).stopFiles, ["/s/paused.json"]);
+        assert.deepEqual(parseDevTasksArgs(["stopfile=/s/paused.json", "stopfile=/r/paused.json"]).stopFiles, ["/s/paused.json", "/r/paused.json"]);
+        assert.equal(parseDevTasksArgs([]).stopFiles, undefined);
         assert.throws(() => parseDevTasksArgs(["stopfile="]), /stopfile= takes a file path/);
-        assert.throws(() => parseDevTasksArgs(["stopfile=a", "stopfile=b"]), /only one stopfile=/);
         assert.throws(() => parseDevTasksArgs(["stopfile=a"], { rules: true }), /rules takes only/);
     });
 });

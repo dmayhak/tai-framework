@@ -41,6 +41,14 @@ describe("preflight (TAI-770 AC-2)", () => {
         assert.match(localPreflightFailure({ ...FACTS, envFileFound: false })!, /no \.env \(\/c\/repo\/\.env\)/);
     });
 
+    it("refuses a clone that is the folder the command was started in, or one inside it, but not a sibling or when unknown", () => {
+        assert.match(localPreflightFailure({ ...FACTS, startedIn: "/c/repo" })!, /started from inside the clone \/c\/repo.*the service's own folder/);
+        assert.match(localPreflightFailure({ ...FACTS, startedIn: "/c/repo/src" })!, /started from inside the clone/);
+        assert.equal(localPreflightFailure({ ...FACTS, startedIn: "/c/repo-mine" }), null);
+        assert.equal(localPreflightFailure({ ...FACTS, startedIn: "/home/me" }), null);
+        assert.equal(localPreflightFailure(FACTS), null, "no start folder given (the check the clone runs on itself)");
+    });
+
     it("names a credential missing BY ROLE and which variable", () => {
         const { TAI_REVIEWER_GITHUB_TOKEN: _drop, ...noReviewer } = GITHUB_ENV;
         assert.deepEqual(missingCredential(noReviewer), { role: "reviewer", variables: ["TAI_REVIEWER_GITHUB_TOKEN"] });
@@ -213,11 +221,22 @@ describe("runServiceTick", () => {
     it("a paused project starts nothing, logs it on every tick, and runs again once resumed (TAI-772 AC-4)", async () => {
         await writePause(dir, new Date("2026-11-18T08:00:00Z"));
         const { deps, calls } = setup();
-        for (let i = 0; i < 2; i++) assert.deepEqual(await runServiceTick(deps), { status: "paused", exitCode: 0, since: "2026-11-18T08:00:00.000Z" });
+        for (let i = 0; i < 2; i++) assert.deepEqual(await runServiceTick(deps), { status: "paused", exitCode: 0, since: "2026-11-18T08:00:00.000Z", scope: "project" });
         assert.deepEqual([calls.preflight, calls.refresh, calls.work], [0, 0, 0], "no check, refresh or run");
         assert.equal(calls.say.filter((l) => /paused by `tai service pause` since 2026-11-18T08:00:00\.000Z/.test(l)).length, 2);
         assert.equal(await clearPause(dir), true);
         assert.equal((await runServiceTick(deps)).status, "ran");
+    });
+
+    it("a pause for every project, kept in the service root, stops this project's tick too, and says which it is (TAI-772)", async () => {
+        const rootDir = join(dir, "root");
+        await writePause(rootDir, new Date("2026-11-18T07:00:00Z"));
+        const { deps, calls } = setup({ rootDir });
+        assert.deepEqual(await runServiceTick(deps), { status: "paused", exitCode: 0, since: "2026-11-18T07:00:00.000Z", scope: "all" });
+        assert.ok(calls.say.some((l) => /every project is paused .*`tai service resume`/.test(l)));
+        assert.deepEqual([calls.preflight, calls.refresh, calls.work], [0, 0, 0]);
+        await clearPause(rootDir);
+        assert.equal((await runServiceTick(deps)).status, "ran", "lifting the pause for all lets the tick run");
     });
 
     it("a limit with no reset time skips for a backoff, not forever", async () => {
@@ -253,12 +272,14 @@ describe("runServiceTick", () => {
 
 describe("parseServiceRunArgs", () => {
     it("takes the clone, defaults the state to its parent, the wait to 5 hours and the cap to 3 (AC-6)", () => {
-        assert.deepEqual(parseServiceRunArgs(["clone=/data/tai/proj/repo"]), { clonePath: "/data/tai/proj/repo", stateDir: "/data/tai/proj", waitHours: 5, cap: 3 });
+        assert.deepEqual(parseServiceRunArgs(["clone=/data/tai/proj/repo"], {}, "/home/me"), { clonePath: "/data/tai/proj/repo", stateDir: "/data/tai/proj", rootDir: "/home/me/.local/share/tai-service", waitHours: 5, cap: 3 });
+        assert.equal(parseServiceRunArgs(["clone=/c", "root=/svc"], {}, "/home/me").rootDir, "/svc", "root= names the service root, where a pause for every project is kept");
+        assert.equal(parseServiceRunArgs(["clone=/c"], { TAI_SERVICE_ROOT: "/env-root" }, "/home/me").rootDir, "/env-root");
     });
 
     it("reads each setting from the environment when no argument gives it, and an argument wins", () => {
-        const env = { TAI_SERVICE_CLONE: "/c/repo", TAI_SERVICE_STATE: "/s", TAI_SERVICE_WAIT: "2", TAI_SERVICE_CAP: "7" };
-        assert.deepEqual(parseServiceRunArgs([], env), { clonePath: "/c/repo", stateDir: "/s", waitHours: 2, cap: 7 });
+        const env = { TAI_SERVICE_CLONE: "/c/repo", TAI_SERVICE_STATE: "/s", TAI_SERVICE_WAIT: "2", TAI_SERVICE_CAP: "7", TAI_SERVICE_ROOT: "/r" };
+        assert.deepEqual(parseServiceRunArgs([], env), { clonePath: "/c/repo", stateDir: "/s", rootDir: "/r", waitHours: 2, cap: 7 });
         assert.equal(parseServiceRunArgs(["cap=1", "wait=1.5"], env).cap, 1);
         assert.equal(parseServiceRunArgs(["wait=1.5"], env).waitHours, 1.5);
     });
@@ -349,6 +370,9 @@ describe("runCloneWork", () => {
         const launch = (args: readonly string[]) => ((seen = args), { command: process.execPath, args: ["-e", `require("node:fs").writeFileSync(process.argv.find((a) => a.startsWith("result=")).slice(7), JSON.stringify({ tickets: [], capReached: false, limit: null, stopReason: null }))`, ...args] });
         await runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, launch);
         assert.ok(seen.includes(`stopfile=${join(dir, "paused.json")}`));
+        assert.ok(!seen.some((a) => a.startsWith("stopfile=") && a !== `stopfile=${join(dir, "paused.json")}`), "no root, no second file");
+        await runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1, rootDir: "/svc" }, launch);
+        assert.ok(seen.includes(`stopfile=${join(dir, "paused.json")}`) && seen.includes("stopfile=/svc/paused.json"), "the pause for every project is watched too");
     });
 
     it("rejects when the run leaves no summary", async () => {

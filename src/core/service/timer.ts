@@ -65,9 +65,9 @@ export function unitWord(word: string): string {
 }
 
 /** The service and timer unit files for a project, from its config entry. The same entry gives the same text, so a re-run changes nothing. */
-export function renderUnits(entry: ProjectEntry, command: readonly string[], path: string | undefined): { readonly service: string; readonly timer: string } {
+export function renderUnits(entry: ProjectEntry, command: readonly string[], path: string | undefined, root: string): { readonly service: string; readonly timer: string } {
     const interval = entry.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES;
-    const run = [...command, "service", "run", `clone=${entry.clone}`, `state=${stateDirOf(entry)}`, `wait=${entry.waitHours ?? DEFAULT_WAIT_HOURS}`, `cap=${entry.cap ?? DEFAULT_CAP}`];
+    const run = [...command, "service", "run", `clone=${entry.clone}`, `state=${stateDirOf(entry)}`, `root=${root}`, `wait=${entry.waitHours ?? DEFAULT_WAIT_HOURS}`, `cap=${entry.cap ?? DEFAULT_CAP}`];
     const service = [
         "[Unit]",
         `Description=TAI unattended Dev service: one run for ${entry.key}`,
@@ -116,10 +116,10 @@ export async function systemdRefusal(deps: TimerDeps): Promise<string | null> {
 
 const lingerLine = (user: string): string => `Logged-out runs need linger: \`loginctl enable-linger ${user}\` (without it the timer stops when you log out).`;
 
-export async function installTimer(entry: ProjectEntry, deps: TimerDeps): Promise<{ readonly changed: boolean }> {
+export async function installTimer(entry: ProjectEntry, deps: TimerDeps, root: string): Promise<{ readonly changed: boolean }> {
     const refusal = await systemdRefusal(deps);
     if (refusal) throw new Error(refusal);
-    const units = renderUnits(entry, deps.command, deps.path);
+    const units = renderUnits(entry, deps.command, deps.path, root);
     const servicePath = join(deps.unitDir, serviceUnitName(entry.key));
     const timerPath = join(deps.unitDir, timerUnitName(entry.key));
     let changed = false;
@@ -162,7 +162,7 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
 }
 
 /** `kick`: starts the service unit the timer starts, so a kicked run has the timer's environment and the same lock. Refused from an AI session. */
-export async function kickService(entry: ProjectEntry, deps: TimerDeps): Promise<void> {
+export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: string): Promise<void> {
     if (deps.aiSession()) {
         throw new Error("`tai service kick` is refused from an AI session: the unattended run is refused there too, and a person starts it from a plain terminal. The timer needs no one.");
     }
@@ -170,11 +170,12 @@ export async function kickService(entry: ProjectEntry, deps: TimerDeps): Promise
     if (refusal) throw new Error(refusal);
     const unit = serviceUnitName(entry.key);
     if ((await deps.readFile(join(deps.unitDir, unit))) === null) throw new Error(`${unit} is not installed: run \`tai service install ${entry.key}\` first.`);
-    const paused = await readPause(stateDirOf(entry));
+    const pausedAll = await readPause(root);
+    const paused = pausedAll ?? (await readPause(stateDirOf(entry)));
     // `--no-block`: the run can last hours, and the lock (not this command) is what keeps a second one out.
     await run(deps, ["start", "--no-block", unit]);
     deps.say(`Started ${unit}; it runs now and its log is \`journalctl --user -u ${unit} -f\`.`);
-    if (paused) deps.say(`${entry.key} is paused (since ${paused.since}): the run will start nothing. \`tai service resume ${entry.key}\` first.`);
+    if (paused) deps.say(`${pausedAll ? "Every project is" : `${entry.key} is`} paused (since ${paused.since}): the run will start nothing. \`tai service resume${pausedAll ? "" : ` ${entry.key}`}\` first.`);
 }
 
 /** `pause`: one file per project in its state directory. Pausing twice keeps the first time. */
@@ -183,6 +184,16 @@ export async function pauseProjects(entries: readonly ProjectEntry[], deps: Pick
         const added = await writePause(stateDirOf(entry), deps.now());
         deps.say(added ? `Paused ${entry.key}: no tick starts a run, and a run going finishes its current ticket and then stops. \`tai service resume ${entry.key}\` lifts it; it has no expiry.` : `${entry.key} was already paused.`);
     }
+}
+
+/** `pause` with no project: one file in the service root, read by every tick and run, so it covers a project added later too. */
+export async function pauseAll(root: string, deps: Pick<TimerDeps, "now" | "say">): Promise<void> {
+    const added = await writePause(root, deps.now());
+    deps.say(added ? "Paused every project: no tick starts a run, and a run going finishes its current ticket and then stops. `tai service resume` lifts it; it has no expiry. A pause set on one project is kept apart and still applies." : "Every project was already paused.");
+}
+
+export async function resumeAll(root: string, deps: Pick<TimerDeps, "say">): Promise<void> {
+    deps.say((await clearPause(root)) ? "Resumed every project (the pause for all). A pause set on one project, if any, still applies: `tai service status` shows it." : "Every project was not paused (no pause for all was set).");
 }
 
 export async function resumeProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "say">): Promise<void> {
@@ -207,7 +218,7 @@ function ago(from: string, now: Date): string {
  * `status`: everything a person looks at to see why nothing is running. A preflight that keeps failing is logged once and its tick
  * exits 0, so the timer looks green while no run starts: its note is shown here (the PR 59 review).
  */
-export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps): Promise<void> {
+export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: string): Promise<void> {
     const dir = stateDirOf(entry);
     const now = deps.now();
     const say = deps.say;
@@ -226,8 +237,11 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps): Promi
     }
     const holder: LockInfo | null = await readLockHolder(dir, deps.isAlive);
     say(holder ? `  Running now: pid ${holder.pid}, started ${ago(holder.startedAt, now)}` : "  Running now: no run holds the lock.");
+    const pausedAll = await readPause(root);
     const paused = await readPause(dir);
-    say(paused ? `  Pause: PAUSED since ${ago(paused.since, now)}; \`tai service resume ${entry.key}\` lifts it.` : "  Pause: none.");
+    if (pausedAll) say(`  Pause: PAUSED for every project since ${ago(pausedAll.since, now)}; \`tai service resume\` lifts it.`);
+    if (paused) say(`  Pause: PAUSED since ${ago(paused.since, now)}; \`tai service resume ${entry.key}\` lifts it.`);
+    if (!pausedAll && !paused) say("  Pause: none.");
     const limited = await readLimitedUntil(dir, now);
     say(limited ? `  Limited until: ${limited.until} (${limited.text || "usage limit"}); ticks skip until then.` : "  Limited until: not limited.");
     const last = await readLastRun(dir);
