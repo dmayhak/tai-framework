@@ -86,6 +86,13 @@ function fake(state: Record<string, PathState>, files: Record<string, string>) {
             changes.push(`copy ${from} ${to}`);
             files[to] = files[from]!;
         },
+        ignoreLocally: async (clone, pattern) => {
+            const key = `ignore:${clone}:${pattern}`;
+            if (files[key] !== undefined) return false;
+            changes.push(`exclude ${clone} ${pattern}`);
+            files[key] = "<ignored>";
+            return true;
+        },
         stillMissing: async () => "the clone has no .env",
         say: (line) => said.push(line),
     };
@@ -138,7 +145,7 @@ describe("service setup (TAI-771)", () => {
         const f = fake({}, { [CONFIG]: PROJECTS, "/me/checkout/.claude/settings.local.json": '{"permissions":{}}' });
         const result = await runServiceSetup(ARGS, f.deps);
         assert.equal(result.changed, true);
-        assert.deepEqual(f.changes, ["clone git@github.com:x/tai.git /svc/tai/repo", "mkdir /svc/tai/repo/.tai", "copy /me/checkout/.claude/settings.local.json /svc/tai/repo/.claude/settings.local.json"]);
+        assert.deepEqual(f.changes, ["clone git@github.com:x/tai.git /svc/tai/repo", "mkdir /svc/tai/repo/.tai", "copy /me/checkout/.claude/settings.local.json /svc/tai/repo/.claude/settings.local.json", "exclude /svc/tai/repo /.claude/settings.local.json"]);
     });
 
     it("never copies the person's .env, even from a checkout that has one (AC-3)", async () => {
@@ -173,7 +180,7 @@ describe("service setup (TAI-771)", () => {
     });
 
     it("a re-run treats the same remote written another way as the same clone (AC-2)", async () => {
-        const f = fake({ "/svc/tai/repo": { kind: "clone", remote: "git@github.com:x/tai" } }, { [CONFIG]: PROJECTS, "/svc/tai/repo/.tai": "<dir>", "/svc/tai/repo/.claude/settings.local.json": "{}", "/me/checkout/.claude/settings.local.json": "{}" });
+        const f = fake({ "/svc/tai/repo": { kind: "clone", remote: "git@github.com:x/tai" } }, { [CONFIG]: PROJECTS, "/svc/tai/repo/.tai": "<dir>", "/svc/tai/repo/.claude/settings.local.json": "{}", "ignore:/svc/tai/repo:/.claude/settings.local.json": "x", "/me/checkout/.claude/settings.local.json": "{}" });
         assert.equal((await runServiceSetup(ARGS, f.deps)).changed, false);
     });
 
@@ -190,6 +197,13 @@ describe("service setup (TAI-771)", () => {
             if (found.kind === "clone" && found.remote !== null) await assert.rejects(runServiceSetup(ARGS, f.deps), new RegExp(`set its "remote" back to ${found.remote.replace(/\W/g, ".")}`));
             assert.deepEqual(f.changes, []);
         }
+    });
+
+    it("keeps the copied rules out of the clone's git status, even when no file was copied, so a clean clone stays clean (review)", async () => {
+        const f = fake({}, { [CONFIG]: PROJECTS });
+        await runServiceSetup(ARGS, f.deps);
+        assert.ok(f.changes.includes("exclude /svc/tai/repo /.claude/settings.local.json"));
+        assert.match(f.said.join("\n"), /out of the clone's git status/);
     });
 
     it("clones into an empty directory", async () => {
@@ -292,6 +306,10 @@ describe("setup end to end over real directories and a local repository, and its
         assert.ok((await stat(join(clone, ".tai"))).isDirectory());
         await assert.rejects(stat(join(clone, ".env")));
         assert.match(said.join("\n"), /Still missing: the clone has no \.env/);
+        // The copied rules must not make the clone look dirty: the service fast-forwards main only in a clean tree.
+        // (run without the person's own global ignore file, which on a developer's machine already hides this file)
+        const hermetic = { ...process.env, HOME: dir, XDG_CONFIG_HOME: dir, GIT_CONFIG_GLOBAL: "/dev/null" };
+        assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd: clone, encoding: "utf8", env: hermetic }).trim(), "");
 
         said.length = 0;
         assert.equal((await runServiceSetup({ project: "demo", root, from: mine }, deps)).changed, false);

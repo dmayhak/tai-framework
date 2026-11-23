@@ -7,7 +7,7 @@
  */
 
 import { execFile, spawn } from "node:child_process";
-import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv, promisify } from "node:util";
 
@@ -269,6 +269,20 @@ export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
         } catch {
             return false;
         }
+    },
+    ignoreLocally: async (clonePath, pattern) => {
+        const rel = (await execFileAsync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd: clonePath })).stdout.trim();
+        const file = resolve(clonePath, rel);
+        let text = "";
+        try {
+            text = await readFile(file, "utf8");
+        } catch {
+            // no exclude file yet: it is made below
+        }
+        if (text.split("\n").some((line) => line.trim() === pattern)) return false;
+        await mkdir(dirname(file), { recursive: true });
+        await appendFile(file, `${text === "" || text.endsWith("\n") ? "" : "\n"}${pattern}\n`);
+        return true;
     },
     copyFile: async (from, to) => {
         await mkdir(dirname(to), { recursive: true });

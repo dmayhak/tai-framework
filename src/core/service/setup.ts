@@ -125,6 +125,11 @@ export interface SetupDeps {
     readonly fileExists: (path: string) => Promise<boolean>;
     /** Copies a file, making the folders above the target. */
     readonly copyFile: (from: string, to: string) => Promise<void>;
+    /**
+     * Keeps `pattern` out of the clone's `git status` through the clone's own `.git/info/exclude` (never committed), so a copied local
+     * file does not leave the tree dirty, which would stop the service fast-forwarding main. True when it was added, false when it was there.
+     */
+    readonly ignoreLocally: (clonePath: string, pattern: string) => Promise<boolean>;
     /** The first thing the unattended run's preflight still finds missing in the clone (the same checks), or null. */
     readonly stillMissing: (clonePath: string) => Promise<string | null>;
     readonly say: (line: string) => void;
@@ -190,6 +195,10 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
         await deps.copyFile(source, target);
         done.push(`copied ${SETTINGS_FILE} from ${args.from} (permission rules, no secrets)`);
     } else notes.push(`There is no ${SETTINGS_FILE} in ${args.from}, so none was copied: the preflight will name the permission rules the unattended run needs. Use from=<path> for the checkout that has them.`);
+
+    // The copied rules are a local file the project may not ignore: left showing, they make the clone look dirty, and a dirty clone is never fast-forwarded.
+    if (await deps.ignoreLocally(clonePath, `/${SETTINGS_FILE}`)) done.push(`kept ${SETTINGS_FILE} out of the clone's git status (its .git/info/exclude, which is never committed)`);
+    else kept.push(`${SETTINGS_FILE} kept out of its git status`);
 
     if (done.length === 0) deps.say(`Nothing changed: already in place: ${kept.join(", ")}.`);
     else {
