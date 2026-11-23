@@ -18,7 +18,7 @@ import type { RunSummary } from "../commands/do-dev-tasks.js";
 import type { ClonePosition, RefreshGit } from "./refresh.js";
 import { checkFailure, localPreflightFailure, type Env } from "./preflight.js";
 import type { WorkSummary } from "./run.js";
-import { redactRemote, type PathState, type SetupDeps } from "./setup.js";
+import { expandHome, redactRemote, type PathState, type SetupDeps } from "./setup.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -199,7 +199,7 @@ export async function runCloneWork(clonePath: string, stateDir: string, env: Nod
  * `~/.local/share/tai-service`), from is the checkout the permission rules are copied from (default the current directory).
  * A mistyped flag is refused, because setup makes a clone.
  */
-export function parseServiceSetupArgs(args: readonly (string | undefined)[], cwd: string): { readonly project: string; readonly root: string | undefined; readonly from: string } {
+export function parseServiceSetupArgs(args: readonly (string | undefined)[], cwd: string, home?: string): { readonly project: string; readonly root: string | undefined; readonly from: string } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const values = new Map<string, string>();
     const positional: string[] = [];
@@ -214,7 +214,7 @@ export function parseServiceSetupArgs(args: readonly (string | undefined)[], cwd
     }
     if (positional.length !== 1) throw new Error("Usage: service setup <project> [root=<dir>] [from=<path>]");
     const from = values.get("from");
-    return { project: positional[0]!, root: values.get("root"), from: from ? resolve(from) : cwd };
+    return { project: positional[0]!, root: values.get("root"), from: from ? resolve(expandHome(from, home)) : cwd };
 }
 
 /**

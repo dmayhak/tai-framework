@@ -345,6 +345,11 @@ describe("service setup arguments (TAI-771)", () => {
         assert.deepEqual(parseServiceSetupArgs(["root=/r", "tai", "from=/p"], "/here"), { project: "tai", root: "/r", from: "/p" });
     });
 
+    it("expands a leading ~ in from=", () => {
+        assert.equal(parseServiceSetupArgs(["tai", "from=~/work/tai"], "/here", "/home/u").from, "/home/u/work/tai");
+        assert.equal(parseServiceSetupArgs(["tai", "from=~x/tai"], "/here", "/home/u").from, `${process.cwd()}/~x/tai`);
+    });
+
     it("refuses no project, two projects, a repeated flag or a mistyped one", () => {
         assert.throws(() => parseServiceSetupArgs([], "/h"), /Usage/);
         assert.throws(() => parseServiceSetupArgs(["a", "b"], "/h"), /Usage/);

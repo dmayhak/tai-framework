@@ -43,6 +43,12 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
         assert.throws(() => findProject(entries, "other", CONFIG), /other.*\/svc\/projects\.json.*tai/);
     });
 
+    it("expands a leading ~ in root= and TAI_SERVICE_ROOT, which a shell leaves alone after an =", () => {
+        assert.equal(resolveServiceRoot("~/svc", {}, "/home/u"), "/home/u/svc");
+        assert.equal(resolveServiceRoot(undefined, { TAI_SERVICE_ROOT: "~/svc" }, "/home/u"), "/home/u/svc");
+        assert.equal(resolveServiceRoot("~", {}, "/home/u"), "/home/u");
+    });
+
     it("finds the root from root=, then TAI_SERVICE_ROOT, then the default under the home directory", () => {
         assert.equal(resolveServiceRoot("/a", { TAI_SERVICE_ROOT: "/b" }, "/home/u"), "/a");
         assert.equal(resolveServiceRoot(undefined, { TAI_SERVICE_ROOT: "/b" }, "/home/u"), "/b");

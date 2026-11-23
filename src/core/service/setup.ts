@@ -32,10 +32,15 @@ const ENTRY_SHAPE = `{ "projects": [ { "key": "tai", "remote": "<git remote URL>
 const KNOWN_FIELDS = new Set(["key", "remote", "clone", "intervalMinutes", "waitHours", "cap"]);
 const SAFE_KEY = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+/** A leading `~` or `~/` is the home directory. A shell does not expand one after `=` (`root=~/svc`), so it reaches us as written. */
+export function expandHome(path: string, home: string = homedir()): string {
+    return path === "~" ? home : path.startsWith("~/") ? join(home, path.slice(2)) : path;
+}
+
 /** root= first, then TAI_SERVICE_ROOT, then `~/.local/share/tai-service`. */
 export function resolveServiceRoot(given: string | undefined, env: Env, home: string = homedir()): string {
     const chosen = given?.trim() || (env["TAI_SERVICE_ROOT"] ?? "").trim();
-    return chosen ? resolve(chosen) : join(home, DEFAULT_ROOT_UNDER_HOME);
+    return chosen ? resolve(expandHome(chosen, home)) : join(home, DEFAULT_ROOT_UNDER_HOME);
 }
 
 function positive(value: unknown, field: string, whole: boolean, where: string): number | undefined {
@@ -71,7 +76,7 @@ export function parseProjects(text: string, root: string, configPath: string, ho
         const waitHours = positive(e["waitHours"], "waitHours", false, where);
         const cap = positive(e["cap"], "cap", true, where);
         const given = e["clone"] as string | undefined;
-        const path = given === undefined ? undefined : given === "~" ? home : given.startsWith("~/") ? join(home, given.slice(2)) : given;
+        const path = given === undefined ? undefined : expandHome(given, home);
         const clone = path === undefined ? join(root, e["key"], "repo") : isAbsolute(path) ? path : resolve(root, path);
         return { key: e["key"], remote: e["remote"].trim(), clone, ...(intervalMinutes === undefined ? {} : { intervalMinutes }), ...(waitHours === undefined ? {} : { waitHours }), ...(cap === undefined ? {} : { cap }) };
     });
