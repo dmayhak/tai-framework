@@ -284,6 +284,7 @@ export const realSetupFs: Omit<SetupDeps, "stillMissing" | "say"> = {
         await appendFile(file, `${text === "" || text.endsWith("\n") ? "" : "\n"}${pattern}\n`);
         return true;
     },
+    isDirectory: (path) => exists(path, "dir"),
     copyFile: async (from, to) => {
         await mkdir(dirname(to), { recursive: true });
         await copyFile(from, to);

@@ -123,6 +123,7 @@ export interface SetupDeps {
     readonly clone: (remote: string, path: string) => Promise<void>;
     readonly makeDir: (path: string) => Promise<void>;
     readonly fileExists: (path: string) => Promise<boolean>;
+    readonly isDirectory: (path: string) => Promise<boolean>;
     /** Copies a file, making the folders above the target. */
     readonly copyFile: (from: string, to: string) => Promise<void>;
     /**
@@ -168,7 +169,12 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const found = await deps.inspect(clonePath);
     if (found.kind === "other") throw new Error(`${clonePath} exists and is not a clone of ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
     if (found.kind === "clone" && (found.remote === null || !sameRemote(found.remote, entry.remote))) {
-        throw new Error(`${clonePath} is a git clone of ${found.remote === null ? "no remote" : redactRemote(found.remote)}, not ${redactRemote(entry.remote)}: it was left untouched. Move it away, set another "clone" path for ${entry.key} in ${configPath}${found.remote === null ? "" : `, or set its "remote" back to ${redactRemote(found.remote)} if the clone is the one you want`}.`);
+        throw new Error(`${clonePath} is a git clone of ${found.remote === null ? "no remote" : redactRemote(found.remote)}, not ${redactRemote(entry.remote)}: it was left untouched. Move it away, set another "clone" path for ${entry.key} in ${configPath}${found.remote === null ? "" : `, or set its "remote" back to ${redactRemote(found.remote)} if the clone is the one you want (the two may be the same repository written another way, such as ssh and https: they are compared as written)`}.`);
+    }
+
+    const taiDir = join(clonePath, ".tai");
+    if (found.kind === "clone" && (await deps.fileExists(taiDir)) && !(await deps.isDirectory(taiDir))) {
+        throw new Error(`${taiDir} exists and is not a directory: it was left untouched. Move it away; the clone's own .tai/ is made there.`);
     }
 
     const done: string[] = [];
@@ -179,7 +185,6 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
         done.push(`cloned ${redactRemote(entry.remote)} to ${clonePath}`);
     }
 
-    const taiDir = join(clonePath, ".tai");
     if (await deps.fileExists(taiDir)) kept.push("its own .tai/");
     else {
         await deps.makeDir(taiDir);

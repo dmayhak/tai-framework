@@ -82,6 +82,7 @@ function fake(state: Record<string, PathState>, files: Record<string, string>) {
             files[p] = "<dir>";
         },
         fileExists: async (p) => files[p] !== undefined,
+        isDirectory: async (p) => files[p] === "<dir>",
         copyFile: async (from, to) => {
             changes.push(`copy ${from} ${to}`);
             files[to] = files[from]!;
@@ -188,6 +189,17 @@ describe("service setup (TAI-771)", () => {
         const f = fake({ "/svc/tai/repo": { kind: "clone", remote: ENTRY.remote } }, { [CONFIG]: PROJECTS, "/svc/tai/repo/.tai": "<dir>", "/svc/tai/repo/.claude/settings.local.json": "edited", "/me/checkout/.claude/settings.local.json": "new" });
         await runServiceSetup(ARGS, f.deps);
         assert.equal(f.files["/svc/tai/repo/.claude/settings.local.json"], "edited");
+    });
+
+    it("refuses a clone whose .tai is a file, before any change", async () => {
+        const f = fake({ "/svc/tai/repo": { kind: "clone", remote: ENTRY.remote } }, { [CONFIG]: PROJECTS, "/svc/tai/repo/.tai": "a file" });
+        await assert.rejects(runServiceSetup(ARGS, f.deps), /\/svc\/tai\/repo\/\.tai exists and is not a directory/);
+        assert.deepEqual(f.changes, []);
+    });
+
+    it("the mismatch refusal says the two remotes may be one repository written another way", async () => {
+        const f = fake({ "/svc/tai/repo": { kind: "clone", remote: "https://github.com/x/tai" } }, { [CONFIG]: PROJECTS });
+        await assert.rejects(runServiceSetup(ARGS, f.deps), /same repository written another way.*compared as written/);
     });
 
     it("refuses a path that exists and is not that clone, and leaves it untouched (AC-2)", async () => {
@@ -398,6 +410,8 @@ describe("the real file system and git behind setup (offline)", () => {
         await realSetupFs.makeDir(join(dir, "c", ".tai"));
         assert.ok((await stat(join(dir, "c", ".tai"))).isDirectory());
         assert.equal(await realSetupFs.fileExists(join(dir, "c", ".tai")), true);
+        assert.equal(await realSetupFs.isDirectory(join(dir, "c", ".tai")), true);
+        assert.equal(await realSetupFs.isDirectory(join(dir, "s.json")), false);
         assert.equal(await realSetupFs.fileExists(join(dir, "nope")), false);
     });
 });
