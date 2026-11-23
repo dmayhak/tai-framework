@@ -7,7 +7,7 @@
  */
 
 import { execFile, spawn } from "node:child_process";
-import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv, promisify } from "node:util";
 
@@ -18,6 +18,9 @@ import type { RunSummary } from "../commands/do-dev-tasks.js";
 import type { ClonePosition, RefreshGit } from "./refresh.js";
 import { checkFailure, localPreflightFailure, type Env } from "./preflight.js";
 import type { WorkSummary } from "./run.js";
+import { PAUSE_FILE } from "./state.js";
+import type { SystemctlResult, TimerDeps } from "./timer.js";
+import { processIsAlive } from "./lock.js";
 import { expandHome, redactRemote, type PathState, type SetupDeps } from "./setup.js";
 
 const execFileAsync = promisify(execFile);
@@ -165,7 +168,7 @@ export async function runCloneWork(clonePath: string, stateDir: string, env: Nod
     await mkdir(stateDir, { recursive: true });
     const resultPath = join(stateDir, RESULT_FILE);
     await rm(resultPath, { force: true });
-    const { command, args } = launch(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`, "pickup=service"]);
+    const { command, args } = launch(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`, "pickup=service", `stopfile=${join(stateDir, PAUSE_FILE)}`]);
     const code = await new Promise<number | null>((done, fail) => {
         const child = spawn(command, args, { cwd: clonePath, env, stdio: "inherit" });
         // A stop sent to this process (a `kill`, Ctrl-C, a closed terminal) goes on to the run, which is then waited for: no run may outlive
@@ -300,4 +303,70 @@ export async function setupStillMissing(clonePath: string, base: Env, check: typ
     const { envFileFound, env } = await cloneEnvironment(clonePath, base);
     const local = localPreflightFailure({ aiSession: false, clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
     return local ?? checkFailure(await check(clonePath, env));
+}
+
+
+/**
+ * TAI-772: `service install|uninstall|kick|status <project> [root=<dir>]` and `service pause|resume [<project>] [root=<dir>]`. `status`,
+ * `pause` and `resume` with no project mean every project in the list; the others need one. A mistyped word is refused.
+ */
+export function parseServiceUnitArgs(action: "install" | "uninstall" | "kick" | "status" | "pause" | "resume", args: readonly (string | undefined)[]): { readonly project: string | undefined; readonly root: string | undefined } {
+    const given = args.filter((a): a is string => a !== undefined && a !== "");
+    let root: string | undefined;
+    const positional: string[] = [];
+    for (const a of given) {
+        const m = /^root=(.*)$/.exec(a);
+        if (m) {
+            if (root !== undefined) throw new Error("service takes only one root= (got it twice).");
+            if (m[1] === "") throw new Error("root= takes a directory.");
+            root = m[1];
+        } else if (a.includes("=")) throw new Error(`service ${action} takes <project> and root=<dir> (got: ${a}).`);
+        else positional.push(a);
+    }
+    if (positional.length > 1) throw new Error(`service ${action} takes one project (got: ${positional.join(" ")}).`);
+    const project = positional[0];
+    const optional = action === "status" || action === "pause" || action === "resume";
+    if (project === undefined && !optional) throw new Error(`service ${action} needs the project: \`tai service ${action} <project>\`.`);
+    return { project, root };
+}
+
+/** What `TimerDeps` is on a real machine: `systemctl --user`, the user's own unit directory, this process's own command line and clock. */
+export function realTimerDeps(env: Env, say: (line: string) => void, aiSession: () => boolean, home: string = process.env["HOME"] ?? ""): TimerDeps {
+    const systemctl = async (args: readonly string[]): Promise<SystemctlResult> => {
+        try {
+            const r = await execFileAsync("systemctl", ["--user", ...args]);
+            return { code: 0, stdout: r.stdout, stderr: r.stderr };
+        } catch (e) {
+            const err = e as NodeJS.ErrnoException & { code?: number | string; stdout?: string; stderr?: string };
+            if (err.code === "ENOENT") throw e; // the program is not there
+            return { code: typeof err.code === "number" ? err.code : 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
+        }
+    };
+    const user = env["USER"] ?? env["LOGNAME"] ?? "";
+    return {
+        platform: process.platform,
+        unitDir: join(env["XDG_CONFIG_HOME"] || join(home, ".config"), "systemd", "user"),
+        readFile: (path) => readFile(path, "utf8").then((t) => t, () => null),
+        writeFile: async (path, text) => {
+            await mkdir(dirname(path), { recursive: true });
+            await writeFile(path, text);
+        },
+        removeFile: (path) => rm(path).then(() => true, () => false),
+        systemctl,
+        command: [process.execPath, ...process.execArgv, process.argv[1]!],
+        path: env["PATH"],
+        lingerEnabled: async () => {
+            try {
+                const r = await execFileAsync("loginctl", ["show-user", user, "-p", "Linger"]);
+                return /^Linger=yes$/m.test(r.stdout);
+            } catch {
+                return null;
+            }
+        },
+        user,
+        now: () => new Date(),
+        isAlive: processIsAlive,
+        aiSession,
+        say,
+    };
 }

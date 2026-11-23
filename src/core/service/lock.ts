@@ -62,6 +62,12 @@ async function readLock(path: string): Promise<{ readonly exists: boolean; reado
     }
 }
 
+/** TAI-772: who holds the lock now, for `service status`: the run that wrote it while it is still running; a stale or unreadable lock is nobody. Changes nothing. */
+export async function readLockHolder(stateDir: string, isAlive: LockDeps["isAlive"]): Promise<LockInfo | null> {
+    const { info } = await readLock(join(stateDir, LOCK_FILE));
+    return info && (await isAlive(info.pid, info.startedAt)) ? info : null;
+}
+
 /** Pauses a moment so a start that lost a take-over race reads what the winner wrote. */
 const pause = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 

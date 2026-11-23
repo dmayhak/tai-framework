@@ -563,6 +563,22 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.equal(looks, 0, "no new look on the way out");
     });
 
+    it("a stop request ends the run between tickets: the ticket under way is finished, the next is not prepared (TAI-772)", async () => {
+        let paused = false;
+        const d = deps({ stopRequested: async () => (paused ? "paused by `tai service pause`" : null), build: async (t) => (d.calls.push(`build ${t.issue.key}`), (paused = true), { ok: true, summary: "built" }) });
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.equal(worked.results.length, 1, "TAI-10 was finished");
+        assert.ok(!d.calls.includes("prepare TAI-11"), "TAI-11 was never prepared");
+        assert.equal(worked.stoppedBy, "paused by `tai service pause`");
+        assert.equal(summarizeWorked(worked).stopReason, "paused by `tai service pause`");
+    });
+
+    it("no stop request leaves the run as it was", async () => {
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), deps({ stopRequested: async () => null }));
+        assert.equal(worked.stoppedBy, undefined);
+        assert.equal(summarizeWorked(worked).stopReason, null);
+    });
+
     it("a branch that will not update stops the run without blaming any ticket", async () => {
         const d = deps({ prepare: async () => Promise.reject(new PrepareStopError("Could not bring main up to date: offline")) });
         const { results } = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
@@ -712,7 +728,7 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.deepEqual(parseDevTasksArgs(["yolo=true"]), { dryRun: false, yolo: true });
         assert.deepEqual(parseDevTasksArgs(["yolo=false"]), { dryRun: false, yolo: false });
         assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
-        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file> and pickup=service/);
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file>, pickup=service and stopfile=<file>/);
         assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
     });
 
@@ -1508,5 +1524,13 @@ describe("the service pickup rule in do-dev-tasks (TAI-773)", () => {
         assert.throws(() => parseDevTasksArgs(["pickup=all"]), /pickup= takes only service/);
         assert.throws(() => parseDevTasksArgs(["pickup=service", "pickup=service"]), /only one pickup=service/);
         assert.throws(() => parseDevTasksArgs(["pickup=service"], { rules: true }), /rules takes only/);
+    });
+
+    it("parses stopfile=<file>, refuses an empty value or a repeat, and ignores it for `rules` (TAI-772)", () => {
+        assert.equal(parseDevTasksArgs(["stopfile=/s/paused.json"]).stopFile, "/s/paused.json");
+        assert.equal(parseDevTasksArgs([]).stopFile, undefined);
+        assert.throws(() => parseDevTasksArgs(["stopfile="]), /stopfile= takes a file path/);
+        assert.throws(() => parseDevTasksArgs(["stopfile=a", "stopfile=b"]), /only one stopfile=/);
+        assert.throws(() => parseDevTasksArgs(["stopfile=a"], { rules: true }), /rules takes only/);
     });
 });

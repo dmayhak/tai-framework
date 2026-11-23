@@ -8,7 +8,7 @@ import { acquireLock, LOCK_FILE } from "./lock.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, runCloneWork } from "./real.js";
 import { checkFailure, credentialVariables, localPreflightFailure, missingCredential, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
-import { readLastRun, readLimitedUntil, readPreflightNote, writeLimitedUntil } from "./state.js";
+import { clearPause, pauseStopReason, readLastRun, readLimitedUntil, readPause, readPreflightNote, writeLimitedUntil, writePause } from "./state.js";
 import { runServiceTick, type ServiceTickDeps, type WorkSummary } from "./run.js";
 
 let dir: string;
@@ -210,6 +210,16 @@ describe("runServiceTick", () => {
         await assert.rejects(readFile(join(dir, "limited-until.json"), "utf8"), /ENOENT/, "the passed limit record is cleared");
     });
 
+    it("a paused project starts nothing, logs it on every tick, and runs again once resumed (TAI-772 AC-4)", async () => {
+        await writePause(dir, new Date("2026-11-18T08:00:00Z"));
+        const { deps, calls } = setup();
+        for (let i = 0; i < 2; i++) assert.deepEqual(await runServiceTick(deps), { status: "paused", exitCode: 0, since: "2026-11-18T08:00:00.000Z" });
+        assert.deepEqual([calls.preflight, calls.refresh, calls.work], [0, 0, 0], "no check, refresh or run");
+        assert.equal(calls.say.filter((l) => /paused by `tai service pause` since 2026-11-18T08:00:00\.000Z/.test(l)).length, 2);
+        assert.equal(await clearPause(dir), true);
+        assert.equal((await runServiceTick(deps)).status, "ran");
+    });
+
     it("a limit with no reset time skips for a backoff, not forever", async () => {
         const { deps } = setup({ limitBackoffMs: 3_600_000 }, { tickets: [], capReached: false, limit: { text: "Your usage limit has been reached." }, stopReason: null });
         await runServiceTick(deps);
@@ -334,6 +344,13 @@ describe("runCloneWork", () => {
         assert.ok(seen.includes("wait=2") && seen.includes("max=4"));
     });
 
+    it("hands the run the pause file to watch between tickets (TAI-772 AC-5)", async () => {
+        let seen: readonly string[] = [];
+        const launch = (args: readonly string[]) => ((seen = args), { command: process.execPath, args: ["-e", `require("node:fs").writeFileSync(process.argv.find((a) => a.startsWith("result=")).slice(7), JSON.stringify({ tickets: [], capReached: false, limit: null, stopReason: null }))`, ...args] });
+        await runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, launch);
+        assert.ok(seen.includes(`stopfile=${join(dir, "paused.json")}`));
+    });
+
     it("rejects when the run leaves no summary", async () => {
         await assert.rejects(runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, fakeRun("process.exit(3)")), /exited 3 and left no summary/);
     });
@@ -355,5 +372,26 @@ describe("service setup arguments (TAI-771)", () => {
         assert.throws(() => parseServiceSetupArgs(["a", "b"], "/h"), /Usage/);
         assert.throws(() => parseServiceSetupArgs(["a", "from=/x", "from=/y"], "/h"), /only one from=/);
         assert.throws(() => parseServiceSetupArgs(["a", "form=/x"], "/h"), /Usage/);
+    });
+});
+
+describe("pause state (TAI-772 AC-4)", () => {
+    it("is a file that keeps its first time, has no expiry, and is removed only by clearPause", async () => {
+        assert.equal(await readPause(dir), null);
+        assert.equal(await writePause(dir, new Date("2026-11-18T08:00:00Z")), true);
+        assert.equal(await writePause(dir, new Date("2027-01-01T00:00:00Z")), false, "pausing twice keeps the first time");
+        assert.deepEqual(await readPause(dir), { since: "2026-11-18T08:00:00.000Z" });
+        assert.equal(await clearPause(dir), true);
+        assert.equal(await clearPause(dir), false);
+        assert.equal(await readPause(dir), null);
+    });
+
+    it("a running do-dev-tasks sees it through the stop file, and sees nothing while there is none", async () => {
+        const file = join(dir, "paused.json");
+        assert.equal(await pauseStopReason(file), null);
+        await writePause(dir, new Date("2026-11-18T08:00:00Z"));
+        assert.match((await pauseStopReason(file))!, /paused by `tai service pause` \(since 2026-11-18T08:00:00\.000Z\)/);
+        await writeFile(file, "not json");
+        assert.equal(await pauseStopReason(file), null, "an unreadable file is no pause (the tick reads the same way)");
     });
 });

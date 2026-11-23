@@ -12,6 +12,7 @@ import { join } from "node:path";
 export const LIMITED_FILE = "limited-until.json";
 export const LAST_RUN_FILE = "last-run.json";
 export const PREFLIGHT_FILE = "preflight.json";
+export const PAUSE_FILE = "paused.json";
 
 async function readJson<T>(path: string): Promise<T | null> {
     try {
@@ -89,4 +90,35 @@ export async function noteFailedPreflight(dir: string, message: string, now: Dat
 /** A passing preflight clears the note, so the same failure later is logged again. */
 export async function clearPreflightNote(dir: string): Promise<void> {
     await rm(join(dir, PREFLIGHT_FILE), { force: true });
+}
+
+/** TAI-772: a pause set by `tai service pause`. A file on disk, so it survives a reboot, with no expiry: only `resume` removes it. */
+export interface Pause {
+    /** ISO time the pause was set. */
+    readonly since: string;
+}
+
+export async function readPause(dir: string): Promise<Pause | null> {
+    const v = await readJson<Partial<Pause>>(join(dir, PAUSE_FILE));
+    return v && typeof v.since === "string" ? { since: v.since } : null;
+}
+
+/** Sets the pause. One already set keeps its own first time, so pausing twice does not move it. Returns true when it was new. */
+export async function writePause(dir: string, now: Date): Promise<boolean> {
+    if (await readPause(dir)) return false;
+    await writeJson(dir, PAUSE_FILE, { since: now.toISOString() } satisfies Pause);
+    return true;
+}
+
+/** Removes the pause. Returns true when there was one. */
+export async function clearPause(dir: string): Promise<boolean> {
+    const was = await readPause(dir);
+    await rm(join(dir, PAUSE_FILE), { force: true });
+    return was !== null;
+}
+
+/** What a run in progress checks between tickets (`do-dev-tasks stopfile=<path>`): why it should stop, or null while there is no pause. */
+export async function pauseStopReason(path: string): Promise<string | null> {
+    const v = await readJson<Partial<Pause>>(path);
+    return v && typeof v.since === "string" ? `paused by \`tai service pause\` (since ${v.since})` : null;
 }

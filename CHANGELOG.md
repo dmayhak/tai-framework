@@ -2,6 +2,16 @@
 
 The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief on 2026-10-09 (TAI-486); the entries below rev 81 are unchanged from how they read there. The brief states what is true now; this file says how it got there.
 
+## rev 172 (2026-11-23)
+
+**TAI-772 (Dev TAI-776): the timer, kick-off-now, pause and status.** Third Story of Epic TAI-763 to land; `service run` had a clone (rev 171) but nothing started it on a schedule. Design: the work-breakdown page for the Epic (research findings 1 and 3, EpicReview decisions 2 and 4). Linux systemd only, as decided in the EpicReview.
+
+* `core/service/timer.ts`: `install`, `uninstall`, `kick`, `pause`, `resume` and `status`, with every step that touches systemd, files, the clock or the process list injected (`TimerDeps`); `real.ts` holds the real ones and the argument parser. The timer counts from the end of a run (`OnUnitInactiveSec`), so a long run is never overtaken.
+* The pause is one `paused.json` per project state directory: on disk, no expiry, first time kept. The tick reads it before anything else and logs it every tick. A run going reads it between tickets through the new `do-dev-tasks stopfile=<file>`, so it finishes its current ticket and is never stopped mid-merge.
+* `status` shows the preflight note as FAILING, because a failed preflight exits 0 and the timer would otherwise look green while nothing runs (the PR 59 review).
+* `kick` is refused from an AI session (EpicReview decision 2). `install` prints the linger line when linger is off.
+* Live: the unit files verify, and a timer installed from a throwaway project fired and `status` showed its failed preflight. The two checks only a real suspend and a real logout can answer (the timer after a resume, runs while logged out) are the human's and are recorded on TAI-776.
+
 ## rev 171 (2026-11-20)
 
 **TAI-771 (Dev TAI-775): `tai service setup`, the service's own clone.** Second Story of Epic TAI-763 to land; `service run` (rev 169) had no way to make the clone it works in. Design: the work-breakdown page for the Epic (research finding 4, EpicReview decision 3).

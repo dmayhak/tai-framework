@@ -9,7 +9,7 @@
  */
 
 import { acquireLock, alreadyRunningMessage, type LockDeps } from "./lock.js";
-import { clearLimitedUntil, clearPreflightNote, noteFailedPreflight, readLimitedUntil, writeLastRun, writeLimitedUntil } from "./state.js";
+import { clearLimitedUntil, clearPreflightNote, noteFailedPreflight, readLimitedUntil, readPause, writeLastRun, writeLimitedUntil } from "./state.js";
 import type { RefreshOutcome } from "./refresh.js";
 
 /** What a run of `do-dev-tasks` came to (`RunSummary` of that command, or why it gave no summary). */
@@ -41,6 +41,7 @@ export interface ServiceTickDeps {
 
 export type TickResult =
     | { readonly status: "locked"; readonly exitCode: 0 }
+    | { readonly status: "paused"; readonly exitCode: 0; readonly since: string }
     | { readonly status: "limited"; readonly exitCode: 0; readonly until: string }
     | { readonly status: "preflight-failed"; readonly exitCode: 0; readonly message: string }
     | { readonly status: "refresh-failed"; readonly exitCode: 1; readonly why: string }
@@ -66,6 +67,13 @@ export async function runServiceTick(deps: ServiceTickDeps): Promise<TickResult>
     }
     try {
         if (lock.tookOver) deps.say(`Took over a lock left by pid ${lock.tookOver.pid} (started ${lock.tookOver.startedAt}), which is no longer running.`);
+
+        // TAI-772: a pause (`tai service pause`) starts nothing, and says so in the log on every tick so a forgotten one is seen.
+        const paused = await readPause(deps.stateDir);
+        if (paused) {
+            deps.say(`Skipping: paused by \`tai service pause\` since ${paused.since}; \`tai service resume\` lets the next tick run.`);
+            return { status: "paused", exitCode: 0, since: paused.since };
+        }
 
         const limited = await readLimitedUntil(deps.stateDir, deps.now());
         if (limited) {

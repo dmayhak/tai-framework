@@ -174,16 +174,18 @@ import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { allowYoloForOneRun, showSettings, setSetting, changeAdmin, inAiSession, readSettingValue, readRequireCi } from "../core/commands/settings.js";
 import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
-import { resolve as resolvePath } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
 import { servicePickupReason, stillToDoReason } from "../core/commands/service-pickup.js";
 import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey, summarizeWorked, type DevTask, type RunSummary } from "../core/commands/do-dev-tasks.js";
 import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
+import { pauseStopReason } from "../core/service/state.js";
+import { installTimer, kickService, pauseProjects, resumeProjects, serviceStatus, uninstallTimer } from "../core/service/timer.js";
 import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, realRefreshGit, realSetupFs, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
-import { resolveServiceRoot, runServiceSetup } from "../core/service/setup.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, parseServiceUnitArgs, realRefreshGit, realSetupFs, realTimerDeps, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
+import { findProject, parseProjects, PROJECTS_FILE, resolveServiceRoot, runServiceSetup, type ProjectEntry } from "../core/service/setup.js";
 import { runServiceTick } from "../core/service/run.js";
 import { writeFile } from "node:fs/promises";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
@@ -1686,7 +1688,7 @@ export function renderUsage(): string {
         "  work <ISSUE-KEY>             Load a ticket's briefing and hand it to its persona",
         "  ready [persona]              Show what's ready to work on",
         "  do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>] [wait=<hours>]",
-        "               [max=<tickets>] [result=<file>] [pickup=service]",
+        "               [max=<tickets>] [result=<file>] [pickup=service] [stopfile=<file>]",
         "                               Run the ready Dev tasks unattended (DEV-YOLO)",
         "  do-dev-tasks rules [yolo=true|false]",
         "                               Print the permission rules those runs use",
@@ -1694,6 +1696,10 @@ export function renderUsage(): string {
         "                               One guarded tick of the unattended Dev service",
         "  service setup <project> [root=<dir>] [from=<path>]",
         "                               Make the service's own clone of a listed project",
+        "  service install|uninstall|kick <project> [root=<dir>]",
+        "                               Put the timer in place, take it out, or start a run now",
+        "  service pause|resume|status [<project>] [root=<dir>]",
+        "                               Stop or restart ticks; show the last run and next tick",
         "  verify <STORY-KEY>           Check a Story's work against its acceptance criteria",
         "  pr-ready                     List PRs ready to review or merge",
         "",
@@ -1943,8 +1949,27 @@ async function main(): Promise<void> {
         await runServiceSetup({ project, root: resolveServiceRoot(root, process.env), from }, { ...realSetupFs, say: (line) => console.log(line), stillMissing: (clonePath) => setupStillMissing(clonePath, process.env) });
         return;
     }
+    // TAI-772: the timer, kick-off-now, pause and status. Like `run` and `setup` they need no config of their own: they read the project list
+    // and the service's state files, and talk to `systemctl --user`.
+    if (subcommand === "service" && (arg === "install" || arg === "uninstall" || arg === "kick" || arg === "status" || arg === "pause" || arg === "resume")) {
+        const { project, root: given } = parseServiceUnitArgs(arg, rest);
+        const root = resolveServiceRoot(given, process.env);
+        const configPath = join(root, PROJECTS_FILE);
+        const text = await realSetupFs.readFile(configPath);
+        if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project, as \`tai service setup\` describes.`);
+        const entries = parseProjects(text, root, configPath);
+        const chosen: readonly ProjectEntry[] = project === undefined ? entries : [findProject(entries, project, configPath)];
+        const deps = realTimerDeps(process.env, (line) => console.log(line), inAiSession);
+        if (arg === "pause") await pauseProjects(chosen, deps);
+        else if (arg === "resume") await resumeProjects(chosen, deps);
+        else if (arg === "status") for (const entry of chosen) await serviceStatus(entry, deps);
+        else if (arg === "install") await installTimer(chosen[0]!, deps);
+        else if (arg === "uninstall") await uninstallTimer(chosen[0]!, deps);
+        else await kickService(chosen[0]!, deps);
+        return;
+    }
     if (subcommand === "service" && arg !== "check") {
-        throw new Error(`Unknown service action "${arg ?? ""}" -- expected "run", "setup" or "check".`);
+        throw new Error(`Unknown service action "${arg ?? ""}" -- expected "run", "setup", "install", "uninstall", "kick", "pause", "resume", "status" or "check".`);
     }
 
     // TAI-126: any missing required env var here means this project hasn't been
@@ -2460,7 +2485,7 @@ async function main(): Promise<void> {
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath, pickup } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
+        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath, pickup, stopFile } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
             // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
@@ -2602,6 +2627,7 @@ async function main(): Promise<void> {
             storyProblem: async (task) => storyNotInProgress(await config.backend.workTracker.getIssue(task.parent.key), await config.backend.workTracker.getIssue(task.issue.key)),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
+            ...(stopFile ? { stopRequested: () => pauseStopReason(stopFile) } : {}),
             limitLatch,
             ...(waitHours !== undefined ? { waitHours } : {}),
             ...(maxTickets !== undefined ? { maxTickets } : {}),

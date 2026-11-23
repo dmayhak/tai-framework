@@ -219,6 +219,8 @@ export interface RunDevTasksDeps {
     readonly yolo: boolean;
     /** True once the command has been interrupted: nothing new is looked up, prepared or started. */
     readonly interrupted?: () => boolean;
+    /** TAI-772: why the run should end after the ticket it is on (a pause was set), or null. Checked between tickets only, so a ticket under way is never cut off mid-merge. */
+    readonly stopRequested?: () => Promise<string | null>;
     /** TAI-706: where a run that ended on a usage limit is recorded. A ticket whose run hit one is `paused`, not `failed`. */
     readonly limitLatch?: UsageLimitLatch;
     /** TAI-706: `wait=<hours>`: sleep until the reset when it is within this many hours. Without it a limit stops the batch. */
@@ -362,6 +364,8 @@ export interface WorkedDevTasks {
     readonly capReached?: boolean;
     /** TAI-777: To Do tickets the run did not start because their status had changed since the search (a person started them). */
     readonly passedOver?: readonly SkippedDevTask[];
+    /** TAI-772: the run ended between tickets because `stopRequested` named a reason (a pause). */
+    readonly stoppedBy?: string;
 }
 
 /**
@@ -409,6 +413,8 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
     for (;;) {
         // An interrupt ends the run with what it has: no new look, which would only add calls on the way out.
         if (deps.interrupted?.()) return { results, found: last };
+        const stoppedBy = await deps.stopRequested?.();
+        if (stoppedBy) return { results, found: last, stoppedBy };
         const found = pending ?? (await find());
         pending = undefined;
         last = found;
@@ -597,7 +603,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 export function parseDevTasksArgs(
     args: readonly (string | undefined)[],
     options: { readonly rules?: boolean } = {}
-): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string; readonly pickup?: "service" } {
+): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string; readonly pickup?: "service"; readonly stopFile?: string } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
     const onlyArgs = given.filter((a) => a.startsWith("only="));
@@ -605,16 +611,20 @@ export function parseDevTasksArgs(
     const maxArgs = options.rules ? [] : given.filter((a) => a.startsWith("max="));
     const resultArgs = options.rules ? [] : given.filter((a) => a.startsWith("result="));
     const pickupArgs = options.rules ? [] : given.filter((a) => a.startsWith("pickup="));
-    const unknown = given.filter((a) => !known.includes(a) && !pickupArgs.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")) && !maxArgs.includes(a) && !resultArgs.includes(a));
+    const stopArgs = options.rules ? [] : given.filter((a) => a.startsWith("stopfile="));
+    const unknown = given.filter((a) => !known.includes(a) && !pickupArgs.includes(a) && !stopArgs.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")) && !maxArgs.includes(a) && !resultArgs.includes(a));
     if (unknown.length > 0) {
         throw new Error(
-            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file> and pickup=service"} (got: ${unknown.join(" ")}).`
+            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file>, pickup=service and stopfile=<file>"} (got: ${unknown.join(" ")}).`
         );
     }
     if (onlyArgs.length > 1) throw new Error(`do-dev-tasks takes only one only=<DEV-KEY> (got: ${onlyArgs.join(" ")}).`);
     if (waitArgs.length > 1) throw new Error(`do-dev-tasks takes only one wait=<hours> (got: ${waitArgs.join(" ")}).`);
     if (maxArgs.length > 1) throw new Error(`do-dev-tasks takes only one max=<tickets> (got: ${maxArgs.join(" ")}).`);
     if (resultArgs.length > 1) throw new Error(`do-dev-tasks takes only one result=<file> (got: ${resultArgs.join(" ")}).`);
+    if (stopArgs.length > 1) throw new Error(`do-dev-tasks takes only one stopfile=<file> (got: ${stopArgs.join(" ")}).`);
+    const stopFile = stopArgs.length === 1 ? stopArgs[0]!.slice("stopfile=".length) : undefined;
+    if (stopFile === "") throw new Error("stopfile= takes a file path.");
     if (pickupArgs.length > 1) throw new Error(`do-dev-tasks takes only one pickup=service (got: ${pickupArgs.join(" ")}).`);
     if (pickupArgs.length === 1 && pickupArgs[0] !== "pickup=service") throw new Error(`pickup= takes only service (got: ${pickupArgs[0]!.slice("pickup=".length) || "nothing"}).`);
     let maxTickets: number | undefined;
@@ -639,7 +649,7 @@ export function parseDevTasksArgs(
     let yolo: boolean | undefined;
     if (wantsOn) yolo = true;
     else if (wantsOff) yolo = false;
-    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }), ...(pickupArgs.length === 1 ? { pickup: "service" as const } : {}) };
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }), ...(pickupArgs.length === 1 ? { pickup: "service" as const } : {}), ...(stopFile === undefined ? {} : { stopFile }) };
 }
 
 /**
@@ -694,7 +704,7 @@ function leftAlone(worked: Partial<Pick<WorkedDevTasks, "found" | "passedOver" |
 }
 
 /** What `worked` came to, for `result=<file>`. A pure function of the run's results. */
-export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached"> & Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): RunSummary {
+export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached"> & Partial<Pick<WorkedDevTasks, "stoppedBy">> & Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): RunSummary {
     const last = worked.results.at(-1)?.outcome;
     const ended = last?.state === "paused" && !last.carriedOn ? last : null;
     return {
@@ -704,7 +714,7 @@ export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capRea
         }),
         capReached: worked.capReached === true,
         limit: ended ? { text: ended.limit.text, ...(ended.limit.resetsAt ? { resetsAt: ended.limit.resetsAt.toISOString() } : {}) } : null,
-        stopReason: last?.state === "stopped" ? last.reason : null,
+        stopReason: last?.state === "stopped" ? last.reason : (worked.stoppedBy ?? null),
         skipped: leftAlone(worked),
     };
 }
