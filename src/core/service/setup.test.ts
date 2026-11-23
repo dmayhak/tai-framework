@@ -197,6 +197,17 @@ describe("service setup (TAI-771)", () => {
         assert.deepEqual(f.changes, []);
     });
 
+    it("the mismatch refusal names the stored remote when printing it loses nothing, and points at the clone's own setting when it would be redacted", async () => {
+        const plain = fake({ "/svc/tai/repo": { kind: "clone", remote: "https://github.com/x/other" } }, { [CONFIG]: PROJECTS });
+        await assert.rejects(runServiceSetup(ARGS, plain.deps), /set its "remote" back to https:\/\/github\.com\/x\/other if/);
+        for (const stored of ["ssh://git@github.com/x/other", "https://u:tok-4@github.com/x/other"]) {
+            const f = fake({ "/svc/tai/repo": { kind: "clone", remote: stored } }, { [CONFIG]: PROJECTS });
+            const message = await runServiceSetup(ARGS, f.deps).then(() => "", (e: Error) => e.message);
+            assert.match(message, /back to the one the clone has \(`git -C \/svc\/tai\/repo config --get remote\.origin\.url`\) if/);
+            assert.ok(!message.includes("tok-4"), message);
+        }
+    });
+
     it("the mismatch refusal says the two remotes may be one repository written another way", async () => {
         const f = fake({ "/svc/tai/repo": { kind: "clone", remote: "https://github.com/x/tai" } }, { [CONFIG]: PROJECTS });
         await assert.rejects(runServiceSetup(ARGS, f.deps), /same repository written another way.*compared as written/);

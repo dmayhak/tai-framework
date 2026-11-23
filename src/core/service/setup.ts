@@ -113,6 +113,15 @@ export function shellQuote(path: string): string {
     return /^[A-Za-z0-9_./:@%+=,-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * Where a person finds the remote to put back in an entry. The stored remote is named only when printing it loses nothing: one with
+ * credentials or a user written in it is redacted when printed, and the redacted form would not match the stored one again, so for
+ * that the person is pointed at the clone's own setting instead.
+ */
+function resetAdvice(stored: string, clonePath: string): string {
+    return redactRemote(stored) === stored ? stored : `the one the clone has (\`git -C ${shellQuote(clonePath)} config --get remote.origin.url\`)`;
+}
+
 /** What is at the clone path. A clone with no `origin` is `remote: null`. */
 export type PathState = { readonly kind: "absent" } | { readonly kind: "empty-dir" } | { readonly kind: "clone"; readonly remote: string | null } | { readonly kind: "other" };
 
@@ -169,7 +178,7 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const found = await deps.inspect(clonePath);
     if (found.kind === "other") throw new Error(`${clonePath} exists and is not a clone of ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
     if (found.kind === "clone" && (found.remote === null || !sameRemote(found.remote, entry.remote))) {
-        throw new Error(`${clonePath} is a git clone of ${found.remote === null ? "no remote" : redactRemote(found.remote)}, not ${redactRemote(entry.remote)}: it was left untouched. Move it away, set another "clone" path for ${entry.key} in ${configPath}${found.remote === null ? "" : `, or set its "remote" back to ${redactRemote(found.remote)} if the clone is the one you want (the two may be the same repository written another way, such as ssh and https: they are compared as written)`}.`);
+        throw new Error(`${clonePath} is a git clone of ${found.remote === null ? "no remote" : redactRemote(found.remote)}, not ${redactRemote(entry.remote)}: it was left untouched. Move it away, set another "clone" path for ${entry.key} in ${configPath}${found.remote === null ? "" : `, or set its "remote" back to ${resetAdvice(found.remote, clonePath)} if the clone is the one you want (the two may be the same repository written another way, such as ssh and https: they are compared as written)`}.`);
     }
 
     const taiDir = join(clonePath, ".tai");
