@@ -365,9 +365,9 @@ export function pausedAwareHandoff(latch: UsageLimitLatch | undefined, post: (ke
 }
 
 /** Sleeps for `ms`, in short steps so an interrupt ends the wait within a step instead of after hours. */
-export async function sleepUnlessInterrupted(ms: number, interrupted: () => boolean, stepMs = 5_000): Promise<void> {
+export async function sleepUnlessInterrupted(ms: number, interrupted: () => boolean | Promise<boolean>, stepMs = 5_000): Promise<void> {
     const end = Date.now() + ms;
-    while (!interrupted()) {
+    while (!(await interrupted())) {
         const left = end - Date.now();
         if (left <= 0) return;
         await new Promise<void>((resolve) => setTimeout(resolve, Math.min(stepMs, left)));

@@ -6,7 +6,7 @@
  * `preflight.json` (the last failed-preflight message, so the same failure is logged once and again only when it changes).
  */
 
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const LIMITED_FILE = "limited-until.json";
@@ -94,19 +94,48 @@ export async function clearPreflightNote(dir: string): Promise<void> {
 
 /** TAI-772: a pause set by `tai service pause`. A file on disk, so it survives a reboot, with no expiry: only `resume` removes it. */
 export interface Pause {
-    /** ISO time the pause was set. */
+    /** ISO time the pause was set, or a note that it could not be read. */
     readonly since: string;
+    /** True when the file is there but cannot be read: it still counts as a pause (see `readPause`). */
+    readonly unreadable?: boolean;
 }
 
+const UNREADABLE_SINCE = "unknown (the pause file exists but could not be read)";
+
+/**
+ * The pause in `dir`, or null when there is none. A file that EXISTS but cannot be read or parsed (a write cut short, a bad edit, a
+ * permission) counts as a pause, with `unreadable` set: the pause is a safety switch for a run that builds and merges, so a damaged one
+ * must fail closed. Only `resume` (or a fresh `pause`) clears it.
+ */
 export async function readPause(dir: string): Promise<Pause | null> {
-    const v = await readJson<Partial<Pause>>(join(dir, PAUSE_FILE));
-    return v && typeof v.since === "string" ? { since: v.since } : null;
+    return readPauseFile(join(dir, PAUSE_FILE));
 }
 
-/** Sets the pause. One already set keeps its own first time, so pausing twice does not move it. Returns true when it was new. */
+async function readPauseFile(path: string): Promise<Pause | null> {
+    let text: string;
+    try {
+        text = await readFile(path, "utf8");
+    } catch (e) {
+        return (e as NodeJS.ErrnoException).code === "ENOENT" ? null : { since: UNREADABLE_SINCE, unreadable: true };
+    }
+    try {
+        const v = JSON.parse(text) as Partial<Pause> | null;
+        if (v && typeof v.since === "string" && !Number.isNaN(Date.parse(v.since))) return { since: v.since };
+    } catch {
+        // falls through: unreadable
+    }
+    return { since: UNREADABLE_SINCE, unreadable: true };
+}
+
+/** Sets the pause, written to a temporary file and renamed so a crash cannot leave half a file. One already set keeps its own first time; an unreadable one is rewritten. Returns true when it was new. */
 export async function writePause(dir: string, now: Date): Promise<boolean> {
-    if (await readPause(dir)) return false;
-    await writeJson(dir, PAUSE_FILE, { since: now.toISOString() } satisfies Pause);
+    const existing = await readPause(dir);
+    if (existing && !existing.unreadable) return false;
+    await mkdir(dir, { recursive: true });
+    const target = join(dir, PAUSE_FILE);
+    const temp = `${target}.${process.pid}.tmp`;
+    await writeFile(temp, `${JSON.stringify({ since: now.toISOString() } satisfies Pause, null, 2)}\n`);
+    await rename(temp, target);
     return true;
 }
 
@@ -117,8 +146,8 @@ export async function clearPause(dir: string): Promise<boolean> {
     return was !== null;
 }
 
-/** What a run in progress checks between tickets (`do-dev-tasks stopfile=<path>`): why it should stop, or null while there is no pause. */
+/** What a run in progress checks between tickets (`do-dev-tasks stopfile=<path>`): why it should stop, or null while there is no pause. A damaged file stops it too. */
 export async function pauseStopReason(path: string): Promise<string | null> {
-    const v = await readJson<Partial<Pause>>(path);
-    return v && typeof v.since === "string" ? `paused by \`tai service pause\` (since ${v.since})` : null;
+    const pause = await readPauseFile(path);
+    return pause ? `paused by \`tai service pause\` (since ${pause.since})` : null;
 }

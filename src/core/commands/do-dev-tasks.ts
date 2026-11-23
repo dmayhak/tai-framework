@@ -464,6 +464,12 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
                     results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: "the run was interrupted during the wait" } };
                     return { results, found };
                 }
+                // A pause set during the wait ends the run here too, with the paused ticket kept in the report.
+                const stoppedDuringWait = await deps.stopRequested?.();
+                if (stoppedDuringWait) {
+                    results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: `the run was stopped during the wait: ${stoppedDuringWait}` } };
+                    return { results, found, stoppedBy: stoppedDuringWait };
+                }
                 // A ticket that will be tried again is replaced by how it ends; one that will not (its PR is open) stays in the report as paused.
                 if (continuable) {
                     results.pop();

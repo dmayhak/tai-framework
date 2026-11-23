@@ -59,8 +59,9 @@ export interface TimerDeps {
 }
 
 /** One word of a unit's `ExecStart=` or `Environment=` line: quoted, with the characters systemd itself reads (`\`, `"`, `%`, `$`) escaped. */
-export function unitWord(word: string): string {
-    const escaped = word.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, "$$$$");
+export function unitWord(word: string, expandsVariables = true): string {
+    // `$` is a variable in ExecStart= but means nothing in Environment=, so it is doubled only where systemd reads it. `%` is a specifier in both.
+    const escaped = word.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, expandsVariables ? "$$$$" : "$$");
     return /^[A-Za-z0-9_./:@=,+-]+$/.test(word) ? escaped : `"${escaped}"`;
 }
 
@@ -75,8 +76,8 @@ export function renderUnits(entry: ProjectEntry, command: readonly string[], pat
         "[Service]",
         "Type=oneshot",
         "TimeoutStartSec=infinity",
-        ...(path ? [`Environment=${unitWord(`PATH=${path}`)}`] : []),
-        `ExecStart=${run.map(unitWord).join(" ")}`,
+        ...(path ? [`Environment=${unitWord(`PATH=${path}`, false)}`] : []),
+        `ExecStart=${run.map((w) => unitWord(w)).join(" ")}`,
         "",
     ].join("\n");
     const timer = [
@@ -151,13 +152,15 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
         deps.say(`Nothing to remove: ${timerUnitName(entry.key)} and ${serviceUnitName(entry.key)} are not installed.`);
         return { removed: false };
     }
-    // Stopped and disabled before the files go; a unit that is not loaded makes these fail, which is the state we want anyway.
+    // The timer is stopped and disabled before the files go (a unit that is not loaded makes this fail, which is the state we want anyway).
+    // The service unit is NOT stopped: a run going may be between a build and a merge, and a stop would kill it there.
     await deps.systemctl(["disable", "--now", timerUnitName(entry.key)]);
-    await deps.systemctl(["stop", serviceUnitName(entry.key)]);
     await deps.removeFile(timerPath);
     await deps.removeFile(servicePath);
     await run(deps, ["daemon-reload"]);
     deps.say(`Removed ${timerUnitName(entry.key)} and ${serviceUnitName(entry.key)}. The clone and its state are left as they were.`);
+    const going = await readLockHolder(stateDirOf(entry), deps.isAlive);
+    if (going) deps.say(`A run is still going (pid ${going.pid}, started ${going.startedAt}) and was not stopped: it ends on its own, or \`tai service pause ${entry.key}\` ends it after its current ticket. No new tick will start.`);
     return { removed: true };
 }
 
@@ -239,8 +242,9 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: 
     say(holder ? `  Running now: pid ${holder.pid}, started ${ago(holder.startedAt, now)}` : "  Running now: no run holds the lock.");
     const pausedAll = await readPause(root);
     const paused = await readPause(dir);
-    if (pausedAll) say(`  Pause: PAUSED for every project since ${ago(pausedAll.since, now)}; \`tai service resume\` lifts it.`);
-    if (paused) say(`  Pause: PAUSED since ${ago(paused.since, now)}; \`tai service resume ${entry.key}\` lifts it.`);
+    const sinceText = (p: { readonly since: string; readonly unreadable?: boolean }): string => (p.unreadable ? "(its file could not be read, so it counts as a pause)" : `since ${ago(p.since, now)}`);
+    if (pausedAll) say(`  Pause: PAUSED for every project ${sinceText(pausedAll)}; \`tai service resume\` lifts it.`);
+    if (paused) say(`  Pause: PAUSED ${sinceText(paused)}; \`tai service resume ${entry.key}\` lifts it.`);
     if (!pausedAll && !paused) say("  Pause: none.");
     const limited = await readLimitedUntil(dir, now);
     say(limited ? `  Limited until: ${limited.until} (${limited.text || "usage limit"}); ticks skip until then.` : "  Limited until: not limited.");

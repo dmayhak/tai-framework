@@ -808,6 +808,15 @@ export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string 
         .join("\n");
 }
 
+/** TAI-772: why a run should stop between tickets (a pause in any of its stop files), or null. */
+async function stopRequestedBy(files: readonly string[]): Promise<string | null> {
+    for (const f of files) {
+        const why = await pauseStopReason(f);
+        if (why) return why;
+    }
+    return null;
+}
+
 /** TAI-395: a grooming turn is the same shape as a work turn -- persona heading, her instructions, `---`, the briefing. */
 export function renderGroomTurn(persona: { displayName: string; id: string; prompt: string }, briefing: string, projectContext?: string): string {
     return renderPersonaTurn(persona, briefing, projectContext);
@@ -2629,12 +2638,12 @@ async function main(): Promise<void> {
             storyProblem: async (task) => storyNotInProgress(await config.backend.workTracker.getIssue(task.parent.key), await config.backend.workTracker.getIssue(task.issue.key)),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
-            ...(stopFiles ? { stopRequested: async () => { for (const f of stopFiles) { const why = await pauseStopReason(f); if (why) return why; } return null; } } : {}),
+            ...(stopFiles ? { stopRequested: () => stopRequestedBy(stopFiles) } : {}),
             limitLatch,
             ...(waitHours !== undefined ? { waitHours } : {}),
             ...(maxTickets !== undefined ? { maxTickets } : {}),
             ...(pickup === "service" ? { recheckToDo: (task: DevTask) => stillToDoReason(config.backend.workTracker, task.issue) } : {}),
-            sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
+            sleep: (ms) => sleepUnlessInterrupted(ms, async () => wasInterrupted() || (stopFiles !== undefined && (await stopRequestedBy(stopFiles)) !== null)),
             say: (line) => console.log(line),
             prepare: async (task) => {
                 await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await pauses.forPrepare(task.issue.key));

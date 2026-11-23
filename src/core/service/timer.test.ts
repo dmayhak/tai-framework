@@ -78,6 +78,8 @@ describe("unit files (TAI-772 AC-1)", () => {
         assert.equal(unitWord("$HOME"), '"$$HOME"');
         assert.equal(unitWord('say "x"'), '"say \\"x\\""');
         assert.equal(unitWord("clone=/plain/path"), "clone=/plain/path");
+        assert.equal(unitWord("PATH=/a/$b", false), '"PATH=/a/$b"', "no variables in Environment=: a $ stays as it is");
+        assert.equal(unitWord("PATH=/a/100%", false), '"PATH=/a/100%%"', "a % is a specifier there too");
     });
 
     it("install writes both units, reloads and enables the timer, and a re-run gives the same files without a reload", async () => {
@@ -130,7 +132,18 @@ describe("uninstall (TAI-772 AC-2)", () => {
         calls.length = 0;
         assert.deepEqual(await uninstallTimer(entry(), deps), { removed: true });
         assert.equal(files.size, 0);
-        assert.deepEqual(calls.filter((c) => c !== "--version" && c !== "is-system-running"), ["disable --now tai-dev@tai.timer", "stop tai-dev@tai.service", "daemon-reload"]);
+        assert.deepEqual(calls.filter((c) => c !== "--version" && c !== "is-system-running"), ["disable --now tai-dev@tai.timer", "daemon-reload"], "the timer is stopped; the service unit, which may be mid-ticket, is not");
+    });
+
+    it("names a run still going and says it was not stopped", async () => {
+        const state = join(root, "tai");
+        const e = entry({ clone: join(state, "repo") });
+        await acquireLock(state, { pid: 4242, now: () => new Date("2026-11-22T11:30:00Z"), isAlive: () => true });
+        const { deps, said, calls } = fake();
+        await installTimer(e, deps, root);
+        await uninstallTimer(e, deps);
+        assert.match(said.join("\n"), /A run is still going \(pid 4242.*\) and was not stopped.*`tai service pause tai` ends it after its current ticket/);
+        assert.ok(!calls.some((c) => c.startsWith("stop ")));
     });
 
     it("a second uninstall says there is nothing to remove and touches nothing", async () => {
@@ -249,6 +262,15 @@ describe("status (TAI-772 AC-6)", () => {
         await serviceStatus(e, deps, root);
         assert.match(said.join("\n"), /Pause: PAUSED for every project since .*`tai service resume` lifts it/);
         assert.doesNotMatch(said.join("\n"), /Pause: none/);
+    });
+
+    it("says a damaged pause file counts as a pause", async () => {
+        const e = entry({ clone: join(root, "tai", "repo") });
+        await mkdir(join(root, "tai"), { recursive: true });
+        await (await import("node:fs/promises")).writeFile(join(root, "tai", "paused.json"), "{");
+        const { deps, said } = fake();
+        await serviceStatus(e, deps, root);
+        assert.match(said.join("\n"), /Pause: PAUSED \(its file could not be read, so it counts as a pause\)/);
     });
 
     it("says what is not there: no timer, no run, no pause, no limit, no failure", async () => {

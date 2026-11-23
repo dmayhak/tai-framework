@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -46,6 +46,8 @@ describe("preflight (TAI-770 AC-2)", () => {
         assert.match(localPreflightFailure({ ...FACTS, startedIn: "/c/repo/src" })!, /started from inside the clone/);
         assert.equal(localPreflightFailure({ ...FACTS, startedIn: "/c/repo-mine" }), null);
         assert.equal(localPreflightFailure({ ...FACTS, startedIn: "/home/me" }), null);
+        assert.match(localPreflightFailure({ ...FACTS, clonePath: "/c/repo", startedIn: "/c/repo/..cache/x" })!, /started from inside the clone/, "a folder named with two dots is still inside");
+        assert.equal(localPreflightFailure({ ...FACTS, clonePath: "/c/repo", startedIn: "/c" }), null, "the parent is not inside it");
         assert.equal(localPreflightFailure(FACTS), null, "no start folder given (the check the clone runs on itself)");
     });
 
@@ -399,6 +401,20 @@ describe("service setup arguments (TAI-771)", () => {
     });
 });
 
+function setupForPause() {
+    const calls = { work: 0 };
+    const deps: ServiceTickDeps = {
+        stateDir: dir, waitHours: 5, cap: 3,
+        lock: { pid: 500, now: () => new Date("2026-11-18T10:00:00Z"), isAlive: () => true },
+        now: () => new Date("2026-11-18T10:00:00Z"),
+        say: () => undefined,
+        preflight: async () => null,
+        refresh: async () => ({ action: "fast-forwarded", branch: "main" }),
+        work: async () => (calls.work++, { tickets: [], capReached: false, limit: null, stopReason: null }),
+    };
+    return { deps, calls };
+}
+
 describe("pause state (TAI-772 AC-4)", () => {
     it("is a file that keeps its first time, has no expiry, and is removed only by clearPause", async () => {
         assert.equal(await readPause(dir), null);
@@ -415,7 +431,27 @@ describe("pause state (TAI-772 AC-4)", () => {
         assert.equal(await pauseStopReason(file), null);
         await writePause(dir, new Date("2026-11-18T08:00:00Z"));
         assert.match((await pauseStopReason(file))!, /paused by `tai service pause` \(since 2026-11-18T08:00:00\.000Z\)/);
-        await writeFile(file, "not json");
-        assert.equal(await pauseStopReason(file), null, "an unreadable file is no pause (the tick reads the same way)");
+    });
+
+    it("a pause file that exists but cannot be read counts as a pause (it fails closed), for the tick and for a run going", async () => {
+        const file = join(dir, "paused.json");
+        for (const bad of ["not json", "", '{"since": 5}', '{"since": "not a time"}', "null"]) {
+            await writeFile(file, bad);
+            assert.deepEqual(await readPause(dir), { since: "unknown (the pause file exists but could not be read)", unreadable: true }, JSON.stringify(bad));
+            assert.match((await pauseStopReason(file))!, /paused by `tai service pause`/);
+        }
+        const { deps, calls } = setupForPause();
+        assert.equal((await runServiceTick(deps)).status, "paused");
+        assert.equal(calls.work, 0);
+        assert.equal(await writePause(dir, new Date("2026-11-18T08:00:00Z")), true, "a fresh pause rewrites a damaged one");
+        assert.deepEqual(await readPause(dir), { since: "2026-11-18T08:00:00.000Z" });
+        await rm(join(dir, "paused.json"));
+        await mkdir(join(dir, "paused.json"));
+        assert.equal((await readPause(dir))?.unreadable, true, "a file that cannot be read at all (here a folder) is a pause too");
+    });
+
+    it("writes the pause whole, leaving no temporary file behind", async () => {
+        await writePause(dir, new Date("2026-11-18T08:00:00Z"));
+        assert.deepEqual((await readdir(dir)).filter((f) => f.includes("paused")), ["paused.json"]);
     });
 });

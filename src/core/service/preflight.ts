@@ -7,7 +7,7 @@
  * (`tai service check`), because they need the clone's own configuration; `checkFailure` turns that command's answer into the same shape.
  */
 
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 export type CredentialRole = "jira" | "git-host" | "reviewer" | "merge";
 
@@ -48,7 +48,7 @@ export function missingCredential(env: Env): { readonly role: CredentialRole; re
 /** True when `inner` is `outer` or a folder under it. */
 export function isInside(inner: string, outer: string): boolean {
     const rel = relative(resolve(outer), resolve(inner));
-    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+    return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 export interface LocalPreflightFacts {

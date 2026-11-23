@@ -573,6 +573,23 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.equal(summarizeWorked(worked).stopReason, "paused by `tai service pause`");
     });
 
+    it("a pause set during a usage-limit wait ends the run, and the paused ticket stays in the report (TAI-772)", async () => {
+        let paused = false;
+        const latch = new UsageLimitLatch();
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10),
+            stopRequested: async () => (paused ? "paused by `tai service pause`" : null),
+            sleep: async () => void (paused = true),
+            build: async (t) => (d.calls.push(`build ${t.issue.key}`), latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "build run"), { ok: false, summary: "x" }),
+        });
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.equal(worked.results.length, 1, "the paused ticket is still reported");
+        assert.equal(worked.results[0]!.outcome.state, "paused");
+        assert.match((worked.results[0]!.outcome as { notWaited?: string }).notWaited ?? "", /stopped during the wait: paused by `tai service pause`/);
+        assert.equal(worked.stoppedBy, "paused by `tai service pause`");
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("build")), ["build TAI-10"], "it was not built again");
+    });
+
     it("no stop request leaves the run as it was", async () => {
         const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), deps({ stopRequested: async () => null }));
         assert.equal(worked.stoppedBy, undefined);
