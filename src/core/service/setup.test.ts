@@ -60,6 +60,9 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
         assert.ok(sameRemote("git@GitHub.com:x/tai.git", "git@github.com:x/tai"));
         assert.ok(!sameRemote("https://github.com/x/Tai", "https://github.com/x/tai"));
         assert.ok(!sameRemote("/srv/Repos/tai", "/srv/repos/tai"));
+        assert.ok(!sameRemote("Git@github.com:x/tai", "git@github.com:x/tai"));
+        assert.ok(!sameRemote("https://Bob@github.com/x/tai", "https://bob@github.com/x/tai"));
+        assert.ok(sameRemote("https://bob@GitHub.com/x/tai", "https://bob@github.com/x/tai"));
     });
 });
 
@@ -184,6 +187,7 @@ describe("service setup (TAI-771)", () => {
         for (const found of [{ kind: "other" }, { kind: "clone", remote: "git@github.com:x/different.git" }, { kind: "clone", remote: null }] as const) {
             const f = fake({ "/svc/tai/repo": found }, { [CONFIG]: PROJECTS, "/me/checkout/.claude/settings.local.json": "{}" });
             await assert.rejects(runServiceSetup(ARGS, f.deps), /\/svc\/tai\/repo.*not/s);
+            if (found.kind === "clone" && found.remote !== null) await assert.rejects(runServiceSetup(ARGS, f.deps), new RegExp(`set its "remote" back to ${found.remote.replace(/\W/g, ".")}`));
             assert.deepEqual(f.changes, []);
         }
     });

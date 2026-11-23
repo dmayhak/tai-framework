@@ -83,13 +83,19 @@ export function findProject(entries: readonly ProjectEntry[], key: string, confi
     throw new Error(`No project "${key}" in ${configPath}. Projects listed there: ${entries.length === 0 ? "none" : entries.map((p) => p.key).join(", ")}. Add an entry: ${ENTRY_SHAPE}`);
 }
 
-/** Without a closing slash or `.git`, and with the host (not the path, which a host may keep case-sensitive) in lower case. */
+/** Lower-cases the host of `[user@]host`, leaving the user, which a server may keep case-sensitive. */
+function lowerHost(authority: string): string {
+    const at = authority.lastIndexOf("@");
+    return `${authority.slice(0, at + 1)}${authority.slice(at + 1).toLowerCase()}`;
+}
+
+/** Without a closing slash or `.git`, and with the host (not the user or the path, which a host may keep case-sensitive) in lower case. */
 function normalizeRemote(remote: string): string {
     const bare = remote.trim().replace(/\/+$/, "").replace(/\.git$/, "");
-    const url = /^([a-z][a-z0-9+.-]*:\/\/[^/]*)(.*)$/i.exec(bare);
-    if (url) return `${url[1]!.toLowerCase()}${url[2]}`;
-    const scp = /^([^/:]+:)(.*)$/.exec(bare);
-    return scp ? `${scp[1]!.toLowerCase()}${scp[2]}` : bare;
+    const url = /^([a-z][a-z0-9+.-]*:\/\/)([^/]*)(.*)$/i.exec(bare);
+    if (url) return `${url[1]!.toLowerCase()}${lowerHost(url[2]!)}${url[3]}`;
+    const scp = /^([^/:]+):(.*)$/.exec(bare);
+    return scp ? `${lowerHost(scp[1]!)}:${scp[2]}` : bare;
 }
 
 /** One remote written with or without `.git` or a closing slash is still that remote. */
@@ -157,7 +163,7 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const found = await deps.inspect(clonePath);
     if (found.kind === "other") throw new Error(`${clonePath} exists and is not a clone of ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
     if (found.kind === "clone" && (found.remote === null || !sameRemote(found.remote, entry.remote))) {
-        throw new Error(`${clonePath} is a git clone of ${found.remote === null ? "no remote" : redactRemote(found.remote)}, not ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
+        throw new Error(`${clonePath} is a git clone of ${found.remote === null ? "no remote" : redactRemote(found.remote)}, not ${redactRemote(entry.remote)}: it was left untouched. Move it away, set another "clone" path for ${entry.key} in ${configPath}${found.remote === null ? "" : `, or set its "remote" back to ${redactRemote(found.remote)} if the clone is the one you want`}.`);
     }
 
     const done: string[] = [];
