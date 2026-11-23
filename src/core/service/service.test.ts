@@ -448,6 +448,8 @@ describe("pause state (TAI-772 AC-4)", () => {
         await rm(join(dir, "paused.json"));
         await mkdir(join(dir, "paused.json"));
         assert.equal((await readPause(dir))?.unreadable, true, "a file that cannot be read at all (here a folder) is a pause too");
+        assert.equal(await clearPause(dir), true, "resume clears it instead of failing with EISDIR");
+        assert.equal(await readPause(dir), null);
     });
 
     it("writes the pause whole, leaving no temporary file behind", async () => {

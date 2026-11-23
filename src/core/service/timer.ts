@@ -237,6 +237,13 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: 
             next = null;
         }
         say(`  Next tick: ${next ?? "not scheduled (the timer is not loaded or systemctl could not be asked)"}`);
+        // The unit pins the node, loader and checkout paths of whoever installed it. If they have moved the run fails inside systemd before any preflight note is written, so ask systemd.
+        try {
+            const failed = await deps.systemctl(["is-failed", serviceUnitName(entry.key)]);
+            if (failed.code === 0) say(`  Unit: the last run FAILED in systemd (see \`journalctl --user -u ${serviceUnitName(entry.key)}\`). If node or the checkout moved, \`tai service install ${entry.key}\` again rewrites the unit.`);
+        } catch {
+            // systemctl could not be asked: the line above already says so
+        }
     }
     const holder: LockInfo | null = await readLockHolder(dir, deps.isAlive);
     say(holder ? `  Running now: pid ${holder.pid}, started ${ago(holder.startedAt, now)}` : "  Running now: no run holds the lock.");

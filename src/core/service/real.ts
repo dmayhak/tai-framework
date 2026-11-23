@@ -8,6 +8,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv, promisify } from "node:util";
 
@@ -334,7 +335,7 @@ export function parseServiceUnitArgs(action: "install" | "uninstall" | "kick" | 
 }
 
 /** What `TimerDeps` is on a real machine: `systemctl --user`, the user's own unit directory, this process's own command line and clock. */
-export function realTimerDeps(env: Env, say: (line: string) => void, aiSession: () => boolean, home: string = process.env["HOME"] ?? ""): TimerDeps {
+export function realTimerDeps(env: Env, say: (line: string) => void, aiSession: () => boolean, home: string = process.env["HOME"] || homedir()): TimerDeps {
     const systemctl = async (args: readonly string[]): Promise<SystemctlResult> => {
         try {
             const r = await execFileAsync("systemctl", ["--user", ...args]);

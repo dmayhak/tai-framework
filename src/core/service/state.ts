@@ -142,7 +142,8 @@ export async function writePause(dir: string, now: Date): Promise<boolean> {
 /** Removes the pause. Returns true when there was one. */
 export async function clearPause(dir: string): Promise<boolean> {
     const was = await readPause(dir);
-    await rm(join(dir, PAUSE_FILE), { force: true });
+    // recursive: a pause path that is a directory (it counts as a pause) is cleared rather than failing resume with EISDIR
+    await rm(join(dir, PAUSE_FILE), { force: true, recursive: true });
     return was !== null;
 }
 

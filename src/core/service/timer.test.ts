@@ -37,6 +37,7 @@ function fake(over: Partial<TimerDeps> & { listTimers?: string; systemctl?: (arg
             calls.push(args.join(" "));
             if (over.systemctl) return over.systemctl(args);
             if (args[0] === "list-timers") return { code: 0, stdout: over.listTimers ?? "", stderr: "" };
+            if (args[0] === "is-failed") return { code: 1, stdout: "active\n", stderr: "" };
             return OK;
         },
         command: ["/usr/bin/node", "--import", "tsx", "/opt/tai/src/hosts/cli.ts"],
@@ -284,6 +285,16 @@ describe("status (TAI-772 AC-6)", () => {
         assert.match(out, /not limited/);
         assert.match(out, /Last run: none recorded/);
         assert.match(out, /Preflight: no failure recorded/);
+    });
+
+    it("says so when systemd reports the unit failed (the node or checkout the unit pins has moved)", async () => {
+        const state = join(root, "tai");
+        const e = entry({ clone: join(state, "repo") });
+        const { deps, said } = fake({ systemctl: async (a) => (a[0] === "is-failed" ? { code: 0, stdout: "failed\n", stderr: "" } : OK) });
+        await installTimer(e, deps, root);
+        said.length = 0;
+        await serviceStatus(e, deps, root);
+        assert.match(said.join("\n"), /Unit: the last run FAILED in systemd.*`tai service install tai` again/);
     });
 
     it("a lock whose run is gone is nobody, and an unreadable systemctl is said, not thrown", async () => {
