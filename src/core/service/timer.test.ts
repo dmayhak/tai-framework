@@ -118,6 +118,12 @@ describe("unit files (TAI-772 AC-1)", () => {
         const nobus = fake({ systemctl: async (a) => (a[0] === "is-system-running" ? { code: 1, stdout: "", stderr: "Failed to connect to bus: No medium found" } : OK) });
         await assert.rejects(installTimer(entry(), nobus.deps, SVC), /cannot reach a user manager/);
         assert.equal(nobus.files.size, 0);
+        const refused = fake({ systemctl: async (a) => (a[0] === "is-system-running" ? { code: 1, stdout: "", stderr: "Verbindung abgelehnt" } : OK) });
+        await assert.rejects(installTimer(entry(), refused.deps, SVC), /cannot reach a user manager/, "any stderr, in any wording, is a refusal");
+        assert.equal(refused.files.size, 0);
+        const degraded = fake({ systemctl: async (a) => (a[0] === "is-system-running" ? { code: 1, stdout: "degraded\n", stderr: "" } : OK) });
+        await installTimer(entry(), degraded.deps, SVC);
+        assert.ok(degraded.files.size > 0, "a degraded user manager is still one");
     });
 
     it("a failing systemctl call is reported with its message", async () => {
@@ -175,23 +181,25 @@ describe("kick (TAI-772 AC-3)", () => {
         await assert.rejects(kickService(entry(), deps, SVC), /tai-dev@tai\.service is not installed: run `tai service install tai` first/);
     });
 
-    it("says so when every project is paused", async () => {
+    it("refuses, without starting anything, when every project is paused", async () => {
         const e = entry({ clone: join(root, "tai", "repo") });
-        const { deps, said } = fake();
+        const { deps, calls } = fake();
         await installTimer(e, deps, root);
         await pauseAll(root, deps);
-        await kickService(e, deps, root);
-        assert.ok(said.some((l) => /Every project is paused .*will start nothing.*`tai service resume` first/.test(l)));
+        calls.length = 0;
+        await assert.rejects(kickService(e, deps, root), /Every project is paused .*not started.*`tai service resume` first/);
+        assert.ok(!calls.some((c) => c.startsWith("start")));
     });
 
-    it("says so when the project is paused, because the run will start nothing", async () => {
+    it("refuses, without starting anything, when the project is paused", async () => {
         const state = join(root, "tai");
         const e = entry({ clone: join(state, "repo") });
-        const { deps, said } = fake();
+        const { deps, calls } = fake();
         await installTimer(e, deps, root);
         await pauseProjects([e], deps);
-        await kickService(e, deps, root);
-        assert.ok(said.some((l) => /tai is paused .*will start nothing/.test(l)));
+        calls.length = 0;
+        await assert.rejects(kickService(e, deps, root), /tai is paused .*not started/);
+        assert.ok(!calls.some((c) => c.startsWith("start")));
     });
 });
 

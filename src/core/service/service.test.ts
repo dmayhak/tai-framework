@@ -448,6 +448,10 @@ describe("pause state (TAI-772 AC-4)", () => {
         await rm(join(dir, "paused.json"));
         await mkdir(join(dir, "paused.json"));
         assert.equal((await readPause(dir))?.unreadable, true, "a file that cannot be read at all (here a folder) is a pause too");
+        assert.equal(await writePause(dir, new Date("2026-11-19T08:00:00Z")), true, "pause replaces a folder in its place");
+        assert.deepEqual(await readPause(dir), { since: "2026-11-19T08:00:00.000Z" });
+        await rm(join(dir, "paused.json"));
+        await mkdir(join(dir, "paused.json"));
         assert.equal(await clearPause(dir), true, "resume clears it instead of failing with EISDIR");
         assert.equal(await readPause(dir), null);
     });

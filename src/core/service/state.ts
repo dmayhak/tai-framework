@@ -134,6 +134,7 @@ export async function writePause(dir: string, now: Date): Promise<boolean> {
     await mkdir(dir, { recursive: true });
     const target = join(dir, PAUSE_FILE);
     const temp = `${target}.${process.pid}.tmp`;
+    if (existing) await rm(target, { force: true, recursive: true }); // a damaged pause, even a folder, is replaced
     await writeFile(temp, `${JSON.stringify({ since: now.toISOString() } satisfies Pause, null, 2)}\n`);
     await rename(temp, target);
     return true;

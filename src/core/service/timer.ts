@@ -105,8 +105,8 @@ export async function systemdRefusal(deps: TimerDeps): Promise<string | null> {
         const r = await deps.systemctl(["--version"]);
         if (r.code === 0) {
             const bus = await deps.systemctl(["is-system-running"]);
-            // "offline" or a failed user bus: no user manager to talk to (a plain login without one, a container).
-            if (/Failed to connect to bus|No such file|not been booted/i.test(bus.stderr)) return `\`systemctl --user\` cannot reach a user manager here (${bus.stderr.trim().split("\n")[0]}); nothing was changed.`;
+            // "degraded" and the like print on stdout; anything on stderr means systemctl could not ask a user manager at all (no bus, a refused connection, another locale's wording).
+            if (bus.stderr.trim() !== "") return `\`systemctl --user\` cannot reach a user manager here (${bus.stderr.trim().split("\n")[0]}); nothing was changed.`;
             return null;
         }
     } catch {
@@ -175,10 +175,11 @@ export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: st
     if ((await deps.readFile(join(deps.unitDir, unit))) === null) throw new Error(`${unit} is not installed: run \`tai service install ${entry.key}\` first.`);
     const pausedAll = await readPause(root);
     const paused = pausedAll ?? (await readPause(stateDirOf(entry)));
+    // A paused project would start, log a skip and exit: say so instead of starting it.
+    if (paused) throw new Error(`${pausedAll ? "Every project is" : `${entry.key} is`} paused (since ${paused.since}): a run would start nothing, so it was not started. \`tai service resume${pausedAll ? "" : ` ${entry.key}`}\` first.`);
     // `--no-block`: the run can last hours, and the lock (not this command) is what keeps a second one out.
     await run(deps, ["start", "--no-block", unit]);
     deps.say(`Started ${unit}; it runs now and its log is \`journalctl --user -u ${unit} -f\`.`);
-    if (paused) deps.say(`${pausedAll ? "Every project is" : `${entry.key} is`} paused (since ${paused.since}): the run will start nothing. \`tai service resume${pausedAll ? "" : ` ${entry.key}`}\` first.`);
 }
 
 /** `pause`: one file per project in its state directory. Pausing twice keeps the first time. */
