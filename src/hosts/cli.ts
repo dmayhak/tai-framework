@@ -2659,7 +2659,7 @@ async function main(): Promise<void> {
             }, () => checkoutPosition(process.cwd()), pickup === "service"),
         }, found);
         await writeResult(summarizeWorked(worked));
-        console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
+        console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}), ...(worked.stoppedBy ? { stoppedBy: worked.stoppedBy } : {}) }));
         return;
     }
 

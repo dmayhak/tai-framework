@@ -87,12 +87,13 @@ describe("unit files (TAI-772 AC-1)", () => {
         const { deps, files, calls, said } = fake();
         assert.deepEqual(await installTimer(entry(), deps, SVC), { changed: true });
         assert.deepEqual([...files.keys()].sort(), ["/home/u/.config/systemd/user/tai-dev@tai.service", "/home/u/.config/systemd/user/tai-dev@tai.timer"]);
-        assert.deepEqual(calls.slice(-2), ["daemon-reload", "enable --now tai-dev@tai.timer"]);
+        assert.deepEqual(calls.slice(-3), ["daemon-reload", "enable --now tai-dev@tai.timer", "restart tai-dev@tai.timer"], "a changed unit restarts the timer, never the service, so a new interval is in force");
         const before = new Map(files);
         calls.length = 0;
         assert.deepEqual(await installTimer(entry(), deps, SVC), { changed: false });
         assert.deepEqual(files, before);
         assert.ok(!calls.includes("daemon-reload"), "nothing changed, so nothing to reload");
+        assert.ok(!calls.some((c) => c.startsWith("restart")), "nor to restart");
         assert.ok(said.some((l) => /Already installed/.test(l)));
     });
 

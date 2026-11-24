@@ -530,7 +530,7 @@ function waitingNote(skipped: SkippedDevTask, worked: ReadonlySet<IssueKey>): st
     return mine.length ? ` Waiting on ${mine.join(", ")}, which this run worked on: it starts once that is merged and done.` : "";
 }
 
-export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean; readonly yoloThisRunOnly?: boolean; readonly only?: IssueKey }): string {
+export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean; readonly yoloThisRunOnly?: boolean; readonly only?: IssueKey; readonly stoppedBy?: string }): string {
     const worked = new Set((results ?? []).flatMap((r) => [r.task.issue.key, r.task.parent.key]));
     const out = ["# Do all dev tasks", "", `DEV-YOLO is ${options.yolo ? "on" : "off"}${options.yoloThisRunOnly ? " for this run only (yolo=" + options.yolo + "); the stored setting is unchanged" : ""}.`, ""];
     if (options.only) out.push(`Only ${options.only} was selected (only=${options.only}); every other ticket is listed under Skipped as not selected.`, "");
@@ -576,9 +576,10 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
             );
         }
         const stopped = results.filter((r) => r.outcome.state === "stopped");
-        if (stopped.length) {
+        if (stopped.length || options.stoppedBy) {
             out.push("", "## Stopped", "");
             out.push(...stopped.map((r) => `- Before ${r.task.issue.key}: ${(r.outcome as { reason: string }).reason}`));
+            if (options.stoppedBy) out.push(`- The run ended early: ${options.stoppedBy}. No further ticket was started.`);
         }
         const waiting = allOpened.map((r) => r.task.issue.key);
         const storyProblems = results.filter((r) => r.storyProblem);

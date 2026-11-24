@@ -461,6 +461,8 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.match(d.handoffs[0]![1], /left uncommitted changes/);
         const text = renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: false });
         assert.match(text, /## Stopped[\s\S]*Before TAI-11/);
+        const paused = renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: false, stoppedBy: "paused by `tai service pause` (since 2026-11-22)" });
+        assert.match(paused, /## Stopped[\s\S]*The run ended early: paused by `tai service pause`/, "the console report says a pause ended the run");
     });
 
     it("keeps the earlier failure reason when the same ticket's run also left the tree dirty", async () => {
