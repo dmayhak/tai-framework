@@ -7,7 +7,8 @@
  * (`tai service check`), because they need the clone's own configuration; `checkFailure` turns that command's answer into the same shape.
  */
 
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { realpath } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type CredentialRole = "jira" | "git-host" | "reviewer" | "merge";
 
@@ -49,6 +50,23 @@ export function missingCredential(env: Env): { readonly role: CredentialRole; re
 export function isInside(inner: string, outer: string): boolean {
     const rel = relative(resolve(outer), resolve(inner));
     return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/** The path with symlinks resolved: the deepest part that exists is resolved and the rest (a folder not made yet) is kept as written. `isInside` is lexical, so both sides go through this first. */
+export async function realPath(path: string): Promise<string> {
+    const full = resolve(path);
+    let head = full;
+    const tail: string[] = [];
+    for (;;) {
+        try {
+            return join(await realpath(head), ...tail);
+        } catch {
+            const up = dirname(head);
+            if (up === head) return full;
+            tail.unshift(basename(head));
+            head = up;
+        }
+    }
 }
 
 export interface LocalPreflightFacts {

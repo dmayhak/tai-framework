@@ -182,7 +182,7 @@ import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
 import { pauseStopReason } from "../core/service/state.js";
 import { installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatus, uninstallTimer } from "../core/service/timer.js";
-import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
+import { checkFailure, localPreflightFailure, realPath } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, parseServiceUnitArgs, realRefreshGit, realSetupFs, realTimerDeps, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
 import { findProject, parseProjects, PROJECTS_FILE, resolveServiceRoot, runServiceSetup, type ProjectEntry } from "../core/service/setup.js";
@@ -1943,7 +1943,7 @@ async function main(): Promise<void> {
             say: (line) => console.log(`${new Date().toISOString()} ${line}`),
             preflight: async () => {
                 const { envFileFound, env } = await cloneEnvironment(clonePath, process.env);
-                const local = localPreflightFailure({ aiSession: inAiSession(), startedIn: process.cwd(), clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
+                const local = localPreflightFailure({ aiSession: inAiSession(), startedIn: await realPath(process.cwd()), clonePath: await realPath(clonePath), cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
                 return local ?? checkFailure(await runCloneCheck(clonePath, env));
             },
             refresh: () => refreshClone(realRefreshGit(clonePath)),

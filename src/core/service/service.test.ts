@@ -1,12 +1,12 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { acquireLock, LOCK_FILE } from "./lock.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, runCloneWork } from "./real.js";
-import { checkFailure, credentialVariables, localPreflightFailure, missingCredential, type Env } from "./preflight.js";
+import { checkFailure, credentialVariables, isInside, localPreflightFailure, missingCredential, realPath, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
 import { clearPause, pauseStopReason, readLastRun, readLimitedUntil, readPause, readPreflightNote, writeLimitedUntil, writePause } from "./state.js";
 import { runServiceTick, type ServiceTickDeps, type WorkSummary } from "./run.js";
@@ -459,5 +459,21 @@ describe("pause state (TAI-772 AC-4)", () => {
     it("writes the pause whole, leaving no temporary file behind", async () => {
         await writePause(dir, new Date("2026-11-18T08:00:00Z"));
         assert.deepEqual((await readdir(dir)).filter((f) => f.includes("paused")), ["paused.json"]);
+    });
+});
+
+describe("realPath (a symlinked clone is still the clone)", () => {
+    it("resolves symlinks, keeps a folder that does not exist yet, and lets isInside see through a link", async () => {
+        const base = await realpath(await mkdtemp(join(tmpdir(), "tai-real-")));
+        try {
+            await mkdir(join(base, "real", "repo"), { recursive: true });
+            await symlink(join(base, "real"), join(base, "link"));
+            assert.equal(await realPath(join(base, "link", "repo")), join(base, "real", "repo"));
+            assert.equal(await realPath(join(base, "link", "later", "x")), join(base, "real", "later", "x"), "the part not made yet is kept as written");
+            assert.equal(isInside(join(base, "link", "repo", "src"), join(base, "real", "repo")), false, "lexically they differ");
+            assert.equal(isInside(await realPath(join(base, "link", "repo", "src")), await realPath(join(base, "real", "repo"))), true, "resolved, the folder is inside the clone");
+        } finally {
+            await rm(base, { recursive: true, force: true });
+        }
     });
 });

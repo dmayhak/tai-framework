@@ -12,7 +12,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 * `kick` refuses while the project or every project is paused instead of starting a no-op run; the no-user-manager check refuses on any stderr, not three English messages; `pause` replaces a pause path that is a directory.
 * `status` also says when systemd reports the service unit failed (the pinned node or checkout path moved) and points at `install`; `resume` clears a pause path that is a directory; the unit directory falls back to `os.homedir()` when `HOME` is empty.
 * `status` shows the preflight note as FAILING, because a failed preflight exits 0 and the timer would otherwise look green while nothing runs.
-* `service setup` refuses a clone that contains the folder it was started from (`from=`, the current directory by default), and `service run` refuses one started inside the clone: the clone is the service's own folder, never a checkout a person works in.
+* `service setup` refuses a clone that contains the folder it was started from (`from=`, the current directory by default), and `service run` refuses one started inside the clone (both compared after symlinks are resolved): the clone is the service's own folder, never a checkout a person works in.
 * `uninstall` does not stop a run going (it names it); only the timer is stopped, and it removes nothing when stopping the timer fails for any reason but "not loaded".
 * The project list refuses a clone directly in the service root, or two clones in one folder: the folder is the project's state directory (lock, pause, run records), and the root holds the pause for every project.
 * `kick` is refused from an AI session (EpicReview decision 2). `install` prints the linger line when linger is off.
