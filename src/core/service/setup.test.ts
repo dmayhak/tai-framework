@@ -19,9 +19,14 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
     });
 
     it("takes a given clone path, relative to the root", () => {
-        const [a, b] = parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/elsewhere/tai" }, { key: "b", remote: "r", clone: "b-clone" }] }), ROOT, CONFIG);
+        const [a, b] = parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/elsewhere/tai" }, { key: "b", remote: "r", clone: "b/repo" }] }), ROOT, CONFIG);
         assert.equal(a!.clone, "/elsewhere/tai");
-        assert.equal(b!.clone, "/svc/b-clone");
+        assert.equal(b!.clone, "/svc/b/repo");
+    });
+
+    it("refuses a clone directly in the root (it would share the pause for every project) and two clones in one folder", () => {
+        assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "repo" }] }), ROOT, CONFIG), /sits directly in the service root/);
+        assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/x/a" }, { key: "b", remote: "r", clone: "/x/b" }] }), ROOT, CONFIG), /shares its folder \/x with project "tai"/);
     });
 
     it("expands a leading ~ in a clone path to the home directory", () => {

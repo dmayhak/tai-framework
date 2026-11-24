@@ -9,7 +9,7 @@
  */
 
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve, dirname } from "node:path";
 
 import { CREDENTIAL_ROLES, credentialVariables, isInside, type Env } from "./preflight.js";
 
@@ -62,6 +62,7 @@ export function parseProjects(text: string, root: string, configPath: string, ho
     const list = (data as { projects?: unknown } | null)?.projects;
     if (!Array.isArray(list)) throw new Error(`${configPath} must hold a "projects" list. An entry looks like: ${ENTRY_SHAPE}`);
     const seen = new Set<string>();
+    const stateDirs = new Map<string, string>();
     return list.map((raw, i): ProjectEntry => {
         const where = `${configPath}, entry ${i + 1}`;
         if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`${where}: an entry is an object. It looks like: ${ENTRY_SHAPE}`);
@@ -78,6 +79,12 @@ export function parseProjects(text: string, root: string, configPath: string, ho
         const given = e["clone"] as string | undefined;
         const path = given === undefined ? undefined : expandHome(given, home);
         const clone = path === undefined ? join(root, e["key"], "repo") : isAbsolute(path) ? path : resolve(root, path);
+        // The state directory (the clone's folder) holds the lock, the project's pause and its run records: it must be its own, and never the root, where the pause for every project lives.
+        const state = dirname(clone);
+        if (resolve(state) === resolve(root)) throw new Error(`${where}: the clone ${clone} sits directly in the service root ${root}, which holds the pause for every project; put it in its own folder (the default is ${join(root, e["key"], "repo")}).`);
+        const sharedWith = stateDirs.get(resolve(state));
+        if (sharedWith !== undefined) throw new Error(`${where}: the clone ${clone} shares its folder ${state} with project "${sharedWith}", so they would share one lock and one pause; give each its own folder.`);
+        stateDirs.set(resolve(state), e["key"]);
         return { key: e["key"], remote: e["remote"].trim(), clone, ...(intervalMinutes === undefined ? {} : { intervalMinutes }), ...(waitHours === undefined ? {} : { waitHours }), ...(cap === undefined ? {} : { cap }) };
     });
 }

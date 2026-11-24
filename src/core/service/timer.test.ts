@@ -134,6 +134,18 @@ describe("unit files (TAI-772 AC-1)", () => {
 });
 
 describe("uninstall (TAI-772 AC-2)", () => {
+    it("removes nothing when stopping the timer fails for a reason other than 'not loaded'", async () => {
+        const { deps, files } = fake();
+        await installTimer(entry(), deps, SVC);
+        const before = new Map(files);
+        const bad = { ...deps, systemctl: async (a: readonly string[]) => (a[0] === "disable" ? { code: 1, stdout: "", stderr: "Failed to connect to bus" } : OK) };
+        await assert.rejects(uninstallTimer(entry(), bad), /Could not stop tai-dev@tai\.timer: Failed to connect to bus; nothing was removed/);
+        assert.deepEqual(files, before);
+        const unloaded = { ...deps, systemctl: async (a: readonly string[]) => (a[0] === "disable" ? { code: 1, stdout: "", stderr: "Unit tai-dev@tai.timer not loaded." } : OK) };
+        assert.deepEqual(await uninstallTimer(entry(), unloaded), { removed: true });
+        assert.equal(files.size, 0);
+    });
+
     it("stops, disables and removes both units, then reloads", async () => {
         const { deps, files, calls } = fake();
         await installTimer(entry(), deps, SVC);
