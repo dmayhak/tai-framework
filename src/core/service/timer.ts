@@ -243,7 +243,7 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: 
         // The unit pins the node, loader and checkout paths of whoever installed it. If they have moved the run fails inside systemd before any preflight note is written, so ask systemd.
         try {
             const failed = await deps.systemctl(["is-failed", serviceUnitName(entry.key)]);
-            if (failed.code === 0) say(`  Unit: the last run FAILED in systemd (see \`journalctl --user -u ${serviceUnitName(entry.key)}\`). If node or the checkout moved, \`tai service install ${entry.key}\` again rewrites the unit.`);
+            if (failed.code === 0) say(`  Unit: the last run FAILED in systemd (see \`journalctl --user -u ${serviceUnitName(entry.key)}\`). One cause is a moved node or checkout, which \`tai service install ${entry.key}\` fixes by rewriting the unit.`);
         } catch {
             // systemctl could not be asked: the line above already says so
         }

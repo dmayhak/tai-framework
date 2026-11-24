@@ -303,7 +303,7 @@ describe("status (TAI-772 AC-6)", () => {
         await installTimer(e, deps, root);
         said.length = 0;
         await serviceStatus(e, deps, root);
-        assert.match(said.join("\n"), /Unit: the last run FAILED in systemd.*`tai service install tai` again/);
+        assert.match(said.join("\n"), /Unit: the last run FAILED in systemd.*One cause is a moved node or checkout.*`tai service install tai`/);
     });
 
     it("a lock whose run is gone is nobody, and an unreadable systemctl is said, not thrown", async () => {
