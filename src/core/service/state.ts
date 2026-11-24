@@ -6,7 +6,7 @@
  * `preflight.json` (the last failed-preflight message, so the same failure is logged once and again only when it changes).
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const LIMITED_FILE = "limited-until.json";
@@ -134,7 +134,8 @@ export async function writePause(dir: string, now: Date): Promise<boolean> {
     await mkdir(dir, { recursive: true });
     const target = join(dir, PAUSE_FILE);
     const temp = `${target}.${process.pid}.tmp`;
-    if (existing) await rm(target, { force: true, recursive: true }); // a damaged pause, even a folder, is replaced
+    // Only a folder needs removing: rename replaces a damaged file atomically, so the pause is never absent in between.
+    if (existing && (await stat(target).then((st) => st.isDirectory(), () => false))) await rm(target, { force: true, recursive: true });
     await writeFile(temp, `${JSON.stringify({ since: now.toISOString() } satisfies Pause, null, 2)}\n`);
     await rename(temp, target);
     return true;

@@ -9,7 +9,7 @@
  */
 
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve, dirname } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { CREDENTIAL_ROLES, credentialVariables, isInside, type Env } from "./preflight.js";
 
