@@ -5,7 +5,7 @@
  * copies the person's `.claude/settings.local.json` (permission rules, no secrets) into it, and says what the person still has to do by
  * hand: write the clone's own `.env` (never copied), type the attestation command in a plain terminal (never written here), and work on
  * a branch in their own checkout. Everything that touches git or the file system is injected, so the rules are tested without either.
- * No service manager is named here: a timer installer is a separate piece, so a launchd one can be added without touching this.
+ * No service manager is named here: the timer installer (`timer.ts`) is a separate piece, so a launchd one can be added without touching this.
  */
 
 import { homedir } from "node:os";
@@ -22,7 +22,7 @@ export interface ProjectEntry {
     readonly remote: string;
     /** Absolute path of the service's clone. */
     readonly clone: string;
-    /** For the timer (a later Story); read and checked here so one file holds a project's settings. */
+    /** The minutes between the end of one run and the next tick (`service install` writes it into the timer); read and checked here so one file holds a project's settings. */
     readonly intervalMinutes?: number;
     readonly waitHours?: number;
     readonly cap?: number;
@@ -96,6 +96,14 @@ export function parseProjects(text: string, root: string, configPath: string, ho
     const clash = clashes.find((c) => only === undefined || c.keys.includes(only));
     if (clash) throw new Error(clash.message);
     return entries;
+}
+
+/**
+ * An entry built from a key alone, for `uninstall` when the project is no longer in the list (or the list is gone or damaged): the timer must always be
+ * removable, and `uninstall` reads the state directory from the installed unit, so the clone path here is only the default's. Null for a key that is not a safe name.
+ */
+export function entryFromKey(key: string, root: string): ProjectEntry | null {
+    return SAFE_KEY.test(key) ? { key, remote: "", clone: join(root, key, "repo") } : null;
 }
 
 export function findProject(entries: readonly ProjectEntry[], key: string, configPath: string): ProjectEntry {

@@ -185,7 +185,7 @@ import { installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumePr
 import { checkFailure, localPreflightFailure, realPath } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, parseServiceUnitArgs, realRefreshGit, realSetupFs, realTimerDeps, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
-import { findProject, parseProjects, PROJECTS_FILE, resolveServiceRoot, runServiceSetup, type ProjectEntry } from "../core/service/setup.js";
+import { entryFromKey, findProject, parseProjects, PROJECTS_FILE, resolveServiceRoot, runServiceSetup, type ProjectEntry } from "../core/service/setup.js";
 import { runServiceTick } from "../core/service/run.js";
 import { writeFile } from "node:fs/promises";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
@@ -1964,11 +1964,19 @@ async function main(): Promise<void> {
         let chosen: readonly ProjectEntry[] = [];
         const listProblems: string[] = [];
         if (!(project === undefined && (arg === "pause" || arg === "resume"))) {
-            const text = await realSetupFs.readFile(configPath);
-            if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project, as \`tai service setup\` describes.`);
-            // `status` for every project reports a clash as a line and still shows the others; the other actions refuse on a clash that involves their project.
-            const entries = parseProjects(text, root, configPath, undefined, project, arg === "status" ? listProblems : undefined);
-            chosen = project === undefined ? entries : [findProject(entries, project, configPath)];
+            try {
+                const text = await realSetupFs.readFile(configPath);
+                if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project, as \`tai service setup\` describes.`);
+                // `status` for every project reports a clash as a line and still shows the others; the other actions refuse on a clash that involves their project.
+                const entries = parseProjects(text, root, configPath, undefined, project, arg === "status" ? listProblems : undefined);
+                chosen = project === undefined ? entries : [findProject(entries, project, configPath)];
+            } catch (e) {
+                // `uninstall` must always be able to remove a timer, even when its project was taken out of the list or the list is gone or damaged: it needs only the key (the state directory is read from the unit).
+                const fallback = arg === "uninstall" && project !== undefined ? entryFromKey(project, root) : null;
+                if (!fallback) throw e;
+                console.log(`Note: ${e instanceof Error ? e.message : String(e)}\nRemoving the timer for "${project}" by its name alone.`);
+                chosen = [fallback];
+            }
         }
         const deps = realTimerDeps(process.env, (line) => console.log(line), inAiSession);
         // `pause` and `resume` with no project act on the pause for every project, which lives in the service root; with one, on that project's own.

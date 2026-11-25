@@ -1,7 +1,7 @@
 /**
  * TAI Framework — what the unattended Dev service keeps in its state directory between ticks (Epic TAI-763, Story TAI-770).
  *
- * Three small JSON files: `limited-until.json` (the account's usage limit, so ticks skip until it resets, because the limit record of
+ * Four small JSON files: `paused.json` (a pause, per project and one for every project in the service root, TAI-772; an unreadable one counts as a pause), `limited-until.json` (the account's usage limit, so ticks skip until it resets, because the limit record of
  * `do-dev-tasks` lives in memory for one run only), `last-run.json` (what the last run did, for `tai service status`), and
  * `preflight.json` (the last failed-preflight message, so the same failure is logged once and again only when it changes).
  */

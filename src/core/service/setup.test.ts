@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { findProject, parseProjects, redactRemote, resolveServiceRoot, runServiceSetup, sameRemote, shellQuote, type PathState, type SetupDeps } from "./setup.js";
+import { entryFromKey, findProject, parseProjects, redactRemote, resolveServiceRoot, runServiceSetup, sameRemote, shellQuote, type PathState, type SetupDeps } from "./setup.js";
 import { realSetupFs, setupStillMissing } from "./real.js";
 
 const ROOT = "/svc";
@@ -38,6 +38,12 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
         assert.equal(problems.length, 2);
         assert.match(problems.join("\n"), /shares its folder \/x with project "b"/);
         assert.match(problems.join("\n"), /sits directly in the service root/);
+    });
+
+    it("entryFromKey builds an entry from a safe key alone and refuses an unsafe one", () => {
+        assert.deepEqual(entryFromKey("tai", "/svc"), { key: "tai", remote: "", clone: "/svc/tai/repo" });
+        assert.equal(entryFromKey("../x", "/svc"), null);
+        assert.equal(entryFromKey("a b", "/svc"), null);
     });
 
     it("refuses a clone directly in the root (it would share the pause for every project) and two clones in one folder", () => {
