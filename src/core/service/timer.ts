@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { DEFAULT_CAP, DEFAULT_WAIT_HOURS } from "./real.js";
 import { readLockHolder, type LockInfo } from "./lock.js";
 import type { ProjectEntry } from "./setup.js";
-import { readLastRun, readLimitedUntil, readPause, readPreflightNote, clearPause, writePause } from "./state.js";
+import { PAUSE_FILE, readLastRun, readLimitedUntil, readPause, readPreflightNote, clearPause, writePause } from "./state.js";
 
 export const DEFAULT_INTERVAL_MINUTES = 30;
 
@@ -208,11 +208,12 @@ export async function pauseProjects(entries: readonly ProjectEntry[], deps: Pick
 /** `pause` with no project: one file in the service root, read by every tick and run, so it covers a project added later too. */
 export async function pauseAll(root: string, deps: Pick<TimerDeps, "now" | "say">): Promise<void> {
     const added = await writePause(root, deps.now());
-    deps.say(added ? "Paused every project: no tick starts a run, and a run going finishes its current ticket and then stops. `tai service resume` lifts it; it has no expiry. A pause set on one project is kept apart and still applies." : "Every project was already paused.");
+    const file = join(root, PAUSE_FILE);
+    deps.say(added ? `Paused every project (${file}): no tick starts a run, and a run going finishes its current ticket and then stops. \`tai service resume\` lifts it; it has no expiry. A pause set on one project is kept apart and still applies. Timers installed with another root= read another file.` : `Every project was already paused (${file}).`);
 }
 
 export async function resumeAll(root: string, deps: Pick<TimerDeps, "say">): Promise<void> {
-    deps.say((await clearPause(root)) ? "Resumed every project (the pause for all). A pause set on one project, if any, still applies: `tai service status` shows it." : "Every project was not paused (no pause for all was set).");
+    deps.say((await clearPause(root)) ? `Resumed every project (the pause for all, ${join(root, PAUSE_FILE)}). A pause set on one project, if any, still applies: \`tai service status\` shows it.` : `Every project was not paused (no pause for all in ${join(root, PAUSE_FILE)}).`);
 }
 
 export async function resumeProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "say">): Promise<void> {
@@ -266,7 +267,7 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: 
     const pausedAll = await readPause(root);
     const paused = await readPause(dir);
     const sinceText = (p: { readonly since: string; readonly unreadable?: boolean }): string => (p.unreadable ? "(its file could not be read, so it counts as a pause)" : `since ${ago(p.since, now)}`);
-    if (pausedAll) say(`  Pause: PAUSED for every project ${sinceText(pausedAll)}; \`tai service resume\` lifts it.`);
+    if (pausedAll) say(`  Pause: PAUSED for every project (${join(root, PAUSE_FILE)}) ${sinceText(pausedAll)}; \`tai service resume\` lifts it.`);
     if (paused) say(`  Pause: PAUSED ${sinceText(paused)}; \`tai service resume ${entry.key}\` lifts it.`);
     if (!pausedAll && !paused) say("  Pause: none.");
     const limited = await readLimitedUntil(dir, now);
@@ -287,7 +288,7 @@ export async function serviceStatusAll(entries: readonly ProjectEntry[], deps: T
     if (entries.length === 0) {
         deps.say(`No projects are listed in ${configPath}, so no timer runs.`);
         const pausedAll = await readPause(root);
-        deps.say(pausedAll ? `Pause: PAUSED for every project since ${pausedAll.unreadable ? "(its file could not be read, so it counts as a pause)" : pausedAll.since}; \`tai service resume\` lifts it.` : "Pause: none.");
+        deps.say(pausedAll ? `Pause: PAUSED for every project (${join(root, PAUSE_FILE)}) since ${pausedAll.unreadable ? "(its file could not be read, so it counts as a pause)" : pausedAll.since}; \`tai service resume\` lifts it.` : "Pause: none.");
         return;
     }
     for (const entry of entries) await serviceStatus(entry, deps, root);

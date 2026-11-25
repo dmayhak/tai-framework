@@ -253,12 +253,12 @@ describe("pause and resume (TAI-772 AC-4)", () => {
         await pauseAll(root, deps);
         assert.notEqual(await readPause(root), null);
         await pauseAll(root, deps);
-        assert.ok(said.includes("Every project was already paused."));
+        assert.ok(said.includes(`Every project was already paused (${join(root, "paused.json")}).`), "the message names the file, so a different root= is visible");
         await resumeAll(root, deps);
         assert.equal(await readPause(root), null, "the pause for all is lifted");
         assert.notEqual(await readPause(join(root, "a")), null, "the project's own pause is still there");
         await resumeAll(root, deps);
-        assert.ok(said.some((l) => /no pause for all was set/.test(l)));
+        assert.ok(said.some((l) => /no pause for all in .*paused\.json/.test(l)));
     });
 });
 
@@ -295,7 +295,7 @@ describe("status (TAI-772 AC-6)", () => {
         await pauseAll(root, deps);
         said.length = 0;
         await serviceStatus(e, deps, root);
-        assert.match(said.join("\n"), /Pause: PAUSED for every project since .*`tai service resume` lifts it/);
+        assert.match(said.join("\n"), /Pause: PAUSED for every project \(.*paused\.json\) since .*`tai service resume` lifts it/);
         assert.doesNotMatch(said.join("\n"), /Pause: none/);
     });
 
