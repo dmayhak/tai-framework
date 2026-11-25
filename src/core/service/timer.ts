@@ -158,7 +158,7 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
     // The service unit is NOT stopped: a run going may be between a build and a merge, and a stop would kill it there.
     const stopped = await deps.systemctl(["disable", "--now", timerUnitName(entry.key)]);
     // Only "this unit is not loaded" is fine; any other failure leaves the timer active, and deleting its files then would strand it with no way back through this command.
-    if (stopped.code !== 0 && !/not loaded|does not exist|No such file|not found/i.test(stopped.stderr)) throw new Error(`Could not stop ${timerUnitName(entry.key)}: ${stopped.stderr.trim() || stopped.stdout.trim() || "no message"}; nothing was removed.`);
+    if (stopped.code !== 0 && !/not loaded|does not exist/i.test(stopped.stderr)) throw new Error(`Could not stop ${timerUnitName(entry.key)}: ${stopped.stderr.trim() || stopped.stdout.trim() || "no message"}; nothing was removed.`);
     await deps.removeFile(timerPath);
     await deps.removeFile(servicePath);
     await run(deps, ["daemon-reload"]);
