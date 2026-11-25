@@ -97,6 +97,8 @@ export function renderUnits(entry: ProjectEntry, command: readonly string[], pat
         `Description=TAI unattended Dev service: timer for ${entry.key}`,
         "",
         "[Timer]",
+        // Two ticks near boot are expected: OnBootSec is already past on a machine that has been up, so it alone would never tick a fresh install (the timer then waits for a run to end);
+        // OnActiveSec makes a fresh install, and a boot with linger, tick after a minute. The lock and the cap make a second tick harmless.
         "OnBootSec=2min",
         "OnActiveSec=1min",
         // Counted from the end of the last run, so a long run is never overtaken, and a tick missed while the machine slept comes late, not twice.
@@ -316,7 +318,9 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: 
 }
 
 /** `status` for the chosen projects; with none listed it says so and still shows the pause for every project, which lives in the root. */
-export async function serviceStatusAll(entries: readonly ProjectEntry[], deps: TimerDeps, root: string, configPath: string): Promise<void> {
+export async function serviceStatusAll(entries: readonly ProjectEntry[], deps: TimerDeps, root: string, configPath: string, problems: readonly string[] = []): Promise<void> {
+    // A clash in the list is a line, not a refusal: status is where a person looks when something is wrong, so the other projects still show.
+    for (const problem of problems) deps.say(`PROBLEM in the project list: ${problem}`);
     if (entries.length === 0) {
         deps.say(`No projects are listed in ${configPath}, so no timer runs.`);
         const pausedAll = await readPause(root);

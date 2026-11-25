@@ -51,8 +51,8 @@ function positive(value: unknown, field: string, whole: boolean, where: string):
     return value;
 }
 
-/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root; a leading `~/` is the home directory. With `only`, a clone folder that clashes (in the root, or shared) is a problem only when it involves that project, so one bad entry does not block acting on another. */
-export function parseProjects(text: string, root: string, configPath: string, home: string = homedir(), only?: string): readonly ProjectEntry[] {
+/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root; a leading `~/` is the home directory. With `only`, a clone folder that clashes (in the root, or shared) is a problem only when it involves that project, so one bad entry does not block acting on another. With `problems` (a read-only caller such as `status`), every clash is added to it and none is thrown, so the other entries are still shown. */
+export function parseProjects(text: string, root: string, configPath: string, home: string = homedir(), only?: string, problems?: string[]): readonly ProjectEntry[] {
     let data: unknown;
     try {
         data = JSON.parse(text);
@@ -89,6 +89,10 @@ export function parseProjects(text: string, root: string, configPath: string, ho
         stateDirs.set(resolve(state), e["key"]);
         return { key: e["key"], remote: e["remote"].trim(), clone, ...(intervalMinutes === undefined ? {} : { intervalMinutes }), ...(waitHours === undefined ? {} : { waitHours }), ...(cap === undefined ? {} : { cap }) };
     });
+    if (problems) {
+        problems.push(...clashes.map((c) => c.message));
+        return entries;
+    }
     const clash = clashes.find((c) => only === undefined || c.keys.includes(only));
     if (clash) throw new Error(clash.message);
     return entries;

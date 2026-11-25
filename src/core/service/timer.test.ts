@@ -217,6 +217,16 @@ describe("status with no projects", () => {
     });
 });
 
+describe("status with a problem in the project list", () => {
+    it("prints each problem as a line and still shows the projects", async () => {
+        const { deps, said } = fake();
+        await serviceStatusAll([entry()], deps, root, "/svc/projects.json", ["entry 2: clashes"]);
+        const text = said.join("\n");
+        assert.match(text, /^PROBLEM in the project list: entry 2: clashes/);
+        assert.match(text, /tai/);
+    });
+});
+
 describe("uninstall (TAI-772 AC-2)", () => {
     it("removes nothing when stopping the timer fails for a reason other than 'not loaded'", async () => {
         const { deps, files } = fake();

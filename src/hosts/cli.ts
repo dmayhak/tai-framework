@@ -1967,17 +1967,19 @@ async function main(): Promise<void> {
         const configPath = join(root, PROJECTS_FILE);
         // The pause for every project is one file in the root and needs no project list: it must work when the list is missing or one entry is bad, which is when a person most wants to stop things.
         let chosen: readonly ProjectEntry[] = [];
+        const listProblems: string[] = [];
         if (!(project === undefined && (arg === "pause" || arg === "resume"))) {
             const text = await realSetupFs.readFile(configPath);
             if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project, as \`tai service setup\` describes.`);
-            const entries = parseProjects(text, root, configPath, undefined, project);
+            // `status` for every project reports a clash as a line and still shows the others; the other actions refuse on a clash that involves their project.
+            const entries = parseProjects(text, root, configPath, undefined, project, arg === "status" ? listProblems : undefined);
             chosen = project === undefined ? entries : [findProject(entries, project, configPath)];
         }
         const deps = realTimerDeps(process.env, (line) => console.log(line), inAiSession);
         // `pause` and `resume` with no project act on the pause for every project, which lives in the service root; with one, on that project's own.
         if (arg === "pause") await (project === undefined ? pauseAll(root, deps) : pauseProjects(chosen, deps));
         else if (arg === "resume") await (project === undefined ? resumeAll(root, deps) : resumeProjects(chosen, deps));
-        else if (arg === "status") await serviceStatusAll(chosen, deps, root, configPath);
+        else if (arg === "status") await serviceStatusAll(chosen, deps, root, configPath, listProblems);
         else if (arg === "install") await installTimer(chosen[0]!, deps, root);
         else if (arg === "uninstall") await uninstallTimer(chosen[0]!, deps);
         else await kickService(chosen[0]!, deps, root);

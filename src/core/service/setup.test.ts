@@ -31,6 +31,15 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
         assert.throws(() => parseProjects(text, ROOT, CONFIG, undefined, "c"), /shares its folder \/x with project "b"/, "but a clash that involves the project still stops it");
     });
 
+    it("with a problems list, every clash is collected and none thrown, so a read-only caller still sees every project", () => {
+        const text = JSON.stringify({ projects: [{ ...ENTRY, key: "good" }, { key: "b", remote: "r", clone: "/x/b" }, { key: "c", remote: "r", clone: "/x/c" }, { key: "d", remote: "r", clone: "repo" }] });
+        const problems: string[] = [];
+        assert.equal(parseProjects(text, ROOT, CONFIG, undefined, undefined, problems).length, 4);
+        assert.equal(problems.length, 2);
+        assert.match(problems.join("\n"), /shares its folder \/x with project "b"/);
+        assert.match(problems.join("\n"), /sits directly in the service root/);
+    });
+
     it("refuses a clone directly in the root (it would share the pause for every project) and two clones in one folder", () => {
         assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "repo" }] }), ROOT, CONFIG), /sits directly in the service root/);
         assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/x/a" }, { key: "b", remote: "r", clone: "/x/b" }] }), ROOT, CONFIG), /shares its folder \/x with project "tai"/);
