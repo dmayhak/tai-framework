@@ -413,8 +413,6 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
     for (;;) {
         // An interrupt ends the run with what it has: no new look, which would only add calls on the way out.
         if (deps.interrupted?.()) return { results, found: last };
-        const stoppedBy = await deps.stopRequested?.();
-        if (stoppedBy) return { results, found: last, stoppedBy };
         const found = pending ?? (await find());
         pending = undefined;
         last = found;
@@ -422,6 +420,9 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
         const next = await pickNext(found.tasks, new Set([...attempted, ...passed]), deps, pausedKnown);
         if (!next) return { results, found };
         if (deps.maxTickets !== undefined && attempted.size >= deps.maxTickets) return { results, found, capReached: true };
+        // Asked only once a ticket is about to start, so a pause set while the last one was building does not replace the real reason the run ended (no ticket left, or the cap).
+        const stoppedBy = await deps.stopRequested?.();
+        if (stoppedBy) return { results, found, stoppedBy };
         // TAI-777: a To Do ticket is read again just before it is started; a person may have started it since the search. It is passed over
         // (not counted against the cap) and the run looks for another.
         if (deps.recheckToDo && next.issue.status === Status.ToDo) {

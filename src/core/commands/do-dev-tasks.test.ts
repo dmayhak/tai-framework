@@ -575,6 +575,18 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.equal(summarizeWorked(worked).stopReason, "paused by `tai service pause`");
     });
 
+    it("a pause set while the last ticket built does not replace the real reason the run ended (TAI-772)", async () => {
+        let paused = false;
+        const stop = async (): Promise<string | null> => (paused ? "paused by `tai service pause`" : null);
+        const build = async (): Promise<{ ok: true; summary: string }> => ((paused = true), { ok: true, summary: "built" });
+        const empty = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), deps({ stopRequested: stop, build }));
+        assert.equal(empty.stoppedBy, undefined, "nothing was left to start");
+        paused = false;
+        const capped = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), deps({ stopRequested: stop, build, maxTickets: 1 }));
+        assert.equal(capped.stoppedBy, undefined);
+        assert.equal(capped.capReached, true, "the cap is the reason, not the pause");
+    });
+
     it("a pause set during a usage-limit wait ends the run, and the paused ticket stays in the report (TAI-772)", async () => {
         let paused = false;
         const latch = new UsageLimitLatch();
