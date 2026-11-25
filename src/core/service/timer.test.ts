@@ -95,8 +95,8 @@ describe("unit files (TAI-772 AC-1)", () => {
         calls.length = 0;
         assert.deepEqual(await installTimer(entry(), deps, SVC), { changed: false });
         assert.deepEqual(files, before);
-        assert.ok(!calls.includes("daemon-reload"), "nothing changed, so nothing to reload");
-        assert.ok(!calls.some((c) => c.startsWith("restart")), "nor to restart");
+        assert.ok(calls.includes("daemon-reload"), "the reload is always done: the files being current does not mean systemd has read them");
+        assert.ok(!calls.some((c) => c.startsWith("restart")), "but nothing changed and systemd holds the current copy, so no restart");
         assert.ok(said.some((l) => /Already installed/.test(l)));
     });
 
@@ -236,6 +236,25 @@ describe("the unit's working directory and kick while a run is going", () => {
         await kickService(e, deps, root);
         assert.match(said.join("\n"), /A run is already going \(pid 4242.*nothing new starts/);
         assert.doesNotMatch(said.join("\n"), /it runs now/);
+    });
+});
+
+describe("install after a partial failure, and control characters in a unit word", () => {
+    it("a re-run whose files are already written still reloads, and restarts when systemd holds an older copy", async () => {
+        const seen: string[] = [];
+        const stale = fake({ systemctl: async (a) => (seen.push(a.join(" ")), a[0] === "show" && a.includes("--property=NeedDaemonReload") ? { code: 0, stdout: "yes\n", stderr: "" } : OK) });
+        await installTimer(entry(), stale.deps, SVC);
+        seen.length = 0;
+        assert.deepEqual(await installTimer(entry(), stale.deps, SVC), { changed: false });
+        assert.deepEqual(seen.filter((c) => /^(daemon-reload|enable|restart)/.test(c)), ["daemon-reload", "enable --now tai-dev@tai.timer", "restart tai-dev@tai.timer"]);
+        assert.ok(stale.said.some((l) => /Installed tai-dev@tai\.timer/.test(l)));
+    });
+
+    it("a newline in a word is escaped, so it cannot start a new line of the unit file, and reads back", () => {
+        assert.equal(unitWord("a\nExecStartPost=/bin/evil"), '"a\\nExecStartPost=/bin/evil"');
+        const { service } = renderUnits(entry({ clone: "/data/svc/tai/repo" }), ["/usr/bin/node", "cli.ts"], "/usr/bin\nX=1", "/svc\nroot\t2");
+        assert.equal(service.split("\n").filter((l) => /^(ExecStartPost|X)=/.test(l)).length, 0);
+        assert.equal(installedRoot(service), "/svc\nroot\t2");
     });
 });
 

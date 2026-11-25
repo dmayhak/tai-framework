@@ -64,7 +64,7 @@ export interface TimerDeps {
 /** One word of a unit's `ExecStart=` or `Environment=` line: quoted, with the characters systemd itself reads (`\`, `"`, `%`, `$`) escaped. */
 export function unitWord(word: string, expandsVariables = true): string {
     // `$` is a variable in ExecStart= but means nothing in Environment=, so it is doubled only where systemd reads it. `%` is a specifier in both.
-    const escaped = word.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, expandsVariables ? "$$$$" : "$$");
+    const escaped = word.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, expandsVariables ? "$$$$" : "$$");
     return /^[A-Za-z0-9_./:@=,+-]+$/.test(word) ? escaped : `"${escaped}"`;
 }
 
@@ -80,7 +80,7 @@ function installedArg(serviceUnitText: string, name: string): string | null {
     let found: string | null = null;
     for (const m of line.slice("ExecStart=".length).matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)) {
         const raw = m[1] ?? m[2] ?? "";
-        const word = m[1] !== undefined ? raw.replace(/\\(["\\])/g, "$1") : raw;
+        const word = m[1] !== undefined ? raw.replace(/\\(["\\nrt])/g, (_m, c: string) => (c === "n" ? "\n" : c === "r" ? "\r" : c === "t" ? "\t" : c)) : raw;
         if (word.startsWith(`${name}=`)) found = word.slice(name.length + 1).replace(/%%/g, "%").replace(/\$\$/g, "$");
     }
     return found;
@@ -175,11 +175,14 @@ export async function installTimer(entry: ProjectEntry, deps: TimerDeps, root: s
         await deps.writeFile(path, text);
         changed = true;
     }
-    if (changed) await run(deps, ["daemon-reload"]);
+    // Files that equal the rendered text do not mean systemd has read them: an earlier run may have written them and failed at the reload. So the reload is always done, and the timer is restarted
+    // when the files changed now or systemd says it holds an older copy (`NeedDaemonReload=yes`, asked before the reload).
+    const staleInSystemd = changed ? false : await needsDaemonReload(deps, timerUnitName(entry.key), serviceUnitName(entry.key));
+    await run(deps, ["daemon-reload"]);
     await run(deps, ["enable", "--now", timerUnitName(entry.key)]);
     // `enable --now` starts nothing on a timer that is already active, so a changed interval would not be in force: restart the timer (never the service, which may be mid-run).
-    if (changed) await run(deps, ["restart", timerUnitName(entry.key)]);
-    deps.say(changed ? `Installed ${timerUnitName(entry.key)} (every ${entry.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES} minutes after a run ends) and ${serviceUnitName(entry.key)} in ${deps.unitDir}, running ${deps.command.join(" ")} (the program and checkout this install was run from: install again from the right one if that is not it). The timer was (re)started, so a tick runs about a minute from now.` : `Already installed: ${timerUnitName(entry.key)} (the unit files are as they would be written, running ${deps.command.join(" ")}); the timer is enabled.`);
+    if (changed || staleInSystemd) await run(deps, ["restart", timerUnitName(entry.key)]);
+    deps.say(changed || staleInSystemd ? `Installed ${timerUnitName(entry.key)} (every ${entry.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES} minutes after a run ends) and ${serviceUnitName(entry.key)} in ${deps.unitDir}, running ${deps.command.join(" ")} (the program and checkout this install was run from: install again from the right one if that is not it). The timer was (re)started, so a tick runs about a minute from now.` : `Already installed: ${timerUnitName(entry.key)} (the unit files are as they would be written, running ${deps.command.join(" ")}); the timer is enabled.`);
     deps.say(`Look at it with \`tai service status ${entry.key}\`; its log is \`journalctl --user -u ${serviceUnitName(entry.key)}\`.`);
     if ((await deps.lingerEnabled()) === false) deps.say(lingerLine(deps.user));
     return { changed };
@@ -189,6 +192,19 @@ async function run(deps: TimerDeps, args: readonly string[]): Promise<SystemctlR
     const r = await deps.systemctl(args);
     if (r.code !== 0) throw new Error(`\`systemctl --user ${args.join(" ")}\` failed (exit ${r.code}): ${(r.stderr || r.stdout).trim() || "no message"}`);
     return r;
+}
+
+/** True when systemd says it holds an older copy of either unit than the file on disk; false when it says otherwise or cannot be asked. */
+async function needsDaemonReload(deps: TimerDeps, ...units: readonly string[]): Promise<boolean> {
+    for (const unit of units) {
+        try {
+            const r = await deps.systemctl(["show", "--property=NeedDaemonReload", "--value", unit]);
+            if (r.code === 0 && r.stdout.trim() === "yes") return true;
+        } catch {
+            // systemctl could not be asked: the reload below is done anyway
+        }
+    }
+    return false;
 }
 
 /** True when systemd says it has no such unit (`LoadState=not-found`); false when it says anything else or cannot be asked. */
