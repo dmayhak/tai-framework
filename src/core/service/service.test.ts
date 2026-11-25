@@ -199,6 +199,15 @@ describe("runServiceTick", () => {
         assert.equal((await runServiceTick(deps) as { stopReason: string }).stopReason, "no ready tickets");
     });
 
+    it("a pause that ended a usage-limit wait is recorded as both, so status keeps the pause (TAI-772)", async () => {
+        const limit = { text: "Weekly limit reached", resetsAt: "2026-11-20T17:00:00.000Z" };
+        const summary: WorkSummary = { tickets: [{ key: "TAI-1", state: "paused" }], capReached: false, limit, stopReason: "paused by `tai service pause` (since 2026-11-18T08:00:00.000Z)" };
+        const { deps } = setup({ work: async () => summary });
+        const r = await runServiceTick(deps);
+        assert.match((r as { stopReason: string }).stopReason, /usage limit: Weekly limit reached \(limited until .*\); stopped: paused by `tai service pause`/);
+        assert.match((await readLastRun(dir))?.stopReason ?? "", /stopped: paused by `tai service pause`/, "last-run.json carries it too");
+    });
+
     it("a run that ends paused writes limited-until; ticks skip until then; a tick after that starts a run (AC-5)", async () => {
         const limit = { text: "Weekly limit reached", resetsAt: "2026-11-20T17:00:00.000Z" };
         let summary: WorkSummary = { tickets: [{ key: "TAI-1", state: "paused" }], capReached: false, limit, stopReason: null };

@@ -55,7 +55,8 @@ const sentence = (text: string): string => text.replace(/[.\s]+$/, "");
 const DEFAULT_LIMIT_BACKOFF_MS = 60 * 60_000;
 
 function endReason(summary: WorkSummary, limitedUntil: string | null): string {
-    if (summary.limit) return `usage limit: ${summary.limit.text}${limitedUntil ? ` (limited until ${limitedUntil})` : ""}`;
+    // Both when both are so: a pause that ended a limit wait is a pause as well as a limit, and status should say each.
+    if (summary.limit) return `usage limit: ${summary.limit.text}${limitedUntil ? ` (limited until ${limitedUntil})` : ""}${summary.stopReason ? `; stopped: ${summary.stopReason}` : ""}`;
     if (summary.stopReason) return `stopped: ${summary.stopReason}`;
     if (summary.capReached) return "cap reached";
     return summary.tickets.length === 0 ? "no ready tickets" : "no more ready tickets";
