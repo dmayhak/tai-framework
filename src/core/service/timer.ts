@@ -45,6 +45,8 @@ export interface TimerDeps {
     readonly systemctl: (args: readonly string[]) => Promise<SystemctlResult>;
     /** The command a unit runs to start this program (`node ... cli.ts`), as separate words. */
     readonly command: readonly string[];
+    /** The folder `install` was run from: the unit starts there, so a launcher flag typed relative to it (`--import tsx`) resolves as it did for the person. */
+    readonly cwd: string;
     /** PATH of the person installing, so a unit (which gets a bare PATH from systemd) finds `git` and `claude`. */
     readonly path: string | undefined;
     /** Whether the user's services keep running while logged out; null when it cannot be told. */
@@ -97,7 +99,7 @@ async function effectiveStateDir(entry: ProjectEntry, deps: Pick<TimerDeps, "rea
 }
 
 /** The service and timer unit files for a project, from its config entry. The same entry gives the same text, so a re-run changes nothing. */
-export function renderUnits(entry: ProjectEntry, command: readonly string[], path: string | undefined, root: string): { readonly service: string; readonly timer: string } {
+export function renderUnits(entry: ProjectEntry, command: readonly string[], path: string | undefined, root: string, workingDirectory?: string): { readonly service: string; readonly timer: string } {
     const interval = entry.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES;
     const run = [...command, "service", "run", `clone=${entry.clone}`, `state=${stateDirOf(entry)}`, `root=${root}`, `wait=${entry.waitHours ?? DEFAULT_WAIT_HOURS}`, `cap=${entry.cap ?? DEFAULT_CAP}`];
     const service = [
@@ -107,6 +109,8 @@ export function renderUnits(entry: ProjectEntry, command: readonly string[], pat
         "[Service]",
         "Type=oneshot",
         "TimeoutStartSec=infinity",
+        // A systemd service starts in the user's home: the folder install was run from keeps a relative or bare launcher flag (`--import tsx`) resolving as it did for the person. `%` is a specifier here too.
+        ...(workingDirectory ? [`WorkingDirectory=${workingDirectory.replace(/%/g, "%%")}`] : []),
         ...(path ? [`Environment=${unitWord(`PATH=${path}`, false)}`] : []),
         `ExecStart=${run.map((w) => unitWord(w)).join(" ")}`,
         "",
@@ -159,7 +163,7 @@ export async function installTimer(entry: ProjectEntry, deps: TimerDeps, root: s
     refuseFromAiSession(deps, "install", "it sets up an unattended timer that later runs with no AI marker, which a person decides.");
     const refusal = await systemdRefusal(deps);
     if (refusal) throw new Error(refusal);
-    const units = renderUnits(entry, deps.command, deps.path, root);
+    const units = renderUnits(entry, deps.command, deps.path, root, deps.cwd);
     const servicePath = join(deps.unitDir, serviceUnitName(entry.key));
     const timerPath = join(deps.unitDir, timerUnitName(entry.key));
     let changed = false;
@@ -217,11 +221,13 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
     // Only "this unit is not loaded" is fine; any other failure leaves the timer active, and deleting its files then would strand it with no way back through this command.
     // Asked by LoadState (`not-found`), which systemd does not translate, not by matching its message.
     if (stopped.code !== 0 && !(await unitNotLoaded(deps, timerUnitName(entry.key)))) throw new Error(`Could not stop ${timerUnitName(entry.key)}: ${stopped.stderr.trim() || stopped.stdout.trim() || "no message"}; nothing was removed.`);
+    // The state directory is read from the unit, so it is asked before the unit file is removed.
+    const stateDir = await effectiveStateDir(entry, deps);
     await deps.removeFile(timerPath);
     await deps.removeFile(servicePath);
     await run(deps, ["daemon-reload"]);
     deps.say(`Removed ${timerUnitName(entry.key)} and ${serviceUnitName(entry.key)}. The clone and its state are left as they were.`);
-    const going = await readLockHolder(await effectiveStateDir(entry, deps), deps.isAlive);
+    const going = await readLockHolder(stateDir, deps.isAlive);
     if (going) deps.say(`A run is still going (pid ${going.pid}, started ${going.startedAt}) and was not stopped: it ends on its own, or \`tai service pause ${entry.key}\` ends it after its current ticket. No new tick will start.`);
     return { removed: true };
 }
@@ -240,7 +246,13 @@ export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: st
     // A paused project would start, log a skip and exit: say so instead of starting it.
     if (paused) throw new Error(`${pausedAll ? "Every project is" : `${entry.key} is`} paused (since ${paused.since}): a run would start nothing, so it was not started. \`tai service resume${pausedAll ? "" : ` ${entry.key}`}\` first.`);
     // `--no-block`: the run can last hours, and the lock (not this command) is what keeps a second one out.
+    // A oneshot service that is already active ignores a start, so a run going is said instead of "it runs now".
+    const going = await readLockHolder(await effectiveStateDir(entry, deps), deps.isAlive);
     await run(deps, ["start", "--no-block", unit]);
+    if (going) {
+        deps.say(`A run is already going (pid ${going.pid}, started ${going.startedAt}): ${unit} was asked to start, but a second run cannot hold the lock, so nothing new starts. It ends on its own.`);
+        return;
+    }
     deps.say(`Started ${unit}; it runs now and its log is \`journalctl --user -u ${unit} -f\`.`);
 }
 

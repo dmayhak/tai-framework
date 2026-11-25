@@ -40,8 +40,8 @@ export interface ServiceRunArgs {
 }
 
 /**
- * `service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]`. Each can come from the environment instead (TAI_SERVICE_CLONE,
- * TAI_SERVICE_STATE, TAI_SERVICE_WAIT, TAI_SERVICE_CAP), so a unit file or an orchestrator sets them without arguments. The state
+ * `service run clone=<path> [state=<dir>] [root=<dir>] [wait=<hours>] [cap=<tickets>]`. Each can come from the environment instead (TAI_SERVICE_CLONE,
+ * TAI_SERVICE_STATE, TAI_SERVICE_ROOT, TAI_SERVICE_WAIT, TAI_SERVICE_CAP), so a unit file or an orchestrator sets them without arguments. The state
  * directory defaults to the clone's parent (`<state>/repo`); the wait defaults to the five-hour window and the cap to 3 tickets.
  * A mistyped flag is refused, because it must not start a real run.
  */
@@ -359,6 +359,7 @@ export function realTimerDeps(env: Env, say: (line: string) => void, aiSession: 
         removeFile: (path) => rm(path).then(() => true, (e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? false : Promise.reject(e))),
         systemctl,
         command: [process.execPath, ...process.execArgv, process.argv[1]!],
+        cwd: process.cwd(),
         path: env["PATH"],
         lingerEnabled: async () => {
             try {

@@ -41,6 +41,7 @@ function fake(over: Partial<TimerDeps> & { listTimers?: string; systemctl?: (arg
             return OK;
         },
         command: ["/usr/bin/node", "--import", "tsx", "/opt/tai/src/hosts/cli.ts"],
+        cwd: "/opt/tai",
         path: "/usr/bin:/home/u/.local/bin",
         lingerEnabled: async () => true,
         user: "u",
@@ -218,6 +219,26 @@ describe("status with no projects", () => {
     });
 });
 
+describe("the unit's working directory and kick while a run is going", () => {
+    it("starts in the folder install was run from, with % escaped, so a relative launcher flag resolves as it did", () => {
+        const { service } = renderUnits(entry(), ["/usr/bin/node", "--import", "tsx", "cli.ts"], undefined, "/svc", "/opt/100%/tai");
+        assert.match(service, /^WorkingDirectory=\/opt\/100%%\/tai$/m);
+        assert.doesNotMatch(renderUnits(entry(), ["/n"], undefined, "/svc").service, /WorkingDirectory/);
+    });
+
+    it("kick says a run is already going instead of 'it runs now'", async () => {
+        const state = join(root, "tai");
+        await acquireLock(state, { pid: 4242, now: () => new Date("2026-11-22T11:30:00Z"), isAlive: () => true });
+        const { deps, said } = fake();
+        const e = entry({ clone: join(state, "repo") });
+        await installTimer(e, deps, root);
+        said.length = 0;
+        await kickService(e, deps, root);
+        assert.match(said.join("\n"), /A run is already going \(pid 4242.*nothing new starts/);
+        assert.doesNotMatch(said.join("\n"), /it runs now/);
+    });
+});
+
 describe("installedRoot and installedState read the service-run arguments", () => {
     it("take the last match, so a launcher word that looks like a setting is not read as one", () => {
         const { service } = renderUnits(entry({ clone: "/data/svc/tai/repo" }), ["/usr/bin/node", "--import=root=/wrong", "state=/wrong/cli.ts"], "/usr/bin", "/data/svc");
@@ -287,6 +308,15 @@ describe("uninstall (TAI-772 AC-2)", () => {
         await uninstallTimer(e, deps);
         assert.match(said.join("\n"), /A run is still going \(pid 4242.*\) and was not stopped.*`tai service pause tai` ends it after its current ticket/);
         assert.ok(!calls.some((c) => c.startsWith("stop ")));
+    });
+
+    it("finds the run going in the unit's state directory even when the list's clone path was edited after install", async () => {
+        const state = join(root, "tai");
+        await acquireLock(state, { pid: 4242, now: () => new Date("2026-11-22T11:30:00Z"), isAlive: () => true });
+        const { deps, said } = fake();
+        await installTimer(entry({ clone: join(state, "repo") }), deps, root);
+        await uninstallTimer(entry({ clone: join(root, "elsewhere", "repo") }), deps);
+        assert.match(said.join("\n"), /A run is still going \(pid 4242/);
     });
 
     it("a second uninstall says there is nothing to remove and changes nothing", async () => {
