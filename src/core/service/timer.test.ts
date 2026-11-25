@@ -60,6 +60,7 @@ describe("unit files (TAI-772 AC-1)", () => {
         assert.match(service, /ExecStart=\/usr\/bin\/node \/opt\/tai\/cli\.ts service run clone=\/data\/svc\/tai\/repo state=\/data\/svc\/tai root=\/data\/svc wait=2 cap=5/);
         assert.match(service, /Environment=PATH=\/usr\/bin/);
         assert.match(timer, /OnBootSec=2min/);
+        assert.match(timer, /OnActiveSec=1min/);
         assert.match(timer, /OnUnitInactiveSec=45min/);
         assert.match(timer, /Unit=tai-dev@tai\.service/);
         assert.match(timer, /WantedBy=timers\.target/);
