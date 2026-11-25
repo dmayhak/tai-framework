@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { acquireLock } from "./lock.js";
-import { parseServiceUnitArgs } from "./real.js";
+import { parseServiceUnitArgs, realTimerDeps } from "./real.js";
 import type { ProjectEntry } from "./setup.js";
 import { readPause, writeLastRun, writeLimitedUntil, noteFailedPreflight } from "./state.js";
 import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, installedRoot, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
@@ -130,6 +130,33 @@ describe("unit files (TAI-772 AC-1)", () => {
     it("a failing systemctl call is reported with its message", async () => {
         const { deps } = fake({ systemctl: async (a) => (a[0] === "enable" ? { code: 1, stdout: "", stderr: "Unit file is masked" } : OK) });
         await assert.rejects(installTimer(entry(), deps, SVC), /`systemctl --user enable --now tai-dev@tai\.timer` failed \(exit 1\): Unit file is masked/);
+    });
+});
+
+describe("status and the root the unit was installed with", () => {
+    it("reads the pause for all where the unit's run does, and says when the given root differs", async () => {
+        const other = join(root, "other");
+        const e = entry({ clone: join(root, "tai", "repo") });
+        const { deps, said } = fake();
+        await installTimer(e, deps, root);
+        await pauseAll(root, deps);
+        said.length = 0;
+        await serviceStatus(e, deps, other);
+        const out = said.join("\n");
+        assert.match(out, /Root: the installed unit uses .* not .*other/);
+        assert.match(out, new RegExp(`PAUSED for every project \\(${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/paused\\.json\\)`));
+    });
+});
+
+describe("the real file calls (an error other than a missing file is raised, not read as absent)", () => {
+    it("readFile and removeFile give null/false only for a missing file", async () => {
+        const dir = join(root, "units");
+        await mkdir(join(dir, "folder", "inner"), { recursive: true });
+        const real = realTimerDeps({ XDG_CONFIG_HOME: root }, () => undefined, () => false, root);
+        assert.equal(await real.readFile(join(dir, "missing")), null);
+        assert.equal(await real.removeFile(join(dir, "missing")), false);
+        await assert.rejects(real.readFile(join(dir, "folder")), /EISDIR/);
+        await assert.rejects(real.removeFile(join(dir, "folder")), /./, "a folder with things in it cannot be removed as a file");
     });
 });
 

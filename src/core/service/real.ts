@@ -350,12 +350,13 @@ export function realTimerDeps(env: Env, say: (line: string) => void, aiSession: 
     return {
         platform: process.platform,
         unitDir: join(env["XDG_CONFIG_HOME"] || join(home, ".config"), "systemd", "user"),
-        readFile: (path) => readFile(path, "utf8").then((t) => t, () => null),
+        // Only a missing file means "absent": any other error (permissions, a folder in the way) is raised, not read as "not installed".
+        readFile: (path) => readFile(path, "utf8").then((t) => t, (e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? null : Promise.reject(e))),
         writeFile: async (path, text) => {
             await mkdir(dirname(path), { recursive: true });
             await writeFile(path, text);
         },
-        removeFile: (path) => rm(path).then(() => true, () => false),
+        removeFile: (path) => rm(path).then(() => true, (e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? false : Promise.reject(e))),
         systemctl,
         command: [process.execPath, ...process.execArgv, process.argv[1]!],
         path: env["PATH"],

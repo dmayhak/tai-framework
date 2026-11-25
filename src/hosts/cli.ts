@@ -1701,7 +1701,7 @@ export function renderUsage(): string {
         "                               Run the ready Dev tasks unattended (DEV-YOLO)",
         "  do-dev-tasks rules [yolo=true|false]",
         "                               Print the permission rules those runs use",
-        "  service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]",
+        "  service run clone=<path> [state=<dir>] [root=<dir>] [wait=<hours>] [cap=<tickets>]",
         "                               One guarded tick of the unattended Dev service",
         "  service setup <project> [root=<dir>] [from=<path>]",
         "                               Make the service's own clone of a listed project",
@@ -1928,7 +1928,7 @@ async function main(): Promise<void> {
         );
     }
 
-    // TAI-770: `service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]` is one guarded tick of the unattended Dev service: the
+    // TAI-770: `service run clone=<path> [state=<dir>] [root=<dir>] [wait=<hours>] [cap=<tickets>]` is one guarded tick of the unattended Dev service: the
     // command both the timer and kick-off-now call. It needs no config of its own (the clone has its own .env, and the checks that read
     // Jira run IN the clone as `service check`), so it comes before resolveConfig(). A second start while a run is going exits 0.
     if (subcommand === "service" && arg === "run") {

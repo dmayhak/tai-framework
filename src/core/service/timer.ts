@@ -9,7 +9,7 @@
  * after a suspend, linger while logged out) are checked live and recorded on the Dev ticket.
  */
 
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { DEFAULT_CAP, DEFAULT_WAIT_HOURS } from "./real.js";
 import { readLockHolder, type LockInfo } from "./lock.js";
@@ -284,10 +284,14 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: 
     }
     const holder: LockInfo | null = await readLockHolder(dir, deps.isAlive);
     say(holder ? `  Running now: pid ${holder.pid}, started ${ago(holder.startedAt, now)}` : "  Running now: no run holds the lock.");
-    const pausedAll = await readPause(root);
+    // The run reads the pause for all from the root the unit was installed with, so that is the file that matters; a different root given here is said.
+    const unitText = await deps.readFile(join(deps.unitDir, serviceUnitName(entry.key)));
+    const unitRoot = (unitText === null ? null : installedRoot(unitText)) ?? root;
+    if (resolve(unitRoot) !== resolve(root)) say(`  Root: the installed unit uses ${unitRoot}, not ${root}; the pause for every project is read from the unit's root.`);
+    const pausedAll = await readPause(unitRoot);
     const paused = await readPause(dir);
     const sinceText = (p: { readonly since: string; readonly unreadable?: boolean }): string => (p.unreadable ? "(its file could not be read, so it counts as a pause)" : `since ${ago(p.since, now)}`);
-    if (pausedAll) say(`  Pause: PAUSED for every project (${join(root, PAUSE_FILE)}) ${sinceText(pausedAll)}; \`tai service resume\` lifts it.`);
+    if (pausedAll) say(`  Pause: PAUSED for every project (${join(unitRoot, PAUSE_FILE)}) ${sinceText(pausedAll)}; \`tai service resume\` lifts it.`);
     if (paused) say(`  Pause: PAUSED ${sinceText(paused)}; \`tai service resume ${entry.key}\` lifts it.`);
     if (!pausedAll && !paused) say("  Pause: none.");
     const limited = await readLimitedUntil(dir, now);
