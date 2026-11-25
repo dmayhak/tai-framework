@@ -117,7 +117,13 @@ export async function systemdRefusal(deps: TimerDeps): Promise<string | null> {
 
 const lingerLine = (user: string): string => `Logged-out runs need linger: \`loginctl enable-linger ${user}\` (without it the timer stops when you log out).`;
 
+/** What an AI session may not do: start unattended runs (`install`, `kick`) or lift a person's safety pause (`resume`). Stopping and reading stay open to it. */
+function refuseFromAiSession(deps: Pick<TimerDeps, "aiSession">, what: string, why: string): void {
+    if (deps.aiSession()) throw new Error(`\`tai service ${what}\` is refused from an AI session: ${why} A person runs it from a plain terminal.`);
+}
+
 export async function installTimer(entry: ProjectEntry, deps: TimerDeps, root: string): Promise<{ readonly changed: boolean }> {
+    refuseFromAiSession(deps, "install", "it sets up an unattended timer that later runs with no AI marker, which a person decides.");
     const refusal = await systemdRefusal(deps);
     if (refusal) throw new Error(refusal);
     const units = renderUnits(entry, deps.command, deps.path, root);
@@ -181,9 +187,7 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
 
 /** `kick`: starts the service unit the timer starts, so a kicked run has the timer's environment and the same lock. Refused from an AI session. */
 export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: string): Promise<void> {
-    if (deps.aiSession()) {
-        throw new Error("`tai service kick` is refused from an AI session: the unattended run is refused there too, and a person starts it from a plain terminal. The timer needs no one.");
-    }
+    refuseFromAiSession(deps, "kick", "the unattended run is refused there too, and a person starts it from a plain terminal. The timer needs no one.");
     const refusal = await systemdRefusal(deps);
     if (refusal) throw new Error(refusal);
     const unit = serviceUnitName(entry.key);
@@ -212,11 +216,13 @@ export async function pauseAll(root: string, deps: Pick<TimerDeps, "now" | "say"
     deps.say(added ? `Paused every project (${file}): no tick starts a run, and a run going finishes its current ticket and then stops. \`tai service resume\` lifts it; it has no expiry. A pause set on one project is kept apart and still applies. Timers installed with another root= read another file.` : `Every project was already paused (${file}).`);
 }
 
-export async function resumeAll(root: string, deps: Pick<TimerDeps, "say">): Promise<void> {
+export async function resumeAll(root: string, deps: Pick<TimerDeps, "say" | "aiSession">): Promise<void> {
+    refuseFromAiSession(deps, "resume", "the pause is the person's safety switch, so only a person lifts it.");
     deps.say((await clearPause(root)) ? `Resumed every project (the pause for all, ${join(root, PAUSE_FILE)}). A pause set on one project, if any, still applies: \`tai service status\` shows it.` : `Every project was not paused (no pause for all in ${join(root, PAUSE_FILE)}).`);
 }
 
-export async function resumeProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "say">): Promise<void> {
+export async function resumeProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "say" | "aiSession">): Promise<void> {
+    refuseFromAiSession(deps, "resume", "the pause is the person's safety switch, so only a person lifts it.");
     for (const entry of entries) deps.say((await clearPause(stateDirOf(entry))) ? `Resumed ${entry.key}: the next tick runs as usual.` : `${entry.key} was not paused.`);
 }
 

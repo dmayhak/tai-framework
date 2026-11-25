@@ -133,6 +133,24 @@ describe("unit files (TAI-772 AC-1)", () => {
     });
 });
 
+describe("what an AI session may not do", () => {
+    it("is refused install and resume (they start unattended runs or lift the safety pause), and nothing changes; pause, uninstall and status stay open", async () => {
+        const { deps, files } = fake({ aiSession: () => true });
+        await assert.rejects(installTimer(entry(), deps, SVC), /`tai service install` is refused from an AI session/);
+        assert.equal(files.size, 0);
+        const person = fake();
+        await installTimer(entry({ clone: join(root, "tai", "repo") }), person.deps, root);
+        await pauseAll(root, person.deps);
+        const ai = { ...person.deps, aiSession: () => true };
+        await assert.rejects(resumeAll(root, ai), /`tai service resume` is refused from an AI session/);
+        await assert.rejects(resumeProjects([entry({ clone: join(root, "tai", "repo") })], ai), /refused from an AI session/);
+        assert.notEqual(await readPause(root), null, "the pause is still in force");
+        await pauseProjects([entry({ clone: join(root, "tai", "repo") })], ai);
+        await serviceStatus(entry({ clone: join(root, "tai", "repo") }), ai, root);
+        await uninstallTimer(entry({ clone: join(root, "tai", "repo") }), ai);
+    });
+});
+
 describe("status with no projects", () => {
     it("says so and still shows the pause for every project", async () => {
         const { deps, said } = fake();
