@@ -14,6 +14,7 @@ The revision history of `PROJECT_BRIEF.md`, newest first. Moved out of the brief
 * `status` shows the preflight note as FAILING, because a failed preflight exits 0 and the timer would otherwise look green while nothing runs.
 * `service setup` refuses a clone that contains the folder it was started from (`from=`, the current directory by default), and `service run` refuses one started inside the clone (both compared after symlinks are resolved): the clone is the service's own folder, never a checkout a person works in.
 * `pause` and `resume` with no project do not read `projects.json`, so the pause for every project works when the list is missing or damaged.
+* `status` with an empty project list says so and still shows the pause for every project. `uninstall` decides "not loaded" from `systemctl show --property=LoadState` (`not-found`), not from a translated message.
 * `uninstall` does not stop a run going (it names it); only the timer is stopped, and it removes nothing when stopping the timer fails for any reason but "not loaded".
 * The project list refuses a clone directly in the service root, or two clones in one folder: the folder is the project's state directory (lock, pause, run records), and the root holds the pause for every project.
 * `kick` is refused from an AI session (EpicReview decision 2). `install` prints the linger line when linger is off.

@@ -145,6 +145,16 @@ async function run(deps: TimerDeps, args: readonly string[]): Promise<SystemctlR
     return r;
 }
 
+/** True when systemd says it has no such unit (`LoadState=not-found`); false when it says anything else or cannot be asked. */
+async function unitNotLoaded(deps: TimerDeps, unit: string): Promise<boolean> {
+    try {
+        const r = await deps.systemctl(["show", "--property=LoadState", "--value", unit]);
+        return r.code === 0 && r.stdout.trim() === "not-found";
+    } catch {
+        return false;
+    }
+}
+
 export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Promise<{ readonly removed: boolean }> {
     const refusal = await systemdRefusal(deps);
     if (refusal) throw new Error(refusal);
@@ -158,7 +168,8 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
     // The service unit is NOT stopped: a run going may be between a build and a merge, and a stop would kill it there.
     const stopped = await deps.systemctl(["disable", "--now", timerUnitName(entry.key)]);
     // Only "this unit is not loaded" is fine; any other failure leaves the timer active, and deleting its files then would strand it with no way back through this command.
-    if (stopped.code !== 0 && !/not loaded|does not exist/i.test(stopped.stderr)) throw new Error(`Could not stop ${timerUnitName(entry.key)}: ${stopped.stderr.trim() || stopped.stdout.trim() || "no message"}; nothing was removed.`);
+    // Asked by LoadState (`not-found`), which systemd does not translate, not by matching its message.
+    if (stopped.code !== 0 && !(await unitNotLoaded(deps, timerUnitName(entry.key)))) throw new Error(`Could not stop ${timerUnitName(entry.key)}: ${stopped.stderr.trim() || stopped.stdout.trim() || "no message"}; nothing was removed.`);
     await deps.removeFile(timerPath);
     await deps.removeFile(servicePath);
     await run(deps, ["daemon-reload"]);
@@ -269,4 +280,15 @@ export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: 
     }
     const note = await readPreflightNote(dir);
     say(note ? `  Preflight: FAILING since ${ago(note.since, now)}: ${note.message}\n    (the timer shows green while this is so: no run starts)` : "  Preflight: no failure recorded.");
+}
+
+/** `status` for the chosen projects; with none listed it says so and still shows the pause for every project, which lives in the root. */
+export async function serviceStatusAll(entries: readonly ProjectEntry[], deps: TimerDeps, root: string, configPath: string): Promise<void> {
+    if (entries.length === 0) {
+        deps.say(`No projects are listed in ${configPath}, so no timer runs.`);
+        const pausedAll = await readPause(root);
+        deps.say(pausedAll ? `Pause: PAUSED for every project since ${pausedAll.unreadable ? "(its file could not be read, so it counts as a pause)" : pausedAll.since}; \`tai service resume\` lifts it.` : "Pause: none.");
+        return;
+    }
+    for (const entry of entries) await serviceStatus(entry, deps, root);
 }

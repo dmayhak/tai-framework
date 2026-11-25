@@ -8,7 +8,7 @@ import { acquireLock } from "./lock.js";
 import { parseServiceUnitArgs } from "./real.js";
 import type { ProjectEntry } from "./setup.js";
 import { readPause, writeLastRun, writeLimitedUntil, noteFailedPreflight } from "./state.js";
-import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
+import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
 
 let root: string;
 beforeEach(async () => {
@@ -133,6 +133,19 @@ describe("unit files (TAI-772 AC-1)", () => {
     });
 });
 
+describe("status with no projects", () => {
+    it("says so and still shows the pause for every project", async () => {
+        const { deps, said } = fake();
+        await serviceStatusAll([], deps, root, "/svc/projects.json");
+        assert.match(said.join("\n"), /No projects are listed in \/svc\/projects\.json.*\n.*Pause: none/);
+        said.length = 0;
+        await pauseAll(root, deps);
+        said.length = 0;
+        await serviceStatusAll([], deps, root, "/svc/projects.json");
+        assert.match(said.join("\n"), /PAUSED for every project/);
+    });
+});
+
 describe("uninstall (TAI-772 AC-2)", () => {
     it("removes nothing when stopping the timer fails for a reason other than 'not loaded'", async () => {
         const { deps, files } = fake();
@@ -141,7 +154,7 @@ describe("uninstall (TAI-772 AC-2)", () => {
         const bad = { ...deps, systemctl: async (a: readonly string[]) => (a[0] === "disable" ? { code: 1, stdout: "", stderr: "Failed to connect to bus: No such file or directory" } : OK) };
         await assert.rejects(uninstallTimer(entry(), bad), /Could not stop tai-dev@tai\.timer: Failed to connect to bus: No such file or directory; nothing was removed/);
         assert.deepEqual(files, before);
-        const unloaded = { ...deps, systemctl: async (a: readonly string[]) => (a[0] === "disable" ? { code: 1, stdout: "", stderr: "Unit tai-dev@tai.timer not loaded." } : OK) };
+        const unloaded = { ...deps, systemctl: async (a: readonly string[]) => (a[0] === "disable" ? { code: 1, stdout: "", stderr: "Die Einheit ist nicht geladen." } : a[0] === "show" ? { code: 0, stdout: "not-found\n", stderr: "" } : OK) };
         assert.deepEqual(await uninstallTimer(entry(), unloaded), { removed: true });
         assert.equal(files.size, 0);
     });

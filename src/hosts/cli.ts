@@ -181,7 +181,7 @@ import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resol
 import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
 import { pauseStopReason } from "../core/service/state.js";
-import { installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatus, uninstallTimer } from "../core/service/timer.js";
+import { installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatusAll, uninstallTimer } from "../core/service/timer.js";
 import { checkFailure, localPreflightFailure, realPath } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, parseServiceUnitArgs, realRefreshGit, realSetupFs, realTimerDeps, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
@@ -1977,7 +1977,7 @@ async function main(): Promise<void> {
         // `pause` and `resume` with no project act on the pause for every project, which lives in the service root; with one, on that project's own.
         if (arg === "pause") await (project === undefined ? pauseAll(root, deps) : pauseProjects(chosen, deps));
         else if (arg === "resume") await (project === undefined ? resumeAll(root, deps) : resumeProjects(chosen, deps));
-        else if (arg === "status") for (const entry of chosen) await serviceStatus(entry, deps, root);
+        else if (arg === "status") await serviceStatusAll(chosen, deps, root, configPath);
         else if (arg === "install") await installTimer(chosen[0]!, deps, root);
         else if (arg === "uninstall") await uninstallTimer(chosen[0]!, deps);
         else await kickService(chosen[0]!, deps, root);
