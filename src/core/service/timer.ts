@@ -73,12 +73,14 @@ export const installedState = (serviceUnitText: string): string | null => instal
 function installedArg(serviceUnitText: string, name: string): string | null {
     const line = serviceUnitText.split("\n").find((l) => l.startsWith("ExecStart="));
     if (!line) return null;
+    // The service-run arguments come last, after the installer's own command words (node, its flags, the script), so the last match is the setting even if one of those words looks like one.
+    let found: string | null = null;
     for (const m of line.slice("ExecStart=".length).matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)) {
         const raw = m[1] ?? m[2] ?? "";
         const word = m[1] !== undefined ? raw.replace(/\\(["\\])/g, "$1") : raw;
-        if (word.startsWith(`${name}=`)) return word.slice(name.length + 1).replace(/%%/g, "%").replace(/\$\$/g, "$");
+        if (word.startsWith(`${name}=`)) found = word.slice(name.length + 1).replace(/%%/g, "%").replace(/\$\$/g, "$");
     }
-    return null;
+    return found;
 }
 
 /**

@@ -159,3 +159,17 @@ export async function pauseStopReason(path: string): Promise<string | null> {
     const pause = await readPauseFile(path);
     return pause ? `paused by \`tai service pause\` (since ${pause.since})` : null;
 }
+
+/** TAI-772: why a run should stop between tickets (a pause in any of its stop files), or null. */
+export async function stopRequestedBy(files: readonly string[]): Promise<string | null> {
+    for (const f of files) {
+        const why = await pauseStopReason(f);
+        if (why) return why;
+    }
+    return null;
+}
+
+/** What a usage-limit wait polls each step: an interrupt, or a pause in any stop file (so a pause ends the wait). */
+export function interruptedOrPaused(interrupted: () => boolean, stopFiles: readonly string[] | undefined): () => Promise<boolean> {
+    return async () => interrupted() || (stopFiles !== undefined && (await stopRequestedBy(stopFiles)) !== null);
+}

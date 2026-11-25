@@ -8,7 +8,7 @@ import { acquireLock } from "./lock.js";
 import { parseServiceUnitArgs, realTimerDeps } from "./real.js";
 import type { ProjectEntry } from "./setup.js";
 import { readPause, writeLastRun, writeLimitedUntil, noteFailedPreflight } from "./state.js";
-import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, installedRoot, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
+import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, installedRoot, installedState, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
 
 let root: string;
 beforeEach(async () => {
@@ -215,6 +215,14 @@ describe("status with no projects", () => {
         said.length = 0;
         await serviceStatusAll([], deps, root, "/svc/projects.json");
         assert.match(said.join("\n"), /PAUSED for every project/);
+    });
+});
+
+describe("installedRoot and installedState read the service-run arguments", () => {
+    it("take the last match, so a launcher word that looks like a setting is not read as one", () => {
+        const { service } = renderUnits(entry({ clone: "/data/svc/tai/repo" }), ["/usr/bin/node", "--import=root=/wrong", "state=/wrong/cli.ts"], "/usr/bin", "/data/svc");
+        assert.equal(installedRoot(service), "/data/svc");
+        assert.equal(installedState(service), "/data/svc/tai");
     });
 });
 

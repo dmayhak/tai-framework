@@ -8,8 +8,9 @@ import { acquireLock, LOCK_FILE } from "./lock.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, runCloneWork } from "./real.js";
 import { checkFailure, credentialVariables, isInside, localPreflightFailure, missingCredential, realPath, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
-import { clearPause, pauseStopReason, readLastRun, readLimitedUntil, readPause, readPreflightNote, writeLimitedUntil, writePause } from "./state.js";
+import { clearPause, interruptedOrPaused, pauseStopReason, stopRequestedBy, readLastRun, readLimitedUntil, readPause, readPreflightNote, writeLimitedUntil, writePause } from "./state.js";
 import { runServiceTick, type ServiceTickDeps, type WorkSummary } from "./run.js";
+import { sleepUnlessInterrupted } from "../commands/usage-limit.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -489,6 +490,26 @@ describe("realPath (a symlinked clone is still the clone)", () => {
             assert.equal(isInside(await realPath(join(base, "link", "repo", "src")), await realPath(join(base, "real", "repo"))), true, "resolved, the folder is inside the clone");
         } finally {
             await rm(base, { recursive: true, force: true });
+        }
+    });
+});
+
+describe("the stop wiring of a run (TAI-772)", () => {
+    it("a pause file written during a usage-limit wait ends the wait, and an interrupt does too", async () => {
+        const d = await mkdtemp(join(tmpdir(), "tai-stopwire-"));
+        try {
+            const file = join(d, "paused.json");
+            const watching = interruptedOrPaused(() => false, [file]);
+            assert.equal(await watching(), false, "no pause: keep waiting");
+            const started = Date.now();
+            setTimeout(() => void writePause(d, new Date()), 30);
+            await sleepUnlessInterrupted(60_000, watching, 10);
+            assert.ok(Date.now() - started < 5_000, "the wait ended on the pause, not after a minute");
+            assert.match((await stopRequestedBy([join(d, "none.json"), file])) ?? "", /paused by `tai service pause`/);
+            assert.equal(await interruptedOrPaused(() => true, undefined)(), true, "an interrupt ends it with no stop files");
+            assert.equal(await interruptedOrPaused(() => false, undefined)(), false);
+        } finally {
+            await rm(d, { recursive: true, force: true });
         }
     });
 });

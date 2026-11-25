@@ -180,7 +180,7 @@ import { servicePickupReason, stillToDoReason } from "../core/commands/service-p
 import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey, summarizeWorked, type DevTask, type RunSummary } from "../core/commands/do-dev-tasks.js";
 import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
-import { pauseStopReason } from "../core/service/state.js";
+import { interruptedOrPaused, stopRequestedBy } from "../core/service/state.js";
 import { installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatusAll, uninstallTimer } from "../core/service/timer.js";
 import { checkFailure, localPreflightFailure, realPath } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
@@ -806,15 +806,6 @@ export function renderChangeNotes(notes: readonly BriefingChangeNote[]): string 
                 : `(note: ${n.key}'s ${fields} changed since it was last read here — worth a fresh look.)`;
         })
         .join("\n");
-}
-
-/** TAI-772: why a run should stop between tickets (a pause in any of its stop files), or null. */
-async function stopRequestedBy(files: readonly string[]): Promise<string | null> {
-    for (const f of files) {
-        const why = await pauseStopReason(f);
-        if (why) return why;
-    }
-    return null;
 }
 
 /** TAI-395: a grooming turn is the same shape as a work turn -- persona heading, her instructions, `---`, the briefing. */
@@ -1932,7 +1923,11 @@ async function main(): Promise<void> {
     // command both the timer and kick-off-now call. It needs no config of its own (the clone has its own .env, and the checks that read
     // Jira run IN the clone as `service check`), so it comes before resolveConfig(). A second start while a run is going exits 0.
     if (subcommand === "service" && arg === "run") {
-        const { clonePath, stateDir, rootDir, waitHours, cap } = parseServiceRunArgs(rest, process.env);
+        const parsed = parseServiceRunArgs(rest, process.env);
+        const { clonePath, waitHours, cap } = parsed;
+        // Symlinks resolved, so a state directory that is a link to the root is seen as the root (the two pauses must be two files).
+        const stateDir = await realPath(parsed.stateDir);
+        const rootDir = await realPath(parsed.rootDir);
         const result = await runServiceTick({
             stateDir,
             rootDir,
@@ -2649,7 +2644,7 @@ async function main(): Promise<void> {
             ...(waitHours !== undefined ? { waitHours } : {}),
             ...(maxTickets !== undefined ? { maxTickets } : {}),
             ...(pickup === "service" ? { recheckToDo: (task: DevTask) => stillToDoReason(config.backend.workTracker, task.issue) } : {}),
-            sleep: (ms) => sleepUnlessInterrupted(ms, async () => wasInterrupted() || (stopFiles !== undefined && (await stopRequestedBy(stopFiles)) !== null)),
+            sleep: (ms) => sleepUnlessInterrupted(ms, interruptedOrPaused(wasInterrupted, stopFiles)),
             say: (line) => console.log(line),
             prepare: async (task) => {
                 await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await pauses.forPrepare(task.issue.key));
