@@ -151,7 +151,7 @@ export async function installTimer(entry: ProjectEntry, deps: TimerDeps, root: s
     await run(deps, ["enable", "--now", timerUnitName(entry.key)]);
     // `enable --now` starts nothing on a timer that is already active, so a changed interval would not be in force: restart the timer (never the service, which may be mid-run).
     if (changed) await run(deps, ["restart", timerUnitName(entry.key)]);
-    deps.say(changed ? `Installed ${timerUnitName(entry.key)} (every ${entry.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES} minutes after a run ends) and ${serviceUnitName(entry.key)} in ${deps.unitDir}. The timer was (re)started, so a tick runs about a minute from now.` : `Already installed: ${timerUnitName(entry.key)} (the unit files are as they would be written); the timer is enabled.`);
+    deps.say(changed ? `Installed ${timerUnitName(entry.key)} (every ${entry.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES} minutes after a run ends) and ${serviceUnitName(entry.key)} in ${deps.unitDir}, running ${deps.command.join(" ")} (the program and checkout this install was run from: install again from the right one if that is not it). The timer was (re)started, so a tick runs about a minute from now.` : `Already installed: ${timerUnitName(entry.key)} (the unit files are as they would be written, running ${deps.command.join(" ")}); the timer is enabled.`);
     deps.say(`Look at it with \`tai service status ${entry.key}\`; its log is \`journalctl --user -u ${serviceUnitName(entry.key)}\`.`);
     if ((await deps.lingerEnabled()) === false) deps.say(lingerLine(deps.user));
     return { changed };

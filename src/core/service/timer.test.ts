@@ -86,6 +86,7 @@ describe("unit files (TAI-772 AC-1)", () => {
     it("install writes both units, reloads and enables the timer, and a re-run gives the same files without a reload", async () => {
         const { deps, files, calls, said } = fake();
         assert.deepEqual(await installTimer(entry(), deps, SVC), { changed: true });
+        assert.ok(said.some((l) => l.includes("running /usr/bin/node --import tsx /opt/tai/src/hosts/cli.ts")), "install names the command the unit runs");
         assert.deepEqual([...files.keys()].sort(), ["/home/u/.config/systemd/user/tai-dev@tai.service", "/home/u/.config/systemd/user/tai-dev@tai.timer"]);
         assert.deepEqual(calls.slice(-3), ["daemon-reload", "enable --now tai-dev@tai.timer", "restart tai-dev@tai.timer"], "a changed unit restarts the timer, never the service, so a new interval is in force");
         const before = new Map(files);
