@@ -13,6 +13,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { DEFAULT_CAP, DEFAULT_WAIT_HOURS } from "./real.js";
 import { readLockHolder, type LockInfo } from "./lock.js";
+import { isInside, realPath } from "./preflight.js";
 import type { ProjectEntry } from "./setup.js";
 import { PAUSE_FILE, readLastRun, readLimitedUntil, readPause, readPreflightNote, clearPause, writePause } from "./state.js";
 
@@ -164,6 +165,8 @@ export async function installTimer(entry: ProjectEntry, deps: TimerDeps, root: s
     const refusal = await systemdRefusal(deps);
     if (refusal) throw new Error(refusal);
     const units = renderUnits(entry, deps.command, deps.path, root, deps.cwd);
+    // The unit starts in the folder install ran from, and a run started inside its own clone is refused by the preflight (the clone is the service's, never a place a person works): say so now, not one tick later.
+    if (isInside(await realPath(deps.cwd), await realPath(entry.clone))) deps.say(`WARNING: install was run from inside the clone ${entry.clone}, so every tick will be refused by the preflight (a run is never started inside its own clone). Run \`tai service install ${entry.key}\` again from the TAI checkout.`);
     const servicePath = join(deps.unitDir, serviceUnitName(entry.key));
     const timerPath = join(deps.unitDir, timerUnitName(entry.key));
     let changed = false;
@@ -242,12 +245,13 @@ export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: st
     if (installed === null) throw new Error(`${unit} is not installed: run \`tai service install ${entry.key}\` first.`);
     // The run reads the pause for all from the root the unit was installed with, so that is the one to look at, not the one this command was given.
     const pausedAll = await readPause(installedRoot(installed) ?? root);
-    const paused = pausedAll ?? (await readPause(await effectiveStateDir(entry, deps)));
+    const stateDir = await effectiveStateDir(entry, deps); // once: it says so when the unit's differs from the list's
+    const paused = pausedAll ?? (await readPause(stateDir));
     // A paused project would start, log a skip and exit: say so instead of starting it.
     if (paused) throw new Error(`${pausedAll ? "Every project is" : `${entry.key} is`} paused (since ${paused.since}): a run would start nothing, so it was not started. \`tai service resume${pausedAll ? "" : ` ${entry.key}`}\` first.`);
     // `--no-block`: the run can last hours, and the lock (not this command) is what keeps a second one out.
     // A oneshot service that is already active ignores a start, so a run going is said instead of "it runs now".
-    const going = await readLockHolder(await effectiveStateDir(entry, deps), deps.isAlive);
+    const going = await readLockHolder(stateDir, deps.isAlive);
     await run(deps, ["start", "--no-block", unit]);
     if (going) {
         deps.say(`A run is already going (pid ${going.pid}, started ${going.startedAt}): ${unit} was asked to start, but a second run cannot hold the lock, so nothing new starts. It ends on its own.`);

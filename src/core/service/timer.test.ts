@@ -239,6 +239,25 @@ describe("the unit's working directory and kick while a run is going", () => {
     });
 });
 
+describe("install from inside the clone, and kick after a clone path edit", () => {
+    it("warns at install time that every tick would be refused", async () => {
+        const { deps, said } = fake({ cwd: join(root, "tai", "repo", "sub") });
+        await installTimer(entry({ clone: join(root, "tai", "repo") }), deps, root);
+        assert.match(said.join("\n"), /WARNING: install was run from inside the clone .*every tick will be refused/);
+        const quiet = fake();
+        await installTimer(entry({ clone: join(root, "tai", "repo") }), quiet.deps, root);
+        assert.doesNotMatch(quiet.said.join("\n"), /WARNING/);
+    });
+
+    it("kick says the unit-versus-list difference once", async () => {
+        const { deps, said } = fake();
+        await installTimer(entry({ clone: join(root, "tai", "repo") }), deps, root);
+        said.length = 0;
+        await kickService(entry({ clone: join(root, "elsewhere", "repo") }), deps, root);
+        assert.equal(said.filter((l) => /installed unit uses the state directory/.test(l)).length, 1);
+    });
+});
+
 describe("installedRoot and installedState read the service-run arguments", () => {
     it("take the last match, so a launcher word that looks like a setting is not read as one", () => {
         const { service } = renderUnits(entry({ clone: "/data/svc/tai/repo" }), ["/usr/bin/node", "--import=root=/wrong", "state=/wrong/cli.ts"], "/usr/bin", "/data/svc");
