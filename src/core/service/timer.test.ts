@@ -218,6 +218,26 @@ describe("status with no projects", () => {
     });
 });
 
+describe("a clone path edited after install (the unit keeps the old state=)", () => {
+    it("kick, status, pause and resume use the unit's state directory and say so", async () => {
+        const { deps, said, files } = fake();
+        const old = entry({ clone: join(root, "tai", "repo") });
+        const { service } = renderUnits(old, ["/usr/bin/node", "/opt/tai/cli.ts"], "/usr/bin", root);
+        files.set(join(deps.unitDir, "tai-dev@tai.service"), service);
+        const moved = entry({ clone: join(root, "elsewhere", "repo") });
+        await pauseProjects([moved], deps);
+        assert.notEqual(await readPause(join(root, "tai")), null, "the pause is where the unit's runs look");
+        assert.equal(await readPause(join(root, "elsewhere")), null);
+        assert.match(said.join("\n"), /installed unit uses the state directory .*tai, but the project list now gives .*elsewhere.*install tai/);
+        await assert.rejects(kickService(moved, deps, root), /tai is paused/);
+        said.length = 0;
+        await serviceStatus(moved, deps, root);
+        assert.match(said.join("\n"), /Pause: PAUSED/);
+        await resumeProjects([moved], deps);
+        assert.equal(await readPause(join(root, "tai")), null);
+    });
+});
+
 describe("status with a problem in the project list", () => {
     it("prints each problem as a line and still shows the projects", async () => {
         const { deps, said } = fake();
@@ -323,7 +343,6 @@ describe("kick (TAI-772 AC-3)", () => {
 describe("pause and resume (TAI-772 AC-4)", () => {
     it("a project's pause is its own file, keeps its first time, and resume undoes it", async () => {
         const a = entry({ key: "a", clone: join(root, "a", "repo") });
-        const b = entry({ key: "b", clone: join(root, "b", "repo") });
         const { deps, said } = fake();
         await pauseProjects([a], deps);
         assert.notEqual(await readPause(join(root, "a")), null);
@@ -334,7 +353,6 @@ describe("pause and resume (TAI-772 AC-4)", () => {
         assert.equal(await readPause(join(root, "a")), null);
         await resumeProjects([a], deps);
         assert.ok(said.includes("a was not paused."));
-        assert.equal(b.key, "b");
     });
 
     it("a pause for every project is one file in the service root, apart from the projects' own, and survives a project being added", async () => {

@@ -66,15 +66,32 @@ export function unitWord(word: string, expandsVariables = true): string {
 }
 
 /** The `root=` an installed service unit was written with (the words of its `ExecStart=` line, unquoted and unescaped as systemd reads them), or null when it has none. */
-export function installedRoot(serviceUnitText: string): string | null {
+export const installedRoot = (serviceUnitText: string): string | null => installedArg(serviceUnitText, "root");
+/** The `state=` an installed service unit was written with: where its runs keep the lock and read the project's pause. */
+export const installedState = (serviceUnitText: string): string | null => installedArg(serviceUnitText, "state");
+
+function installedArg(serviceUnitText: string, name: string): string | null {
     const line = serviceUnitText.split("\n").find((l) => l.startsWith("ExecStart="));
     if (!line) return null;
     for (const m of line.slice("ExecStart=".length).matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)) {
         const raw = m[1] ?? m[2] ?? "";
         const word = m[1] !== undefined ? raw.replace(/\\(["\\])/g, "$1") : raw;
-        if (word.startsWith("root=")) return word.slice("root=".length).replace(/%%/g, "%").replace(/\$\$/g, "$");
+        if (word.startsWith(`${name}=`)) return word.slice(name.length + 1).replace(/%%/g, "%").replace(/\$\$/g, "$");
     }
     return null;
+}
+
+/**
+ * The state directory the project's runs use: the `state=` its installed unit carries, else the one its entry gives. They differ when a clone path was
+ * edited in the list after install; the unit keeps the old one until `install` is run again, so a pause or a status read from the new one would miss the run.
+ */
+async function effectiveStateDir(entry: ProjectEntry, deps: Pick<TimerDeps, "readFile" | "unitDir" | "say">): Promise<string> {
+    const text = await deps.readFile(join(deps.unitDir, serviceUnitName(entry.key)));
+    const unitState = text === null ? null : installedState(text);
+    const listed = stateDirOf(entry);
+    if (unitState === null || resolve(unitState) === resolve(listed)) return listed;
+    deps.say(`${entry.key}: the installed unit uses the state directory ${unitState}, but the project list now gives ${listed}; the unit's is used here because that is where its runs look. \`tai service install ${entry.key}\` brings the unit up to date.`);
+    return unitState;
 }
 
 /** The service and timer unit files for a project, from its config entry. The same entry gives the same text, so a re-run changes nothing. */
@@ -202,7 +219,7 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
     await deps.removeFile(servicePath);
     await run(deps, ["daemon-reload"]);
     deps.say(`Removed ${timerUnitName(entry.key)} and ${serviceUnitName(entry.key)}. The clone and its state are left as they were.`);
-    const going = await readLockHolder(stateDirOf(entry), deps.isAlive);
+    const going = await readLockHolder(await effectiveStateDir(entry, deps), deps.isAlive);
     if (going) deps.say(`A run is still going (pid ${going.pid}, started ${going.startedAt}) and was not stopped: it ends on its own, or \`tai service pause ${entry.key}\` ends it after its current ticket. No new tick will start.`);
     return { removed: true };
 }
@@ -217,7 +234,7 @@ export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: st
     if (installed === null) throw new Error(`${unit} is not installed: run \`tai service install ${entry.key}\` first.`);
     // The run reads the pause for all from the root the unit was installed with, so that is the one to look at, not the one this command was given.
     const pausedAll = await readPause(installedRoot(installed) ?? root);
-    const paused = pausedAll ?? (await readPause(stateDirOf(entry)));
+    const paused = pausedAll ?? (await readPause(await effectiveStateDir(entry, deps)));
     // A paused project would start, log a skip and exit: say so instead of starting it.
     if (paused) throw new Error(`${pausedAll ? "Every project is" : `${entry.key} is`} paused (since ${paused.since}): a run would start nothing, so it was not started. \`tai service resume${pausedAll ? "" : ` ${entry.key}`}\` first.`);
     // `--no-block`: the run can last hours, and the lock (not this command) is what keeps a second one out.
@@ -226,9 +243,9 @@ export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: st
 }
 
 /** `pause`: one file per project in its state directory. Pausing twice keeps the first time. */
-export async function pauseProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "now" | "say">): Promise<void> {
+export async function pauseProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "now" | "say" | "readFile" | "unitDir">): Promise<void> {
     for (const entry of entries) {
-        const added = await writePause(stateDirOf(entry), deps.now());
+        const added = await writePause(await effectiveStateDir(entry, deps), deps.now());
         deps.say(added ? `Paused ${entry.key}: no tick starts a run, and a run going finishes its current ticket and then stops. \`tai service resume ${entry.key}\` lifts it; it has no expiry.` : `${entry.key} was already paused.`);
     }
 }
@@ -245,9 +262,9 @@ export async function resumeAll(root: string, deps: Pick<TimerDeps, "say" | "aiS
     deps.say((await clearPause(root)) ? `Resumed every project (the pause for all, ${join(root, PAUSE_FILE)}). A pause set on one project, if any, still applies: \`tai service status\` shows it.` : `No pause for every project was set (${join(root, PAUSE_FILE)}).`);
 }
 
-export async function resumeProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "say" | "aiSession">): Promise<void> {
+export async function resumeProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "say" | "aiSession" | "readFile" | "unitDir">): Promise<void> {
     refuseFromAiSession(deps, "resume", "the pause is the person's safety switch, so only a person lifts it.");
-    for (const entry of entries) deps.say((await clearPause(stateDirOf(entry))) ? `Resumed ${entry.key}: the next tick runs as usual.` : `${entry.key} was not paused.`);
+    for (const entry of entries) deps.say((await clearPause(await effectiveStateDir(entry, deps))) ? `Resumed ${entry.key}: the next tick runs as usual.` : `${entry.key} was not paused.`);
 }
 
 /** The line `list-timers` gives for a timer, as "NEXT LEFT LAST PASSED" without its two trailing unit names; "n/a" columns stay as they are. */
@@ -269,7 +286,7 @@ function ago(from: string, now: Date): string {
  * exits 0, so the timer looks green while no run starts: its note is shown here (the PR 59 review).
  */
 export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: string): Promise<void> {
-    const dir = stateDirOf(entry);
+    const dir = await effectiveStateDir(entry, deps);
     const now = deps.now();
     const say = deps.say;
     say(`${entry.key}`);

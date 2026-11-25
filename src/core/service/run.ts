@@ -8,6 +8,7 @@
  * assumptions about a local process, so an orchestrator or a cloud runner can call it later.
  */
 
+import { resolve } from "node:path";
 import { acquireLock, alreadyRunningMessage, type LockDeps } from "./lock.js";
 import { clearLimitedUntil, clearPreflightNote, noteFailedPreflight, readLimitedUntil, readPause, writeLastRun, writeLimitedUntil } from "./state.js";
 import type { RefreshOutcome } from "./refresh.js";
@@ -63,6 +64,8 @@ function endReason(summary: WorkSummary, limitedUntil: string | null): string {
 }
 
 export async function runServiceTick(deps: ServiceTickDeps): Promise<TickResult> {
+    // The project's pause and the pause for every project must be two files: the project list refuses a clone directly in the root, and so does a hand-typed run.
+    if (deps.rootDir && resolve(deps.rootDir) === resolve(deps.stateDir)) throw new Error(`The state directory ${deps.stateDir} is the service root: the project's pause and the pause for every project would be one file, so \`resume <project>\` could not lift a pause set for all. Give the project its own folder (clone=<root>/<project>/repo).`);
     const lock = await acquireLock(deps.stateDir, deps.lock);
     if (!lock.acquired) {
         deps.say(alreadyRunningMessage(lock.held));

@@ -239,6 +239,12 @@ describe("runServiceTick", () => {
         assert.equal((await runServiceTick(deps)).status, "ran");
     });
 
+    it("refuses a state directory that is the service root, where the two pauses would be one file", async () => {
+        const { deps, calls } = setup({ rootDir: dir });
+        await assert.rejects(runServiceTick(deps), /is the service root.*resume <project>/);
+        assert.deepEqual([calls.preflight, calls.refresh, calls.work], [0, 0, 0]);
+    });
+
     it("a pause for every project, kept in the service root, stops this project's tick too, and says which it is (TAI-772)", async () => {
         const rootDir = join(dir, "root");
         await writePause(rootDir, new Date("2026-11-18T07:00:00Z"));
