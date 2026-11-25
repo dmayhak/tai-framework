@@ -8,7 +8,7 @@ import { acquireLock } from "./lock.js";
 import { parseServiceUnitArgs } from "./real.js";
 import type { ProjectEntry } from "./setup.js";
 import { readPause, writeLastRun, writeLimitedUntil, noteFailedPreflight } from "./state.js";
-import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
+import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, installedRoot, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
 
 let root: string;
 beforeEach(async () => {
@@ -130,6 +130,28 @@ describe("unit files (TAI-772 AC-1)", () => {
     it("a failing systemctl call is reported with its message", async () => {
         const { deps } = fake({ systemctl: async (a) => (a[0] === "enable" ? { code: 1, stdout: "", stderr: "Unit file is masked" } : OK) });
         await assert.rejects(installTimer(entry(), deps, SVC), /`systemctl --user enable --now tai-dev@tai\.timer` failed \(exit 1\): Unit file is masked/);
+    });
+});
+
+describe("kick and the root the unit was installed with", () => {
+    it("reads the root back out of the unit text, quoted or not, with its escapes undone", () => {
+        const e = entry();
+        for (const r of ["/svc", "/my svc/100%/a$b/\"q\""]) assert.equal(installedRoot(renderUnits(e, ["/usr/bin/node", "cli.ts"], undefined, r).service), r);
+        assert.equal(installedRoot("[Service]\nType=oneshot\n"), null);
+    });
+
+    it("looks for the pause for all where the unit's run will, not where kick was pointed", async () => {
+        const other = join(root, "other");
+        const e = entry({ clone: join(root, "tai", "repo") });
+        const { deps, calls } = fake();
+        await installTimer(e, deps, root);
+        await pauseAll(root, deps);
+        calls.length = 0;
+        await assert.rejects(kickService(e, deps, other), /Every project is paused/, "kick was given another root, but the unit reads this one");
+        await resumeAll(root, deps);
+        await pauseAll(other, deps);
+        await kickService(e, deps, other);
+        assert.ok(calls.some((c) => c.startsWith("start")), "a pause in a root the unit does not read does not stop the start");
     });
 });
 

@@ -65,6 +65,18 @@ export function unitWord(word: string, expandsVariables = true): string {
     return /^[A-Za-z0-9_./:@=,+-]+$/.test(word) ? escaped : `"${escaped}"`;
 }
 
+/** The `root=` an installed service unit was written with (the words of its `ExecStart=` line, unquoted and unescaped as systemd reads them), or null when it has none. */
+export function installedRoot(serviceUnitText: string): string | null {
+    const line = serviceUnitText.split("\n").find((l) => l.startsWith("ExecStart="));
+    if (!line) return null;
+    for (const m of line.slice("ExecStart=".length).matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)) {
+        const raw = m[1] ?? m[2] ?? "";
+        const word = m[1] !== undefined ? raw.replace(/\\(["\\])/g, "$1") : raw;
+        if (word.startsWith("root=")) return word.slice("root=".length).replace(/%%/g, "%").replace(/\$\$/g, "$");
+    }
+    return null;
+}
+
 /** The service and timer unit files for a project, from its config entry. The same entry gives the same text, so a re-run changes nothing. */
 export function renderUnits(entry: ProjectEntry, command: readonly string[], path: string | undefined, root: string): { readonly service: string; readonly timer: string } {
     const interval = entry.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES;
@@ -191,8 +203,10 @@ export async function kickService(entry: ProjectEntry, deps: TimerDeps, root: st
     const refusal = await systemdRefusal(deps);
     if (refusal) throw new Error(refusal);
     const unit = serviceUnitName(entry.key);
-    if ((await deps.readFile(join(deps.unitDir, unit))) === null) throw new Error(`${unit} is not installed: run \`tai service install ${entry.key}\` first.`);
-    const pausedAll = await readPause(root);
+    const installed = await deps.readFile(join(deps.unitDir, unit));
+    if (installed === null) throw new Error(`${unit} is not installed: run \`tai service install ${entry.key}\` first.`);
+    // The run reads the pause for all from the root the unit was installed with, so that is the one to look at, not the one this command was given.
+    const pausedAll = await readPause(installedRoot(installed) ?? root);
     const paused = pausedAll ?? (await readPause(stateDirOf(entry)));
     // A paused project would start, log a skip and exit: say so instead of starting it.
     if (paused) throw new Error(`${pausedAll ? "Every project is" : `${entry.key} is`} paused (since ${paused.since}): a run would start nothing, so it was not started. \`tai service resume${pausedAll ? "" : ` ${entry.key}`}\` first.`);
