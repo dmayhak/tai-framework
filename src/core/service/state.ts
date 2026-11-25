@@ -134,7 +134,7 @@ export async function writePause(dir: string, now: Date): Promise<boolean> {
     await mkdir(dir, { recursive: true });
     const target = join(dir, PAUSE_FILE);
     const temp = `${target}.${process.pid}.tmp`;
-    // Only a folder needs removing: rename replaces a damaged file atomically, so the pause is never absent in between.
+    // A damaged file is replaced by the rename alone, so the pause is never absent. A folder cannot be renamed over, so it is removed first: only in that odd case is there a moment with no pause.
     if (existing && (await stat(target).then((st) => st.isDirectory(), () => false))) await rm(target, { force: true, recursive: true });
     await writeFile(temp, `${JSON.stringify({ since: now.toISOString() } satisfies Pause, null, 2)}\n`);
     await rename(temp, target);
