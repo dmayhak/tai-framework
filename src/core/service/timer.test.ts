@@ -123,6 +123,9 @@ describe("unit files (TAI-772 AC-1)", () => {
         const refused = fake({ systemctl: async (a) => (a[0] === "is-system-running" ? { code: 1, stdout: "", stderr: "Verbindung abgelehnt" } : OK) });
         await assert.rejects(installTimer(entry(), refused.deps, SVC), /cannot reach a user manager/, "any stderr, in any wording, is a refusal");
         assert.equal(refused.files.size, 0);
+        const warned = fake({ systemctl: async (a) => (a[0] === "is-system-running" ? { code: 0, stdout: "running\n", stderr: "a locale warning" } : OK) });
+        await installTimer(entry(), warned.deps, SVC);
+        assert.ok(warned.files.size > 0, "a warning beside a working answer is not a refusal");
         const degraded = fake({ systemctl: async (a) => (a[0] === "is-system-running" ? { code: 1, stdout: "degraded\n", stderr: "" } : OK) });
         await installTimer(entry(), degraded.deps, SVC);
         assert.ok(degraded.files.size > 0, "a degraded user manager is still one");
@@ -247,11 +250,20 @@ describe("uninstall (TAI-772 AC-2)", () => {
         assert.ok(!calls.some((c) => c.startsWith("stop ")));
     });
 
-    it("a second uninstall says there is nothing to remove and touches nothing", async () => {
-        const { deps, calls, said } = fake();
+    it("a second uninstall says there is nothing to remove and changes nothing", async () => {
+        const { deps, calls, said } = fake({ systemctl: async (a) => (a[0] === "disable" ? { code: 1, stdout: "", stderr: "not loaded" } : a[0] === "show" ? { code: 0, stdout: "not-found\n", stderr: "" } : OK) });
         assert.deepEqual(await uninstallTimer(entry(), deps), { removed: false });
-        assert.deepEqual(calls.filter((c) => !c.startsWith("--version") && c !== "is-system-running"), []);
+        assert.ok(!calls.some((c) => c.startsWith("daemon-reload") || c.startsWith("stop")));
         assert.ok(said.some((l) => /Nothing to remove/.test(l)));
+    });
+
+    it("with the files gone but the timer still loaded in systemd, stops it instead of reporting success", async () => {
+        const { deps, calls, said } = fake();
+        assert.deepEqual(await uninstallTimer(entry(), deps), { removed: true });
+        assert.ok(calls.includes("disable --now tai-dev@tai.timer") && calls.includes("daemon-reload"));
+        assert.ok(said.some((l) => /already gone, but systemd still had tai-dev@tai\.timer loaded/.test(l)));
+        const bad = fake({ systemctl: async (a) => (a[0] === "disable" ? { code: 1, stdout: "", stderr: "Failed to connect to bus" } : OK) });
+        await assert.rejects(uninstallTimer(entry(), bad.deps), /Could not stop tai-dev@tai\.timer.*nothing was changed/);
     });
 });
 
@@ -326,7 +338,7 @@ describe("pause and resume (TAI-772 AC-4)", () => {
         assert.equal(await readPause(root), null, "the pause for all is lifted");
         assert.notEqual(await readPause(join(root, "a")), null, "the project's own pause is still there");
         await resumeAll(root, deps);
-        assert.ok(said.some((l) => /no pause for all in .*paused\.json/.test(l)));
+        assert.ok(said.some((l) => /No pause for every project was set \(.*paused\.json\)/.test(l)));
     });
 });
 

@@ -117,8 +117,8 @@ export async function systemdRefusal(deps: TimerDeps): Promise<string | null> {
         const r = await deps.systemctl(["--version"]);
         if (r.code === 0) {
             const bus = await deps.systemctl(["is-system-running"]);
-            // "degraded" and the like print on stdout; anything on stderr means systemctl could not ask a user manager at all (no bus, a refused connection, another locale's wording).
-            if (bus.stderr.trim() !== "") return `\`systemctl --user\` cannot reach a user manager here (${bus.stderr.trim().split("\n")[0]}); nothing was changed.`;
+            // "degraded" and the like print on stdout; a failure with nothing on stdout and a message on stderr means systemctl could not ask a user manager at all (no bus, a refused connection, another locale's wording); a warning beside a working answer does not refuse.
+            if (bus.code !== 0 && bus.stdout.trim() === "" && bus.stderr.trim() !== "") return `\`systemctl --user\` cannot reach a user manager here (${bus.stderr.trim().split("\n")[0]}); nothing was changed.`;
             return null;
         }
     } catch {
@@ -179,6 +179,14 @@ export async function uninstallTimer(entry: ProjectEntry, deps: TimerDeps): Prom
     const servicePath = join(deps.unitDir, serviceUnitName(entry.key));
     const timerPath = join(deps.unitDir, timerUnitName(entry.key));
     if ((await deps.readFile(servicePath)) === null && (await deps.readFile(timerPath)) === null) {
+        // No files, but systemd may still have the timer loaded (files deleted by hand, or a reload that failed): stop it rather than report success.
+        const stopped = await deps.systemctl(["disable", "--now", timerUnitName(entry.key)]);
+        if (stopped.code === 0) {
+            await run(deps, ["daemon-reload"]);
+            deps.say(`The unit files for ${entry.key} were already gone, but systemd still had ${timerUnitName(entry.key)} loaded: it is stopped and disabled now.`);
+            return { removed: true };
+        }
+        if (!(await unitNotLoaded(deps, timerUnitName(entry.key)))) throw new Error(`Could not stop ${timerUnitName(entry.key)}: ${stopped.stderr.trim() || stopped.stdout.trim() || "no message"}; nothing was changed.`);
         deps.say(`Nothing to remove: ${timerUnitName(entry.key)} and ${serviceUnitName(entry.key)} are not installed.`);
         return { removed: false };
     }
@@ -232,7 +240,7 @@ export async function pauseAll(root: string, deps: Pick<TimerDeps, "now" | "say"
 
 export async function resumeAll(root: string, deps: Pick<TimerDeps, "say" | "aiSession">): Promise<void> {
     refuseFromAiSession(deps, "resume", "the pause is the person's safety switch, so only a person lifts it.");
-    deps.say((await clearPause(root)) ? `Resumed every project (the pause for all, ${join(root, PAUSE_FILE)}). A pause set on one project, if any, still applies: \`tai service status\` shows it.` : `Every project was not paused (no pause for all in ${join(root, PAUSE_FILE)}).`);
+    deps.say((await clearPause(root)) ? `Resumed every project (the pause for all, ${join(root, PAUSE_FILE)}). A pause set on one project, if any, still applies: \`tai service status\` shows it.` : `No pause for every project was set (${join(root, PAUSE_FILE)}).`);
 }
 
 export async function resumeProjects(entries: readonly ProjectEntry[], deps: Pick<TimerDeps, "say" | "aiSession">): Promise<void> {

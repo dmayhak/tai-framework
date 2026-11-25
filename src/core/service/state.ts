@@ -136,8 +136,13 @@ export async function writePause(dir: string, now: Date): Promise<boolean> {
     const temp = `${target}.${process.pid}.tmp`;
     // A damaged file is replaced by the rename alone, so the pause is never absent. A folder cannot be renamed over, so it is removed first: only in that odd case is there a moment with no pause.
     if (existing && (await stat(target).then((st) => st.isDirectory(), () => false))) await rm(target, { force: true, recursive: true });
-    await writeFile(temp, `${JSON.stringify({ since: now.toISOString() } satisfies Pause, null, 2)}\n`);
-    await rename(temp, target);
+    try {
+        await writeFile(temp, `${JSON.stringify({ since: now.toISOString() } satisfies Pause, null, 2)}\n`);
+        await rename(temp, target);
+    } catch (e) {
+        await rm(temp, { force: true }).catch(() => undefined); // no stray temporary file when the write or rename fails
+        throw e;
+    }
     return true;
 }
 
