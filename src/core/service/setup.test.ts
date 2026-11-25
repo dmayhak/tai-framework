@@ -24,6 +24,13 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
         assert.equal(b!.clone, "/svc/b/repo");
     });
 
+    it("with only=, a clash between other projects does not block acting on a project that is fine", () => {
+        const text = JSON.stringify({ projects: [{ ...ENTRY, key: "good" }, { key: "b", remote: "r", clone: "/x/b" }, { key: "c", remote: "r", clone: "/x/c" }, { key: "d", remote: "r", clone: "repo" }] });
+        assert.throws(() => parseProjects(text, ROOT, CONFIG), /shares its folder/, "the whole list is checked when no project is named");
+        assert.equal(parseProjects(text, ROOT, CONFIG, undefined, "good").length, 4);
+        assert.throws(() => parseProjects(text, ROOT, CONFIG, undefined, "c"), /shares its folder \/x with project "b"/, "but a clash that involves the project still stops it");
+    });
+
     it("refuses a clone directly in the root (it would share the pause for every project) and two clones in one folder", () => {
         assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "repo" }] }), ROOT, CONFIG), /sits directly in the service root/);
         assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/x/a" }, { key: "b", remote: "r", clone: "/x/b" }] }), ROOT, CONFIG), /shares its folder \/x with project "tai"/);

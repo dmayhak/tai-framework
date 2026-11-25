@@ -51,8 +51,8 @@ function positive(value: unknown, field: string, whole: boolean, where: string):
     return value;
 }
 
-/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root; a leading `~/` is the home directory. */
-export function parseProjects(text: string, root: string, configPath: string, home: string = homedir()): readonly ProjectEntry[] {
+/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root; a leading `~/` is the home directory. With `only`, a clone folder that clashes (in the root, or shared) is a problem only when it involves that project, so one bad entry does not block acting on another. */
+export function parseProjects(text: string, root: string, configPath: string, home: string = homedir(), only?: string): readonly ProjectEntry[] {
     let data: unknown;
     try {
         data = JSON.parse(text);
@@ -63,7 +63,8 @@ export function parseProjects(text: string, root: string, configPath: string, ho
     if (!Array.isArray(list)) throw new Error(`${configPath} must hold a "projects" list. An entry looks like: ${ENTRY_SHAPE}`);
     const seen = new Set<string>();
     const stateDirs = new Map<string, string>();
-    return list.map((raw, i): ProjectEntry => {
+    const clashes: { readonly keys: readonly string[]; readonly message: string }[] = [];
+    const entries = list.map((raw, i): ProjectEntry => {
         const where = `${configPath}, entry ${i + 1}`;
         if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`${where}: an entry is an object. It looks like: ${ENTRY_SHAPE}`);
         const e = raw as Record<string, unknown>;
@@ -80,13 +81,17 @@ export function parseProjects(text: string, root: string, configPath: string, ho
         const path = given === undefined ? undefined : expandHome(given, home);
         const clone = path === undefined ? join(root, e["key"], "repo") : isAbsolute(path) ? path : resolve(root, path);
         // The state directory (the clone's folder) holds the lock, the project's pause and its run records: it must be its own, and never the root, where the pause for every project lives.
+        // Compared as written (resolve only): parsing is synchronous, so a symlink that makes two folders one is not seen here.
         const state = dirname(clone);
-        if (resolve(state) === resolve(root)) throw new Error(`${where}: the clone ${clone} sits directly in the service root ${root}, which holds the pause for every project (a list written before the timer existed may have allowed this); put it in its own folder (the default is ${join(root, e["key"], "repo")}).`);
+        if (resolve(state) === resolve(root)) clashes.push({ keys: [e["key"]], message: `${where}: the clone ${clone} sits directly in the service root ${root}, which holds the pause for every project (a list written before the timer existed may have allowed this); put it in its own folder (the default is ${join(root, e["key"], "repo")}).` });
         const sharedWith = stateDirs.get(resolve(state));
-        if (sharedWith !== undefined) throw new Error(`${where}: the clone ${clone} shares its folder ${state} with project "${sharedWith}", so they would share one lock and one pause (a list written before the timer existed may have allowed this); give each its own folder.`);
+        if (sharedWith !== undefined) clashes.push({ keys: [e["key"], sharedWith], message: `${where}: the clone ${clone} shares its folder ${state} with project "${sharedWith}", so they would share one lock and one pause (a list written before the timer existed may have allowed this); give each its own folder.` });
         stateDirs.set(resolve(state), e["key"]);
         return { key: e["key"], remote: e["remote"].trim(), clone, ...(intervalMinutes === undefined ? {} : { intervalMinutes }), ...(waitHours === undefined ? {} : { waitHours }), ...(cap === undefined ? {} : { cap }) };
     });
+    const clash = clashes.find((c) => only === undefined || c.keys.includes(only));
+    if (clash) throw new Error(clash.message);
+    return entries;
 }
 
 export function findProject(entries: readonly ProjectEntry[], key: string, configPath: string): ProjectEntry {
@@ -183,7 +188,7 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const configPath = join(args.root, PROJECTS_FILE);
     const text = await deps.readFile(configPath);
     if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project: ${ENTRY_SHAPE}`);
-    const entry = findProject(parseProjects(text, args.root, configPath), args.project, configPath);
+    const entry = findProject(parseProjects(text, args.root, configPath, undefined, args.project), args.project, configPath);
     const clonePath = entry.clone;
 
     // Decide everything that can refuse before changing anything.

@@ -1970,7 +1970,7 @@ async function main(): Promise<void> {
         if (!(project === undefined && (arg === "pause" || arg === "resume"))) {
             const text = await realSetupFs.readFile(configPath);
             if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project, as \`tai service setup\` describes.`);
-            const entries = parseProjects(text, root, configPath);
+            const entries = parseProjects(text, root, configPath, undefined, project);
             chosen = project === undefined ? entries : [findProject(entries, project, configPath)];
         }
         const deps = realTimerDeps(process.env, (line) => console.log(line), inAiSession);
