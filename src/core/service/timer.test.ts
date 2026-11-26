@@ -225,6 +225,11 @@ describe("the unit's working directory and kick while a run is going", () => {
         assert.match(service, /^WorkingDirectory=\/opt\/100%%\/tai$/m);
         assert.doesNotMatch(renderUnits(entry(), ["/n"], undefined, "/svc").service, /WorkingDirectory/);
     });
+    it("a newline, return or tab in the folder cannot start a new line of the unit", () => {
+        const { service } = renderUnits(entry(), ["/n"], undefined, "/svc", "/opt/x\nExecStartPost=/bin/evil\r\t");
+        assert.doesNotMatch(service, /^ExecStartPost=/m);
+        assert.match(service, /^WorkingDirectory=\/opt\/x ExecStartPost=\/bin\/evil\s*$/m);
+    });
 
     it("kick says a run is already going instead of 'it runs now'", async () => {
         const state = join(root, "tai");

@@ -1971,10 +1971,10 @@ async function main(): Promise<void> {
                 const entries = parseProjects(text, root, configPath, undefined, project, arg === "status" ? listProblems : undefined);
                 chosen = project === undefined ? entries : [findProject(entries, project, configPath)];
             } catch (e) {
-                // `uninstall` must always be able to remove a timer, even when its project was taken out of the list or the list is gone or damaged: it needs only the key (the state directory is read from the unit).
-                const fallback = arg === "uninstall" && project !== undefined ? entryFromKey(project, root) : null;
+                // `uninstall` must always be able to remove a timer, and `pause` to stop one project, even when the project was taken out of the list or the list is gone or damaged: both need only the key (the state directory is read from the unit).
+                const fallback = (arg === "uninstall" || arg === "pause") && project !== undefined ? entryFromKey(project, root) : null;
                 if (!fallback) throw e;
-                console.log(`Note: ${e instanceof Error ? e.message : String(e)}\nRemoving the timer for "${project}" by its name alone.`);
+                console.log(`Note: ${e instanceof Error ? e.message : String(e)}\n${arg === "pause" ? "Pausing" : "Removing the timer for"} "${project}" by its name alone.`);
                 chosen = [fallback];
             }
         }

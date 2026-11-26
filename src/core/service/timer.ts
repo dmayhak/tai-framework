@@ -111,7 +111,7 @@ export function renderUnits(entry: ProjectEntry, command: readonly string[], pat
         "Type=oneshot",
         "TimeoutStartSec=infinity",
         // A systemd service starts in the user's home: the folder install was run from keeps a relative or bare launcher flag (`--import tsx`) resolving as it did for the person. `%` is a specifier here too.
-        ...(workingDirectory ? [`WorkingDirectory=${workingDirectory.replace(/%/g, "%%")}`] : []),
+        ...(workingDirectory ? [`WorkingDirectory=${workingDirectory.replace(/%/g, "%%").replace(/[\n\r\t]/g, " ")}`] : []),
         ...(path ? [`Environment=${unitWord(`PATH=${path}`, false)}`] : []),
         `ExecStart=${run.map((w) => unitWord(w)).join(" ")}`,
         "",
