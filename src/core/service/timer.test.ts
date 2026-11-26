@@ -8,7 +8,7 @@ import { acquireLock } from "./lock.js";
 import { parseServiceUnitArgs, realTimerDeps } from "./real.js";
 import type { ProjectEntry } from "./setup.js";
 import { readPause, writeLastRun, writeLimitedUntil, noteFailedPreflight } from "./state.js";
-import { installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, installedRoot, installedState, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
+import { chooseProjects, installTimer, kickService, nextTickFrom, pauseAll, pauseProjects, resumeAll, renderUnits, resumeProjects, serviceStatus, serviceStatusAll, installedRoot, installedState, uninstallTimer, unitWord, type SystemctlResult, type TimerDeps } from "./timer.js";
 
 let root: string;
 beforeEach(async () => {
@@ -552,5 +552,34 @@ describe("parseServiceUnitArgs", () => {
         assert.throws(() => parseServiceUnitArgs("status", ["root=/a", "root=/b"]), /only one root=/);
         assert.throws(() => parseServiceUnitArgs("status", ["root="]), /root= takes a directory/);
         assert.throws(() => parseServiceUnitArgs("kick", ["tai", "force=true"]), /takes <project> and root=<dir> \(got: force=true\)/);
+    });
+});
+
+describe("chooseProjects: the safety switches with a broken list", () => {
+    const list = JSON.stringify({ projects: [{ key: "tai", remote: "git@x:y/z.git", clone: "/data/svc/tai/repo" }] });
+    const units = (have: string[]) => ({ unitDir: "/u", readFile: async (p: string) => (have.some((k) => p.endsWith(`tai-dev@${k}.service`)) ? "x" : null) });
+
+    it("pause for a project the healthy list lacks and that has no unit is refused (a typo), uninstall still goes ahead", async () => {
+        await assert.rejects(chooseProjects("pause", "tpyo", "/svc", async () => list, units([]), []), /No project "tpyo"/);
+        const r = await chooseProjects("uninstall", "tpyo", "/svc", async () => list, units([]), []);
+        assert.equal(r.chosen[0]!.key, "tpyo");
+    });
+    it("pause for a project out of a healthy list goes ahead when its unit is installed", async () => {
+        const r = await chooseProjects("pause", "old", "/svc", async () => list, units(["old"]), []);
+        assert.equal(r.chosen[0]!.key, "old");
+        assert.match(r.note ?? "", /Pausing "old" by its name alone/);
+    });
+    it("pause works from the name alone when the list is missing or damaged", async () => {
+        for (const text of [null, "{not json"]) {
+            const r = await chooseProjects("pause", "tai", "/svc", async () => text, units([]), []);
+            assert.equal(r.chosen[0]!.key, "tai");
+            assert.match(r.note ?? "", /Pausing "tai"/);
+        }
+    });
+    it("a project in the list is chosen with no note; a reading error does not fall back for other actions", async () => {
+        const r = await chooseProjects("kick", "tai", "/svc", async () => list, units([]), []);
+        assert.equal(r.chosen[0]!.key, "tai");
+        assert.equal(r.note, undefined);
+        await assert.rejects(chooseProjects("kick", "tai", "/svc", async () => null, units([]), []), /no project list/);
     });
 });

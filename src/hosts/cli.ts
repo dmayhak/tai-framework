@@ -181,11 +181,11 @@ import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resol
 import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
 import { interruptedOrPaused, stopRequestedBy } from "../core/service/state.js";
-import { installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatusAll, uninstallTimer } from "../core/service/timer.js";
+import { chooseProjects, installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatusAll, uninstallTimer } from "../core/service/timer.js";
 import { checkFailure, localPreflightFailure, realPath } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, parseServiceUnitArgs, realRefreshGit, realSetupFs, realTimerDeps, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
-import { entryFromKey, findProject, parseProjects, PROJECTS_FILE, resolveServiceRoot, runServiceSetup, type ProjectEntry } from "../core/service/setup.js";
+import { PROJECTS_FILE, resolveServiceRoot, runServiceSetup, type ProjectEntry } from "../core/service/setup.js";
 import { runServiceTick } from "../core/service/run.js";
 import { writeFile } from "node:fs/promises";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
@@ -1963,22 +1963,12 @@ async function main(): Promise<void> {
         // The pause for every project is one file in the root and needs no project list: it must work when the list is missing or one entry is bad, which is when a person most wants to stop things.
         let chosen: readonly ProjectEntry[] = [];
         const listProblems: string[] = [];
-        if (!(project === undefined && (arg === "pause" || arg === "resume"))) {
-            try {
-                const text = await realSetupFs.readFile(configPath);
-                if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project, as \`tai service setup\` describes.`);
-                // `status` for every project reports a clash as a line and still shows the others; the other actions refuse on a clash that involves their project.
-                const entries = parseProjects(text, root, configPath, undefined, project, arg === "status" ? listProblems : undefined);
-                chosen = project === undefined ? entries : [findProject(entries, project, configPath)];
-            } catch (e) {
-                // `uninstall` must always be able to remove a timer, and `pause` to stop one project, even when the project was taken out of the list or the list is gone or damaged: both need only the key (the state directory is read from the unit).
-                const fallback = (arg === "uninstall" || arg === "pause") && project !== undefined ? entryFromKey(project, root) : null;
-                if (!fallback) throw e;
-                console.log(`Note: ${e instanceof Error ? e.message : String(e)}\n${arg === "pause" ? "Pausing" : "Removing the timer for"} "${project}" by its name alone.`);
-                chosen = [fallback];
-            }
-        }
         const deps = realTimerDeps(process.env, (line) => console.log(line), inAiSession);
+        if (!(project === undefined && (arg === "pause" || arg === "resume"))) {
+            const picked = await chooseProjects(arg, project, root, (path) => realSetupFs.readFile(path), deps, listProblems);
+            if (picked.note) console.log(picked.note);
+            chosen = picked.chosen;
+        }
         // `pause` and `resume` with no project act on the pause for every project, which lives in the service root; with one, on that project's own.
         if (arg === "pause") await (project === undefined ? pauseAll(root, deps) : pauseProjects(chosen, deps));
         else if (arg === "resume") await (project === undefined ? resumeAll(root, deps) : resumeProjects(chosen, deps));

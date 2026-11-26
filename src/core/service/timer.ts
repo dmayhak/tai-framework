@@ -14,7 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { DEFAULT_CAP, DEFAULT_WAIT_HOURS } from "./real.js";
 import { readLockHolder, type LockInfo } from "./lock.js";
 import { isInside, realPath } from "./preflight.js";
-import type { ProjectEntry } from "./setup.js";
+import { entryFromKey, findProject, parseProjects, PROJECTS_FILE, type ProjectEntry } from "./setup.js";
 import { PAUSE_FILE, readLastRun, readLimitedUntil, readPause, readPreflightNote, clearPause, writePause } from "./state.js";
 
 export const DEFAULT_INTERVAL_MINUTES = 30;
@@ -320,10 +320,10 @@ function ago(from: string, now: Date): string {
  * exits 0, so the timer looks green while no run starts: its note is shown here (the PR 59 review).
  */
 export async function serviceStatus(entry: ProjectEntry, deps: TimerDeps, root: string): Promise<void> {
+    deps.say(entry.key); // the header first, so a note from effectiveStateDir stays with its project
     const dir = await effectiveStateDir(entry, deps);
     const now = deps.now();
     const say = deps.say;
-    say(`${entry.key}`);
     const installed = (await deps.readFile(join(deps.unitDir, timerUnitName(entry.key)))) !== null;
     if (!installed) say(`  Timer: not installed (\`tai service install ${entry.key}\`).`);
     else {
@@ -379,4 +379,36 @@ export async function serviceStatusAll(entries: readonly ProjectEntry[], deps: T
         return;
     }
     for (const entry of entries) await serviceStatus(entry, deps, root);
+}
+
+/**
+ * Which projects a service action is about (TAI-772). `uninstall` and `pause <project>` are the safety switches, so they still work from the
+ * name alone when the list is missing or damaged, or (uninstall) the project was taken out of it: the unit holds what they need. `pause` for a
+ * project the healthy list does not name is refused unless that project's unit is installed, so a typo is not "paused". Returns the entries and a note to print.
+ */
+export async function chooseProjects(
+    action: string,
+    project: string | undefined,
+    root: string,
+    readList: (path: string) => Promise<string | null>,
+    deps: Pick<TimerDeps, "readFile" | "unitDir">,
+    problems: string[],
+): Promise<{ readonly chosen: readonly ProjectEntry[]; readonly note?: string }> {
+    const configPath = join(root, PROJECTS_FILE);
+    let entries: readonly ProjectEntry[] | undefined;
+    let failure: unknown;
+    try {
+        const text = await readList(configPath);
+        if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project, as \`tai service setup\` describes.`);
+        // `status` for every project reports a clash as a line and still shows the others; the other actions refuse on a clash that involves their project.
+        entries = parseProjects(text, root, configPath, undefined, project, action === "status" ? problems : undefined);
+        return { chosen: project === undefined ? entries : [findProject(entries, project, configPath)] };
+    } catch (e) {
+        failure = e;
+    }
+    const fallback = (action === "uninstall" || action === "pause") && project !== undefined ? entryFromKey(project, root) : null;
+    // A healthy list that simply lacks the project: uninstall still goes ahead, pause only for a project that has a unit.
+    const knownToUnit = fallback !== null && (await deps.readFile(join(deps.unitDir, serviceUnitName(fallback.key)))) !== null;
+    if (!fallback || (action === "pause" && entries !== undefined && !knownToUnit)) throw failure;
+    return { chosen: [fallback], note: `Note: ${failure instanceof Error ? failure.message : String(failure)}\n${action === "pause" ? "Pausing" : "Removing the timer for"} "${project}" by its name alone.` };
 }
