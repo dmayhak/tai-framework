@@ -1,15 +1,16 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { acquireLock, LOCK_FILE } from "./lock.js";
 import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, runCloneWork } from "./real.js";
-import { checkFailure, credentialVariables, localPreflightFailure, missingCredential, type Env } from "./preflight.js";
+import { checkFailure, credentialVariables, isInside, localPreflightFailure, missingCredential, realPath, type Env } from "./preflight.js";
 import { refreshClone, type RefreshGit } from "./refresh.js";
-import { readLastRun, readLimitedUntil, readPreflightNote, writeLimitedUntil } from "./state.js";
+import { clearPause, interruptedOrPaused, pauseStopReason, stopRequestedBy, readLastRun, readLimitedUntil, readPause, readPreflightNote, writeLimitedUntil, writePause } from "./state.js";
 import { runServiceTick, type ServiceTickDeps, type WorkSummary } from "./run.js";
+import { sleepUnlessInterrupted } from "../commands/usage-limit.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -39,6 +40,16 @@ describe("preflight (TAI-770 AC-2)", () => {
         assert.match(localPreflightFailure({ ...FACTS, aiSession: true, cloneIsGitRepo: false })!, /AI session/);
         assert.match(localPreflightFailure({ ...FACTS, cloneIsGitRepo: false, envFileFound: false })!, /clone \/c\/repo is missing.*tai service setup <project>/);
         assert.match(localPreflightFailure({ ...FACTS, envFileFound: false })!, /no \.env \(\/c\/repo\/\.env\)/);
+    });
+
+    it("refuses a clone that is the folder the command was started in, or one inside it, but not a sibling or when unknown", () => {
+        assert.match(localPreflightFailure({ ...FACTS, startedIn: "/c/repo" })!, /started from inside the clone \/c\/repo.*the service's own folder/);
+        assert.match(localPreflightFailure({ ...FACTS, startedIn: "/c/repo/src" })!, /started from inside the clone/);
+        assert.equal(localPreflightFailure({ ...FACTS, startedIn: "/c/repo-mine" }), null);
+        assert.equal(localPreflightFailure({ ...FACTS, startedIn: "/home/me" }), null);
+        assert.match(localPreflightFailure({ ...FACTS, clonePath: "/c/repo", startedIn: "/c/repo/..cache/x" })!, /started from inside the clone/, "a folder named with two dots is still inside");
+        assert.equal(localPreflightFailure({ ...FACTS, clonePath: "/c/repo", startedIn: "/c" }), null, "the parent is not inside it");
+        assert.equal(localPreflightFailure(FACTS), null, "no start folder given (the check the clone runs on itself)");
     });
 
     it("names a credential missing BY ROLE and which variable", () => {
@@ -189,6 +200,15 @@ describe("runServiceTick", () => {
         assert.equal((await runServiceTick(deps) as { stopReason: string }).stopReason, "no ready tickets");
     });
 
+    it("a pause that ended a usage-limit wait is recorded as both, so status keeps the pause (TAI-772)", async () => {
+        const limit = { text: "Weekly limit reached", resetsAt: "2026-11-20T17:00:00.000Z" };
+        const summary: WorkSummary = { tickets: [{ key: "TAI-1", state: "paused" }], capReached: false, limit, stopReason: "paused by `tai service pause` (since 2026-11-18T08:00:00.000Z)" };
+        const { deps } = setup({ work: async () => summary });
+        const r = await runServiceTick(deps);
+        assert.match((r as { stopReason: string }).stopReason, /usage limit: Weekly limit reached \(limited until .*\); stopped: paused by `tai service pause`/);
+        assert.match((await readLastRun(dir))?.stopReason ?? "", /stopped: paused by `tai service pause`/, "last-run.json carries it too");
+    });
+
     it("a run that ends paused writes limited-until; ticks skip until then; a tick after that starts a run (AC-5)", async () => {
         const limit = { text: "Weekly limit reached", resetsAt: "2026-11-20T17:00:00.000Z" };
         let summary: WorkSummary = { tickets: [{ key: "TAI-1", state: "paused" }], capReached: false, limit, stopReason: null };
@@ -208,6 +228,33 @@ describe("runServiceTick", () => {
         assert.equal((await runServiceTick(deps)).status, "ran");
         assert.equal(calls.work, 2);
         await assert.rejects(readFile(join(dir, "limited-until.json"), "utf8"), /ENOENT/, "the passed limit record is cleared");
+    });
+
+    it("a paused project starts nothing, logs it on every tick, and runs again once resumed (TAI-772 AC-4)", async () => {
+        await writePause(dir, new Date("2026-11-18T08:00:00Z"));
+        const { deps, calls } = setup();
+        for (let i = 0; i < 2; i++) assert.deepEqual(await runServiceTick(deps), { status: "paused", exitCode: 0, since: "2026-11-18T08:00:00.000Z", scope: "project" });
+        assert.deepEqual([calls.preflight, calls.refresh, calls.work], [0, 0, 0], "no check, refresh or run");
+        assert.equal(calls.say.filter((l) => /paused by `tai service pause` since 2026-11-18T08:00:00\.000Z/.test(l)).length, 2);
+        assert.equal(await clearPause(dir), true);
+        assert.equal((await runServiceTick(deps)).status, "ran");
+    });
+
+    it("refuses a state directory that is the service root, where the two pauses would be one file", async () => {
+        const { deps, calls } = setup({ rootDir: dir });
+        await assert.rejects(runServiceTick(deps), /is the service root.*resume <project>/);
+        assert.deepEqual([calls.preflight, calls.refresh, calls.work], [0, 0, 0]);
+    });
+
+    it("a pause for every project, kept in the service root, stops this project's tick too, and says which it is (TAI-772)", async () => {
+        const rootDir = join(dir, "root");
+        await writePause(rootDir, new Date("2026-11-18T07:00:00Z"));
+        const { deps, calls } = setup({ rootDir });
+        assert.deepEqual(await runServiceTick(deps), { status: "paused", exitCode: 0, since: "2026-11-18T07:00:00.000Z", scope: "all" });
+        assert.ok(calls.say.some((l) => /every project is paused .*`tai service resume`/.test(l)));
+        assert.deepEqual([calls.preflight, calls.refresh, calls.work], [0, 0, 0]);
+        await clearPause(rootDir);
+        assert.equal((await runServiceTick(deps)).status, "ran", "lifting the pause for all lets the tick run");
     });
 
     it("a limit with no reset time skips for a backoff, not forever", async () => {
@@ -243,12 +290,14 @@ describe("runServiceTick", () => {
 
 describe("parseServiceRunArgs", () => {
     it("takes the clone, defaults the state to its parent, the wait to 5 hours and the cap to 3 (AC-6)", () => {
-        assert.deepEqual(parseServiceRunArgs(["clone=/data/tai/proj/repo"]), { clonePath: "/data/tai/proj/repo", stateDir: "/data/tai/proj", waitHours: 5, cap: 3 });
+        assert.deepEqual(parseServiceRunArgs(["clone=/data/tai/proj/repo"], {}, "/home/me"), { clonePath: "/data/tai/proj/repo", stateDir: "/data/tai/proj", rootDir: "/home/me/.local/share/tai-service", waitHours: 5, cap: 3 });
+        assert.equal(parseServiceRunArgs(["clone=/c", "root=/svc"], {}, "/home/me").rootDir, "/svc", "root= names the service root, where a pause for every project is kept");
+        assert.equal(parseServiceRunArgs(["clone=/c"], { TAI_SERVICE_ROOT: "/env-root" }, "/home/me").rootDir, "/env-root");
     });
 
     it("reads each setting from the environment when no argument gives it, and an argument wins", () => {
-        const env = { TAI_SERVICE_CLONE: "/c/repo", TAI_SERVICE_STATE: "/s", TAI_SERVICE_WAIT: "2", TAI_SERVICE_CAP: "7" };
-        assert.deepEqual(parseServiceRunArgs([], env), { clonePath: "/c/repo", stateDir: "/s", waitHours: 2, cap: 7 });
+        const env = { TAI_SERVICE_CLONE: "/c/repo", TAI_SERVICE_STATE: "/s", TAI_SERVICE_WAIT: "2", TAI_SERVICE_CAP: "7", TAI_SERVICE_ROOT: "/r" };
+        assert.deepEqual(parseServiceRunArgs([], env), { clonePath: "/c/repo", stateDir: "/s", rootDir: "/r", waitHours: 2, cap: 7 });
         assert.equal(parseServiceRunArgs(["cap=1", "wait=1.5"], env).cap, 1);
         assert.equal(parseServiceRunArgs(["wait=1.5"], env).waitHours, 1.5);
     });
@@ -334,6 +383,16 @@ describe("runCloneWork", () => {
         assert.ok(seen.includes("wait=2") && seen.includes("max=4"));
     });
 
+    it("hands the run the pause file to watch between tickets (TAI-772 AC-5)", async () => {
+        let seen: readonly string[] = [];
+        const launch = (args: readonly string[]) => ((seen = args), { command: process.execPath, args: ["-e", `require("node:fs").writeFileSync(process.argv.find((a) => a.startsWith("result=")).slice(7), JSON.stringify({ tickets: [], capReached: false, limit: null, stopReason: null }))`, ...args] });
+        await runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, launch);
+        assert.ok(seen.includes(`stopfile=${join(dir, "paused.json")}`));
+        assert.ok(!seen.some((a) => a.startsWith("stopfile=") && a !== `stopfile=${join(dir, "paused.json")}`), "no root, no second file");
+        await runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1, rootDir: "/svc" }, launch);
+        assert.ok(seen.includes(`stopfile=${join(dir, "paused.json")}`) && seen.includes("stopfile=/svc/paused.json"), "the pause for every project is watched too");
+    });
+
     it("rejects when the run leaves no summary", async () => {
         await assert.rejects(runCloneWork(dir, dir, process.env, { waitHours: 1, cap: 1 }, fakeRun("process.exit(3)")), /exited 3 and left no summary/);
     });
@@ -355,5 +414,102 @@ describe("service setup arguments (TAI-771)", () => {
         assert.throws(() => parseServiceSetupArgs(["a", "b"], "/h"), /Usage/);
         assert.throws(() => parseServiceSetupArgs(["a", "from=/x", "from=/y"], "/h"), /only one from=/);
         assert.throws(() => parseServiceSetupArgs(["a", "form=/x"], "/h"), /Usage/);
+    });
+});
+
+function setupForPause() {
+    const calls = { work: 0 };
+    const deps: ServiceTickDeps = {
+        stateDir: dir, waitHours: 5, cap: 3,
+        lock: { pid: 500, now: () => new Date("2026-11-18T10:00:00Z"), isAlive: () => true },
+        now: () => new Date("2026-11-18T10:00:00Z"),
+        say: () => undefined,
+        preflight: async () => null,
+        refresh: async () => ({ action: "fast-forwarded", branch: "main" }),
+        work: async () => (calls.work++, { tickets: [], capReached: false, limit: null, stopReason: null }),
+    };
+    return { deps, calls };
+}
+
+describe("pause state (TAI-772 AC-4)", () => {
+    it("is a file that keeps its first time, has no expiry, and is removed only by clearPause", async () => {
+        assert.equal(await readPause(dir), null);
+        assert.equal(await writePause(dir, new Date("2026-11-18T08:00:00Z")), true);
+        assert.equal(await writePause(dir, new Date("2027-01-01T00:00:00Z")), false, "pausing twice keeps the first time");
+        assert.deepEqual(await readPause(dir), { since: "2026-11-18T08:00:00.000Z" });
+        assert.equal(await clearPause(dir), true);
+        assert.equal(await clearPause(dir), false);
+        assert.equal(await readPause(dir), null);
+    });
+
+    it("a running do-dev-tasks sees it through the stop file, and sees nothing while there is none", async () => {
+        const file = join(dir, "paused.json");
+        assert.equal(await pauseStopReason(file), null);
+        await writePause(dir, new Date("2026-11-18T08:00:00Z"));
+        assert.match((await pauseStopReason(file))!, /paused by `tai service pause` \(since 2026-11-18T08:00:00\.000Z\)/);
+    });
+
+    it("a pause file that exists but cannot be read counts as a pause (it fails closed), for the tick and for a run going", async () => {
+        const file = join(dir, "paused.json");
+        for (const bad of ["not json", "", '{"since": 5}', '{"since": "not a time"}', "null"]) {
+            await writeFile(file, bad);
+            assert.deepEqual(await readPause(dir), { since: "unknown (the pause file exists but could not be read)", unreadable: true }, JSON.stringify(bad));
+            assert.match((await pauseStopReason(file))!, /paused by `tai service pause`/);
+        }
+        const { deps, calls } = setupForPause();
+        assert.equal((await runServiceTick(deps)).status, "paused");
+        assert.equal(calls.work, 0);
+        assert.equal(await writePause(dir, new Date("2026-11-18T08:00:00Z")), true, "a fresh pause rewrites a damaged one");
+        assert.deepEqual(await readPause(dir), { since: "2026-11-18T08:00:00.000Z" });
+        await rm(join(dir, "paused.json"));
+        await mkdir(join(dir, "paused.json"));
+        assert.equal((await readPause(dir))?.unreadable, true, "a file that cannot be read at all (here a folder) is a pause too");
+        assert.equal(await writePause(dir, new Date("2026-11-19T08:00:00Z")), true, "pause replaces a folder in its place");
+        assert.deepEqual(await readPause(dir), { since: "2026-11-19T08:00:00.000Z" });
+        await rm(join(dir, "paused.json"));
+        await mkdir(join(dir, "paused.json"));
+        assert.equal(await clearPause(dir), true, "resume clears it instead of failing with EISDIR");
+        assert.equal(await readPause(dir), null);
+    });
+
+    it("writes the pause whole, leaving no temporary file behind", async () => {
+        await writePause(dir, new Date("2026-11-18T08:00:00Z"));
+        assert.deepEqual((await readdir(dir)).filter((f) => f.includes("paused")), ["paused.json"]);
+    });
+});
+
+describe("realPath (a symlinked clone is still the clone)", () => {
+    it("resolves symlinks, keeps a folder that does not exist yet, and lets isInside see through a link", async () => {
+        const base = await realpath(await mkdtemp(join(tmpdir(), "tai-real-")));
+        try {
+            await mkdir(join(base, "real", "repo"), { recursive: true });
+            await symlink(join(base, "real"), join(base, "link"));
+            assert.equal(await realPath(join(base, "link", "repo")), join(base, "real", "repo"));
+            assert.equal(await realPath(join(base, "link", "later", "x")), join(base, "real", "later", "x"), "the part not made yet is kept as written");
+            assert.equal(isInside(join(base, "link", "repo", "src"), join(base, "real", "repo")), false, "lexically they differ");
+            assert.equal(isInside(await realPath(join(base, "link", "repo", "src")), await realPath(join(base, "real", "repo"))), true, "resolved, the folder is inside the clone");
+        } finally {
+            await rm(base, { recursive: true, force: true });
+        }
+    });
+});
+
+describe("the stop wiring of a run (TAI-772)", () => {
+    it("a pause file written during a usage-limit wait ends the wait, and an interrupt does too", async () => {
+        const d = await mkdtemp(join(tmpdir(), "tai-stopwire-"));
+        try {
+            const file = join(d, "paused.json");
+            const watching = interruptedOrPaused(() => false, [file]);
+            assert.equal(await watching(), false, "no pause: keep waiting");
+            const started = Date.now();
+            setTimeout(() => void writePause(d, new Date()), 30);
+            await sleepUnlessInterrupted(60_000, watching, 10);
+            assert.ok(Date.now() - started < 5_000, "the wait ended on the pause, not after a minute");
+            assert.match((await stopRequestedBy([join(d, "none.json"), file])) ?? "", /paused by `tai service pause`/);
+            assert.equal(await interruptedOrPaused(() => true, undefined)(), true, "an interrupt ends it with no stop files");
+            assert.equal(await interruptedOrPaused(() => false, undefined)(), false);
+        } finally {
+            await rm(d, { recursive: true, force: true });
+        }
     });
 });

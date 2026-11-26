@@ -7,7 +7,8 @@
  */
 
 import { execFile, spawn } from "node:child_process";
-import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv, promisify } from "node:util";
 
@@ -18,7 +19,10 @@ import type { RunSummary } from "../commands/do-dev-tasks.js";
 import type { ClonePosition, RefreshGit } from "./refresh.js";
 import { checkFailure, localPreflightFailure, type Env } from "./preflight.js";
 import type { WorkSummary } from "./run.js";
-import { expandHome, redactRemote, type PathState, type SetupDeps } from "./setup.js";
+import { PAUSE_FILE } from "./state.js";
+import type { SystemctlResult, TimerDeps } from "./timer.js";
+import { processIsAlive } from "./lock.js";
+import { expandHome, redactRemote, resolveServiceRoot, type PathState, type SetupDeps } from "./setup.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,22 +33,24 @@ export const RESULT_FILE = "run-result.json";
 export interface ServiceRunArgs {
     readonly clonePath: string;
     readonly stateDir: string;
+    /** The service root: where a pause for every project is kept (`root=`, then TAI_SERVICE_ROOT, then the default). */
+    readonly rootDir: string;
     readonly waitHours: number;
     readonly cap: number;
 }
 
 /**
- * `service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]`. Each can come from the environment instead (TAI_SERVICE_CLONE,
- * TAI_SERVICE_STATE, TAI_SERVICE_WAIT, TAI_SERVICE_CAP), so a unit file or an orchestrator sets them without arguments. The state
+ * `service run clone=<path> [state=<dir>] [root=<dir>] [wait=<hours>] [cap=<tickets>]`. Each can come from the environment instead (TAI_SERVICE_CLONE,
+ * TAI_SERVICE_STATE, TAI_SERVICE_ROOT, TAI_SERVICE_WAIT, TAI_SERVICE_CAP), so a unit file or an orchestrator sets them without arguments. The state
  * directory defaults to the clone's parent (`<state>/repo`); the wait defaults to the five-hour window and the cap to 3 tickets.
  * A mistyped flag is refused, because it must not start a real run.
  */
-export function parseServiceRunArgs(args: readonly (string | undefined)[], env: Env = {}): ServiceRunArgs {
+export function parseServiceRunArgs(args: readonly (string | undefined)[], env: Env = {}, home?: string): ServiceRunArgs {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const values = new Map<string, string>();
     for (const a of given) {
-        const m = /^(clone|state|wait|cap)=(.*)$/.exec(a);
-        if (!m) throw new Error(`service run takes only clone=<path>, state=<dir>, wait=<hours> and cap=<tickets> (got: ${a}).`);
+        const m = /^(clone|state|wait|cap|root)=(.*)$/.exec(a);
+        if (!m) throw new Error(`service run takes only clone=<path>, state=<dir>, root=<dir>, wait=<hours> and cap=<tickets> (got: ${a}).`);
         if (values.has(m[1]!)) throw new Error(`service run takes only one ${m[1]}= (got it twice).`);
         values.set(m[1]!, m[2]!);
     }
@@ -59,6 +65,7 @@ export function parseServiceRunArgs(args: readonly (string | undefined)[], env: 
     return {
         clonePath,
         stateDir: stateRaw ? resolve(stateRaw) : dirname(clonePath),
+        rootDir: resolveServiceRoot(values.get("root"), env, home),
         waitHours: waitRaw === undefined ? DEFAULT_WAIT_HOURS : parseWaitHours(waitRaw),
         cap: capRaw === undefined ? DEFAULT_CAP : Number(capRaw),
     };
@@ -161,11 +168,11 @@ const FORWARDED_SIGNALS: readonly NodeJS.Signals[] = ["SIGTERM", "SIGINT", "SIGH
  * `do-dev-tasks wait=<h> max=<n> result=<file>` in the clone, its output going to this process's own (the journal under a unit). Rejects
  * when the run left no summary, which is how a crash looks from here.
  */
-export async function runCloneWork(clonePath: string, stateDir: string, env: NodeJS.ProcessEnv, options: { readonly waitHours: number; readonly cap: number }, launch: typeof selfCommand = selfCommand): Promise<WorkSummary> {
+export async function runCloneWork(clonePath: string, stateDir: string, env: NodeJS.ProcessEnv, options: { readonly waitHours: number; readonly cap: number; readonly rootDir?: string }, launch: typeof selfCommand = selfCommand): Promise<WorkSummary> {
     await mkdir(stateDir, { recursive: true });
     const resultPath = join(stateDir, RESULT_FILE);
     await rm(resultPath, { force: true });
-    const { command, args } = launch(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`, "pickup=service"]);
+    const { command, args } = launch(["do-dev-tasks", `wait=${options.waitHours}`, `max=${options.cap}`, `result=${resultPath}`, "pickup=service", `stopfile=${join(stateDir, PAUSE_FILE)}`, ...(options.rootDir ? [`stopfile=${join(options.rootDir, PAUSE_FILE)}`] : [])]);
     const code = await new Promise<number | null>((done, fail) => {
         const child = spawn(command, args, { cwd: clonePath, env, stdio: "inherit" });
         // A stop sent to this process (a `kill`, Ctrl-C, a closed terminal) goes on to the run, which is then waited for: no run may outlive
@@ -300,4 +307,72 @@ export async function setupStillMissing(clonePath: string, base: Env, check: typ
     const { envFileFound, env } = await cloneEnvironment(clonePath, base);
     const local = localPreflightFailure({ aiSession: false, clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
     return local ?? checkFailure(await check(clonePath, env));
+}
+
+
+/**
+ * TAI-772: `service install|uninstall|kick|status <project> [root=<dir>]` and `service pause|resume [<project>] [root=<dir>]`. `status`,
+ * `pause` and `resume` with no project mean every project in the list; the others need one. A mistyped word is refused.
+ */
+export function parseServiceUnitArgs(action: "install" | "uninstall" | "kick" | "status" | "pause" | "resume", args: readonly (string | undefined)[]): { readonly project: string | undefined; readonly root: string | undefined } {
+    const given = args.filter((a): a is string => a !== undefined && a !== "");
+    let root: string | undefined;
+    const positional: string[] = [];
+    for (const a of given) {
+        const m = /^root=(.*)$/.exec(a);
+        if (m) {
+            if (root !== undefined) throw new Error("service takes only one root= (got it twice).");
+            if (m[1] === "") throw new Error("root= takes a directory.");
+            root = m[1];
+        } else if (a.includes("=")) throw new Error(`service ${action} takes <project> and root=<dir> (got: ${a}).`);
+        else positional.push(a);
+    }
+    if (positional.length > 1) throw new Error(`service ${action} takes one project (got: ${positional.join(" ")}).`);
+    const project = positional[0];
+    const optional = action === "status" || action === "pause" || action === "resume";
+    if (project === undefined && !optional) throw new Error(`service ${action} needs the project: \`tai service ${action} <project>\`.`);
+    return { project, root };
+}
+
+/** What `TimerDeps` is on a real machine: `systemctl --user`, the user's own unit directory, this process's own command line and clock. */
+export function realTimerDeps(env: Env, say: (line: string) => void, aiSession: () => boolean, home: string = process.env["HOME"] || homedir()): TimerDeps {
+    const systemctl = async (args: readonly string[]): Promise<SystemctlResult> => {
+        try {
+            const r = await execFileAsync("systemctl", ["--user", ...args]);
+            return { code: 0, stdout: r.stdout, stderr: r.stderr };
+        } catch (e) {
+            const err = e as NodeJS.ErrnoException & { code?: number | string; stdout?: string; stderr?: string };
+            if (err.code === "ENOENT") throw e; // the program is not there
+            return { code: typeof err.code === "number" ? err.code : 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
+        }
+    };
+    const user = env["USER"] ?? env["LOGNAME"] ?? "";
+    return {
+        platform: process.platform,
+        unitDir: join(env["XDG_CONFIG_HOME"] || join(home, ".config"), "systemd", "user"),
+        // Only a missing file means "absent": any other error (permissions, a folder in the way) is raised, not read as "not installed".
+        readFile: (path) => readFile(path, "utf8").then((t) => t, (e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? null : Promise.reject(e))),
+        writeFile: async (path, text) => {
+            await mkdir(dirname(path), { recursive: true });
+            await writeFile(path, text);
+        },
+        removeFile: (path) => rm(path).then(() => true, (e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? false : Promise.reject(e))),
+        systemctl,
+        command: [process.execPath, ...process.execArgv, process.argv[1]!],
+        cwd: process.cwd(),
+        path: env["PATH"],
+        lingerEnabled: async () => {
+            try {
+                const r = await execFileAsync("loginctl", ["show-user", user, "-p", "Linger"]);
+                return /^Linger=yes$/m.test(r.stdout);
+            } catch {
+                return null;
+            }
+        },
+        user,
+        now: () => new Date(),
+        isAlive: processIsAlive,
+        aiSession,
+        say,
+    };
 }

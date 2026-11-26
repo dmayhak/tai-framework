@@ -461,6 +461,8 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.match(d.handoffs[0]![1], /left uncommitted changes/);
         const text = renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: false });
         assert.match(text, /## Stopped[\s\S]*Before TAI-11/);
+        const paused = renderDevTasksReport({ tasks: [], skipped: [] }, results, { yolo: false, stoppedBy: "paused by `tai service pause` (since 2026-11-22)" });
+        assert.match(paused, /## Stopped[\s\S]*The run ended early: paused by `tai service pause`/, "the console report says a pause ended the run");
     });
 
     it("keeps the earlier failure reason when the same ticket's run also left the tree dirty", async () => {
@@ -561,6 +563,51 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         stop = true;
         await workDevTasks(async () => (looks++, { tasks: [], skipped: [] }), d, { tasks: [task("TAI-12")], skipped: [] });
         assert.equal(looks, 0, "no new look on the way out");
+    });
+
+    it("a stop request ends the run between tickets: the ticket under way is finished, the next is not prepared (TAI-772)", async () => {
+        let paused = false;
+        const d = deps({ stopRequested: async () => (paused ? "paused by `tai service pause`" : null), build: async (t) => (d.calls.push(`build ${t.issue.key}`), (paused = true), { ok: true, summary: "built" }) });
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), d);
+        assert.equal(worked.results.length, 1, "TAI-10 was finished");
+        assert.ok(!d.calls.includes("prepare TAI-11"), "TAI-11 was never prepared");
+        assert.equal(worked.stoppedBy, "paused by `tai service pause`");
+        assert.equal(summarizeWorked(worked).stopReason, "paused by `tai service pause`");
+    });
+
+    it("a pause set while the last ticket built does not replace the real reason the run ended (TAI-772)", async () => {
+        let paused = false;
+        const stop = async (): Promise<string | null> => (paused ? "paused by `tai service pause`" : null);
+        const build = async (): Promise<{ ok: true; summary: string }> => ((paused = true), { ok: true, summary: "built" });
+        const empty = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), deps({ stopRequested: stop, build }));
+        assert.equal(empty.stoppedBy, undefined, "nothing was left to start");
+        paused = false;
+        const capped = await workDevTasks(async () => ({ tasks: [task("TAI-10"), task("TAI-11")], skipped: [] }), deps({ stopRequested: stop, build, maxTickets: 1 }));
+        assert.equal(capped.stoppedBy, undefined);
+        assert.equal(capped.capReached, true, "the cap is the reason, not the pause");
+    });
+
+    it("a pause set during a usage-limit wait ends the run, and the paused ticket stays in the report (TAI-772)", async () => {
+        let paused = false;
+        const latch = new UsageLimitLatch();
+        const d = deps({
+            limitLatch: latch, waitHours: 6, now: () => new Date(2026, 10, 4, 10),
+            stopRequested: async () => (paused ? "paused by `tai service pause`" : null),
+            sleep: async () => void (paused = true),
+            build: async (t) => (d.calls.push(`build ${t.issue.key}`), latch.hit({ text: "limit", resetsAt: new Date(2026, 10, 4, 12) }, "build run"), { ok: false, summary: "x" }),
+        });
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), d);
+        assert.equal(worked.results.length, 1, "the paused ticket is still reported");
+        assert.equal(worked.results[0]!.outcome.state, "paused");
+        assert.match((worked.results[0]!.outcome as { notWaited?: string }).notWaited ?? "", /stopped during the wait: paused by `tai service pause`/);
+        assert.equal(worked.stoppedBy, "paused by `tai service pause`");
+        assert.deepEqual(d.calls.filter((c) => c.startsWith("build")), ["build TAI-10"], "it was not built again");
+    });
+
+    it("no stop request leaves the run as it was", async () => {
+        const worked = await workDevTasks(async () => ({ tasks: [task("TAI-10")], skipped: [] }), deps({ stopRequested: async () => null }));
+        assert.equal(worked.stoppedBy, undefined);
+        assert.equal(summarizeWorked(worked).stopReason, null);
     });
 
     it("a branch that will not update stops the run without blaming any ticket", async () => {
@@ -712,7 +759,7 @@ describe("one listing per look, a dirty tree, and the process layer (TAI-633, PR
         assert.deepEqual(parseDevTasksArgs(["yolo=true"]), { dryRun: false, yolo: true });
         assert.deepEqual(parseDevTasksArgs(["yolo=false"]), { dryRun: false, yolo: false });
         assert.deepEqual(parseDevTasksArgs(["dryrun=true", "yolo=true"]), { dryRun: true, yolo: true });
-        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file> and pickup=service/);
+        for (const bad of ["dryrun=1", "--dry-run", "dryrun=True", "TAI-1", "yolo=1", "yolo=True", "yolo"]) assert.throws(() => parseDevTasksArgs([bad]), /takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file>, pickup=service and stopfile=<file>/);
         assert.throws(() => parseDevTasksArgs(["yolo=true", "yolo=false"]), /not both/);
     });
 
@@ -1508,5 +1555,13 @@ describe("the service pickup rule in do-dev-tasks (TAI-773)", () => {
         assert.throws(() => parseDevTasksArgs(["pickup=all"]), /pickup= takes only service/);
         assert.throws(() => parseDevTasksArgs(["pickup=service", "pickup=service"]), /only one pickup=service/);
         assert.throws(() => parseDevTasksArgs(["pickup=service"], { rules: true }), /rules takes only/);
+    });
+
+    it("parses stopfile=<file> (more than one may be given), refuses an empty value, and ignores it for `rules` (TAI-772)", () => {
+        assert.deepEqual(parseDevTasksArgs(["stopfile=/s/paused.json"]).stopFiles, ["/s/paused.json"]);
+        assert.deepEqual(parseDevTasksArgs(["stopfile=/s/paused.json", "stopfile=/r/paused.json"]).stopFiles, ["/s/paused.json", "/r/paused.json"]);
+        assert.equal(parseDevTasksArgs([]).stopFiles, undefined);
+        assert.throws(() => parseDevTasksArgs(["stopfile="]), /stopfile= takes a file path/);
+        assert.throws(() => parseDevTasksArgs(["stopfile=a"], { rules: true }), /rules takes only/);
     });
 });

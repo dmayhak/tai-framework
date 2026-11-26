@@ -5,13 +5,13 @@
  * copies the person's `.claude/settings.local.json` (permission rules, no secrets) into it, and says what the person still has to do by
  * hand: write the clone's own `.env` (never copied), type the attestation command in a plain terminal (never written here), and work on
  * a branch in their own checkout. Everything that touches git or the file system is injected, so the rules are tested without either.
- * No service manager is named here: a timer installer is a separate piece, so a launchd one can be added without touching this.
+ * No service manager is named here: the timer installer (`timer.ts`) is a separate piece, so a launchd one can be added without touching this.
  */
 
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
-import { CREDENTIAL_ROLES, credentialVariables, type Env } from "./preflight.js";
+import { CREDENTIAL_ROLES, credentialVariables, isInside, realPath, type Env } from "./preflight.js";
 
 export const PROJECTS_FILE = "projects.json";
 export const DEFAULT_ROOT_UNDER_HOME = ".local/share/tai-service";
@@ -22,7 +22,7 @@ export interface ProjectEntry {
     readonly remote: string;
     /** Absolute path of the service's clone. */
     readonly clone: string;
-    /** For the timer (a later Story); read and checked here so one file holds a project's settings. */
+    /** The minutes between the end of one run and the next tick (`service install` writes it into the timer); read and checked here so one file holds a project's settings. */
     readonly intervalMinutes?: number;
     readonly waitHours?: number;
     readonly cap?: number;
@@ -51,8 +51,8 @@ function positive(value: unknown, field: string, whole: boolean, where: string):
     return value;
 }
 
-/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root; a leading `~/` is the home directory. */
-export function parseProjects(text: string, root: string, configPath: string, home: string = homedir()): readonly ProjectEntry[] {
+/** The entries of the project list, checked; a problem names the file. A relative clone path is read against the root; a leading `~/` is the home directory. With `only`, a clone folder that clashes (in the root, or shared) is a problem only when it involves that project, so one bad entry does not block acting on another. With `problems` (a read-only caller such as `status`), every clash is added to it and none is thrown, so the other entries are still shown. */
+export function parseProjects(text: string, root: string, configPath: string, home: string = homedir(), only?: string, problems?: string[]): readonly ProjectEntry[] {
     let data: unknown;
     try {
         data = JSON.parse(text);
@@ -62,7 +62,9 @@ export function parseProjects(text: string, root: string, configPath: string, ho
     const list = (data as { projects?: unknown } | null)?.projects;
     if (!Array.isArray(list)) throw new Error(`${configPath} must hold a "projects" list. An entry looks like: ${ENTRY_SHAPE}`);
     const seen = new Set<string>();
-    return list.map((raw, i): ProjectEntry => {
+    const stateDirs = new Map<string, string>();
+    const clashes: { readonly keys: readonly string[]; readonly message: string }[] = [];
+    const entries = list.map((raw, i): ProjectEntry => {
         const where = `${configPath}, entry ${i + 1}`;
         if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`${where}: an entry is an object. It looks like: ${ENTRY_SHAPE}`);
         const e = raw as Record<string, unknown>;
@@ -78,8 +80,30 @@ export function parseProjects(text: string, root: string, configPath: string, ho
         const given = e["clone"] as string | undefined;
         const path = given === undefined ? undefined : expandHome(given, home);
         const clone = path === undefined ? join(root, e["key"], "repo") : isAbsolute(path) ? path : resolve(root, path);
+        // The state directory (the clone's folder) holds the lock, the project's pause and its run records: it must be its own, and never the root, where the pause for every project lives.
+        // Compared as written (resolve only): parsing is synchronous, so a symlink that makes two folders one is not seen here.
+        const state = dirname(clone);
+        if (resolve(state) === resolve(root)) clashes.push({ keys: [e["key"]], message: `${where}: the clone ${clone} sits directly in the service root ${root}, which holds the pause for every project (a list written before the timer existed may have allowed this); put it in its own folder (the default is ${join(root, e["key"], "repo")}).` });
+        const sharedWith = stateDirs.get(resolve(state));
+        if (sharedWith !== undefined) clashes.push({ keys: [e["key"], sharedWith], message: `${where}: the clone ${clone} shares its folder ${state} with project "${sharedWith}", so they would share one lock and one pause (a list written before the timer existed may have allowed this); give each its own folder.` });
+        stateDirs.set(resolve(state), e["key"]);
         return { key: e["key"], remote: e["remote"].trim(), clone, ...(intervalMinutes === undefined ? {} : { intervalMinutes }), ...(waitHours === undefined ? {} : { waitHours }), ...(cap === undefined ? {} : { cap }) };
     });
+    if (problems) {
+        problems.push(...clashes.map((c) => c.message));
+        return entries;
+    }
+    const clash = clashes.find((c) => only === undefined || c.keys.includes(only));
+    if (clash) throw new Error(clash.message);
+    return entries;
+}
+
+/**
+ * An entry built from a key alone, for `uninstall` when the project is no longer in the list (or the list is gone or damaged): the timer must always be
+ * removable, and `uninstall` reads the state directory from the installed unit, so the clone path here is only the default's. Null for a key that is not a safe name.
+ */
+export function entryFromKey(key: string, root: string): ProjectEntry | null {
+    return SAFE_KEY.test(key) ? { key, remote: "", clone: join(root, key, "repo") } : null;
 }
 
 export function findProject(entries: readonly ProjectEntry[], key: string, configPath: string): ProjectEntry {
@@ -176,10 +200,14 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const configPath = join(args.root, PROJECTS_FILE);
     const text = await deps.readFile(configPath);
     if (text === null) throw new Error(`There is no project list at ${configPath}. Make it with one entry per project: ${ENTRY_SHAPE}`);
-    const entry = findProject(parseProjects(text, args.root, configPath), args.project, configPath);
+    const entry = findProject(parseProjects(text, args.root, configPath, undefined, args.project), args.project, configPath);
     const clonePath = entry.clone;
 
     // Decide everything that can refuse before changing anything.
+    // The clone is the service's own folder: it fast-forwards main there and builds and merges in it. A checkout a person works in is never it.
+    if (isInside(await realPath(args.from), await realPath(clonePath))) {
+        throw new Error(`${args.from} is inside the clone ${clonePath}: the clone is the service's own folder, and the service builds and merges in it, so it must not be a checkout you work in. Nothing was changed. Set another "clone" path for ${entry.key} in ${configPath}, or run setup from your own checkout (from=<path>).`);
+    }
     const found = await deps.inspect(clonePath);
     if (found.kind === "other") throw new Error(`${clonePath} exists and is not a clone of ${redactRemote(entry.remote)}: it was left untouched. Move it away or set another "clone" path for ${entry.key} in ${configPath}.`);
     if (found.kind === "clone" && (found.remote === null || !sameRemote(found.remote, entry.remote))) {
@@ -208,8 +236,7 @@ export async function runServiceSetup(args: SetupArgs, deps: SetupDeps): Promise
     const source = join(args.from, SETTINGS_FILE);
     const target = join(clonePath, SETTINGS_FILE);
     const notes: string[] = [];
-    if (resolve(args.from) === resolve(clonePath)) notes.push(`${SETTINGS_FILE}: from= is the clone itself, so there is nothing to copy.`);
-    else if (await deps.fileExists(target)) kept.push(`its ${SETTINGS_FILE}`);
+    if (await deps.fileExists(target)) kept.push(`its ${SETTINGS_FILE}`);
     else if (await deps.fileExists(source)) {
         await deps.copyFile(source, target);
         done.push(`copied ${SETTINGS_FILE} from ${args.from} (permission rules, no secrets)`);

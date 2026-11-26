@@ -8,8 +8,9 @@
  * assumptions about a local process, so an orchestrator or a cloud runner can call it later.
  */
 
+import { resolve } from "node:path";
 import { acquireLock, alreadyRunningMessage, type LockDeps } from "./lock.js";
-import { clearLimitedUntil, clearPreflightNote, noteFailedPreflight, readLimitedUntil, writeLastRun, writeLimitedUntil } from "./state.js";
+import { clearLimitedUntil, clearPreflightNote, noteFailedPreflight, readLimitedUntil, readPause, writeLastRun, writeLimitedUntil } from "./state.js";
 import type { RefreshOutcome } from "./refresh.js";
 
 /** What a run of `do-dev-tasks` came to (`RunSummary` of that command, or why it gave no summary). */
@@ -24,6 +25,8 @@ export interface WorkSummary {
 
 export interface ServiceTickDeps {
     readonly stateDir: string;
+    /** The service root, where a pause for every project (`tai service pause` with no project) is kept. */
+    readonly rootDir?: string;
     readonly waitHours: number;
     readonly cap: number;
     /** How long ticks skip when a limit gave no reset time. */
@@ -41,6 +44,7 @@ export interface ServiceTickDeps {
 
 export type TickResult =
     | { readonly status: "locked"; readonly exitCode: 0 }
+    | { readonly status: "paused"; readonly exitCode: 0; readonly since: string; readonly scope: "all" | "project" }
     | { readonly status: "limited"; readonly exitCode: 0; readonly until: string }
     | { readonly status: "preflight-failed"; readonly exitCode: 0; readonly message: string }
     | { readonly status: "refresh-failed"; readonly exitCode: 1; readonly why: string }
@@ -52,13 +56,16 @@ const sentence = (text: string): string => text.replace(/[.\s]+$/, "");
 const DEFAULT_LIMIT_BACKOFF_MS = 60 * 60_000;
 
 function endReason(summary: WorkSummary, limitedUntil: string | null): string {
-    if (summary.limit) return `usage limit: ${summary.limit.text}${limitedUntil ? ` (limited until ${limitedUntil})` : ""}`;
+    // Both when both are so: a pause that ended a limit wait is a pause as well as a limit, and status should say each.
+    if (summary.limit) return `usage limit: ${summary.limit.text}${limitedUntil ? ` (limited until ${limitedUntil})` : ""}${summary.stopReason ? `; stopped: ${summary.stopReason}` : ""}`;
     if (summary.stopReason) return `stopped: ${summary.stopReason}`;
     if (summary.capReached) return "cap reached";
     return summary.tickets.length === 0 ? "no ready tickets" : "no more ready tickets";
 }
 
 export async function runServiceTick(deps: ServiceTickDeps): Promise<TickResult> {
+    // The project's pause and the pause for every project must be two files: the project list refuses a clone directly in the root, and so does a hand-typed run.
+    if (deps.rootDir && resolve(deps.rootDir) === resolve(deps.stateDir)) throw new Error(`The state directory ${deps.stateDir} is the service root: the project's pause and the pause for every project would be one file, so \`resume <project>\` could not lift a pause set for all. Give the project its own folder (clone=<root>/<project>/repo).`);
     const lock = await acquireLock(deps.stateDir, deps.lock);
     if (!lock.acquired) {
         deps.say(alreadyRunningMessage(lock.held));
@@ -66,6 +73,15 @@ export async function runServiceTick(deps: ServiceTickDeps): Promise<TickResult>
     }
     try {
         if (lock.tookOver) deps.say(`Took over a lock left by pid ${lock.tookOver.pid} (started ${lock.tookOver.startedAt}), which is no longer running.`);
+
+        // TAI-772: a pause (`tai service pause`) starts nothing, and says so in the log on every tick so a forgotten one is seen.
+        const pausedAll = deps.rootDir ? await readPause(deps.rootDir) : null;
+        const paused = pausedAll ?? (await readPause(deps.stateDir));
+        if (paused) {
+            const scope = pausedAll ? "all" : "project";
+            deps.say(`Skipping: ${scope === "all" ? "every project is" : "this project is"} paused by \`tai service pause\` since ${paused.since}; \`tai service resume${scope === "all" ? "" : " <project>"}\` lets the next tick run.`);
+            return { status: "paused", exitCode: 0, since: paused.since, scope };
+        }
 
         const limited = await readLimitedUntil(deps.stateDir, deps.now());
         if (limited) {

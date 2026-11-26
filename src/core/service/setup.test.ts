@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { findProject, parseProjects, redactRemote, resolveServiceRoot, runServiceSetup, sameRemote, shellQuote, type PathState, type SetupDeps } from "./setup.js";
+import { entryFromKey, findProject, parseProjects, redactRemote, resolveServiceRoot, runServiceSetup, sameRemote, shellQuote, type PathState, type SetupDeps } from "./setup.js";
 import { realSetupFs, setupStillMissing } from "./real.js";
 
 const ROOT = "/svc";
@@ -19,9 +19,36 @@ describe("project list (TAI-771 AC-1, AC-7)", () => {
     });
 
     it("takes a given clone path, relative to the root", () => {
-        const [a, b] = parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/elsewhere/tai" }, { key: "b", remote: "r", clone: "b-clone" }] }), ROOT, CONFIG);
+        const [a, b] = parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/elsewhere/tai" }, { key: "b", remote: "r", clone: "b/repo" }] }), ROOT, CONFIG);
         assert.equal(a!.clone, "/elsewhere/tai");
-        assert.equal(b!.clone, "/svc/b-clone");
+        assert.equal(b!.clone, "/svc/b/repo");
+    });
+
+    it("with only=, a clash between other projects does not block acting on a project that is fine", () => {
+        const text = JSON.stringify({ projects: [{ ...ENTRY, key: "good" }, { key: "b", remote: "r", clone: "/x/b" }, { key: "c", remote: "r", clone: "/x/c" }, { key: "d", remote: "r", clone: "repo" }] });
+        assert.throws(() => parseProjects(text, ROOT, CONFIG), /shares its folder/, "the whole list is checked when no project is named");
+        assert.equal(parseProjects(text, ROOT, CONFIG, undefined, "good").length, 4);
+        assert.throws(() => parseProjects(text, ROOT, CONFIG, undefined, "c"), /shares its folder \/x with project "b"/, "but a clash that involves the project still stops it");
+    });
+
+    it("with a problems list, every clash is collected and none thrown, so a read-only caller still sees every project", () => {
+        const text = JSON.stringify({ projects: [{ ...ENTRY, key: "good" }, { key: "b", remote: "r", clone: "/x/b" }, { key: "c", remote: "r", clone: "/x/c" }, { key: "d", remote: "r", clone: "repo" }] });
+        const problems: string[] = [];
+        assert.equal(parseProjects(text, ROOT, CONFIG, undefined, undefined, problems).length, 4);
+        assert.equal(problems.length, 2);
+        assert.match(problems.join("\n"), /shares its folder \/x with project "b"/);
+        assert.match(problems.join("\n"), /sits directly in the service root/);
+    });
+
+    it("entryFromKey builds an entry from a safe key alone and refuses an unsafe one", () => {
+        assert.deepEqual(entryFromKey("tai", "/svc"), { key: "tai", remote: "", clone: "/svc/tai/repo" });
+        assert.equal(entryFromKey("../x", "/svc"), null);
+        assert.equal(entryFromKey("a b", "/svc"), null);
+    });
+
+    it("refuses a clone directly in the root (it would share the pause for every project) and two clones in one folder", () => {
+        assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "repo" }] }), ROOT, CONFIG), /sits directly in the service root/);
+        assert.throws(() => parseProjects(JSON.stringify({ projects: [{ ...ENTRY, clone: "/x/a" }, { key: "b", remote: "r", clone: "/x/b" }] }), ROOT, CONFIG), /shares its folder \/x with project "tai"/);
     });
 
     it("expands a leading ~ in a clone path to the home directory", () => {
@@ -248,10 +275,15 @@ describe("service setup (TAI-771)", () => {
         assert.ok(f.changes.every((c) => !c.startsWith("copy")));
     });
 
-    it("does not copy a file onto itself when from= is the clone", async () => {
-        const f = fake({}, { [CONFIG]: PROJECTS });
-        await runServiceSetup({ ...ARGS, from: "/svc/tai/repo" }, f.deps);
-        assert.ok(f.changes.every((c) => !c.startsWith("copy")));
+    it("refuses when from= is the clone or a folder inside it: the clone is the service's own, not a checkout you work in", async () => {
+        for (const from of ["/svc/tai/repo", "/svc/tai/repo/src/core"]) {
+            const f = fake({}, { [CONFIG]: PROJECTS });
+            await assert.rejects(runServiceSetup({ ...ARGS, from }, f.deps), /is inside the clone \/svc\/tai\/repo.*must not be a checkout you work in.*Nothing was changed/);
+            assert.deepEqual(f.changes, [], `nothing changed for ${from}`);
+        }
+        const near = fake({}, { [CONFIG]: PROJECTS });
+        await runServiceSetup({ ...ARGS, from: "/svc/tai/repo-other" }, near.deps);
+        assert.ok(near.changes.length > 0, "a sibling folder with the same prefix is not inside it");
     });
 
     it("does not write the attestation; it prints the command for a plain terminal against the clone (AC-4)", async () => {

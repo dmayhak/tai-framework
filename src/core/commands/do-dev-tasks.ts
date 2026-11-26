@@ -219,6 +219,8 @@ export interface RunDevTasksDeps {
     readonly yolo: boolean;
     /** True once the command has been interrupted: nothing new is looked up, prepared or started. */
     readonly interrupted?: () => boolean;
+    /** TAI-772: why the run should end after the ticket it is on (a pause was set), or null. Checked between tickets only, so a ticket under way is never cut off mid-merge. */
+    readonly stopRequested?: () => Promise<string | null>;
     /** TAI-706: where a run that ended on a usage limit is recorded. A ticket whose run hit one is `paused`, not `failed`. */
     readonly limitLatch?: UsageLimitLatch;
     /** TAI-706: `wait=<hours>`: sleep until the reset when it is within this many hours. Without it a limit stops the batch. */
@@ -362,6 +364,8 @@ export interface WorkedDevTasks {
     readonly capReached?: boolean;
     /** TAI-777: To Do tickets the run did not start because their status had changed since the search (a person started them). */
     readonly passedOver?: readonly SkippedDevTask[];
+    /** TAI-772: the run ended between tickets because `stopRequested` named a reason (a pause). */
+    readonly stoppedBy?: string;
 }
 
 /**
@@ -416,6 +420,9 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
         const next = await pickNext(found.tasks, new Set([...attempted, ...passed]), deps, pausedKnown);
         if (!next) return { results, found };
         if (deps.maxTickets !== undefined && attempted.size >= deps.maxTickets) return { results, found, capReached: true };
+        // Asked only once a ticket is about to start, so a pause set while the last one was building does not replace the real reason the run ended (no ticket left, or the cap).
+        const stoppedBy = await deps.stopRequested?.();
+        if (stoppedBy) return { results, found, stoppedBy };
         // TAI-777: a To Do ticket is read again just before it is started; a person may have started it since the search. It is passed over
         // (not counted against the cap) and the run looks for another.
         if (deps.recheckToDo && next.issue.status === Status.ToDo) {
@@ -457,6 +464,12 @@ async function workLoop(find: () => Promise<FoundDevTasks>, deps: RunDevTasksDep
                 if (deps.interrupted?.()) {
                     results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: "the run was interrupted during the wait" } };
                     return { results, found };
+                }
+                // A pause set during the wait ends the run here too, with the paused ticket kept in the report.
+                const stoppedDuringWait = await deps.stopRequested?.();
+                if (stoppedDuringWait) {
+                    results[results.length - 1] = { task: next, outcome: { ...result.outcome, notWaited: `the run was stopped during the wait: ${stoppedDuringWait}` } };
+                    return { results, found, stoppedBy: stoppedDuringWait };
                 }
                 // A ticket that will be tried again is replaced by how it ends; one that will not (its PR is open) stays in the report as paused.
                 if (continuable) {
@@ -518,7 +531,7 @@ function waitingNote(skipped: SkippedDevTask, worked: ReadonlySet<IssueKey>): st
     return mine.length ? ` Waiting on ${mine.join(", ")}, which this run worked on: it starts once that is merged and done.` : "";
 }
 
-export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean; readonly yoloThisRunOnly?: boolean; readonly only?: IssueKey }): string {
+export function renderDevTasksReport(found: FoundDevTasks, results: readonly DevTaskResult[] | null, options: { readonly yolo: boolean; readonly openPullRequestsChecked?: boolean; readonly yoloThisRunOnly?: boolean; readonly only?: IssueKey; readonly stoppedBy?: string }): string {
     const worked = new Set((results ?? []).flatMap((r) => [r.task.issue.key, r.task.parent.key]));
     const out = ["# Do all dev tasks", "", `DEV-YOLO is ${options.yolo ? "on" : "off"}${options.yoloThisRunOnly ? " for this run only (yolo=" + options.yolo + "); the stored setting is unchanged" : ""}.`, ""];
     if (options.only) out.push(`Only ${options.only} was selected (only=${options.only}); every other ticket is listed under Skipped as not selected.`, "");
@@ -564,9 +577,10 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
             );
         }
         const stopped = results.filter((r) => r.outcome.state === "stopped");
-        if (stopped.length) {
+        if (stopped.length || options.stoppedBy) {
             out.push("", "## Stopped", "");
             out.push(...stopped.map((r) => `- Before ${r.task.issue.key}: ${(r.outcome as { reason: string }).reason}`));
+            if (options.stoppedBy) out.push(`- The run ended early: ${options.stoppedBy}. No further ticket was started.`);
         }
         const waiting = allOpened.map((r) => r.task.issue.key);
         const storyProblems = results.filter((r) => r.storyProblem);
@@ -597,7 +611,7 @@ export function renderDevTasksReport(found: FoundDevTasks, results: readonly Dev
 export function parseDevTasksArgs(
     args: readonly (string | undefined)[],
     options: { readonly rules?: boolean } = {}
-): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string; readonly pickup?: "service" } {
+): { readonly dryRun: boolean; readonly yolo?: boolean; readonly only?: IssueKey; readonly waitHours?: number; readonly maxTickets?: number; readonly resultPath?: string; readonly pickup?: "service"; readonly stopFiles?: readonly string[] } {
     const given = args.filter((a): a is string => a !== undefined && a !== "");
     const known = options.rules ? ["yolo=true", "yolo=false"] : ["dryrun=true", "yolo=true", "yolo=false"];
     const onlyArgs = given.filter((a) => a.startsWith("only="));
@@ -605,16 +619,19 @@ export function parseDevTasksArgs(
     const maxArgs = options.rules ? [] : given.filter((a) => a.startsWith("max="));
     const resultArgs = options.rules ? [] : given.filter((a) => a.startsWith("result="));
     const pickupArgs = options.rules ? [] : given.filter((a) => a.startsWith("pickup="));
-    const unknown = given.filter((a) => !known.includes(a) && !pickupArgs.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")) && !maxArgs.includes(a) && !resultArgs.includes(a));
+    const stopArgs = options.rules ? [] : given.filter((a) => a.startsWith("stopfile="));
+    const unknown = given.filter((a) => !known.includes(a) && !pickupArgs.includes(a) && !stopArgs.includes(a) && !a.startsWith("only=") && !(waitArgs.length > 0 && a.startsWith("wait=")) && !maxArgs.includes(a) && !resultArgs.includes(a));
     if (unknown.length > 0) {
         throw new Error(
-            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file> and pickup=service"} (got: ${unknown.join(" ")}).`
+            `do-dev-tasks ${options.rules ? "rules takes only yolo=true, yolo=false and only=<DEV-KEY>" : "takes only dryrun=true, yolo=true, yolo=false, only=<DEV-KEY>, wait=<hours>, max=<tickets>, result=<file>, pickup=service and stopfile=<file>"} (got: ${unknown.join(" ")}).`
         );
     }
     if (onlyArgs.length > 1) throw new Error(`do-dev-tasks takes only one only=<DEV-KEY> (got: ${onlyArgs.join(" ")}).`);
     if (waitArgs.length > 1) throw new Error(`do-dev-tasks takes only one wait=<hours> (got: ${waitArgs.join(" ")}).`);
     if (maxArgs.length > 1) throw new Error(`do-dev-tasks takes only one max=<tickets> (got: ${maxArgs.join(" ")}).`);
     if (resultArgs.length > 1) throw new Error(`do-dev-tasks takes only one result=<file> (got: ${resultArgs.join(" ")}).`);
+    const stopFiles = stopArgs.map((a) => a.slice("stopfile=".length));
+    if (stopFiles.includes("")) throw new Error("stopfile= takes a file path.");
     if (pickupArgs.length > 1) throw new Error(`do-dev-tasks takes only one pickup=service (got: ${pickupArgs.join(" ")}).`);
     if (pickupArgs.length === 1 && pickupArgs[0] !== "pickup=service") throw new Error(`pickup= takes only service (got: ${pickupArgs[0]!.slice("pickup=".length) || "nothing"}).`);
     let maxTickets: number | undefined;
@@ -639,7 +656,7 @@ export function parseDevTasksArgs(
     let yolo: boolean | undefined;
     if (wantsOn) yolo = true;
     else if (wantsOff) yolo = false;
-    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }), ...(pickupArgs.length === 1 ? { pickup: "service" as const } : {}) };
+    return { dryRun: given.includes("dryrun=true"), ...(yolo === undefined ? {} : { yolo }), ...(only === undefined ? {} : { only }), ...(waitHours === undefined ? {} : { waitHours }), ...(maxTickets === undefined ? {} : { maxTickets }), ...(resultPath === undefined ? {} : { resultPath }), ...(pickupArgs.length === 1 ? { pickup: "service" as const } : {}), ...(stopFiles.length === 0 ? {} : { stopFiles }) };
 }
 
 /**
@@ -694,7 +711,7 @@ function leftAlone(worked: Partial<Pick<WorkedDevTasks, "found" | "passedOver" |
 }
 
 /** What `worked` came to, for `result=<file>`. A pure function of the run's results. */
-export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached"> & Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): RunSummary {
+export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capReached"> & Partial<Pick<WorkedDevTasks, "stoppedBy">> & Partial<Pick<WorkedDevTasks, "found" | "passedOver">>): RunSummary {
     const last = worked.results.at(-1)?.outcome;
     const ended = last?.state === "paused" && !last.carriedOn ? last : null;
     return {
@@ -704,7 +721,7 @@ export function summarizeWorked(worked: Pick<WorkedDevTasks, "results" | "capRea
         }),
         capReached: worked.capReached === true,
         limit: ended ? { text: ended.limit.text, ...(ended.limit.resetsAt ? { resetsAt: ended.limit.resetsAt.toISOString() } : {}) } : null,
-        stopReason: last?.state === "stopped" ? last.reason : null,
+        stopReason: last?.state === "stopped" ? last.reason : (worked.stoppedBy ?? null),
         skipped: leftAlone(worked),
     };
 }

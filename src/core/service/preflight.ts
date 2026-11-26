@@ -7,6 +7,9 @@
  * (`tai service check`), because they need the clone's own configuration; `checkFailure` turns that command's answer into the same shape.
  */
 
+import { realpath } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+
 export type CredentialRole = "jira" | "git-host" | "reviewer" | "merge";
 
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -43,9 +46,34 @@ export function missingCredential(env: Env): { readonly role: CredentialRole; re
     return null;
 }
 
+/** True when `inner` is `outer` or a folder under it. */
+export function isInside(inner: string, outer: string): boolean {
+    const rel = relative(resolve(outer), resolve(inner));
+    return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/** The path with symlinks resolved: the deepest part that exists is resolved and the rest (a folder not made yet) is kept as written. `isInside` is lexical, so both sides go through this first. */
+export async function realPath(path: string): Promise<string> {
+    const full = resolve(path);
+    let head = full;
+    const tail: string[] = [];
+    for (;;) {
+        try {
+            return join(await realpath(head), ...tail);
+        } catch {
+            const up = dirname(head);
+            if (up === head) return full;
+            tail.unshift(basename(head));
+            head = up;
+        }
+    }
+}
+
 export interface LocalPreflightFacts {
     /** Run from an AI session (Claude Code or Gemini CLI markers in the environment). */
     readonly aiSession: boolean;
+    /** The directory the command was started in, when it is known (a person's own start). The service's clone is never a folder a person works in. */
+    readonly startedIn?: string;
     readonly clonePath: string;
     readonly cloneIsGitRepo: boolean;
     readonly envFileFound: boolean;
@@ -57,6 +85,9 @@ export interface LocalPreflightFacts {
 export function localPreflightFailure(facts: LocalPreflightFacts): string | null {
     if (facts.aiSession) {
         return "this is an AI session, which the unattended run refuses: run `tai service run` from a plain terminal, or let the timer start it";
+    }
+    if (facts.startedIn !== undefined && isInside(facts.startedIn, facts.clonePath)) {
+        return `this was started from inside the clone ${facts.clonePath}: the clone is the service's own folder, so a checkout you work in must not be it. Give the project another "clone" path in projects.json and run \`tai service setup <project>\`, then start this from your own folder`;
     }
     if (!facts.cloneIsGitRepo) {
         return `the clone ${facts.clonePath} is missing or is not a git repository: make it with \`tai service setup <project>\` (or \`git clone <remote> ${facts.clonePath}\`)`;

@@ -174,16 +174,18 @@ import { suggestAssignees } from "../core/commands/suggest-assignee.js";
 import { allowYoloForOneRun, showSettings, setSetting, changeAdmin, inAiSession, readSettingValue, readRequireCi } from "../core/commands/settings.js";
 import { recordAttestation } from "../core/settings/attestation.js";
 import { yoloGate, yoloRun } from "../core/commands/dev-yolo-wiring.js";
-import { resolve as resolvePath } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { buildRunRules, missingRules, readPermissionFiles, readinessWarning, renderRulesJson, undocumentedCheckGaps } from "../core/commands/build-allow-rules.js";
 import { servicePickupReason, stillToDoReason } from "../core/commands/service-pickup.js";
 import { findDevTasks, onlyRefusal, storyNotInProgress, parseDevTasksArgs, resolveYolo, workDevTasks, renderDevTasksReport, findOpenPullRequest, listOpenPullRequests, titleNamesKey, summarizeWorked, type DevTask, type RunSummary } from "../core/commands/do-dev-tasks.js";
 import { yoloSettingReasons } from "../core/commands/yolo-checks.js";
 import { processIsAlive } from "../core/service/lock.js";
-import { checkFailure, localPreflightFailure } from "../core/service/preflight.js";
+import { interruptedOrPaused, stopRequestedBy } from "../core/service/state.js";
+import { chooseProjects, installTimer, kickService, pauseAll, pauseProjects, resumeAll, resumeProjects, serviceStatusAll, uninstallTimer } from "../core/service/timer.js";
+import { checkFailure, localPreflightFailure, realPath } from "../core/service/preflight.js";
 import { refreshClone } from "../core/service/refresh.js";
-import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, realRefreshGit, realSetupFs, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
-import { resolveServiceRoot, runServiceSetup } from "../core/service/setup.js";
+import { cloneEnvironment, cloneIsGitRepo, parseServiceRunArgs, parseServiceSetupArgs, parseServiceUnitArgs, realRefreshGit, realSetupFs, realTimerDeps, runCloneCheck, runCloneWork, setupStillMissing } from "../core/service/real.js";
+import { PROJECTS_FILE, resolveServiceRoot, runServiceSetup, type ProjectEntry } from "../core/service/setup.js";
 import { runServiceTick } from "../core/service/run.js";
 import { writeFile } from "node:fs/promises";
 import { buildDevPrompt, cliCommand, devRunTimeoutMs, runHeadlessClaude, stopRunsOnInterrupt, wasInterrupted } from "../core/commands/headless-claude.js";
@@ -1686,14 +1688,18 @@ export function renderUsage(): string {
         "  work <ISSUE-KEY>             Load a ticket's briefing and hand it to its persona",
         "  ready [persona]              Show what's ready to work on",
         "  do-dev-tasks [dryrun=true] [yolo=true|false] [only=<DEV-KEY>] [wait=<hours>]",
-        "               [max=<tickets>] [result=<file>] [pickup=service]",
+        "               [max=<tickets>] [result=<file>] [pickup=service] [stopfile=<file>]",
         "                               Run the ready Dev tasks unattended (DEV-YOLO)",
         "  do-dev-tasks rules [yolo=true|false]",
         "                               Print the permission rules those runs use",
-        "  service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]",
+        "  service run clone=<path> [state=<dir>] [root=<dir>] [wait=<hours>] [cap=<tickets>]",
         "                               One guarded tick of the unattended Dev service",
         "  service setup <project> [root=<dir>] [from=<path>]",
         "                               Make the service's own clone of a listed project",
+        "  service install|uninstall|kick <project> [root=<dir>]",
+        "                               Put the timer in place, take it out, or start a run now",
+        "  service pause|resume|status [<project>] [root=<dir>]",
+        "                               Stop or restart ticks; show the last run and next tick",
         "  verify <STORY-KEY>           Check a Story's work against its acceptance criteria",
         "  pr-ready                     List PRs ready to review or merge",
         "",
@@ -1913,13 +1919,18 @@ async function main(): Promise<void> {
         );
     }
 
-    // TAI-770: `service run clone=<path> [state=<dir>] [wait=<hours>] [cap=<tickets>]` is one guarded tick of the unattended Dev service: the
+    // TAI-770: `service run clone=<path> [state=<dir>] [root=<dir>] [wait=<hours>] [cap=<tickets>]` is one guarded tick of the unattended Dev service: the
     // command both the timer and kick-off-now call. It needs no config of its own (the clone has its own .env, and the checks that read
     // Jira run IN the clone as `service check`), so it comes before resolveConfig(). A second start while a run is going exits 0.
     if (subcommand === "service" && arg === "run") {
-        const { clonePath, stateDir, waitHours, cap } = parseServiceRunArgs(rest, process.env);
+        const parsed = parseServiceRunArgs(rest, process.env);
+        const { clonePath, waitHours, cap } = parsed;
+        // Symlinks resolved, so a state directory that is a link to the root is seen as the root (the two pauses must be two files).
+        const stateDir = await realPath(parsed.stateDir);
+        const rootDir = await realPath(parsed.rootDir);
         const result = await runServiceTick({
             stateDir,
+            rootDir,
             waitHours,
             cap,
             lock: { pid: process.pid, now: () => new Date(), isAlive: processIsAlive },
@@ -1927,11 +1938,11 @@ async function main(): Promise<void> {
             say: (line) => console.log(`${new Date().toISOString()} ${line}`),
             preflight: async () => {
                 const { envFileFound, env } = await cloneEnvironment(clonePath, process.env);
-                const local = localPreflightFailure({ aiSession: inAiSession(), clonePath, cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
+                const local = localPreflightFailure({ aiSession: inAiSession(), startedIn: await realPath(process.cwd()), clonePath: await realPath(clonePath), cloneIsGitRepo: await cloneIsGitRepo(clonePath), envFileFound, env });
                 return local ?? checkFailure(await runCloneCheck(clonePath, env));
             },
             refresh: () => refreshClone(realRefreshGit(clonePath)),
-            work: async (options) => runCloneWork(clonePath, stateDir, (await cloneEnvironment(clonePath, process.env)).env, options),
+            work: async (options) => runCloneWork(clonePath, stateDir, (await cloneEnvironment(clonePath, process.env)).env, { ...options, rootDir }),
         });
         process.exitCode = result.exitCode;
         return;
@@ -1943,8 +1954,32 @@ async function main(): Promise<void> {
         await runServiceSetup({ project, root: resolveServiceRoot(root, process.env), from }, { ...realSetupFs, say: (line) => console.log(line), stillMissing: (clonePath) => setupStillMissing(clonePath, process.env) });
         return;
     }
+    // TAI-772: the timer, kick-off-now, pause and status. Like `run` and `setup` they need no config of their own: they read the project list
+    // and the service's state files, and talk to `systemctl --user`.
+    if (subcommand === "service" && (arg === "install" || arg === "uninstall" || arg === "kick" || arg === "status" || arg === "pause" || arg === "resume")) {
+        const { project, root: given } = parseServiceUnitArgs(arg, rest);
+        const root = resolveServiceRoot(given, process.env);
+        const configPath = join(root, PROJECTS_FILE);
+        // The pause for every project is one file in the root and needs no project list: it must work when the list is missing or one entry is bad, which is when a person most wants to stop things.
+        let chosen: readonly ProjectEntry[] = [];
+        const listProblems: string[] = [];
+        const deps = realTimerDeps(process.env, (line) => console.log(line), inAiSession);
+        if (!(project === undefined && (arg === "pause" || arg === "resume"))) {
+            const picked = await chooseProjects(arg, project, root, (path) => realSetupFs.readFile(path), deps, listProblems);
+            if (picked.note) console.log(picked.note);
+            chosen = picked.chosen;
+        }
+        // `pause` and `resume` with no project act on the pause for every project, which lives in the service root; with one, on that project's own.
+        if (arg === "pause") await (project === undefined ? pauseAll(root, deps) : pauseProjects(chosen, deps));
+        else if (arg === "resume") await (project === undefined ? resumeAll(root, deps) : resumeProjects(chosen, deps));
+        else if (arg === "status") await serviceStatusAll(chosen, deps, root, configPath, listProblems);
+        else if (arg === "install") await installTimer(chosen[0]!, deps, root);
+        else if (arg === "uninstall") await uninstallTimer(chosen[0]!, deps);
+        else await kickService(chosen[0]!, deps, root);
+        return;
+    }
     if (subcommand === "service" && arg !== "check") {
-        throw new Error(`Unknown service action "${arg ?? ""}" -- expected "run", "setup" or "check".`);
+        throw new Error(`Unknown service action "${arg ?? ""}" -- expected "run", "setup", "install", "uninstall", "kick", "pause", "resume", "status" or "check".`);
     }
 
     // TAI-126: any missing required env var here means this project hasn't been
@@ -2460,7 +2495,7 @@ async function main(): Promise<void> {
     if (subcommand === "do-dev-tasks") {
         // TAI-649: `do-dev-tasks rules` prints the narrow Claude Code rule set a build needs, for the person to add themselves.
         const devYoloOn = async (): Promise<boolean> => (await readSettingValue(config.backend.docStore, config.spaceKey, config.currentHuman?.email ?? null, "dev-yolo")) === "true";
-        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath, pickup } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
+        const { dryRun, yolo: yoloArg, only, waitHours, maxTickets, resultPath, pickup, stopFiles } = arg === "rules" ? parseDevTasksArgs(rest, { rules: true }) : parseDevTasksArgs([arg, ...rest]);
         if (arg === "rules") {
             // The setting is read from the settings page; a backend that cannot be reached must not stop the person from getting the rules.
             // `rules yolo=true|false` prints that set whatever the setting is, and reads nothing.
@@ -2602,11 +2637,12 @@ async function main(): Promise<void> {
             storyProblem: async (task) => storyNotInProgress(await config.backend.workTracker.getIssue(task.parent.key), await config.backend.workTracker.getIssue(task.issue.key)),
             ...(yoloWiring ? { yoloGate: yoloGate(yoloWiring), yoloRun: yoloRun(yoloWiring) } : {}),
             interrupted: wasInterrupted,
+            ...(stopFiles ? { stopRequested: () => stopRequestedBy(stopFiles) } : {}),
             limitLatch,
             ...(waitHours !== undefined ? { waitHours } : {}),
             ...(maxTickets !== undefined ? { maxTickets } : {}),
             ...(pickup === "service" ? { recheckToDo: (task: DevTask) => stillToDoReason(config.backend.workTracker, task.issue) } : {}),
-            sleep: (ms) => sleepUnlessInterrupted(ms, wasInterrupted),
+            sleep: (ms) => sleepUnlessInterrupted(ms, interruptedOrPaused(wasInterrupted, stopFiles)),
             say: (line) => console.log(line),
             prepare: async (task) => {
                 await prepareForTicket(process.cwd(), config.taiRoot, task.parent.key, await pauses.forPrepare(task.issue.key));
@@ -2622,7 +2658,7 @@ async function main(): Promise<void> {
             }, () => checkoutPosition(process.cwd()), pickup === "service"),
         }, found);
         await writeResult(summarizeWorked(worked));
-        console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}) }));
+        console.log(renderDevTasksReport(worked.found, worked.results, { yolo, ...(thisRunOnly ? { yoloThisRunOnly: true } : {}), ...(only ? { only } : {}), ...(worked.stoppedBy ? { stoppedBy: worked.stoppedBy } : {}) }));
         return;
     }
 
